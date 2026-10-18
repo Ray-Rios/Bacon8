@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bacon8-web
+spec:
+  template:
+    spec:
+      containers:
+      - name: bacon8
+        env:
+        - name: MIX_ENV
+          value: "dev"

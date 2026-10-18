@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bacon8-web
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: bacon8
+        env:
+        - name: MIX_ENV
+          value: "prod"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"

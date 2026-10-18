@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bacon8-sa
+  namespace: bacon8
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bacon8-role
+  namespace: bacon8
+rules:
+- apiGroups: [""]
+  resources: ["endpoints", "pods", "nodes"]
+  verbs: ["get", "list", "watch"]
+
+# Holo-sim instance orchestration (M5).
+#
+# Namespaced and verb-scoped on purpose. This service account fronts a public
+# web application, and an endpoint that can be reached by a logged-in player
+# ultimately decides whether a Job gets created - so it gets exactly the verbs
+# the launcher uses and nothing else. No cluster role, no wildcards, and
+# explicitly no "exec" or "portforward", which would turn instance launching
+# into arbitrary code execution inside the namespace.
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+
+# Reading pod status is how the launcher answers "did it actually start", and
+# how a failed image pull becomes a message rather than a sim stuck on pending
+# forever. Pods are already readable above; this adds their logs for diagnosis.
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bacon8-role-binding
+  namespace: bacon8
+subjects:
+- kind: ServiceAccount
+  name: bacon8-sa
+  namespace: bacon8
+roleRef:
+  kind: Role
+  name: bacon8-role
+  apiGroup: rbac.authorization.k8s.io

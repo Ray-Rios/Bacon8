@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: update-avatar-paths
+  namespace: bacon8
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: update-paths
+          image: bacon8:prod
+          envFrom:
+            - secretRef:
+                name: bacon8-secrets
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://postgres:postgres@db:5432/bacon8_prod"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            - name: BACON8_HOST
+              value: "bacon8.net"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Updating avatar paths in database..."
+              cd /app
+              bin/bacon8 eval "
+              # Update avatar_url paths to remove year/month
+              query = \"
+                UPDATE users
+                SET avatar_url = REGEXP_REPLACE(
+                  avatar_url,
+                  '(/uploads/[^/]+)/\\\\d{4}/\\\\d{2}/',
+                  '\\\\1/',
+                  'g'
+                )
+                WHERE avatar_url ~ '/\\\\d{4}/\\\\d{2}/'
+                RETURNING id, avatar_url;
+              \"
+              
+              case Ecto.Adapters.SQL.query(Bacon8.Repo, query) do
+                {:ok, result} ->
+                  IO.puts(\"Updated #{result.num_rows} avatar paths\")
+                  Enum.each(result.rows, fn [id, url] ->
+                    IO.puts(\"  User #{id}: #{url}\")
+                  end)
+                  
+                {:error, error} ->
+                  IO.puts(\"Error: #{inspect(error)}\")
+                  System.halt(1)
+              end
+              
+              IO.puts(\"Avatar paths updated successfully!\")
+              "
+              
+              echo "Migration complete!"

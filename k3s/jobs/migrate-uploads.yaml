@@ -1,0 +1,101 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate-uploads
+  namespace: bacon8
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: alpine:3.22
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting upload path migration..."
+              base_dir="/app/uploads"
+              
+              cd "$base_dir" || exit 1
+              
+              # Find all user directories (UUID format)
+              for user_dir in */; do
+                user_id="${user_dir%/}"
+                
+                # Skip non-UUID directories like "public"
+                if [ "$user_id" = "public" ]; then
+                  continue
+                fi
+                
+                echo "Processing user: $user_id"
+                
+                # Look for year directories (4 digits)
+                for year_dir in "$user_id"/[0-9][0-9][0-9][0-9]/; do
+                  if [ ! -d "$year_dir" ]; then
+                    continue
+                  fi
+                  
+                  year=$(basename "$year_dir")
+                  
+                  # Look for month directories (2 digits)
+                  for month_dir in "$year_dir"[0-9][0-9]/; do
+                    if [ ! -d "$month_dir" ]; then
+                      continue
+                    fi
+                    
+                    month=$(basename "$month_dir")
+                    
+                    # Look for context directories or files
+                    for item in "$month_dir"*; do
+                      if [ ! -e "$item" ]; then
+                        continue
+                      fi
+                      
+                      item_name=$(basename "$item")
+                      
+                      if [ -d "$item" ]; then
+                        # It's a context directory
+                        context="$item_name"
+                        new_context_dir="$base_dir/$user_id/$context"
+                        mkdir -p "$new_context_dir"
+                        
+                        echo "  Moving files from $year/$month/$context"
+                        
+                        # Move all files from old location to new
+                        for file in "$item"/*; do
+                          if [ -f "$file" ]; then
+                            filename=$(basename "$file")
+                            new_file="$new_context_dir/$filename"
+                            
+                            if [ ! -f "$new_file" ]; then
+                              mv "$file" "$new_file"
+                              echo "    Moved: $filename"
+                            else
+                              echo "    Skipped (exists): $filename"
+                            fi
+                          fi
+                        done
+                        
+                        # Remove empty context directory
+                        rmdir "$item" 2>/dev/null || true
+                      fi
+                    done
+                    
+                    # Remove empty month directory
+                    rmdir "$month_dir" 2>/dev/null || true
+                  done
+                  
+                  # Remove empty year directory
+                  rmdir "$year_dir" 2>/dev/null || true
+                done
+              done
+              
+              echo "Migration complete!"
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: bacon8-uploads-pvc

@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-migrations
+  namespace: bacon8
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: bacon8:prod
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: bacon8-config
+            - secretRef:
+                name: bacon8-secrets
+          command: ["/app/bin/bacon8", "eval", "Bacon8.Release.migrate()"]

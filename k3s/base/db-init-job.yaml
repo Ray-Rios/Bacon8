@@ -1,0 +1,69 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init
+  labels:
+    app: db-init
+spec:
+  template:
+    metadata:
+      labels:
+        app: db-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: db-init
+        image: bacon8:prod
+        envFrom:
+        - configMapRef:
+            name: bacon8-config
+        - secretRef:
+            name: bacon8-secrets
+        command: ["/bin/bash"]
+        args:
+        - -c
+        - |
+          set -e
+          echo "Waiting for PostgreSQL to be ready..."
+          until pg_isready -h db -p 5432 -U postgres &> /dev/null; do
+            echo "Waiting for database..."
+            sleep 2
+          done
+          echo "PostgreSQL is ready!"
+          
+          echo "Creating database..."
+          # create_db is idempotent now - it reports "already exists" per repo
+          # rather than raising on the first one and never reaching the second.
+          # That bug is why bacon8_games_prod went missing for so long: the
+          # `|| echo` below hid it, and the games repo was never reached.
+          /app/bin/bacon8 eval "Bacon8.Release.create_db()"
+
+          echo "Migration status before:"
+          /app/bin/bacon8 eval "Bacon8.Release.status()" || true
+
+          echo "Running migrations..."
+          migrated=0
+          for i in 1 2 3; do
+            if /app/bin/bacon8 eval "Bacon8.Release.migrate()"; then
+              echo "Migrations completed successfully"
+              migrated=1
+              break
+            else
+              echo "Migration attempt $i failed, retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
+
+          # FAIL THE JOB IF THEY NEVER SUCCEEDED.
+          #
+          # The old loop fell through to "Database initialization complete!" after
+          # three failures, so a broken migration produced a green job and an app
+          # that booted without a schema. `set -e` does not help: a command inside
+          # an `if` condition is explicitly exempt from it.
+          if [ "$migrated" -ne 1 ]; then
+            echo "ERROR: migrations did not succeed after 3 attempts."
+            /app/bin/bacon8 eval "Bacon8.Release.status()" || true
+            exit 1
+          fi
+
+          echo "Database initialization complete!"

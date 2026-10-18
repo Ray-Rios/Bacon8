@@ -1,0 +1,5 @@
+# Shell scripts run inside Linux containers and k3s pods - bacon8-start.sh is
+# the web pod's entrypoint. A CRLF checkout breaks the shebang there
+# ("/bin/bash^M: no such file"), so these stay LF on every machine, whatever
+# core.autocrlf says.
+*.sh text eol=lf

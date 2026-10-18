@@ -1,0 +1,1464 @@
+/**
+ * Block Editor Styles
+ * 
+ * Comprehensive styling for the block-based WYSIWYG editor
+ */
+
+/* ============================================
+   BLOCK EDITOR CONTAINER
+   ============================================ */
+
+.block-editor {
+  @apply bg-gray-900/50 rounded-xl border border-gray-700 overflow-hidden;
+  max-width: 100%;
+}
+
+/* ============================================
+   EDITOR CONTENT AREA
+   ============================================ */
+
+.block-editor-content {
+  @apply p-4 min-h-[400px];
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.empty-editor-placeholder {
+  @apply flex items-center justify-center h-48 text-gray-500 text-lg;
+  @apply border-2 border-dashed border-gray-700 rounded-lg;
+}
+
+/* ============================================
+   ROWS
+   ============================================ */
+
+.editor-row {
+  @apply relative flex items-start gap-2 mb-4 p-2 rounded-lg;
+  @apply border border-transparent hover:border-gray-700 transition-colors;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* Note: 'group' class must be applied in HTML, not via @apply */
+
+.editor-row.dragging {
+  @apply opacity-50 border-blue-500;
+}
+
+.editor-row.drag-over {
+  @apply border-blue-400 bg-blue-900/20;
+}
+
+.row-handle {
+  @apply flex-shrink-0 p-2 text-gray-500 cursor-grab rounded;
+  @apply opacity-40 group-hover:opacity-100 hover:bg-gray-700 hover:text-gray-300;
+  @apply transition-all duration-150;
+  user-select: none;
+}
+
+.row-handle:hover {
+  @apply opacity-100 bg-gray-700 text-white;
+}
+
+.row-handle:active {
+  @apply cursor-grabbing bg-blue-600 text-white;
+}
+
+.row-content {
+  @apply flex-1 flex gap-0 items-stretch;
+  overflow: visible; /* Allow resize handles to extend beyond */
+  min-width: 0; /* Critical: allows flex item to shrink below content size */
+}
+
+.row-content.columns-1 {
+  @apply flex-col;
+}
+
+.row-content.columns-2 > .editor-column,
+.row-content.columns-3 > .editor-column,
+.row-content.columns-4 > .editor-column,
+.row-content.columns-5 > .editor-column,
+.row-content.columns-6 > .editor-column,
+.row-content.columns-7 > .editor-column,
+.row-content.columns-8 > .editor-column {
+  min-width: 0;
+  flex: 1 1 0%;
+}
+
+/* Custom column widths for 3-column layouts */
+.row-content.columns-3 > .editor-column[data-width="narrow"] {
+  flex: 0 0 15%;
+  max-width: 15%;
+}
+
+.row-content.columns-3 > .editor-column[data-width="small"] {
+  flex: 0 0 20%;
+  max-width: 20%;
+}
+
+.row-content.columns-3 > .editor-column[data-width="medium"] {
+  flex: 0 0 33.333%;
+  max-width: 33.333%;
+}
+
+.row-content.columns-3 > .editor-column[data-width="large"] {
+  flex: 0 0 40%;
+  max-width: 40%;
+}
+
+.row-content.columns-3 > .editor-column[data-width="wide"] {
+  flex: 0 0 50%;
+  max-width: 50%;
+}
+
+.row-content.columns-3 > .editor-column[data-width="extra-wide"] {
+  flex: 0 0 60%;
+  max-width: 60%;
+}
+
+.row-content.columns-3 > .editor-column[data-width="auto"] {
+  flex: 1 1 auto;
+}
+
+.row-actions {
+  @apply flex-shrink-0 flex flex-col gap-1;
+  @apply opacity-0 group-hover:opacity-100 transition-opacity duration-150;
+  position: relative;
+  z-index: 20;
+}
+
+.row-action-btn {
+  @apply p-1.5 text-gray-500 rounded hover:bg-gray-700 hover:text-gray-300;
+  @apply transition-colors duration-150;
+}
+
+.row-action-btn.row-delete:hover {
+  @apply text-red-400 bg-red-900/30;
+}
+
+/* ============================================
+   COLUMNS
+   ============================================ */
+
+.editor-column {
+  @apply flex flex-col gap-3 min-h-[100px] p-3 rounded-lg h-full;
+  @apply border border-dashed border-gray-700/50;
+  @apply hover:border-gray-600 transition-colors;
+  min-width: 0; /* Allow flex items to shrink below content size */
+  overflow: hidden;
+}
+
+.column-blocks {
+  @apply flex flex-col gap-3 flex-1;
+}
+
+/* Column Resize Handle */
+.column-resize-handle {
+  @apply flex-shrink-0 flex items-center justify-center;
+  width: 20px;
+  cursor: col-resize;
+  margin: 0 -4px;
+  z-index: 100;
+  position: relative;
+  pointer-events: auto !important;
+  touch-action: none;
+}
+
+/* Make the handle easier to grab by extending the clickable area */
+.column-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  right: -8px;
+  cursor: col-resize;
+}
+
+.resize-handle-bar {
+  @apply h-full rounded-full;
+  width: 4px;
+  min-height: 50px;
+  background-color: rgba(75, 85, 99, 0.5);
+  @apply transition-colors duration-150;
+}
+
+.column-resize-handle:hover .resize-handle-bar,
+.column-resize-handle.resizing .resize-handle-bar {
+  @apply bg-blue-500;
+}
+
+.column-resize-handle:active .resize-handle-bar {
+  @apply bg-blue-400;
+}
+
+/* When resizing, prevent text selection and show visual feedback */
+.row-content.resizing {
+  user-select: none;
+  cursor: col-resize !important;
+}
+
+.row-content.resizing * {
+  cursor: col-resize !important;
+}
+
+.add-block-placeholder {
+  @apply mt-auto pt-2;
+}
+
+.add-block-btn {
+  @apply flex items-center justify-center gap-2 w-full py-2 text-gray-500 text-sm;
+  @apply border border-dashed border-gray-700 rounded-lg;
+  @apply hover:text-gray-300 hover:border-gray-500 hover:bg-gray-800/50;
+  @apply transition-colors duration-150;
+}
+
+/* ============================================
+   CONTENT BLOCKS
+   ============================================ */
+
+.content-block {
+  @apply relative flex items-start gap-2 p-2 rounded-lg;
+  @apply border border-transparent hover:border-gray-600;
+  @apply bg-gray-800/30 hover:bg-gray-800/50 transition-all duration-150;
+}
+
+/* Note: 'group/block' class must be applied in HTML, not via @apply */
+
+.content-block.dragging {
+  @apply opacity-50 border-blue-500 bg-blue-900/30;
+}
+
+.content-block.drag-over {
+  @apply border-t-2 border-t-blue-400;
+}
+
+.block-handle {
+  @apply flex-shrink-0 p-2 text-gray-500 cursor-grab rounded-lg;
+  @apply opacity-50 group-hover/block:opacity-100;
+  @apply hover:bg-gray-700 hover:text-white;
+  @apply transition-all duration-150;
+  user-select: none;
+  position: relative;
+  z-index: 10;
+}
+
+.block-handle:hover {
+  @apply opacity-100 bg-gray-700 text-white;
+}
+
+.block-handle:active,
+.block-handle.dragging {
+  @apply cursor-grabbing bg-blue-600 text-white;
+}
+
+.block-content {
+  @apply flex-1 min-w-0 w-full;
+}
+
+/* Prevent native image dragging - use block handle instead */
+.block-content img {
+  -webkit-user-drag: none;
+  user-drag: none;
+  pointer-events: auto;
+}
+
+.block-action-btn {
+  @apply p-1 text-gray-500 rounded hover:bg-gray-700 hover:text-gray-300;
+  @apply transition-colors duration-150;
+}
+
+.block-action-btn.block-delete:hover {
+  @apply text-red-400 bg-red-900/30;
+}
+
+/* ============================================
+   RICH TEXT BLOCKS (Custom contenteditable editor)
+   ============================================ */
+
+.rich-text-block {
+  @apply rounded-lg overflow-visible border border-gray-700/50;
+  @apply hover:border-gray-600 transition-colors;
+  width: 100%;
+}
+
+.rich-text-toolbar {
+  @apply flex flex-wrap items-center gap-1 p-2 bg-gray-800 border-b border-gray-700;
+  @apply transition-all duration-200;
+}
+
+.rich-text-toolbar.active {
+  @apply bg-gray-700;
+}
+
+.rich-text-toolbar .toolbar-group {
+  @apply flex items-center gap-1 px-1 border-r border-gray-600 last:border-r-0;
+}
+
+.rich-text-toolbar .format-btn {
+  @apply w-8 h-8 flex items-center justify-center rounded;
+  @apply text-gray-400 hover:text-white hover:bg-gray-700 transition-colors;
+  @apply text-sm font-medium;
+}
+
+.rich-text-toolbar .format-btn:hover {
+  @apply bg-gray-700;
+}
+
+.rich-text-toolbar .text-format-select {
+  @apply bg-gray-700 border border-gray-600 rounded px-2 py-1;
+  @apply text-gray-300 text-sm;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+.rich-text-toolbar .font-family-select,
+.rich-text-toolbar .font-size-select {
+  @apply bg-gray-700 border border-gray-600 rounded px-2 py-1;
+  @apply text-gray-300 text-xs;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  max-width: 80px;
+}
+
+.rich-text-toolbar .color-picker-btn {
+  @apply relative w-8 h-8 flex items-center justify-center rounded cursor-pointer;
+  @apply text-gray-400 hover:text-white hover:bg-gray-700 transition-colors;
+}
+
+.rich-text-toolbar .color-picker-btn .color-icon {
+  @apply font-bold text-sm;
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 2px;
+}
+
+.rich-text-toolbar .color-picker-btn .bg-color-icon {
+  @apply text-lg leading-none;
+}
+
+.rich-text-toolbar .color-picker-btn input[type="color"] {
+  @apply absolute inset-0 opacity-0 cursor-pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.rich-text-editor {
+  @apply min-h-[100px] p-4 bg-gray-800/50;
+  @apply text-gray-200 leading-relaxed;
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500/50;
+  @apply rounded-b-lg;
+  position: relative;
+  z-index: 1;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-user-modify: read-write;
+}
+
+.rich-text-editor:focus {
+  @apply bg-gray-700/50;
+}
+
+.rich-text-editor:empty::before {
+  content: attr(data-placeholder);
+  @apply text-gray-500 pointer-events-none;
+}
+
+.rich-text-editor p {
+  @apply mb-3;
+}
+
+.rich-text-editor h1 {
+  @apply text-3xl font-bold mb-4;
+}
+
+.rich-text-editor h2 {
+  @apply text-2xl font-bold mb-3;
+}
+
+.rich-text-editor h3 {
+  @apply text-xl font-semibold mb-2;
+}
+
+.rich-text-editor h4 {
+  @apply text-lg font-semibold mb-2;
+}
+
+.rich-text-editor ul, .rich-text-editor ol {
+  @apply ml-6 mb-3;
+}
+
+.rich-text-editor ul {
+  @apply list-disc;
+}
+
+.rich-text-editor ol {
+  @apply list-decimal;
+}
+
+.rich-text-editor li {
+  @apply mb-1;
+}
+
+.rich-text-editor a {
+  @apply text-blue-400 hover:text-blue-300 underline;
+}
+
+.rich-text-editor blockquote {
+  @apply border-l-4 border-blue-500 pl-4 italic text-gray-300 my-3;
+}
+
+/* ============================================
+   HEADING BLOCKS
+   ============================================ */
+
+.heading-block {
+  @apply flex items-center gap-3 p-2 bg-gray-800/50 rounded-lg;
+}
+
+.heading-level {
+  @apply bg-gray-700 border border-gray-600 rounded px-2 py-1 text-gray-300 text-sm;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+.heading-input {
+  @apply flex-1 bg-gray-700/50 border border-gray-600/50 rounded px-3 py-2 text-2xl font-bold text-white;
+  @apply placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent;
+}
+
+/* ============================================
+   IMAGE BLOCKS
+   ============================================ */
+
+.image-block {
+  @apply rounded-lg overflow-hidden;
+}
+
+.image-upload-area {
+  @apply flex flex-col items-center justify-center p-8;
+  @apply border-2 border-dashed border-gray-600 rounded-lg;
+  @apply bg-gray-800/30 hover:bg-gray-800/50 hover:border-gray-500;
+  @apply transition-all duration-150 cursor-pointer;
+}
+
+.image-upload-btn {
+  @apply text-gray-400 hover:text-gray-200 transition-colors;
+}
+
+.image-url-input {
+  @apply mt-4 w-full max-w-md bg-gray-700 border border-gray-600 rounded-lg px-4 py-2;
+  @apply text-gray-200 text-sm placeholder-gray-500;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+.block-image {
+  @apply w-full max-h-[500px] object-contain rounded-lg;
+}
+
+.image-caption {
+  @apply mt-2;
+}
+
+.caption-input {
+  @apply w-full bg-transparent border-0 text-gray-400 text-sm text-center;
+  @apply placeholder-gray-600 focus:outline-none focus:ring-0;
+}
+
+/* ============================================
+   VIDEO BLOCKS
+   ============================================ */
+
+.video-block {
+  @apply rounded-lg overflow-hidden;
+}
+
+.video-input-area {
+  @apply flex gap-2 p-4 bg-gray-800/30 rounded-lg;
+}
+
+.video-url-input {
+  @apply flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2;
+  @apply text-gray-200 placeholder-gray-500;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+.embed-video-btn {
+  @apply px-4 py-2 bg-blue-600 text-white rounded-lg;
+  @apply hover:bg-blue-700 transition-colors;
+}
+
+.video-embed {
+  @apply relative w-full bg-black rounded-lg overflow-hidden;
+  aspect-ratio: 16 / 9;
+}
+
+.video-iframe {
+  @apply absolute inset-0 w-full h-full;
+}
+
+/* ============================================
+   CODE BLOCKS
+   ============================================ */
+
+.code-block {
+  @apply rounded-lg overflow-hidden bg-gray-900 border border-gray-700;
+}
+
+.code-block-toolbar {
+  @apply flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700;
+}
+
+.code-language {
+  @apply bg-gray-700 border border-gray-600 rounded px-2 py-1;
+  @apply text-gray-300 text-sm;
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.code-block .code-copy-btn {
+  @apply px-3 py-1 text-xs text-gray-400 bg-gray-700 hover:bg-gray-600 hover:text-white;
+  @apply rounded transition-colors;
+}
+
+.code-textarea {
+  @apply w-full min-h-[150px] bg-gray-900 p-4;
+  @apply text-green-400 font-mono text-sm;
+  @apply border-0 resize-y;
+  @apply focus:outline-none focus:ring-0;
+}
+
+/* Code block display (rendered view) */
+.code-block-display {
+  @apply my-4 rounded-lg overflow-hidden bg-gray-900 border border-gray-700;
+}
+
+.code-block-header {
+  @apply flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700;
+}
+
+.code-language-label {
+  @apply text-xs text-gray-400 font-medium uppercase;
+}
+
+.code-copy-btn {
+  @apply px-3 py-1 text-xs text-gray-400 bg-gray-700 hover:bg-gray-600 hover:text-white;
+  @apply rounded transition-colors;
+}
+
+.code-pre {
+  @apply m-0 p-4 bg-gray-900 overflow-x-auto;
+  @apply text-green-400 font-mono text-sm leading-relaxed;
+  min-height: 60px;
+  max-height: 500px;
+  resize: vertical;
+  overflow-y: auto;
+}
+
+.code-pre code {
+  @apply block whitespace-pre;
+}
+
+/* ============================================
+   QUOTE BLOCKS
+   ============================================ */
+
+.quote-block blockquote {
+  @apply relative pl-6 border-l-4 border-blue-500;
+}
+
+.quote-text {
+  @apply w-full bg-transparent border-0 text-gray-300 text-lg italic;
+  @apply placeholder-gray-600 resize-none;
+  @apply focus:outline-none focus:ring-0;
+  min-height: 60px;
+}
+
+.quote-author {
+  @apply mt-2 bg-transparent border-0 text-gray-500 text-sm;
+  @apply placeholder-gray-600;
+  @apply focus:outline-none focus:ring-0;
+}
+
+/* ============================================
+   CALLOUT BLOCKS
+   ============================================ */
+
+.callout-block {
+  @apply p-4 rounded-lg border-l-4;
+}
+
+.callout-info {
+  @apply bg-blue-900/30 border-blue-500;
+}
+
+.callout-warning {
+  @apply bg-yellow-900/30 border-yellow-500;
+}
+
+.callout-success {
+  @apply bg-green-900/30 border-green-500;
+}
+
+.callout-error {
+  @apply bg-red-900/30 border-red-500;
+}
+
+.callout-tip {
+  @apply bg-purple-900/30 border-purple-500;
+}
+
+.callout-type {
+  @apply mb-2 bg-transparent border-0 text-gray-300 text-sm font-medium;
+  @apply focus:outline-none focus:ring-0;
+}
+
+.callout-content {
+  @apply w-full bg-transparent border-0 text-gray-300;
+  @apply placeholder-gray-500 resize-none;
+  @apply focus:outline-none focus:ring-0;
+  min-height: 40px;
+}
+
+/* ============================================
+   DIVIDER BLOCKS
+   ============================================ */
+
+.block-divider {
+  @apply border-0 h-px bg-gradient-to-r from-transparent via-gray-600 to-transparent my-4;
+}
+
+/* ============================================
+   EMBED BLOCKS
+   ============================================ */
+
+.embed-block {
+  @apply rounded-lg overflow-hidden;
+}
+
+.embed-input-area {
+  @apply flex gap-2 p-4 bg-gray-800/30 rounded-lg;
+}
+
+.embed-input {
+  @apply flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2;
+  @apply text-gray-200 placeholder-gray-500;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+.embed-btn {
+  @apply px-4 py-2 bg-blue-600 text-white rounded-lg;
+  @apply hover:bg-blue-700 transition-colors;
+}
+
+.embed-preview {
+  @apply bg-gray-800/50 rounded-lg overflow-hidden;
+}
+
+/* ============================================
+   HTML EMBED BLOCKS
+   ============================================ */
+
+.html-block {
+  @apply rounded-lg border border-gray-600 overflow-hidden;
+}
+
+.html-block-header {
+  @apply flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-600;
+}
+
+.html-block-label {
+  @apply text-gray-400 text-xs font-medium flex items-center;
+}
+
+.html-mode-toggle {
+  @apply flex gap-1;
+}
+
+.html-mode-toggle .mode-btn {
+  @apply px-3 py-1 text-xs rounded;
+  @apply bg-gray-700 text-gray-400;
+  @apply hover:bg-gray-600 hover:text-white transition-colors;
+}
+
+.html-mode-toggle .mode-btn.active {
+  @apply bg-blue-600 text-white;
+}
+
+.html-textarea {
+  @apply w-full min-h-[150px] p-3 bg-gray-900/50 border-0;
+  @apply text-gray-200 font-mono text-sm;
+  @apply placeholder-gray-600 resize-y;
+  @apply focus:outline-none focus:ring-0;
+}
+
+.html-preview {
+  @apply p-4 bg-gray-800/30 min-h-[100px];
+}
+
+/* ============================================
+   API DATA BLOCKS
+   ============================================ */
+
+.api-block {
+  @apply rounded-lg border border-gray-600 overflow-hidden;
+}
+
+.api-block-header {
+  @apply flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-600;
+}
+
+.api-block-label {
+  @apply text-gray-400 text-xs font-medium flex items-center;
+}
+
+.api-config {
+  @apply p-3 bg-gray-800/50 border-b border-gray-700;
+}
+
+.api-url-row {
+  @apply flex gap-2;
+}
+
+.api-method {
+  @apply w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1.5;
+  @apply text-gray-300 text-sm;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+.api-url-input {
+  @apply flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-1.5;
+  @apply text-gray-200 text-sm placeholder-gray-500;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+.api-fetch-btn {
+  @apply px-4 py-1.5 bg-green-600 text-white text-sm rounded;
+  @apply hover:bg-green-700 transition-colors;
+}
+
+.api-advanced {
+  @apply mt-3;
+}
+
+.api-advanced summary {
+  @apply text-gray-500 text-xs cursor-pointer;
+  @apply hover:text-gray-300 transition-colors;
+}
+
+.api-advanced-content {
+  @apply mt-2 space-y-2;
+}
+
+.api-advanced-content label {
+  @apply block text-gray-500 text-xs;
+}
+
+.api-advanced-content textarea,
+.api-advanced-content input {
+  @apply w-full bg-gray-700 border border-gray-600 rounded px-2 py-1;
+  @apply text-gray-200 text-xs font-mono;
+  @apply placeholder-gray-500;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+.api-advanced-content textarea {
+  @apply min-h-[60px] resize-y;
+}
+
+.api-result {
+  @apply p-3 bg-gray-900/30;
+}
+
+.api-result-content {
+  @apply text-gray-200 text-sm;
+}
+
+.api-result .api-json {
+  @apply text-xs font-mono text-green-400 overflow-x-auto max-h-[300px] overflow-y-auto;
+}
+
+.api-result-time {
+  @apply mt-2 text-gray-500 text-xs;
+}
+
+/* ============================================
+   BLOCK TYPE MENU (POPUP)
+   ============================================ */
+
+.block-type-menu {
+  @apply z-50 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden;
+  min-width: 160px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.block-type-menu button {
+  @apply w-full px-4 py-2 text-left text-gray-300 text-sm;
+  @apply hover:bg-gray-700 hover:text-white transition-colors;
+}
+
+/* ============================================
+   ROW SETTINGS MENU (POPUP)
+   ============================================ */
+
+.row-settings-menu {
+  @apply z-50 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden;
+  min-width: 260px;
+}
+
+.row-settings-menu .menu-title {
+  @apply px-4 py-2 text-gray-400 text-xs font-semibold uppercase tracking-wider bg-gray-900/50;
+}
+
+.row-settings-menu .menu-info {
+  @apply px-4 py-2 text-gray-500 text-xs italic;
+}
+
+.row-settings-menu .menu-widths {
+  @apply px-4 py-1 text-gray-400 text-xs font-mono;
+}
+
+.row-settings-menu .menu-divider {
+  @apply border-t border-gray-700 my-1;
+}
+
+.row-settings-menu button {
+  @apply w-full px-4 py-2 text-left text-gray-300 text-sm;
+  @apply hover:bg-gray-700 hover:text-white transition-colors;
+}
+
+.row-settings-menu button.active {
+  @apply bg-blue-600/30 text-blue-400;
+}
+
+.row-settings-menu button:disabled {
+  @apply text-gray-600 cursor-not-allowed hover:bg-transparent hover:text-gray-600;
+}
+
+/* Column count grid */
+.row-settings-menu .column-count-grid {
+  @apply grid grid-cols-4 gap-1 p-2;
+}
+
+.row-settings-menu .column-count-grid button {
+  @apply w-auto px-2 py-1.5 text-center text-xs rounded;
+  @apply border border-gray-600;
+}
+
+.row-settings-menu .column-count-grid button:hover {
+  @apply border-blue-500;
+}
+
+.row-settings-menu .column-count-grid button.active {
+  @apply border-blue-400 bg-blue-600/30;
+}
+
+/* ============================================
+   BLOCK SETTINGS MENU (POPUP)
+   ============================================ */
+
+.block-settings-menu {
+  @apply z-50 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden;
+  min-width: 180px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.block-settings-menu .menu-title {
+  @apply px-4 py-2 text-gray-400 text-xs font-semibold uppercase tracking-wider bg-gray-900/50;
+}
+
+.block-settings-menu .menu-subtitle {
+  @apply px-4 py-1 text-gray-500 text-xs font-medium;
+}
+
+.block-settings-menu .menu-divider {
+  @apply border-t border-gray-700 my-1;
+}
+
+.block-settings-menu button {
+  @apply w-full px-4 py-2 text-left text-gray-300 text-sm;
+  @apply hover:bg-gray-700 hover:text-white transition-colors;
+}
+
+.block-settings-menu button:disabled {
+  @apply text-gray-600 cursor-not-allowed hover:bg-transparent hover:text-gray-600;
+}
+
+.block-settings-menu button.danger {
+  @apply text-red-400 hover:bg-red-900/30 hover:text-red-300;
+}
+
+/* ============================================
+   ADD ROW FOOTER
+   ============================================ */
+
+.add-row-footer {
+  @apply p-4 border-t border-gray-700/50;
+}
+
+.add-row-btn {
+  @apply flex items-center justify-center gap-2 w-full py-3 text-gray-500;
+  @apply border border-dashed border-gray-700 rounded-lg;
+  @apply hover:text-gray-300 hover:border-gray-500 hover:bg-gray-800/50;
+  @apply transition-colors duration-150;
+}
+
+/* ============================================
+   GALLERY/CAROUSEL BLOCKS
+   ============================================ */
+
+.gallery-block {
+  @apply rounded-lg overflow-hidden bg-gray-800/30;
+}
+
+.gallery-controls {
+  @apply flex items-center gap-3 p-3 bg-gray-800/50 border-b border-gray-700;
+}
+
+.gallery-display-mode {
+  @apply bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5;
+  @apply text-gray-200 text-sm;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+.gallery-add-btn {
+  @apply flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm;
+  @apply hover:bg-blue-700 transition-colors;
+}
+
+.gallery-container {
+  @apply relative p-4;
+}
+
+.gallery-carousel {
+  @apply flex items-center gap-2;
+}
+
+.gallery-grid {
+  @apply grid grid-cols-3 gap-3;
+}
+
+.gallery-masonry {
+  @apply columns-3 gap-3;
+}
+
+.gallery-items-wrapper {
+  @apply flex-1 relative;
+}
+
+.gallery-items {
+  @apply relative overflow-hidden;
+  min-height: 300px;
+}
+
+.gallery-carousel .gallery-items {
+  @apply flex items-center justify-center bg-gray-900/50 rounded-lg;
+  min-height: 300px;
+  max-height: 400px;
+  width: 100%;
+}
+
+.gallery-item {
+  @apply relative rounded-lg overflow-hidden;
+}
+
+.gallery-carousel .gallery-item {
+  @apply hidden w-full h-full absolute inset-0;
+}
+
+.gallery-carousel .gallery-item.active {
+  @apply flex items-center justify-center relative;
+}
+
+.gallery-carousel .gallery-item img {
+  @apply mx-auto block;
+  max-width: 100%;
+  max-height: 350px;
+  object-fit: contain;
+}
+
+.gallery-grid .gallery-item,
+.gallery-masonry .gallery-item {
+  @apply relative;
+}
+
+.gallery-masonry .gallery-item {
+  @apply mb-3 break-inside-avoid;
+}
+
+.gallery-image {
+  @apply w-auto h-auto;
+  max-width: 100%;
+  max-height: 350px;
+  object-fit: contain;
+}
+
+.gallery-carousel .gallery-image {
+  @apply mx-auto;
+  max-height: 350px;
+  object-fit: contain;
+}
+
+.gallery-caption {
+  @apply absolute bottom-0 left-0 right-0 p-2 bg-black/70 text-white text-sm;
+}
+
+.gallery-remove-item {
+  @apply absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded-full;
+  @apply opacity-0 hover:bg-red-700 transition-all;
+}
+
+.gallery-item:hover .gallery-remove-item {
+  @apply opacity-100;
+}
+
+.gallery-nav {
+  @apply flex-shrink-0 p-2 text-gray-400 hover:text-white transition-colors;
+  @apply hover:bg-gray-700 rounded-full;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.gallery-nav svg {
+  pointer-events: none;
+}
+
+.gallery-dots {
+  @apply flex items-center justify-center gap-2 mt-3;
+  @apply px-3 py-2 bg-black/40 rounded-full w-fit mx-auto;
+}
+
+.gallery-dot {
+  @apply w-2.5 h-2.5 rounded-full bg-gray-400/60 transition-colors cursor-pointer;
+}
+
+.gallery-dot.active {
+  @apply bg-blue-500;
+}
+
+.gallery-dot:hover {
+  @apply bg-white/80;
+}
+
+.gallery-drop-zone {
+  @apply flex flex-col items-center justify-center p-8;
+  @apply border-2 border-dashed border-gray-600 rounded-lg;
+  @apply text-center cursor-pointer;
+  @apply hover:border-blue-500 hover:bg-blue-900/10 transition-colors;
+}
+
+/* ============================================
+   AUDIO BLOCKS
+   ============================================ */
+
+.audio-block {
+  @apply rounded-lg overflow-hidden;
+}
+
+.audio-upload-area {
+  @apply flex flex-col items-center justify-center p-6;
+  @apply bg-gray-800/30 rounded-lg border-2 border-dashed border-gray-600;
+  @apply text-center cursor-pointer;
+  @apply hover:border-blue-500 hover:bg-blue-900/10 transition-colors;
+}
+
+.audio-upload-btn {
+  @apply text-gray-400 hover:text-gray-200 transition-colors;
+}
+
+.audio-url-input {
+  @apply mt-4 w-full max-w-md bg-gray-700 border border-gray-600 rounded-lg px-4 py-2;
+  @apply text-gray-200 text-sm placeholder-gray-500;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+.audio-player-container {
+  @apply p-4 bg-gray-800/30 rounded-lg;
+}
+
+.audio-player {
+  @apply w-full;
+}
+
+.audio-info {
+  @apply flex items-center justify-between mt-3 pt-3 border-t border-gray-700;
+}
+
+.audio-filename {
+  @apply text-gray-300 text-sm truncate;
+}
+
+.audio-remove-btn {
+  @apply p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-700 rounded transition-colors;
+}
+
+/* ============================================
+   FILE/DOCUMENT BLOCKS
+   ============================================ */
+
+.file-block {
+  @apply rounded-lg overflow-hidden;
+}
+
+.file-upload-area {
+  @apply flex flex-col items-center justify-center p-6;
+  @apply bg-gray-800/30 rounded-lg border-2 border-dashed border-gray-600;
+  @apply text-center cursor-pointer;
+  @apply hover:border-blue-500 hover:bg-blue-900/10 transition-colors;
+}
+
+.file-upload-btn {
+  @apply text-gray-400 hover:text-gray-200 transition-colors;
+}
+
+.file-preview {
+  @apply flex items-center gap-4 p-4 bg-gray-800/30 rounded-lg;
+}
+
+.file-icon {
+  @apply flex-shrink-0;
+}
+
+.file-details {
+  @apply flex-1 min-w-0;
+}
+
+.file-name {
+  @apply block text-blue-400 hover:text-blue-300 truncate font-medium;
+}
+
+.file-size {
+  @apply block text-gray-500 text-sm mt-1;
+}
+
+.file-remove-btn {
+  @apply flex-shrink-0 p-2 text-gray-400 hover:text-red-500 hover:bg-gray-700 rounded transition-colors;
+}
+
+/* ============================================
+   FILE DRAG & DROP OVERLAY
+   ============================================ */
+
+.block-editor-content.file-drag-over {
+  @apply relative;
+}
+
+.block-editor-content.file-drag-over::after {
+  content: "Drop files here";
+  @apply absolute inset-0 flex items-center justify-center;
+  @apply bg-blue-900/80 text-white text-xl font-medium;
+  @apply border-2 border-dashed border-blue-400 rounded-lg;
+  @apply pointer-events-none z-50;
+}
+
+/* Loading states for media blocks */
+.image-block[data-loading="true"]::after,
+.audio-block[data-loading="true"]::after,
+.file-block[data-loading="true"]::after,
+.gallery-block[data-loading="true"]::after {
+  content: "";
+  @apply absolute inset-0 flex items-center justify-center;
+  @apply bg-gray-900/70 z-10;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3E%3Ccircle class='opacity-25' cx='12' cy='12' r='10' stroke='white' stroke-width='4'%3E%3C/circle%3E%3Cpath class='opacity-75' fill='white' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 40px 40px;
+}
+
+/* ============================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================ */
+
+/* Mobile breakpoint */
+@media (max-width: 768px) {
+  .row-content.columns-2,
+  .row-content.columns-3 {
+    @apply flex-col;
+  }
+  
+  .editor-column {
+    @apply min-h-[80px];
+  }
+  
+  /* Gallery responsive */
+  .gallery-grid {
+    @apply grid-cols-2;
+  }
+  
+  .gallery-masonry {
+    @apply columns-2;
+  }
+  
+  .gallery-carousel .gallery-image {
+    @apply max-h-[250px];
+  }
+}
+
+/* ============================================
+   ANIMATION & TRANSITIONS
+   ============================================ */
+
+@keyframes block-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.content-block {
+  animation: block-appear 0.2s ease-out;
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+
+@media print {
+  .row-handle,
+  .row-actions,
+  .block-handle,
+  .block-actions,
+  .add-block-placeholder,
+  .add-row-footer {
+    display: none !important;
+  }
+  
+  .block-editor {
+    border: none;
+    background: none;
+  }
+  
+  .editor-row {
+    border: none;
+  }
+  
+  .editor-column {
+    border: none;
+  }
+}
+
+/* ============================================
+   RENDERED CONTENT DISPLAY STYLES
+   (For viewing content outside the editor)
+   ============================================ */
+
+/* Gallery display */
+.gallery {
+  @apply my-6 relative;
+}
+
+.gallery .gallery-items {
+  @apply relative flex items-center justify-center;
+  min-height: 300px;
+}
+
+.gallery.gallery-grid .gallery-items {
+  @apply grid grid-cols-3 gap-4;
+  min-height: auto;
+}
+
+.gallery.gallery-carousel .gallery-items {
+  @apply relative overflow-hidden bg-gray-900/30 rounded-lg flex items-center justify-center;
+  min-height: 350px;
+  max-height: 550px;
+}
+
+.gallery.gallery-carousel .gallery-item {
+  @apply hidden w-full items-center justify-center absolute inset-0;
+}
+
+.gallery.gallery-carousel .gallery-item.active {
+  @apply flex relative;
+}
+
+.gallery.gallery-carousel .gallery-item img {
+  @apply mx-auto block;
+  max-width: 100%;
+  max-height: 500px;
+  object-fit: contain;
+}
+
+.gallery.gallery-masonry .gallery-items {
+  @apply columns-3 gap-4;
+}
+
+.gallery .gallery-item {
+  @apply rounded-lg overflow-hidden;
+}
+
+.gallery.gallery-masonry .gallery-item {
+  @apply mb-4 break-inside-avoid;
+}
+
+.gallery .gallery-item img {
+  @apply w-auto h-auto mx-auto block;
+  max-width: 100%;
+  max-height: 500px;
+  object-fit: contain;
+}
+
+.gallery.gallery-carousel .gallery-items {
+  @apply flex items-center justify-center relative;
+  min-height: 300px;
+  max-height: 550px;
+}
+
+.gallery.gallery-carousel .gallery-item {
+  @apply absolute inset-0;
+}
+
+.gallery.gallery-carousel .gallery-item.active img {
+  @apply mx-auto;
+}
+
+.gallery .gallery-item figcaption {
+  @apply p-2 bg-gray-800 text-gray-300 text-sm text-center;
+}
+
+/* Gallery navigation for rendered carousel */
+.gallery.gallery-carousel .gallery-nav {
+  @apply absolute top-1/2 -translate-y-1/2 z-10;
+  @apply w-10 h-10 flex items-center justify-center;
+  @apply bg-black/50 hover:bg-black/70 text-white rounded-full;
+  @apply transition-colors cursor-pointer;
+}
+
+.gallery.gallery-carousel .gallery-prev {
+  @apply left-2;
+}
+
+.gallery.gallery-carousel .gallery-next {
+  @apply right-2;
+}
+
+.gallery.gallery-carousel .gallery-dots {
+  @apply absolute bottom-4 left-1/2 -translate-x-1/2;
+  @apply flex items-center justify-center gap-2;
+  @apply px-3 py-2 bg-black/60 rounded-full;
+}
+
+.gallery.gallery-carousel .gallery-dot {
+  @apply w-2.5 h-2.5 rounded-full bg-gray-400/60 hover:bg-white/80 cursor-pointer transition-colors;
+}
+
+.gallery.gallery-carousel .gallery-dot.active {
+  @apply bg-blue-500;
+}
+
+/* Audio display */
+.audio-block-display {
+  @apply my-4 p-4 bg-gray-800/50 rounded-lg;
+}
+
+.audio-block-display audio {
+  @apply w-full;
+}
+
+.audio-block-display .audio-filename {
+  @apply block mt-2 text-gray-400 text-sm;
+}
+
+/* File/document display */
+.file-block-display {
+  @apply my-4;
+}
+
+.file-card {
+  @apply flex items-center gap-4 p-4 bg-gray-800/50 border border-gray-700 rounded-lg;
+  @apply hover:bg-gray-800/70 transition-colors;
+}
+
+.file-icon-large {
+  @apply text-4xl flex-shrink-0;
+}
+
+.file-details {
+  @apply flex-1 min-w-0;
+}
+
+.file-name-link {
+  @apply text-blue-400 hover:text-blue-300 font-medium truncate block;
+}
+
+.file-size {
+  @apply text-gray-500 text-sm;
+}
+
+.file-download-btn {
+  @apply flex-shrink-0 p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors;
+}
+
+.file-info {
+  @apply p-3 bg-gray-800/50 border-t border-gray-700;
+}
+
+.file-icon {
+  @apply text-3xl;
+}
+
+.file-download-link {
+  @apply text-blue-400 hover:text-blue-300 font-medium;
+}
+
+.file-download-link .file-size {
+  @apply text-gray-500 font-normal ml-2;
+}
+
+/* Editor file preview embeds */
+.file-preview-pdf,
+.file-preview-txt {
+  @apply flex-col;
+}
+
+.file-embed-wrapper {
+  @apply w-full mb-3;
+}
+
+.pdf-preview-embed {
+  @apply w-full rounded-lg border border-gray-600;
+  height: 400px;
+}
+
+.txt-preview-embed {
+  @apply w-full rounded-lg border border-gray-600 bg-gray-900;
+  height: 250px;
+}
+
+.pdf-fallback {
+  @apply text-gray-400 text-center py-8;
+}
+
+/* Responsive file embeds */
+@media (max-width: 768px) {
+  .pdf-embed {
+    height: 400px;
+  }
+  
+  .text-embed {
+    height: 200px;
+  }
+}
+
+/* Video player for uploaded videos */
+.video-player-container {
+  @apply my-4 rounded-lg overflow-hidden;
+}
+
+.video-player-container .block-video {
+  @apply w-full max-h-[500px];
+}
+
+/* Responsive for rendered content */
+@media (max-width: 768px) {
+  .gallery.gallery-grid {
+    @apply grid-cols-2;
+  }
+  
+  .gallery.gallery-masonry {
+    @apply columns-2;
+  }
+}

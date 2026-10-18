@@ -1,0 +1,75 @@
+# Git
+.git
+.gitignore
+.github
+
+# Mix artifacts
+/_build
+/deps
+*.ez
+/.mix
+
+# NPM/Node
+/assets/node_modules
+/priv/static/assets/*.js
+/priv/static/assets/*.css
+/priv/static/cache_manifest.json
+
+# Uploads and large assets handled by persistent volume or CDN
+/priv/static/uploads
+/uploads
+
+# Test files
+/test
+
+# Backups
+/backups
+
+# K8s configs (not needed in image)
+/k3s
+
+# Documentation
+README.md
+*.md
+current_routes.md
+Handy_Command_Samples.md
+
+# Scripts
+deploy-*.sh
+postgres-ops.sh
+redis-ops.sh
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.*
+
+# Uploads (should be in volumes)
+/uploads
+
+# Plugins (BACON8.md §9): the build needs their lib/, priv/, assets/ and
+# test/, never a private plugin's git history, deploy scripts or Kubernetes
+# manifests (which can include a gitignored secrets file).
+plugins/*/.git
+plugins/*/k3s
+plugins/*/scripts
+plugins/*/*.sh
+
+# Never part of the hub image: a game repository checked out at the root,
+# and operator-only files (migration notes, local secrets).
+/RaysSpaceSim
+/migration
+.claude

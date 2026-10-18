@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bacon8-config
+data:
+  MIX_ENV: "prod"
+  DB_USERNAME: "postgres"
+  DB_HOST: "db"
+  DB_PORT: "5432"
+  DB_NAME: "bacon8_prod"
+  DATABASE_URL: "postgresql://postgres:postgres@db:5432/bacon8_prod"
+  GAMES_DB_NAME: "bacon8_games_prod"
+  GAMES_DATABASE_URL: "postgresql://postgres:postgres@db:5432/bacon8_games_prod"
+  REDIS_URL: "redis://redis:6379/0"
+  SMTP_HOST: "mail.privateemail.com"
+  SMTP_PORT: "587"
+  CORS_ALLOWED_ORIGINS: "https://bacon8.net,https://www.bacon8.net"
+  RUST_LOG: "info"
+  BACON8_SERVICE_URL: "https://bacon8.net"
+  BACON8_HOST: "bacon8.net"
+  ENABLE_REDIS: "true"
+
+  # Plugins active from the first boot (BACON8.md §9). Replaces the hub's
+  # default list, so it names every plugin that should be on, not only the
+  # private one. A choice saved on /admin/plugins still wins.
+  BACON8_ACTIVE_PLUGINS: "web_lobby,rays_space_sim"
+
+  # --- Holo-sim instance orchestration (RaysSpaceSim plugin) ---------------
+  #
+  # Read by the rays_space_sim plugin (RaysSpaceSim.Config), not the hub.
+  #
+  # HOLOSIM_IMAGE is written by ./deploy-game.sh and lives HERE, in the applied
+  # source, rather than being set live with `kubectl set env`. deploy-prod.sh
+  # applies this overlay with --force-conflicts, which would wipe a live-only
+  # value on the next web deploy - the game would silently revert to the manual
+  # launch path and nothing would say why.
+  #
+  # Keeping it in the file also answers "which build is running" from git
+  # history, and makes a rollback a one-line change plus a re-run.
+  #
+  # Empty is a supported state: the launcher reports itself unavailable and
+  # /launch falls back to recording intent and waiting for a hand-started
+  # server. That is the development loop, not a broken deployment.
+  HOLOSIM_IMAGE: "raysspacesim-server:0d9f170"
+
+  # The address a GAME CLIENT connects to. This is NOT proxied by the nginx
+  # ingress - instances speak UDP directly on their assigned port via hostPort,
+  # so this must be an address that reaches the node itself with those ports
+  # open, not the web hostname if the two differ.
+  HOLOSIM_PUBLIC_HOST: "bacon8.net"
+  HOLOSIM_PORT_MIN: "7800"
+  HOLOSIM_PORT_MAX: "7899"
+
+  # --- World server (see PROJECT.md 5b) -------------------------------------
+  #
+  # WORLD_IMAGE is deliberately absent: the plugin falls back to HOLOSIM_IMAGE,
+  # because a world server IS the Holo-sim image without -HoloSimId=. Set it here
+  # only to pin the world to a different build than the instances - which is a
+  # thing worth being able to do, and not a thing to do by accident.
+  #
+  # WORLD_PUBLIC_HOST IS NOT OPTIONAL IN A CLUSTER, despite having a default.
+  # That default is 127.0.0.1, which is correct on a desktop and catastrophic
+  # here: it is what -Bacon8Host= advertises, so the server would register itself
+  # to the hub at 127.0.0.1:7777 and every client would resolve that to its own
+  # machine and time out. The failure looks like a networking problem and is
+  # actually this line being missing - same value and same reason as
+  # HOLOSIM_PUBLIC_HOST above.
+  WORLD_PUBLIC_HOST: "bacon8.net"
+  WORLD_PORT: "7777"

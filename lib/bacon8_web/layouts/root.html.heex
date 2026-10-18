@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" class="[scrollbar-gutter:stable]">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={Plug.CSRFProtection.get_csrf_token()} />
+    <.live_title suffix="  ฅ^•ﻌ•^ฅ">
+      <%= assigns[:page_title] || "… . . ᘛ⁐̤ᕐᐷ" %>
+    </.live_title>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
+    </script>
+  </head>
+  <body class="bg-black antialiased" phx-hook="GlobalHooks" id="global-glass-theme">
+    <!-- Global background canvas (outside LiveView-managed @inner_content to avoid being patched) -->
+    <%!-- Determine user's background preference and render either a Three.js scene hook or a CSS overlay for gradient/solid --%>
+    <%!-- The games list and plugin pages (games) get a plain black background. --%>
+    <% desktop_hub? = assigns[:live_module] == Bacon8Web.GamesLive or assigns[:bacon8_plugin] != nil %>
+    <% bg_pref = if desktop_hub?, do: "solid", else: (assigns[:current_user] && assigns[:current_user].background_preference) || "galaxy" %>
+    <% custom =
+      if desktop_hub? do
+        %{"solid_color" => "#000000"}
+      else
+        (assigns[:current_user] && assigns[:current_user].background_custom_data) || %{}
+      end %>
+
+    <!-- Initialize glass theme globally -->
+    <script>
+      window.addEventListener('DOMContentLoaded', function() {
+        const user = <%= if assigns[:current_user] do %>
+          <%= Phoenix.HTML.raw(Jason.encode!(%{
+            glass_theme: get_in(custom, ["glass_theme"]) || "dark",
+            glass_opacity: get_in(custom, ["glass_opacity"]) || "0.15", 
+            glass_blur: get_in(custom, ["glass_blur"]) || "15",
+            glass_custom_color: get_in(custom, ["glass_custom_color"])
+          })) %>
+        <% else %>
+          <%= Phoenix.HTML.raw(Jason.encode!(%{
+            glass_theme: "dark",
+            glass_opacity: "0.15",
+            glass_blur: "15"
+          })) %>
+        <% end %>;        
+        const root = document.documentElement;
+        
+        // Theme colors mapping - base colors only, opacity is applied separately
+        const themeColors = {
+          'dark': { bg: 'rgba(17, 24, 39, OPACITY)', border: 'rgba(255, 255, 255, 0.15)' },
+          'blue': { bg: 'rgba(59, 130, 246, OPACITY)', border: 'rgba(59, 130, 246, 0.3)' },
+          'purple': { bg: 'rgba(147, 51, 234, OPACITY)', border: 'rgba(147, 51, 234, 0.3)' },
+          'green': { bg: 'rgba(34, 197, 94, OPACITY)', border: 'rgba(34, 197, 94, 0.3)' },
+          'red': { bg: 'rgba(239, 68, 68, OPACITY)', border: 'rgba(239, 68, 68, 0.3)' },
+          'amber': { bg: 'rgba(245, 158, 11, OPACITY)', border: 'rgba(245, 158, 11, 0.3)' },
+          'teal': { bg: 'rgba(20, 184, 166, OPACITY)', border: 'rgba(20, 184, 166, 0.3)' }
+        };
+        
+        // Helper to convert hex to rgb
+        const hexToRgb = (hex) => {
+          if (!hex) return null;
+          const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+          return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+          } : null;
+        };
+
+        let theme = themeColors[user.glass_theme];
+        
+        // Handle custom color - apply if it exists and is not the default black
+        if (user.glass_custom_color && user.glass_custom_color !== '#000000') {
+           const rgb = hexToRgb(user.glass_custom_color);
+           if (rgb) {
+             theme = {
+               bg: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, OPACITY)`,
+               border: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`
+             };
+           }
+        }
+        
+        // Fallback to dark theme if invalid
+        if (!theme) theme = themeColors.dark;
+
+        const opacity = user.glass_opacity || "0.05";
+        const blur = user.glass_blur || "15";
+        
+        // Set CSS custom properties globally with proper opacity
+        root.style.setProperty('--glass-bg', theme.bg.replace('OPACITY', opacity));
+        root.style.setProperty('--glass-border', theme.border);
+        root.style.setProperty('--glass-blur', blur + 'px');
+        root.style.setProperty('--glass-saturation', '120%');
+        
+        console.log('Global glass theme initialized:', {theme: user.glass_theme, opacity, blur, custom_color: user.glass_custom_color});
+      });
+    </script>
+
+    <%= if bg_pref in ["gradient", "solid"] do %>
+      <%= if bg_pref == "gradient" do %>
+        <% start_c = Map.get(custom, "gradient_start", "#3B82F6") %>
+        <% end_c = Map.get(custom, "gradient_end", "#9333EA") %>
+        <div id="global-background-canvas" phx-update="ignore" class="fixed inset-0 z-0 pointer-events-none background-overlay" style={"background: linear-gradient(135deg, #{start_c}, #{end_c});"} data-bg-type="gradient"></div>
+      <% else %>
+        <% color = Map.get(custom, "solid_color", "#0F172A") %>
+        <div id="global-background-canvas" phx-update="ignore" class="fixed inset-0 z-0 pointer-events-none background-overlay" style={"background: #{color};"} data-bg-type="solid"></div>
+      <% end %>
+      <!-- Hidden canvas for camera controls even on non-3D backgrounds -->
+      <div id="camera-control-canvas" phx-update="ignore" data-static-scene="HomeGalaxyScene" class="fixed inset-0 z-0 pointer-events-auto opacity-0"></div>
+    <% else %>
+      <% hook_name = Bacon8Web.Layouts.background_hook_name(bg_pref) %>
+      <div id="global-background-canvas" phx-update="ignore" data-static-scene={hook_name} class="fixed inset-0 z-0"></div>
+    <% end %>
+
+    <%= @inner_content %>
+  </body>
+</html>

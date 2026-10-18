@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bacon8-web
+  labels:
+    app: bacon8-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bacon8-web
+  template:
+    metadata:
+      labels:
+        app: bacon8-web
+    spec:
+      serviceAccountName: bacon8-sa
+      # Init container to fix volume permissions
+      # bacon8 user in container: uid=100, gid=101
+      initContainers:
+      - name: fix-permissions
+        image: alpine:3.22
+        command: ['sh', '-c', 'mkdir -p /app/client_releases/blobs && chown -R 100:101 /app/uploads /app/priv/static/models /app/client_releases && chmod -R 755 /app/uploads /app/priv/static/models /app/client_releases']
+        volumeMounts:
+        - name: uploads
+          mountPath: /app/uploads
+        - name: models
+          mountPath: /app/priv/static/models
+        # NOT /app/releases. That is the Elixir release's own directory
+        # (start_erl.data, vm.args, ...); mounting a volume over it hides them
+        # and the app cannot boot. That took prod down on 2026-10-13.
+        - name: releases
+          mountPath: /app/client_releases
+      containers:
+      - name: bacon8
+        image: bacon8:latest
+        ports:
+        - containerPort: 4000
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: RELEASE_DISTRIBUTION
+          value: "name"
+        - name: RELEASE_NODE
+          value: "bacon8@$(POD_IP)"
+        envFrom:
+        - configMapRef:
+            name: bacon8-config
+        - secretRef:
+            name: bacon8-secrets
+        command: ["/usr/local/bin/bacon8-start.sh"]
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - curl -f http://127.0.0.1:4000/health || exit 1
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - curl -f http://127.0.0.1:4000/health || exit 1
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: uploads
+          mountPath: /app/uploads
+        - name: models
+          mountPath: /app/priv/static/models
+        # NOT /app/releases. That is the Elixir release's own directory
+        # (start_erl.data, vm.args, ...); mounting a volume over it hides them
+        # and the app cannot boot. That took prod down on 2026-10-13.
+        - name: releases
+          mountPath: /app/client_releases
+        # Temporarily removed security context to fix permission issues
+        # securityContext:
+        #   allowPrivilegeEscalation: false
+        #   capabilities:
+        #     drop:
+        #     - ALL
+      volumes:
+      - name: uploads
+        persistentVolumeClaim:
+          claimName: bacon8-uploads-pvc
+      - name: models
+        persistentVolumeClaim:
+          claimName: bacon8-models-pvc
+      - name: releases
+        persistentVolumeClaim:
+          claimName: bacon8-releases-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bacon8-web
+  labels:
+    app: bacon8-web
+spec:
+  type: ClusterIP
+  selector:
+    app: bacon8-web
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 4000

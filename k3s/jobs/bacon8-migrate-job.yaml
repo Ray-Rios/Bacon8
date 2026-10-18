@@ -1,0 +1,13 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bacon8-migrate-{{ .SHA }}
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+        - name: migrate
+          image: {{ .IMAGE }}
+          command: ["/app/bin/bacon8", "eval", "Application.ensure_all_started(:bacon8); Bacon8.Release.migrate(); :init.stop()"]
+      restartPolicy: Never

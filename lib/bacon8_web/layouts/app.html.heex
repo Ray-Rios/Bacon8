@@ -1,0 +1,26 @@
+<div class="min-h-screen">
+  <!-- Global Hooks - phx-update="ignore" prevents re-mounting on navigation -->
+  <div id="global-camera-hook" phx-hook="GlobalCameraController" phx-update="ignore" class="hidden" aria-hidden="true"></div>
+  <div id="glass-theme-hook" phx-hook="GlassTheme" phx-update="ignore" class="hidden" aria-hidden="true"></div>
+  <div id="background-updater-hook" phx-hook="BackgroundUpdater" phx-update="ignore" class="hidden" aria-hidden="true"></div>
+
+  <!-- Background rendering moved to root layout to avoid LiveView patches replacing the canvas -->
+  <!-- Background preference logic temporarily disabled until migration adds DB columns -->
+  
+  <Bacon8Web.Components.Navigation.navbar current_user={assigns[:current_user]} id_prefix="main-" />
+  
+  <.flash_group flash={@flash} />
+  
+  <!-- Desktop (taskbar + windows) - renders for authenticated users -->
+  <%= if assigns[:current_user] do %>
+    <.live_component 
+      module={Bacon8Web.DesktopLive} 
+      id="bacon8-desktop"
+      current_user={@current_user}
+    />
+  <% end %>
+  
+  <main class="relative z-10 w-full pb-12">
+    <%= @inner_content %>
+  </main>
+</div>

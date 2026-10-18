@@ -1,0 +1,233 @@
+# syntax=docker/dockerfile:1.7
+
+# ================================
+# STAGE 1: Build Elixir Dependencies (for Phoenix JS packages)
+# ================================
+FROM elixir:1.19-alpine AS deps-builder
+
+WORKDIR /app
+
+# Set build-time environment
+ARG MIX_ENV=prod
+ENV MIX_ENV=${MIX_ENV}
+ENV HEX_HTTP_TIMEOUT=240
+ENV HEX_HTTP_CONCURRENCY=1
+
+# Force IPv4 for Erlang to avoid Docker DNS issues
+RUN echo "{inet6, false}." > /etc/erl_inetrc
+ENV ERL_INETRC=/etc/erl_inetrc
+
+# Install hex and rebar - download hex directly with curl as fallback
+RUN apk add --no-cache curl && \
+    (mix archive.install github hexpm/hex branch latest --force || \
+     curl -fSL -o hex-2.3.1-otp-28.ez https://builds.hex.pm/installs/1.19.0/hex-2.3.1-otp-28.ez && \
+     mix archive.install hex-2.3.1-otp-28.ez --force && \
+     rm hex-2.3.1-otp-28.ez || \
+     mix local.hex --force)
+RUN mix local.rebar --force
+
+# Copy dependency files
+COPY mix.exs ./
+
+# Install dependencies (generates mix.lock if missing)
+RUN --mount=type=cache,target=/root/.hex \
+    --mount=type=cache,target=/root/.cache/rebar3 \
+    set -eux; \
+        attempt=0; \
+        until [ "$attempt" -ge 5 ]; do \
+            attempt=$((attempt + 1)); \
+            echo "[deps-builder] mix deps.get attempt ${attempt}/5"; \
+            mix deps.get --only prod && break; \
+            echo "[deps-builder] deps fetch failed, retrying..."; \
+            sleep 3; \
+        done; \
+        [ "$attempt" -lt 5 ]
+
+# ================================
+# STAGE 2: Build Assets
+# ================================
+FROM node:20-alpine AS assets-builder
+
+# Install curl for health checks later
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# Copy Phoenix JavaScript packages from Elixir deps
+COPY --from=deps-builder /app/deps/phoenix ./deps/phoenix
+COPY --from=deps-builder /app/deps/phoenix_html ./deps/phoenix_html
+COPY --from=deps-builder /app/deps/phoenix_live_view ./deps/phoenix_live_view
+
+# Copy package files
+COPY assets/package*.json ./assets/
+
+# Install npm dependencies (ignoring file: deps which may fail)
+RUN --mount=type=cache,target=/root/.npm cd assets && npm install --no-audit --no-fund || true
+
+# Copy asset source files (but preserve node_modules by copying specific folders)
+COPY assets/css ./assets/css
+COPY assets/js ./assets/js
+COPY assets/fonts ./assets/fonts
+COPY assets/scripts ./assets/scripts
+COPY assets/*.js ./assets/
+COPY assets/*.cjs ./assets/
+COPY assets/*.json ./assets/
+COPY assets/.browserslistrc ./assets/
+
+# NOW copy Phoenix JS SOURCE files into node_modules AFTER all other copies
+# Source files are in deps/PACKAGE/assets/js/PACKAGE_NAME/
+RUN cd assets/node_modules && \
+    rm -rf phoenix phoenix_html phoenix_live_view 2>/dev/null || true && \
+    mkdir -p phoenix phoenix_live_view && \
+    cp -r ../../deps/phoenix/assets/js/phoenix/* phoenix/ && \
+    cp -r ../../deps/phoenix_live_view/assets/js/phoenix_live_view/* phoenix_live_view/ && \
+    cp ../../deps/phoenix_html/priv/static/phoenix_html.js phoenix_html.js && \
+    echo '{"name":"phoenix","version":"1.7.18","main":"index.js","type":"module"}' > phoenix/package.json && \
+    echo '{"name":"phoenix_live_view","version":"1.0.0","main":"index.js","type":"module"}' > phoenix_live_view/package.json && \
+    echo "Phoenix source files installed:" && \
+    ls -la phoenix/ && \
+    ls -la phoenix_live_view/
+
+# Copy lib directory for Tailwind to scan templates
+COPY lib ./lib
+# Plugins (BACON8.md §9): their templates for Tailwind, their JS for esbuild.
+COPY plugins ./plugins
+
+COPY priv/static/tri.gif ./priv/static/
+COPY priv/static/favicon.ico ./priv/static/
+COPY priv/static/robots.txt ./priv/static/
+COPY priv/static/sitemap.xml ./priv/static/
+COPY priv/static/.well-known ./priv/static/.well-known
+COPY priv/static/maps ./priv/static/maps
+
+# Build assets (Tailwind needs lib/ to scan for classes)
+RUN mkdir -p priv/static/assets priv/static/fonts && \
+    cd assets && \
+    npm run deploy
+
+# ================================
+# STAGE 3: Build Elixir Release
+# ================================
+FROM elixir:1.19-alpine AS app-builder
+
+# Install build dependencies
+RUN apk update && apk add --no-cache \
+    build-base \
+    git \
+    curl
+
+WORKDIR /app
+
+# Set build-time environment
+ARG MIX_ENV=prod
+ENV MIX_ENV=${MIX_ENV}
+
+# Build-time secrets (overridden at runtime)
+ARG SECRET_KEY_BASE=build_time_secret_key_base_placeholder_64_chars_long_minimum
+ARG GUARDIAN_SECRET_KEY=build_time_guardian_secret_key_placeholder_64_chars_long_minimum
+ARG LIVE_VIEW_SIGNING_SALT=build_time_live_view_signing_salt_placeholder_32_chars
+ENV SECRET_KEY_BASE=${SECRET_KEY_BASE}
+ENV GUARDIAN_SECRET_KEY=${GUARDIAN_SECRET_KEY}
+ENV LIVE_VIEW_SIGNING_SALT=${LIVE_VIEW_SIGNING_SALT}
+
+# Force IPv4 for Erlang to avoid Docker DNS issues
+RUN echo "{inet6, false}." > /etc/erl_inetrc
+ENV ERL_INETRC=/etc/erl_inetrc
+
+# Install hex and rebar - download hex directly with curl as fallback
+RUN apk update && apk add --no-cache curl && \
+    (mix archive.install github hexpm/hex branch latest --force || \
+     curl -fSL -o hex-2.3.1-otp-28.ez https://builds.hex.pm/installs/1.19.0/hex-2.3.1-otp-28.ez && \
+     mix archive.install hex-2.3.1-otp-28.ez --force && \
+     rm hex-2.3.1-otp-28.ez || \
+     mix local.hex --force)
+RUN mix local.rebar --force
+
+# Copy dependency files and deps from stage 1
+COPY mix.exs ./
+COPY --from=deps-builder /app/deps ./deps
+COPY --from=deps-builder /app/mix.lock ./mix.lock
+
+# Compile dependencies
+RUN mix deps.compile
+
+# Copy application source
+COPY config ./config
+COPY lib ./lib
+# Installed plugins are compiled in (mix.exs elixirc_paths) and their priv/ is
+# copied into the release by the copy_plugin_priv release step.
+COPY plugins ./plugins
+COPY priv/repo ./priv/repo
+# THE GAMES REPO'S MIGRATIONS.
+#
+# priv is copied a directory at a time here, so adding a repo to :ecto_repos is
+# NOT enough on its own - without this line the release contains no migration
+# files for GamesRepo. Ecto.Migrator then finds an empty directory, runs
+# nothing, and returns SUCCESS. The deploy goes green, create_db makes an empty
+# database, and the app boots with no schema; it surfaces much later as
+# `relation "games" does not exist`, which looks nothing like a packaging bug.
+#
+# `Bacon8.Release.status()` prints the file count per repo precisely so this
+# is one command to spot rather than an afternoon.
+COPY priv/games_repo ./priv/games_repo
+COPY priv/gettext ./priv/gettext
+
+# Plugins' own priv/ (migrations, data files) is copied into the release by
+# the release step in mix.exs, from the plugins/ folder copied above.
+
+# Copy built assets from assets-builder stage
+COPY --from=assets-builder /app/priv/static ./priv/static
+
+# Copy static files that don't change
+COPY priv/static/tri.gif ./priv/static/
+COPY priv/static/favicon.ico ./priv/static/
+COPY priv/static/robots.txt ./priv/static/
+COPY priv/static/sitemap.xml ./priv/static/
+
+# Compile application (ignore unavailable optional dependencies)
+RUN mix deps.loadpaths --no-deps-check + compile
+
+# Digest assets for production
+RUN mix phx.digest
+
+# Build release
+RUN mix release
+
+# ================================
+# STAGE 4: Runtime Image
+# ================================
+# Use same Alpine version as elixir:1.19-alpine to match OpenSSL/crypto versions
+FROM alpine:3.22 AS runtime
+
+# Install runtime dependencies only (redis-cli removed - app connects to external Redis server)
+RUN apk update && apk add --no-cache \
+    bash \
+    openssl \
+    postgresql-client \
+    curl \
+    ca-certificates \
+    libstdc++ \
+    libgcc && \
+    update-ca-certificates
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -S -g 101 bacon8 && \
+    adduser -S -u 100 -G bacon8 bacon8 && \
+    mkdir -p /app/uploads && \
+    chown -R bacon8:bacon8 /app
+
+# Copy release from builder
+COPY --from=app-builder --chown=bacon8:bacon8 /app/_build/prod/rel/bacon8 ./
+
+# Copy startup script
+COPY --chown=bacon8:bacon8 bacon8-start.sh /usr/local/bin/bacon8-start.sh
+RUN chmod +x /usr/local/bin/bacon8-start.sh
+
+# Switch to non-root user
+USER bacon8
+
+EXPOSE 4000
+
+CMD ["/usr/local/bin/bacon8-start.sh"]

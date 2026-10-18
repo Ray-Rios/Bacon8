@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- postgres-deployment.yaml
+- redis-deployment.yaml
+- mailhog-deployment.yaml
+- bacon8-deployment.yaml
+- bacon8-headless-service.yaml
+- bacon8-uploads-pv.yaml
+- bacon8-uploads-pvc.yaml
+- bacon8-models-pv.yaml
+- bacon8-models-pvc.yaml
+- bacon8-releases-pv.yaml
+- bacon8-releases-pvc.yaml
+- db-init-job.yaml
+- rbac.yaml

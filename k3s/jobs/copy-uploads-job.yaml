@@ -1,0 +1,34 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: copy-uploads
+  namespace: bacon8
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: copier
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          mkdir -p /dest
+          cp -r /source/* /dest/ 2>/dev/null || true
+          echo "Uploads copied successfully"
+          ls -la /dest/
+        volumeMounts:
+        - name: source
+          mountPath: /source
+        - name: dest
+          mountPath: /dest
+      volumes:
+      - name: source
+        hostPath:
+          path: /run/desktop/mnt/host/c/PROJEKT46/uploads
+          type: Directory
+      - name: dest
+        hostPath:
+          path: /var/lib/k8s-pvs/bacon8-uploads
+          type: DirectoryOrCreate

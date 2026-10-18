@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bacon8-web-headless
+  labels:
+    app: bacon8-web
+spec:
+  clusterIP: None
+  selector:
+    app: bacon8-web
+  ports:
+  - name: epmd
+    port: 4369
+    targetPort: 4369
+  - name: dist
+    port: 9001 # Default distribution port range start
+    targetPort: 9001

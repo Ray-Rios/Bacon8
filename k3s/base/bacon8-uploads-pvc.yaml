@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bacon8-uploads-pvc
+  namespace: bacon8
+  labels:
+    app: bacon8-web
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # Use manual storage class to bind to our local Windows directory
+  storageClassName: manual
+  # Bind to the specific PV we created
+  volumeName: bacon8-uploads-local-pv
