@@ -24,7 +24,7 @@ defmodule Bacon8.Email.Service do
   end
 
   defp do_send_verification_email(user, verification_code) do
-    Logger.info("Sending verification email to #{user.email} with code: #{verification_code}")
+    Logger.info("Sending verification email to #{user.email}")
     
     email = Emails.verification_email(user, verification_code)
     

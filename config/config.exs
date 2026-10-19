@@ -78,6 +78,10 @@ config :logger, Bacon8.LogBufferBackend,
 # ----------------------------
 config :phoenix, :json_library, Jason
 
+# Request logs show "[FILTERED]" for any parameter whose name contains one of
+# these (verification codes, reset tokens, webhook secrets in the path).
+config :phoenix, :filter_parameters, ["password", "secret", "token", "code"]
+
 # ----------------------------
 # CORS defaults (can override per environment)
 # ----------------------------

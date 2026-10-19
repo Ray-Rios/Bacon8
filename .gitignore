@@ -14,7 +14,9 @@ OpenWorldEngine/
 # Generated secrets
 priv/cert/
 priv/static/models/
-priv/static/maps/
+priv/static/maps/*
+# The Dockerfile copies this folder, so a fresh clone needs it to exist.
+!priv/static/maps/.gitkeep
 priv/static/uploads/
 uploads/
 

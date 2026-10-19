@@ -21,7 +21,7 @@ defmodule Bacon8Web.Api.SchedulerController do
   def trigger_webhook(conn, %{"secret" => secret}) do
     case Scheduler.trigger_webhook(secret) do
       {:ok, result} ->
-        Logger.info("Webhook triggered successfully: #{secret}")
+        Logger.info("Scheduler webhook triggered successfully")
         json(conn, %{success: true, result: result})
         
       {:error, :not_found} ->
