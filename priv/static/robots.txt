@@ -1,14 +1,15 @@
 User-agent: *
 Allow: /
-Allow: /blog
-Allow: /shop
-Allow: /pages/*
-
 Disallow: /admin
 Disallow: /api
 Disallow: /desktop
-Disallow: /forum
-Disallow: /cart
-Disallow: /checkout
+Disallow: /profile
+Disallow: /avatar
+Disallow: /store/library
+Disallow: /store/orders
+Disallow: /store/download
+Disallow: /files
+Disallow: /s/
+Disallow: /auth
 
 Sitemap: https://bacon8.net/sitemap.xml

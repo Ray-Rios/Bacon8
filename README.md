@@ -2,7 +2,7 @@
 
 A batteries-included Phoenix 1.7 / LiveView 1.0 application: authentication and
 account security, a CMS, a storefront, a forum, real-time chat, a windowed
-"desktop" UI, a job scheduler, a GraphQL endpoint, and a multiplayer **games
+"desktop" UI, a job scheduler, and a multiplayer **games
 platform API** — deployed to Kubernetes with kustomize overlays.
 
 It is a working application (it runs bacon8.net), published so it can be read,
@@ -46,7 +46,6 @@ practical: each subsystem says what it is and roughly what removing it costs.
 | **Files & media** | The drive (per-user storage with quotas, storage tiers and share links), uploads via Arc, image processing, avatars | `lib/bacon8/drive`, `files`, `media_processor.ex` |
 | **Notifications & email** | Swoosh + SMTP, HTML templates, delivery logging | `lib/bacon8/email`, `notifications` |
 | **Moderation & audit** | Audit log, moderation queue, admin LiveViews | `lib/bacon8/moderation`, `audit.ex` |
-| **GraphQL** | Absinthe schema with Dataloader | `lib/bacon8_web/schema.ex`, `resolvers` |
 | **Games platform** | Games, characters, the game-server registry, single-session claims, client releases and launcher downloads. Game-specific features come from plugins. **Its own database.** | `lib/bacon8/games` |
 | **Plugins** | WordPress-style: a game or feature is a folder under `plugins/`, compiled in and switched on or off from `/admin/plugins` without a redeploy. **Web Lobby** (a small in-browser 3D arcade) ships as the example | `lib/bacon8/plugin.ex`, `plugins`, `plugins/web_lobby` |
 
@@ -94,7 +93,6 @@ Then:
 |---|---|
 | App | http://localhost:4000 |
 | Health check | http://localhost:4000/health |
-| GraphiQL (dev only) | http://localhost:4000/api/graphiql |
 | MailHog, if you run one | http://localhost:8025 |
 
 `mix ecto.setup` runs migrations for **both** repos and every installed plugin, and seeds the main one.
@@ -229,9 +227,8 @@ All JSON. Authentication is a Guardian bearer token unless stated otherwise.
 POST /api/auth/register             POST /api/auth/verify-code
 POST /api/auth/login                POST /api/auth/verify-email
 POST /api/auth/logout               POST /api/auth/resend-verification
-POST /api/auth/authenticate         POST /api/auth/verify
-POST /api/auth/verify-bearer        POST /api/auth/dev-verify      (dev only)
-GET  /api/auth/users
+POST /api/auth/verify-bearer        POST /api/auth/verify
+                                    POST /api/auth/dev-verify      (dev only)
 ```
 
 ### Games platform
@@ -269,7 +266,7 @@ something similar:
 Server liveness is heartbeat **age**, not deregistration — a crashed server never
 gets to deregister.
 
-### Scheduler, projects, GraphQL
+### Scheduler and projects
 
 ```
 GET|POST            /api/scheduler/events
@@ -277,9 +274,7 @@ GET|PUT|DELETE      /api/scheduler/events/:id
 POST                /api/scheduler/events/:id/{run,pause,resume}
 GET                 /api/scheduler/project-events
 POST                /api/webhooks/scheduler/:secret        public, secret in path
-GET                 /api/projects/calendar                 bearer or X-API-Key
-*                   /api/graphql
-*                   /api/graphiql                          dev only
+GET                 /api/auth/projects/calendar            bearer or X-API-Key
 GET                 /health
 GET                 /api/status
 ```

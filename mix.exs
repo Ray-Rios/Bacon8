@@ -98,10 +98,6 @@ defmodule Bacon8.MixProject do
       {:joken, "~> 2.6"},
       {:guardian, "~> 2.3"},
       {:plug_cowboy, "~> 2.7"},
-      {:absinthe, "~> 1.7"},
-      {:absinthe_plug, "~> 1.5"},
-      {:absinthe_phoenix, "~> 2.0"},
-      {:dataloader, "~> 2.0"},
       {:redix, "~> 1.5"},
       {:pbkdf2_elixir, "~> 2.2"},
       ## E-commerce & Payments

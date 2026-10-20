@@ -197,7 +197,7 @@ defmodule Bacon8Web.Router do
   end
 
   # --------------------
-  # GraphQL API Authentication
+  # API authentication (JSON)
   # --------------------
   scope "/api/auth", Bacon8Web do
     pipe_through :api
@@ -205,7 +205,6 @@ defmodule Bacon8Web.Router do
     # Public auth endpoints
     post "/register", Api.ApiAuthController, :register
     post "/login", Api.ApiAuthController, :login
-    post "/authenticate", Api.ApiAuthController, :authenticate
     post "/verify", Api.ApiAuthController, :verify_token
     post "/logout", Api.ApiAuthController, :logout
     
@@ -215,9 +214,6 @@ defmodule Bacon8Web.Router do
     post "/resend-verification", Api.ApiAuthController, :resend_verification
     post "/dev-verify", Api.ApiAuthController, :dev_verify  # Development only
     
-    # Admin-only endpoints
-    get "/users", Api.ApiAuthController, :list_users
-
     # Project calendar for Taskbar calendar app
     get "/projects/calendar", Api.ProjectController, :calendar
   end
@@ -299,9 +295,6 @@ defmodule Bacon8Web.Router do
     post "/:game_slug/characters/:id/claim", Api.GamesController, :claim_character
     post "/:game_slug/characters/:id/release", Api.GamesController, :release_character
     put "/:game_slug/characters/:id/instance_location", Api.GamesController, :set_instance_location
-    # The same, under its pre-2026-10-16 name, for clients and servers built
-    # before the rename. Remove once they've all been rebuilt.
-    put "/:game_slug/characters/:id/holo_location", Api.GamesController, :set_instance_location
 
     get "/:game_slug/characters/:id", Api.GamesController, :get_character
     put "/:game_slug/characters/:id", Api.GamesController, :update_character
@@ -365,19 +358,4 @@ defmodule Bacon8Web.Router do
 
 
 
-  # --------------------
-  # GraphQL API
-  # --------------------
-  scope "/api" do
-    pipe_through [:api, Bacon8Web.Plugs.RateLimitPlug]
-
-    forward "/graphql", Absinthe.Plug,
-      schema: Bacon8Web.Schema
-
-    if Mix.env() == :dev do
-      forward "/graphiql", Absinthe.Plug.GraphiQL,
-        schema: Bacon8Web.Schema,
-        interface: :simple
-    end
-  end
 end

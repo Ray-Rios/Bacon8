@@ -1,0 +1,27 @@
+{
+  "name": "Bacon8",
+  "short_name": "Bacon8",
+  "description": "Games, chat channels and a store for the people who play them.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#14100F",
+  "theme_color": "#14100F",
+  "icons": [
+    {
+      "src": "/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/images/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

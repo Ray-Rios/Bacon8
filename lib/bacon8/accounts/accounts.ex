@@ -303,25 +303,6 @@ defmodule Bacon8.Accounts do
     |> Repo.update()
   end
 
-  # Keep the original authenticate_user for backward compatibility
-  def authenticate_user(email, password) when is_binary(email) and is_binary(password) do
-    result = case get_user_by_email(email) do
-      nil ->
-        # Still run password check to prevent timing attacks
-        Pbkdf2.no_user_verify()
-        {:error, :invalid_email}
-
-      user ->
-        if check_password(user, password) do
-          {:ok, user}
-        else
-          {:error, :invalid_password}
-        end
-    end
-    
-    result
-  end
-
   # Email verification functions
   def verify_user_email(token) do
     Bacon8.Accounts.EmailVerification.verify_email(token)
@@ -767,60 +748,6 @@ defmodule Bacon8.Accounts do
   # ---------------------
   def safe_delete_user(%User{} = user) do
     delete_user(user)
-  end
-
-  # ---------------------
-  # API server authentication
-  # ---------------------
-  def authenticate_for_api_server(email, password) do
-    case authenticate_user(email, password) do
-      {:ok, user} ->
-        # Generate an API session token
-        api_token = generate_api_session_token(user)
-        {:ok, %{user: user, api_token: api_token}}
-      
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  # ---------------------
-
-  def generate_api_session_token(%User{} = user) do
-    # Create a JWT-like token for API server authentication
-    payload = %{
-      user_id: user.id,
-      email: user.email,
-      name: user.name,
-      is_admin: user.is_admin,
-      exp: System.system_time(:second) + (24 * 60 * 60) # 24 hours
-    }
-    
-    # Simple base64 encoding for now - in production use proper JWT
-    payload
-    |> Jason.encode!()
-    |> Base.encode64()
-  end
-
-  def verify_game_session_token(token) when is_binary(token) do
-    try do
-      payload = 
-        token
-        |> Base.decode64!()
-        |> Jason.decode!()
-      
-      # Check if token is expired
-      if payload["exp"] > System.system_time(:second) do
-        case get_user(payload["user_id"]) do
-          nil -> {:error, :user_not_found}
-          user -> {:ok, user}
-        end
-      else
-        {:error, :token_expired}
-      end
-    rescue
-      _ -> {:error, :invalid_token}
-    end
   end
 
   # ---------------------

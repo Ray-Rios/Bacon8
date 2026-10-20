@@ -31,7 +31,7 @@ defmodule Bacon8Web.Components.Taskbar do
             phx-click="toggle_start_menu"
             phx-target={@target}
             class="start-button p-1 hover:glass-dark hover:bg-white/20 rounded transition-colors duration-200">
-            <img src="/tri.gif" alt="Start" class="w-6 h-6 object-contain" />
+            <img src="/images/logo-mark.svg" alt="Start" class="w-6 h-6 object-contain rounded-md" />
           </button>
           
           <!-- Start Menu -->

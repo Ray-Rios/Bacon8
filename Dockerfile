@@ -82,9 +82,10 @@
             # packaging problem.
             COPY priv/games_repo ./priv/games_repo
             COPY priv/gettext ./priv/gettext
-            # Copy static files that don't get regenerated (tri.gif, favicon.ico, robots.txt, etc.)
-            COPY priv/static/tri.gif ./priv/static/
+            # Copy static files that don't get regenerated (favicon.ico, icons, robots.txt, etc.)
             COPY priv/static/favicon.ico ./priv/static/
+            COPY priv/static/site.webmanifest ./priv/static/
+            COPY priv/static/images ./priv/static/images
             COPY priv/static/robots.txt ./priv/static/
             COPY priv/static/sitemap.xml ./priv/static/
             COPY priv/static/.well-known ./priv/static/.well-known

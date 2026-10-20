@@ -248,9 +248,9 @@ const initTaskbarStartImage = () => {
     const startBtn = document.querySelector('#taskbar .start-button') as HTMLElement | null;
     if (!startBtn) return;
     
-    // The start button should now just be the tri.gif image - no additional setup needed
+    // The start button is just the logo image - no additional setup needed
     // since it's now handled server-side in the template
-    console.log('Start button initialized with tri.gif image');
+    console.log('Start button initialized');
   } catch (e) {
     console.error('Failed to init start image', e);
   }

@@ -13,10 +13,6 @@ defmodule Bacon8Web.Plugs.RateLimitPlug do
     "auth_register" => %{attempts: 3, window_ms: 600_000},   # 3 attempts per 10 minutes
     "auth_verify" => %{attempts: 10, window_ms: 300_000},    # 10 verification attempts per 5 minutes
     
-    # GraphQL endpoints - moderate limits
-    "graphql_query" => %{attempts: 100, window_ms: 60_000},  # 100 queries per minute
-    "graphql_mutation" => %{attempts: 20, window_ms: 60_000}, # 20 mutations per minute
-    
     # General API - lenient limits
     "api_general" => %{attempts: 200, window_ms: 60_000}     # 200 requests per minute
   }

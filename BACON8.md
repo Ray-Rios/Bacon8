@@ -16,8 +16,8 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-17**: renamed to Bacon8 everywhere, stored names
-included (§5); purchases are held while a payment is disputed (§8).
+Last substantive update: **2026-10-20**: the move to Bacon8 is finished; unused API
+side doors removed (invariant 16); brand assets generated from `brand/`.
 
 ---
 
@@ -117,6 +117,9 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-16 | **GitHub Actions workflows removed** (`ci.yml`, `deploy-scheduler.yml`). CI had never passed: its test job had no database, it enforced format/Credo/Sobelow/Dialyzer checks the code has never met, and it ran browser tests needing a live server; the scheduler workflow deployed a branch that doesn't exist. Tests run in throwaway Docker containers before each commit (§14). | Owner's decision. Every push emailed a failure. |
 | 2026-10-17 | **No access while a payment is disputed.** When the buyer's bank opens a dispute, everything the order delivered is taken away (downloads, items, passes and their channel membership, slots, keys, Gems); winning the dispute gives it back. | Owner's decision. |
 | 2026-10-17 | **Renamed to Bacon8 everywhere, stored names included**: modules (`Bacon8`, `Bacon8Web`), OTP app and release `bacon8`, node names, the session cookie, database names, the Kubernetes namespace, objects and volumes, the container user, and the game side (the Unreal account plugin becomes `Bacon8Account`, with `-Bacon8*` flags and `BACON8_*` variables). Data moves into the new names by dump and restore; the old deployment and its domain are retired. The repository starts a fresh history. This is milestone 6 (§12), done early. | Owner's decision: a name of its own, clearly apart from the Phoenix framework it is built on. A new domain signs everyone out anyway, so renaming the cookie and the other stored names at the same time cost nothing extra. |
+| 2026-10-20 | **The move is finished**: production has run under the new names since 2026-10-18, the game and launcher are rebuilt against them, and the old deployment, its volumes and the old working copy are deleted. The legacy wire names it kept alive (`holo_sim_id`, `PUT .../holo_location`) and the game's CoreRedirects for the old plugin are removed. | Every client and server in use was rebuilt, so nothing sends the old names. |
+| 2026-10-20 | **Removed: the GraphQL API, `POST /api/auth/authenticate` and `GET /api/auth/users`.** Nothing used them. The GraphQL `login` and `/authenticate` checked passwords without the lockout, rate limit or banned/unverified checks the real login applies (and `/authenticate` said which of email or password was wrong); `/users` listed every account's email to anyone. | Security: they were open doors with no callers. |
+| 2026-10-20 | **Brand assets come from masters in `brand/`** (and the game's `RaysSpaceSim/Brand/`), turned into every icon, favicon, manifest and splash by `scripts/brand/build_brand_assets.py`. The masters are placeholders until the real artwork exists. The Phoenix favicon and the Start button image are gone. | One drop-in point for the artwork; and the old images were other companies' marks. |
 
 ---
 
@@ -127,7 +130,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
  browser ──────▶ │ Endpoint ─ UploadsGuard ─ Plug.Static ─ Session ─ Router            │
                  │   LiveViews (pages, admin, store, forum, games)                     │
                  │   DesktopLive (global live_component on authed pages)               │
-                 │   Channels (chat, presence)        Absinthe (GraphQL)               │
+                 │   Channels (chat, presence)                                         │
  game client ──▶ │   /api/auth/*  /api/games/:slug/*  (JSON, Guardian bearer)          │
  game server ──▶ │   /api/games/:slug/*  with X-API-Key (server key)                   │
                  └───────────────────────────────┬─────────────────────────────────────┘
@@ -308,6 +311,18 @@ Each of these has already cost a build, an outage, or a security hole.
     a lone `\r` (a bare CR at end of file does not parse in Elixir). If a non-Windows git
     reads a Windows checkout it shows every line as changed; compare with
     `git diff --ignore-cr-at-eol`.
+
+16. **The `:api` pipeline has no authentication.** Anything that returns account data or
+    checks a password belongs in `:api_auth`, `:api_authenticated` or `:games_api`, or
+    checks the caller itself. Passwords are checked only through
+    `Accounts.authenticate_user_secure/3`, which applies the IP rate limit, the lockout and
+    the banned/disabled/unverified checks; `authenticate_user/2` has none of them. (A user
+    list and two side-door logins sat in `:api` until 2026-10-20.)
+
+17. **`/models` serves runtime formats only.** `ModelsGuard` answers 404 for anything that
+    isn't a format a 3D client loads (`.gltf`, `.glb`, `.bin`, `.fbx`, textures...). The
+    volume also holds `.blend` scenes and `.zip` downloads, which many asset licences do
+    not allow redistributing. Keep the guard directly before that `Plug.Static`.
 
 ---
 
@@ -811,7 +826,7 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 | 3 | **Extract game-specific code** (§9) | Nothing game-specific in this repo; the game's plugin boots against an unmodified hub. *Code moved 2026-10-16; done once the private repo exists, the suite is green with and without it, and the game client is rebuilt.* |
 | 4 | **Commerce** (§8, §11) | Ledger + entitlements; Stripe then PayPal; currency packs, items, subscriptions; storage tiers and VIP channels driven by entitlements; webhook inbox idempotent. |
 | 5 | **Start menu redesign** (§10) | Every app maps to a real feature; apps are registered data. |
-| 6 | **Stored-name cutover** (§5) | Cookie, release, node, DB and k8s names are Bacon8; runbook written and executed. *Renamed in code and manifests 2026-10-17 (decisions log); done once production runs under the new names.* |
+| 6 | **Stored-name cutover** (§5) | Cookie, release, node, DB and k8s names are Bacon8; runbook written and executed. *Done 2026-10-18 (decisions log).* |
 
 ---
 
@@ -823,10 +838,17 @@ Ordered roughly by how much it hurts.
   `WORLD_*`, and `deploy-game.sh` writes `HOLOSIM_IMAGE` there), so a game deploy edits a
   hub file. Move them to a configmap the plugin's `k3s/` owns and have the hub deployment
   read it with `envFrom` (`optional: true`).
-- **Legacy wire names accepted until every client and server is rebuilt:** the
-  `holo_sim_id` heartbeat / location field and the `PUT .../holo_location` route
-  (`GamesController`, router). Remove after the next full `deploy-game.sh`.
+- **Third-party material is served to players** and has to be replaced or licensed before
+  Bacon8 is marketed: ripped game sound effects in `uploads/public/audio`, a
+  non-commercial (CC BY-NC) model in the character list, models of trademarked
+  characters and of a real person, a default avatar made from another site's artwork,
+  CC BY models with no credits page, and fonts of unknown licence. The branding and IP
+  checklist (owner's notes, outside this repo) lists each with its replacement.
+- **Game releases are Development builds**: the console works for players and the window
+  title carries debug info. Ship Shipping builds (`CLIENT_CONFIG=Shipping`).
 - A few core comments still mention RaysSpaceSim as history. Harmless; don't add new ones.
+- ~~Legacy wire names (`holo_sim_id`, `PUT .../holo_location`)~~ (removed 2026-10-20, once
+  every client and server had been rebuilt).
 
 - **The `assets.setup`, `assets.build`, `assets.deploy` and `lint` mix aliases (and so
   `mix setup`) call `scripts/dev-assets.sh`, which no longer exists.** Assets are built
@@ -861,8 +883,13 @@ Ordered roughly by how much it hurts.
   milestone 5; check other installs have run the import first.
 - `User.registration_changeset/2` casts `:role` and `:is_admin`. `register_user/2`
   overwrites both, so it isn't exploitable today, but `Accounts.create_user/1` passes attrs
-  straight through and the unused `Bacon8.Schema` (GraphQL; the router serves
-  `Bacon8Web.Schema`) calls it. Drop the two fields from the cast and set them explicitly.
+  straight through (its one caller left is the plugin's `mix rss.dev_users`). Drop the two
+  fields from the cast and set them explicitly.
+- `Accounts.authenticate_user/2` (no lockout, no rate limit) has no callers since the
+  GraphQL removal; delete it so nothing new picks it up (invariant 16).
+- `POST /api/webhooks/scheduler/:secret` carries its secret in the URL, so the request
+  line in the app and ingress logs still shows it (parameter filtering only covers the
+  parameters). Move it to a header.
 - Web Lobby's three.js client has eight pre-existing TypeScript errors under
   `npm run type-check` (implicit `any`s, one loop-style enum); it bundles fine.
 - `Files` has a `:timer.sleep(10000)` in an upload path (goes with the legacy file system above).
@@ -910,4 +937,12 @@ Ordered roughly by how much it hurts.
   webhooks, the games server key) get a second reviewer, human or tool, who did not write
   the change.
 - **Deployment** is via the kustomize overlays in `k3s/`. `README.md` covers it; anything
-  specific to one installation stays out of this repo.
+  specific to one installation stays out of this repo. `deploy-prod.sh` backs up both
+  databases before it touches anything, and on an empty install restores both.
+- **Brand assets**: replace a master in `brand/` (see its README), then regenerate every
+  icon, favicon, manifest and splash in a throwaway container:
+
+  ```sh
+  docker run --rm -v "$PWD:/work" -w /work python:3.12-slim \
+    sh -c "pip install -q pillow && python scripts/brand/build_brand_assets.py"
+  ```

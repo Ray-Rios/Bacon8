@@ -160,9 +160,7 @@ defmodule Bacon8Web.Api.GamesController do
   def set_instance_location(conn, %{"game_slug" => slug, "id" => id} = params) do
     with {:ok, game} <- fetch_game(slug),
          {:ok, user_id} <- resolve_user_id(conn, params) do
-      # holo_sim_id: the field's name before 2026-10-16, still sent by game
-      # servers built before then. Accepted until they've all been rebuilt.
-      instance_id = params["instance_id"] || params["holo_sim_id"]
+      instance_id = params["instance_id"]
       server? = conn.assigns[:games_auth_mode] == :server_api_key
 
       cond do
@@ -293,10 +291,8 @@ defmodule Bacon8Web.Api.GamesController do
 
         # Set by an instance server so the hub can match it to its instance
         # and player. A world server omits both and stays a world server.
-        # holo_sim_id: pre-2026-10-16 servers (see set_instance_location/2).
-        # Dropping it would re-register a running instance as a WORLD server.
-        "instance_id" => params["instance_id"] || params["holo_sim_id"],
-        "launched_by_user_id" => params["launched_by_user_id"] || params["instance_user_id"]
+        "instance_id" => params["instance_id"],
+        "launched_by_user_id" => params["launched_by_user_id"]
       }
 
       case Games.register_server(attrs) do

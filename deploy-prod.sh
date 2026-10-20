@@ -71,6 +71,7 @@ print_error() {
 # Database configuration
 DB_USER=${DB_USER:-postgres}
 DB_NAME=${DB_NAME:-bacon8_prod}
+GAMES_DB_NAME=${GAMES_DB_NAME:-bacon8_games_prod}
 PGPASSWORD=${PGPASSWORD:-postgres}  # Set appropriately
 
 # Backup directory
@@ -86,10 +87,24 @@ if kubectl get namespace bacon8 &> /dev/null; then
         print_warning "Postgres deployment not found, skipping database backup."
     else
         POD_NAME=$(kubectl get pods -n bacon8 -l app=postgres -o jsonpath="{.items[0].metadata.name}")
-        kubectl exec -n bacon8 "$POD_NAME" -- env PGPASSWORD="$PGPASSWORD" pg_dump -U "$DB_USER" -h db -d "$DB_NAME" > "$BACKUP_DIR/db_backup_$TIMESTAMP.sql"
-        # Keep only 10 most recent backups
-        ls -t "$BACKUP_DIR"/db_backup_*.sql 2>/dev/null | tail -n +11 | xargs rm -f
-        print_status "Database backed up"
+        # Both databases, each written to a .part file first: a dump that fails
+        # half way must never become the "newest backup" a fresh install restores.
+        # A failed backup stops the deploy here, before the namespace is deleted.
+        backup_db() { # $1 database, $2 file prefix
+            local out="$BACKUP_DIR/${2}_$TIMESTAMP.sql"
+            if kubectl exec -n bacon8 "$POD_NAME" -- env PGPASSWORD="$PGPASSWORD" pg_dump -U "$DB_USER" -h db -d "$1" > "$out.part" && [ -s "$out.part" ]; then
+                mv "$out.part" "$out"
+                # Keep only the 10 most recent of each
+                ls -t "$BACKUP_DIR"/"$2"_*.sql 2>/dev/null | tail -n +11 | xargs rm -f
+                print_status "$1 backed up to $(basename "$out")"
+            else
+                rm -f "$out.part"
+                print_error "Backup of $1 failed - stopping before anything is deleted"
+                exit 1
+            fi
+        }
+        backup_db "$DB_NAME" db_backup
+        backup_db "$GAMES_DB_NAME" games_backup
     fi
 
     echo "🔴 Backing up Redis data..."
@@ -587,6 +602,19 @@ if [ -d "$BACKUP_DIR" ] && ls "$BACKUP_DIR"/db_backup_*.sql 1> /dev/null 2>&1; t
             # Import the backup
             cat "$LATEST_BACKUP" | kubectl exec -i -n bacon8 "$POD_NAME" -- env PGPASSWORD="$PGPASSWORD" psql -U "$DB_USER" -h db -d "$DB_NAME"
             print_status "Database imported from $LATEST_BACKUP"
+
+            # The games database goes with it: a site restored without its games
+            # data would point at characters and releases that do not exist.
+            LATEST_GAMES_BACKUP=$(ls -t "$BACKUP_DIR"/games_backup_*.sql 2>/dev/null | head -1 || true)
+            if [ -n "$LATEST_GAMES_BACKUP" ]; then
+                kubectl exec -n bacon8 "$POD_NAME" -- env PGPASSWORD="$PGPASSWORD" psql -U "$DB_USER" -h db -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$GAMES_DB_NAME' AND pid <> pg_backend_pid();"
+                kubectl exec -n bacon8 "$POD_NAME" -- env PGPASSWORD="$PGPASSWORD" psql -U "$DB_USER" -h db -d postgres -c "DROP DATABASE IF EXISTS $GAMES_DB_NAME;"
+                kubectl exec -n bacon8 "$POD_NAME" -- env PGPASSWORD="$PGPASSWORD" psql -U "$DB_USER" -h db -d postgres -c "CREATE DATABASE $GAMES_DB_NAME;"
+                cat "$LATEST_GAMES_BACKUP" | kubectl exec -i -n bacon8 "$POD_NAME" -- env PGPASSWORD="$PGPASSWORD" psql -U "$DB_USER" -h db -d "$GAMES_DB_NAME"
+                print_status "Games database imported from $LATEST_GAMES_BACKUP"
+            else
+                print_warning "No games_backup_*.sql found - the games database starts empty"
+            fi
             
             # Scale Bacon8 pods back up
             echo "📈 Scaling Bacon8 pods back up..."

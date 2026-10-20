@@ -93,8 +93,9 @@ COPY lib ./lib
 # Plugins (BACON8.md §9): their templates for Tailwind, their JS for esbuild.
 COPY plugins ./plugins
 
-COPY priv/static/tri.gif ./priv/static/
 COPY priv/static/favicon.ico ./priv/static/
+COPY priv/static/site.webmanifest ./priv/static/
+COPY priv/static/images ./priv/static/images
 COPY priv/static/robots.txt ./priv/static/
 COPY priv/static/sitemap.xml ./priv/static/
 COPY priv/static/.well-known ./priv/static/.well-known
@@ -179,8 +180,9 @@ COPY priv/gettext ./priv/gettext
 COPY --from=assets-builder /app/priv/static ./priv/static
 
 # Copy static files that don't change
-COPY priv/static/tri.gif ./priv/static/
 COPY priv/static/favicon.ico ./priv/static/
+COPY priv/static/site.webmanifest ./priv/static/
+COPY priv/static/images ./priv/static/images
 COPY priv/static/robots.txt ./priv/static/
 COPY priv/static/sitemap.xml ./priv/static/
 

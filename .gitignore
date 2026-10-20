@@ -98,5 +98,3 @@ uploads/
 # Windows, it would also match any same-named directory deeper in the tree.
 /RaysSpaceSim/
 
-# Operator notes for one installation (hostnames, runbooks). Never public.
-/migration/

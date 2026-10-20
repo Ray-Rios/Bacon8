@@ -71,5 +71,6 @@ plugins/*/*.sh
 # Never part of the hub image: a game repository checked out at the root,
 # and operator-only files (migration notes, local secrets).
 /RaysSpaceSim
-/migration
 .claude
+# Brand masters: the build uses the files generated from them, not the masters.
+/brand

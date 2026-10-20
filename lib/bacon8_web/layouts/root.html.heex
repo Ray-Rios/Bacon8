@@ -4,9 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={Plug.CSRFProtection.get_csrf_token()} />
-    <.live_title suffix="  ฅ^•ﻌ•^ฅ">
-      <%= assigns[:page_title] || "… . . ᘛ⁐̤ᕐᐷ" %>
+    <.live_title suffix=" · Bacon8">
+      <%= assigns[:page_title] || "Home" %>
     </.live_title>
+    <%!-- Brand files are generated from brand/ by scripts/brand/build_brand_assets.py.
+         A page can set :meta_description for its own search/share text. --%>
+    <% description = assigns[:meta_description] || "Games, chat channels and a store, on Bacon8." %>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#14100F" />
+    <link rel="icon" href={~p"/favicon.ico"} sizes="48x48" />
+    <link rel="icon" href={~p"/images/logo-mark.svg"} type="image/svg+xml" />
+    <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
+    <link rel="manifest" href={~p"/site.webmanifest"} />
+    <meta property="og:site_name" content="Bacon8" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={assigns[:page_title] || "Bacon8"} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={url(~p"/images/og-image.png")} />
+    <meta name="twitter:card" content="summary_large_image" />
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
     </script>
