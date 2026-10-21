@@ -1,6 +1,6 @@
 defmodule BaconStoreWeb.PaymentWebhookController do
   @moduledoc """
-  POST /api/webhooks/payments/:provider - provider webhooks (BACON8.md §8).
+  POST /api/store/webhooks/:provider - provider webhooks (BACON8.md §8).
 
   Answers 200 once the event is safely handled (or is a duplicate, or a type
   we ignore), 400 when the signature or body is bad (the provider shouldn't

@@ -2,8 +2,9 @@
 
 - **Status:** Accepted (direction), 2026-10-20. **Phases 1-3 done 2026-10-21** (Web Lobby is
   Bacon World; the plugin framework for site plugins; the store is `bacon_store`, shipped
-  with phase 2 in one deploy at the owner's choice). Phase 3's operator step (Stripe's
-  webhook URL) is pending. Phases 4-5 are planned.
+  with phase 2 in one deploy at the owner's choice). Stripe's webhook was created at the
+  new URL, so the old one was dropped instead of kept as a `fixed` route. Phases 4-5
+  are planned.
 - **Deciders:** the owner.
 - **Supersedes:** nothing. Extends the plugin system in BACON8.md §9.
 

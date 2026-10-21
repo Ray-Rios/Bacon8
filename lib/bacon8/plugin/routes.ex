@@ -43,9 +43,9 @@ defmodule Bacon8.Plugin.Routes do
 
         # Absolute paths, for a URL an outside party already uses. Needs a
         # reason, so it's clear when it can go.
-        fixed reason: "Stripe still posts here until the dashboard is changed",
+        fixed reason: "A partner's service still posts to its old URL; drop once they've switched",
               pipe_through: :webhooks do
-          post "/api/webhooks/payments/:provider", WebhookController, :create
+          post "/api/partner/notify", WebhookController, :create
         end
 
   In `api` routes `conn.params["game_slug"]` is set to the plugin's game slug,

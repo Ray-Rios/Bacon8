@@ -26,8 +26,7 @@ defmodule BaconStore.Payments.StripeTest do
 
   defp event(type, object), do: Jason.encode!(%{"id" => "evt_" <> Ecto.UUID.generate(), "type" => type, "data" => %{"object" => object}})
 
-  # The old URL, which Stripe's dashboard still names (a `fixed` route).
-  defp webhook(body, signature, path \\ "/api/webhooks/payments/stripe") do
+  defp webhook(body, signature, path \\ "/api/store/webhooks/stripe") do
     build_conn()
     |> put_req_header("content-type", "application/json")
     |> put_req_header("stripe-signature", signature)
@@ -46,11 +45,15 @@ defmodule BaconStore.Payments.StripeTest do
       assert webhook(body, sign(body, "whsec_wrong"), "/api/store/webhooks/stripe").status == 400
     end
 
-    test "while the store is inactive both URLs answer 404" do
+    test "while the store is inactive the webhook answers 404" do
       {:ok, _} = Bacon8.Plugins.deactivate("bacon_store")
       body = event("customer.created", %{"id" => "cus_1"})
       assert webhook(body, sign(body)).status == 404
-      assert webhook(body, sign(body), "/api/store/webhooks/stripe").status == 404
+    end
+
+    test "the pre-plugin URL is gone (no Stripe endpoint ever used it)" do
+      body = event("customer.created", %{"id" => "cus_1"})
+      assert webhook(body, sign(body), "/api/webhooks/payments/stripe").status == 404
     end
   end
 
@@ -197,6 +200,6 @@ defmodule BaconStore.Payments.StripeTest do
   end
 
   test "a webhook for a provider that isn't set up is a 404" do
-    assert build_conn() |> put_req_header("content-type", "application/json") |> post("/api/webhooks/payments/paypal", "{}") |> Map.fetch!(:status) == 404
+    assert build_conn() |> put_req_header("content-type", "application/json") |> post("/api/store/webhooks/paypal", "{}") |> Map.fetch!(:status) == 404
   end
 end

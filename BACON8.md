@@ -134,6 +134,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-21 | **Web pods wait for migrations.** An init container in `bacon8-web` runs `Bacon8.Release.await_migrations/0` and starts the app only when no migration is pending. | A deploy starts `db-init` and the web pods together, so new code could serve the old schema for a few seconds, or write rows a stored-name migration then has to merge (found during ADR 0001 phase 1). |
 | 2026-10-21 | **The store is a plugin, `bacon_store`**, mounted at `/store`, with the plugin framework it needs (site, site_api and fixed routes, `requires/0`, hooks). Its tables and migrations keep their names and versions; its admin moves to `/admin/bacon_store`; Stripe's webhook gets `/api/store/webhooks/stripe`, with the old URL kept as a `fixed` route until the dashboard is switched. Phases 2 and 3 shipped in one deploy. | ADR 0001. Core stops knowing about money; the owner chose one deploy for both phases. |
 | 2026-10-21 | **Plugin data hooks ask every installed plugin and fail safe** (a crash means keep the user's data, or delete no blobs). | Switching a plugin off must not let core delete what the plugin still owns. |
+| 2026-10-21 | **The old webhook URL is dropped.** `/api/webhooks/payments/:provider` is no longer routed; Stripe's endpoint was created at `/api/store/webhooks/stripe`. Supersedes the `fixed` route in the row before last. | No Stripe endpoint had ever used the old URL, so there was nothing to keep working. |
 
 ---
 
@@ -452,7 +453,7 @@ Entitlements stay in core; the store registers its kinds (`store_download`,
 | Piece | Where |
 |---|---|
 | Stripe Checkout (one-time payments) | `BaconStore.Payments.Stripe`, plain HTTPS through `Bacon8.Finch` (no Stripe library). Enabled when `STRIPE_SECRET_KEY` is set; then it is the default provider unless `PAYMENTS_PROVIDER` says otherwise |
-| Webhooks | `POST /api/store/webhooks/:provider` (`BaconStoreWeb.PaymentWebhookController`); the old `/api/webhooks/payments/:provider` stays as a `fixed` route until Stripe's dashboard is switched. `Bacon8Web.RawBodyReader` keeps the raw body for the paths the plugin names (`raw_body_paths/0`); Stripe's `Stripe-Signature` HMAC is checked against `STRIPE_WEBHOOK_SECRET` with a 5-minute tolerance. 200 = handled or ignored, 400 = bad signature/body (not retried), 500 = processing failed (Stripe retries) |
+| Webhooks | `POST /api/store/webhooks/:provider` (`BaconStoreWeb.PaymentWebhookController`). `Bacon8Web.RawBodyReader` keeps the raw body for the paths the plugin names (`raw_body_paths/0`); Stripe's `Stripe-Signature` HMAC is checked against `STRIPE_WEBHOOK_SECRET` with a 5-minute tolerance. 200 = handled or ignored, 400 = bad signature/body (not retried), 500 = processing failed (Stripe retries) |
 | Events used | `checkout.session.completed` (when `paid`), `checkout.session.async_payment_succeeded`/`_failed`, `checkout.session.expired`, `charge.dispute.created`, `charge.dispute.closed` (won/lost). Disputes find the order by its PaymentIntent (`store_orders.provider_payment_ref`) |
 | Admin | `/admin/bacon_store/products` (Gem packs: price, Gems, dated promotion, badge, on/off sale; never deleted), `/admin/bacon_store/orders` (orders, order detail, the payment event inbox; read-only) |
 | Old shop | Removed: `Commerce`, `/shop`, `/cart`, `/checkout`, the old admin products/orders/subscriptions pages, their tables and the users columns only they used (migration `20261016210000`) |
@@ -465,10 +466,10 @@ the gitignored `k3s/overlays/prod/secrets.yaml`, and the webhook endpoint
 events above. Keys never go in the repository. The plugin reads `STRIPE_SECRET_KEY`,
 `STRIPE_WEBHOOK_SECRET` and `PAYMENTS_PROVIDER` itself, at runtime (not `runtime.exs`).
 
-**Operator step (once, after the 2026-10-21 deploy):** a Stripe dashboard that still names
-`https://<host>/api/webhooks/payments/stripe` keeps working (a `fixed` route in
-`BaconStoreWeb.Routes`). Change the endpoint to `/api/store/webhooks/stripe`, check that
-events arrive, then delete the `fixed` block.
+**Production (2026-10-21):** the endpoint is `https://bacon8.net/api/store/webhooks/stripe`
+in test mode, with the six events in the Stripe row above. The pre-plugin URL
+`/api/webhooks/payments/:provider` was never registered with Stripe, so it was removed
+rather than kept as a `fixed` route.
 
 **Milestone 4c:** digital products.
 
@@ -930,7 +931,7 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 | 6 | **Stored-name cutover** (§5) | Cookie, release, node, DB and k8s names are Bacon8; runbook written and executed. *Done 2026-10-18 (decisions log).* |
 | 7 | **Bacon World** (ADR 0001, phase 1) | `web_lobby` is renamed everywhere, its stored names are migrated (tables, game row, plugin state) and old links redirect. *Done 2026-10-21.* |
 | 8 | **Site plugins** (phase 2) | Plugins can mount site routes (e.g. `/store`) and declare required plugins. Hooks replace core's direct calls into the store. *Done 2026-10-21.* |
-| 9 | **Bacon Store** (phase 3) | Core compiles and its suite passes without `plugins/bacon_store`; with it, everything in §8 behaves as before. *Done 2026-10-21; Stripe's dashboard still to be pointed at the new webhook URL (§8).* |
+| 9 | **Bacon Store** (phase 3) | Core compiles and its suite passes without `plugins/bacon_store`; with it, everything in §8 behaves as before. *Done 2026-10-21.* |
 | 10 | **Games platform as a plugin** (phase 4) | The core runs with one database; Bacon World and RaysSpaceSim require `bacon_games`. |
 | 11 | **Site kit** (phase 5) | A new stand-alone site from the core is a configuration change and a deploy. |
 

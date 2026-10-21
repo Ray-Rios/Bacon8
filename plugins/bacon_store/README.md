@@ -30,7 +30,6 @@ store.
 | `/store`, `/store/p/:slug`, `/store/library`, `/store/orders[/:id]`, `/store/fake-checkout/:ref` | pages (`site`) |
 | `/store/media/:id`, `/store/download/:id` | product images and downloads (`site`, `:drive_files` pipeline) |
 | `POST /api/store/webhooks/:provider` | payment webhooks (`site_api`, `:webhooks` pipeline) |
-| `POST /api/webhooks/payments/:provider` | the old webhook URL, kept as a `fixed` route until Stripe's dashboard is switched |
 | `/admin/bacon_store/products[/new\|/:id]`, `/admin/bacon_store/orders[/:id]` | admin |
 
 ## Hooks it implements

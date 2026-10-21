@@ -70,7 +70,7 @@ defmodule BaconStore.Plugin do
 
   # Payment providers sign the exact bytes they send.
   @impl true
-  def raw_body_paths, do: ["/api/store/webhooks/", "/api/webhooks/payments/"]
+  def raw_body_paths, do: ["/api/store/webhooks/"]
 
   @impl true
   def admin_tools do

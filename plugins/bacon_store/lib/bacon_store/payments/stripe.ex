@@ -14,9 +14,7 @@ defmodule BaconStore.Payments.Stripe do
     * `STRIPE_WEBHOOK_SECRET` - `whsec_...`, from the webhook endpoint in the
       Stripe dashboard (or `stripe listen` locally).
 
-  Webhook URL: `/api/store/webhooks/stripe` (the old `/api/webhooks/payments/stripe`
-  still works until the Stripe dashboard is switched; see BaconStoreWeb.Routes),
-  subscribed to
+  Webhook URL: `/api/store/webhooks/stripe`, subscribed to
   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
   `checkout.session.async_payment_failed`, `checkout.session.expired`,
   `charge.dispute.created` and `charge.dispute.closed`.

@@ -29,11 +29,6 @@ defmodule BaconStoreWeb.Routes do
     post "/webhooks/:provider", PaymentWebhookController, :create
   end
 
-  fixed reason: "Stripe's dashboard still posts here; remove once its webhook endpoint is /api/store/webhooks/stripe",
-        pipe_through: :webhooks do
-    post "/api/webhooks/payments/:provider", PaymentWebhookController, :create
-  end
-
   # /admin/bacon_store/...
   admin do
     live "/products", Admin.ProductsLive, :index
