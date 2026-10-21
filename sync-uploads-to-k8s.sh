@@ -3,9 +3,20 @@
 # Sync uploads from Windows host to Kubernetes
 # This script pushes local uploads to the Docker VM
 #
-# Usage: ./sync-uploads-to-k8s.sh
+# Usage: ./sync-uploads-to-k8s.sh --replace-production-uploads
+#
+# DANGER: this deletes EVERY file in production uploads (drive files, avatars,
+# attachments) and replaces them with the local folder. Anything uploaded since
+# the local copy was taken is lost. To remove a few files, delete them in the pod.
 
 set -e
+
+if [ "${1:-}" != "--replace-production-uploads" ]; then
+    echo "Refusing: this deletes every file in production uploads and replaces them"
+    echo "with ./uploads. Pull first (./sync-uploads-from-k8s.sh), then run:"
+    echo "  $0 --replace-production-uploads"
+    exit 1
+fi
 
 NAMESPACE="bacon8"
 LOCAL_UPLOADS_DIR="./uploads"
