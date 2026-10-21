@@ -31,6 +31,26 @@ spec:
         # and the app cannot boot. That took prod down on 2026-10-13.
         - name: releases
           mountPath: /app/client_releases
+      # Don't start the app until db-init has migrated both databases. A deploy
+      # starts db-init and these pods together; without this the new code can
+      # serve requests against the old schema, or write rows a migration that
+      # renames stored names then has to merge (BACON8.md §5). Nothing pending:
+      # passes in a few seconds. See Bacon8.Release.await_migrations/0.
+      - name: wait-for-migrations
+        image: bacon8:latest
+        command: ["/app/bin/bacon8", "eval", "Bacon8.Release.await_migrations()"]
+        envFrom:
+        - configMapRef:
+            name: bacon8-config
+        - secretRef:
+            name: bacon8-secrets
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
       containers:
       - name: bacon8
         image: bacon8:latest

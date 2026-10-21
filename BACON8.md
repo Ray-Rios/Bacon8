@@ -130,6 +130,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-20 | **Legal pages are CMS pages:** `/pages/terms`, `privacy`, `refunds`, `copyright`, `contact`, `credits` and `gems`. They are seeded unpublished as placeholders to be reviewed with a lawyer, and the store's small print links to them. | Owner's decision. They can be edited in `/admin/pages` without a deploy. |
 | 2026-10-20 | **Direction: a reusable core, with games and commerce as plugins** (`docs/adr/0001-core-and-plugins.md`). Web Lobby becomes **Bacon World** (`bacon_world`). The store, Gems and payments become **Bacon Store** (`bacon_store`). The games platform becomes a plugin later. The core becomes the starting point for other stand-alone sites. | Owner's decision. A site that sells nothing or runs no games shouldn't carry the code for them. |
 | 2026-10-21 | **Web Lobby is renamed Bacon World** (`web_lobby` -> `bacon_world`), stored names included: the three `bacon_world_*` tables with their keys and indexes, the game row and the `plugin_states` row, by the plugin's own migrations. Plugins gain `previous_slugs/0`; old `/games/web_lobby/...` and `/admin/web_lobby/...` links answer 301. Ledger rows keep the slug they were written with. | ADR 0001, phase 1. A first-party game's name should say what it is; the redirect keeps old links and bookmarks working. |
+| 2026-10-21 | **Web pods wait for migrations.** An init container in `bacon8-web` runs `Bacon8.Release.await_migrations/0` and starts the app only when no migration is pending. | A deploy starts `db-init` and the web pods together, so new code could serve the old schema for a few seconds, or write rows a stored-name migration then has to merge (found during ADR 0001 phase 1). |
 
 ---
 
@@ -312,6 +313,11 @@ Each of these has already cost a build, an outage, or a security hole.
 
     Each database (and each plugin) starts from one baseline migration generated from
     production's schema; schema changes are new migrations after it. Never edit a baseline.
+
+    In Kubernetes the `db-init` job migrates, and the web pods' `wait-for-migrations` init
+    container (`Bacon8.Release.await_migrations/0`) holds the app back until nothing is
+    pending, so new code never serves the old schema. A pod whose image brings migrations
+    that were never run stays in `Init` while the old pods keep serving; run `db-init`.
 
 15. **Line endings.** The repo stores LF. Windows checkouts use `core.autocrlf=true`,
     except shell scripts: `.gitattributes` keeps `*.sh` LF on every checkout, because they

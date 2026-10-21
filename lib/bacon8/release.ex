@@ -89,6 +89,71 @@ defmodule Bacon8.Release do
   end
 
   @doc """
+  The migrations not yet run, as `[{repo, version, name}]` across every repo
+  and every installed plugin's folder (the same set `migrate/0` runs), or
+  `:unavailable` when a database can't be reached or doesn't exist yet.
+  """
+  def pending_migrations do
+    load_app()
+
+    Enum.reduce_while(repos(), [], fn repo, acc ->
+      case pending_for(repo) do
+        {:ok, pending} -> {:cont, acc ++ pending}
+        :unavailable -> {:halt, :unavailable}
+      end
+    end)
+  end
+
+  defp pending_for(repo) do
+    paths = [Ecto.Migrator.migrations_path(repo) | Bacon8.Plugins.migration_paths(repo)]
+
+    case Ecto.Migrator.with_repo(repo, &Ecto.Migrator.migrations(&1, paths)) do
+      {:ok, migrations, _} ->
+        {:ok, for({:down, version, name} <- migrations, do: {repo, version, name})}
+
+      {:error, _} ->
+        :unavailable
+    end
+  rescue
+    # No database yet (a fresh namespace, before db-init creates it), or not
+    # accepting connections.
+    _ -> :unavailable
+  catch
+    :exit, _ -> :unavailable
+  end
+
+  @doc """
+  Block until no migration is pending, then return `:ok`.
+
+  The web pods' init container runs this (`k3s/base/bacon8-deployment.yaml`),
+  so a pod only starts the app once `db-init` has migrated both databases. Both
+  start together on a deploy, and without this the new code could serve
+  requests against the old schema for a few seconds, or create rows (a plugin's
+  game row) that a migration renaming stored names then has to merge
+  (BACON8.md §5, invariant 14). A restart with nothing new to run passes
+  straight through; a new image whose migrations were never run waits here
+  while the old pods keep serving.
+  """
+  def await_migrations(interval_ms \\ 3_000) do
+    case pending_migrations() do
+      [] ->
+        log("no pending migrations; starting")
+        :ok
+
+      :unavailable ->
+        log("database not reachable yet; waiting")
+        Process.sleep(interval_ms)
+        await_migrations(interval_ms)
+
+      pending ->
+        names = Enum.map_join(pending, ", ", fn {_repo, version, name} -> "#{version}_#{name}" end)
+        log("waiting for db-init: #{length(pending)} pending (#{names})")
+        Process.sleep(interval_ms)
+        await_migrations(interval_ms)
+    end
+  end
+
+  @doc """
   Print what each repo is pointed at and what it still has to run.
 
   A diagnostic, safe to run any time. Exists because "relation does not exist"
