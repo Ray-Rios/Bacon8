@@ -10,7 +10,8 @@ defmodule Bacon8Web.AdminLive.ApiToolbox do
 
   @impl true
   def mount(_params, _session, socket) do
-    actions = api_actions()
+    # Core actions, then active plugins' (BACON8.md §9; e.g. the store's orders).
+    actions = api_actions() ++ Bacon8.Plugins.admin_tools()
 
     {:ok,
      socket
@@ -24,8 +25,15 @@ defmodule Bacon8Web.AdminLive.ApiToolbox do
   def handle_event("execute_action", %{"action_id" => action_id} = params, socket) do
     current_user = socket.assigns.current_user
 
+    # A plugin's action carries its own `run`; core actions are matched below.
+    outcome =
+      case Enum.find(socket.assigns.api_actions, &(&1.id == action_id)) do
+        %{run: run} when is_function(run, 2) -> run.(params, current_user)
+        _ -> execute_action(action_id, params, current_user)
+      end
+
     result =
-      case execute_action(action_id, params, current_user) do
+      case outcome do
         {:ok, payload} ->
           %{status: :ok, payload: payload, timestamp: DateTime.utc_now()}
 
@@ -48,6 +56,19 @@ defmodule Bacon8Web.AdminLive.ApiToolbox do
   @impl true
   def handle_event("filter_category", %{"category" => category}, socket) do
     {:noreply, assign(socket, :selected_category, category)}
+  end
+
+  # Filter buttons: the core categories, then any a plugin's actions add.
+  defp category_filters(actions) do
+    core = [{"All", "all"}, {"Users", "users"}, {"Content", "content"}, {"Files", "files"}]
+
+    plugin =
+      for %{category: category} = action <- actions,
+          category not in ["users", "content", "files"],
+          uniq: true,
+          do: {Map.get(action, :category_label, String.capitalize(category)), category}
+
+    core ++ plugin
   end
 
   # ============================================================================
@@ -222,28 +243,6 @@ defmodule Bacon8Web.AdminLive.ApiToolbox do
      }}
   end
 
-  defp execute_action("list_orders", _params, _current_user) do
-    orders = Bacon8.Store.list_orders(limit: 50)
-
-    {:ok,
-     %{
-       message: "Fetched #{length(orders)} orders (limited to 50)",
-       data:
-         Enum.map(orders, fn order ->
-           %{
-             id: order.id,
-             status: order.status,
-             product: order.product_name,
-             total: Bacon8.Store.order_price(order),
-             provider: order.provider,
-             user_email: order.user && order.user.email,
-             inserted_at: order.inserted_at
-           }
-         end),
-       count: length(orders)
-     }}
-  end
-
   defp execute_action("count_files", _params, _current_user) do
     count = Files.count_files()
 
@@ -329,17 +328,6 @@ defmodule Bacon8Web.AdminLive.ApiToolbox do
         fields: []
       },
 
-      # Store
-      %{
-        id: "list_orders",
-        name: "List Orders",
-        category: "commerce",
-        method: "GET",
-        path: "/api/admin/orders",
-        description: "Retrieve up to 50 most recent store orders with status and amounts.",
-        fields: []
-      },
-
       # Files
       %{
         id: "count_files",
@@ -381,7 +369,7 @@ defmodule Bacon8Web.AdminLive.ApiToolbox do
 
           <!-- Category Filter -->
           <div class="flex flex-wrap gap-2 mb-6">
-            <%= for {label, value} <- [{"All", "all"}, {"Users", "users"}, {"Content", "content"}, {"Store", "commerce"}, {"Files", "files"}] do %>
+            <%= for {label, value} <- category_filters(@api_actions) do %>
               <button
                 phx-click="filter_category"
                 phx-value-category={value}

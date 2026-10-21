@@ -113,21 +113,56 @@ defmodule Bacon8.Plugins do
         {:error, :not_installed}
 
       mod ->
-        hook_result = if on?, do: mod.on_activate(), else: mod.on_deactivate()
-
-        case hook_result do
-          :ok ->
-            save_state!(slug, on?, actor)
-            sync_game(mod, on?)
-            refresh_cache()
-            Phoenix.PubSub.broadcast(Bacon8.PubSub, @topic, :plugins_changed)
-
-            Logger.info("Plugin #{slug} #{if on?, do: "activated", else: "deactivated"} by #{actor_label(actor)}")
-            {:ok, mod}
-
-          {:error, reason} ->
-            {:error, {:hook_failed, reason}}
+        with :ok <- check_requirements(mod, on?) do
+          run_toggle(mod, slug, on?, actor)
         end
+    end
+  end
+
+  # Activating needs every required plugin active; deactivating must not strand
+  # an active plugin that requires this one.
+  defp check_requirements(mod, true) do
+    case Enum.reject(mod.requires(), &active?/1) do
+      [] -> :ok
+      missing -> {:error, {:requires, missing}}
+    end
+  end
+
+  defp check_requirements(mod, false) do
+    slug = mod.slug()
+
+    case for(other <- active(), other.slug() != slug, slug in other.requires(), do: other.slug()) do
+      [] -> :ok
+      dependents -> {:error, {:required_by, dependents}}
+    end
+  end
+
+  @doc "Slugs this plugin needs, and which of them are inactive now."
+  def requirements(mod) do
+    required = mod.requires()
+    %{requires: required, missing: Enum.reject(required, &active?/1)}
+  end
+
+  @doc "Active plugins that require this one (they block deactivating it)."
+  def required_by(slug) do
+    for other <- active(), other.slug() != slug, slug in other.requires(), do: other.slug()
+  end
+
+  defp run_toggle(mod, slug, on?, actor) do
+    hook_result = if on?, do: mod.on_activate(), else: mod.on_deactivate()
+
+    case hook_result do
+      :ok ->
+        save_state!(slug, on?, actor)
+        sync_game(mod, on?)
+        refresh_cache()
+        Phoenix.PubSub.broadcast(Bacon8.PubSub, @topic, :plugins_changed)
+
+        Logger.info("Plugin #{slug} #{if on?, do: "activated", else: "deactivated"} by #{actor_label(actor)}")
+        {:ok, mod}
+
+      {:error, reason} ->
+        {:error, {:hook_failed, reason}}
     end
   end
 
@@ -146,10 +181,27 @@ defmodule Bacon8.Plugins do
   defp load_from(saved) do
     defaults = MapSet.new(Application.get_env(:bacon8, :default_active_plugins, []))
 
-    for mod <- installed(),
-        slug = mod.slug(),
-        Map.get(saved, slug, MapSet.member?(defaults, slug)),
-        do: slug
+    wanted =
+      for mod <- installed(),
+          slug = mod.slug(),
+          Map.get(saved, slug, MapSet.member?(defaults, slug)),
+          do: mod
+
+    wanted |> drop_unmet_requirements() |> Enum.map(& &1.slug())
+  end
+
+  # A plugin whose required plugins aren't active can't be active either (they
+  # may have been switched on by default or by a saved row). Repeats until
+  # stable, so a chain of requirements resolves.
+  defp drop_unmet_requirements(mods) do
+    slugs = MapSet.new(mods, & &1.slug())
+    {kept, dropped} = Enum.split_with(mods, fn mod -> Enum.all?(mod.requires(), &MapSet.member?(slugs, &1)) end)
+
+    for mod <- dropped do
+      Logger.warning("Plugin #{mod.slug()} is not active: it requires #{Enum.join(mod.requires() -- MapSet.to_list(slugs), ", ")}")
+    end
+
+    if dropped == [], do: kept, else: drop_unmet_requirements(kept)
   end
 
   defp save_state!(slug, on?, actor) do
@@ -266,6 +318,85 @@ defmodule Bacon8.Plugins do
 
   @doc "Start-menu apps from active plugins."
   def desktop_apps, do: Enum.flat_map(active(), & &1.desktop_apps())
+
+  @doc "Site navigation and taskbar links from active plugins."
+  def nav_links(user), do: collect(active(), :nav_links, [user])
+
+  @doc "Profile-page links from active plugins."
+  def profile_tabs(user), do: collect(active(), :profile_tabs, [user])
+
+  @doc "API-toolbox actions from active plugins (see `c:Bacon8.Plugin.admin_tools/0`)."
+  def admin_tools, do: collect(active(), :admin_tools, [])
+
+  @doc "Admin dashboard stats and panels from active plugins, merged."
+  def admin_dashboard do
+    for mod <- active(), reduce: %{stats: [], panels: []} do
+      acc ->
+        case call(mod, :admin_dashboard, []) do
+          {:ok, %{} = d} ->
+            %{stats: acc.stats ++ Map.get(d, :stats, []), panels: acc.panels ++ Map.get(d, :panels, [])}
+
+          _ ->
+            acc
+        end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Data hooks: asked of every INSTALLED plugin (an inactive plugin's data still
+  # exists), and a plugin that crashes gets the safe answer
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  True if any installed plugin keeps records about this user that must
+  outlive the account (`Bacon8.Accounts.delete_user/1` anonymises instead).
+  A plugin that crashes counts as yes: keeping data is the safe mistake.
+  """
+  def retains_user_data?(user_id) do
+    Enum.any?(installed(), fn mod ->
+      case call(mod, :retains_user_data?, [user_id]) do
+        {:ok, answer} -> answer == true
+        :error -> true
+      end
+    end)
+  end
+
+  @doc """
+  Storage keys installed plugins still use, for `Bacon8.Drive.gc_blobs/2`.
+  `{:error, slug}` if a plugin crashes: the caller must then delete nothing.
+  """
+  def storage_refs do
+    Enum.reduce_while(installed(), {:ok, MapSet.new()}, fn mod, {:ok, acc} ->
+      case call(mod, :storage_refs, []) do
+        {:ok, keys} when is_list(keys) -> {:cont, {:ok, MapSet.union(acc, MapSet.new(keys))}}
+        _ -> {:halt, {:error, mod.slug()}}
+      end
+    end)
+  end
+
+  @doc "Path prefixes whose raw request body installed plugins need kept."
+  def raw_body_paths, do: collect(installed(), :raw_body_paths, [])
+
+  defp collect(mods, fun, args) do
+    Enum.flat_map(mods, fn mod ->
+      case call(mod, fun, args) do
+        {:ok, list} when is_list(list) -> list
+        _ -> []
+      end
+    end)
+  end
+
+  defp call(mod, fun, args) do
+    {:ok, apply(mod, fun, args)}
+  rescue
+    e ->
+      Logger.error("Plugin #{mod.slug()}: #{fun} failed: " <> Exception.format(:error, e, __STACKTRACE__))
+      :error
+  catch
+    kind, reason ->
+      Logger.error("Plugin #{mod.slug()}: #{fun} failed: #{inspect({kind, reason})}")
+      :error
+  end
 
   # ---------------------------------------------------------------------------
   # Migrations

@@ -129,9 +129,10 @@ defmodule Bacon8Web.Components.Taskbar do
                   <span>🎭</span>
                   <span class="text-sm">Forum</span>
                 </.link>
-                <.link navigate={~p"/store"} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
-                  <span>💎</span>
-                  <span class="text-sm">Store</span>
+                <%!-- Links from active plugins (BACON8.md §9), e.g. the store --%>
+                <.link :for={item <- Bacon8.Plugins.nav_links(@current_user)} navigate={item.path} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
+                  <span><%= item.icon %></span>
+                  <span class="text-sm"><%= item.label %></span>
                 </.link>
                 <.link navigate={~p"/blog"} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
                   <span>🚬</span>

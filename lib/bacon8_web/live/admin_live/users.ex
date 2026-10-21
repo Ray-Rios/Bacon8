@@ -46,8 +46,6 @@ defmodule Bacon8Web.AdminLive.Users do
             <nav class="space-y-2">
               <.link navigate="/admin" class="admin-nav-link">📊 Dashboard</.link>
               <.link navigate="/admin/user-management" class="admin-nav-link active">👥 Users</.link>
-              <.link navigate="/admin/products" class="admin-nav-link">🛍️ Products</.link>
-              <.link navigate="/admin/orders" class="admin-nav-link">📦 Orders</.link>
               <.link navigate="/admin/posts" class="admin-nav-link">📝 Blog Posts</.link>
               <.link navigate="/admin/channels" class="admin-nav-link">💬 Chat Channels</.link>
               <.link navigate="/admin/sql" class="admin-nav-link">🗄️ SQL Console</.link>

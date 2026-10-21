@@ -78,25 +78,6 @@ defmodule Bacon8Web.Components.AdminSidebar do
           />
         </div>
         
-        <!-- Store Section -->
-        <div class="mb-6">
-          <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 sidebar-section-header">
-            Store
-          </h2>
-          <.sidebar_link
-            href="/admin/products"
-            icon="💎"
-            label="Products"
-            active={String.starts_with?(@current_path, "/admin/products")}
-          />
-          <.sidebar_link
-            href="/admin/orders"
-            icon="📦"
-            label="Orders"
-            active={String.starts_with?(@current_path, "/admin/orders")}
-          />
-        </div>
-
         <!-- Tools Section -->
         <div class="mb-6">
           <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 sidebar-section-header">

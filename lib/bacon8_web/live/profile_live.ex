@@ -630,6 +630,11 @@ defmodule Bacon8Web.ProfileLive do
                           class={"px-6 py-4 text-sm font-medium border-b-2 transition-colors #{if @active_tab == "privacy", do: "text-blue-400 border-blue-400 bg-gray-750", else: "text-gray-400 border-transparent hover:text-white"}"}>
                     Privacy
                   </button>
+                  <%!-- Pages from active plugins (BACON8.md §9), e.g. the store's orders and library --%>
+                  <.link :for={item <- Bacon8.Plugins.profile_tabs(@current_user)} navigate={item.path}
+                         class="px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white transition-colors">
+                    <%= item.icon %> <%= item.label %>
+                  </.link>
                 </div>
               </div>
 

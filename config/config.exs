@@ -94,16 +94,7 @@ config :cors_plug,
 # Ecto Repo defaults
 # ----------------------------
 # Plugins active until an admin saves a choice on /admin/plugins (BACON8.md §9).
-config :bacon8, :default_active_plugins, ["bacon_world"]
-
-# Payments (BACON8.md §8). "fake" is a pretend provider for development and
-# tests; it refuses to work unless fake_enabled is true (dev.exs, test.exs).
-# "stripe" works once STRIPE_SECRET_KEY is set (runtime.exs), which also makes
-# it the default.
-config :bacon8, Bacon8.Payments,
-  default_provider: "fake",
-  providers: %{"fake" => Bacon8.Payments.Fake, "stripe" => Bacon8.Payments.Stripe},
-  fake_enabled: false
+config :bacon8, :default_active_plugins, ["bacon_world", "bacon_store"]
 
 config :bacon8, Bacon8.Repo,
   username: System.get_env("DB_USERNAME") || "root",

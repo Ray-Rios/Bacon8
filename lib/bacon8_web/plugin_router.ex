@@ -20,20 +20,64 @@ defmodule Bacon8Web.PluginRouter do
 
   @doc false
   def plugins_with_routes do
-    for %{slug: slug, module: mod} <- Discovery.discover(),
-        ensure_plugin!(slug, mod),
-        routes = mod.routes(),
-        routes != nil,
-        ensure_routes!(slug, routes) do
-      game_slug =
-        case mod.game() do
-          %{slug: s} when is_binary(s) -> s
-          _ -> slug
-        end
+    plugins =
+      for %{slug: slug, module: mod} <- Discovery.discover(),
+          ensure_plugin!(slug, mod),
+          routes = mod.routes(),
+          routes != nil,
+          ensure_routes!(slug, routes) do
+        game_slug =
+          case mod.game() do
+            %{slug: s} when is_binary(s) -> s
+            _ -> slug
+          end
 
-      %{slug: slug, game_slug: game_slug, routes: routes}
-    end
+        %{slug: slug, game_slug: game_slug, routes: routes, mount: mod.mount()}
+      end
+
+    check_mounts!(plugins)
   end
+
+  # Top-level paths the core router owns (and the Endpoint's static paths). A
+  # plugin's mount can't take one.
+  @reserved_mounts ~w(admin api assets audio auth avatar blog css favicon.ico files fonts forum
+                      games health heightmaps images js live login models pages phoenix profile
+                      register reset-password forgot-password robots.txt s sitemap.xml site.webmanifest
+                      terrain uploads .well-known)
+
+  @mount_format ~r/\A[a-z][a-z0-9_-]*\z/
+
+  defp check_mounts!(plugins) do
+    Enum.reduce(plugins, %{}, fn %{slug: slug, mount: mount, routes: routes}, seen ->
+      has_site? = site_blocks(routes) != [] or site_api_blocks(routes) != []
+
+      cond do
+        mount == nil and has_site? ->
+          raise ArgumentError, "plugin #{slug} declares site routes but no mount/0 (e.g. def mount, do: \"#{slug}\")"
+
+        mount == nil ->
+          seen
+
+        not (is_binary(mount) and Regex.match?(@mount_format, mount)) ->
+          raise ArgumentError, "plugin #{slug}: mount #{inspect(mount)} must be lowercase letters, digits, - and _"
+
+        mount in @reserved_mounts ->
+          raise ArgumentError, "plugin #{slug}: mount #{inspect(mount)} is a core path"
+
+        Map.has_key?(seen, mount) ->
+          raise ArgumentError, "plugins #{seen[mount]} and #{slug} both mount at /#{mount}"
+
+        true ->
+          Map.put(seen, mount, slug)
+      end
+    end)
+
+    plugins
+  end
+
+  defp site_blocks(routes), do: if(function_exported?(routes, :__site_routes__, 0), do: routes.__site_routes__(), else: [])
+  defp site_api_blocks(routes), do: if(function_exported?(routes, :__site_api_routes__, 0), do: routes.__site_api_routes__(), else: [])
+  defp fixed_blocks(routes), do: if(function_exported?(routes, :__fixed_routes__, 0), do: routes.__fixed_routes__(), else: [])
 
   defp ensure_plugin!(slug, mod) do
     case Code.ensure_compiled(mod) do
@@ -75,6 +119,11 @@ defmodule Bacon8Web.PluginRouter do
           end
 
           pipeline unquote(:"plugin_admin_gate_#{slug}") do
+            plug Bacon8Web.Plugs.PluginActive, slug: unquote(slug)
+          end
+
+          # Site pages, site APIs and fixed routes: no game background.
+          pipeline unquote(:"plugin_site_gate_#{slug}") do
             plug Bacon8Web.Plugs.PluginActive, slug: unquote(slug)
           end
         end
@@ -124,6 +173,66 @@ defmodule Bacon8Web.PluginRouter do
         end
       end
     end
+
+    {:__block__, [], scopes}
+  end
+
+  @doc """
+  Site pages at /<mount>/... A `:browser` block (the default) gets a
+  live_session of its own with the core's on_mount and layout; any other
+  pipeline gives a plain scope.
+  """
+  defmacro plugin_site_routes do
+    scopes =
+      for %{slug: slug, mount: mount, routes: routes} <- plugins_with_routes(),
+          mount != nil,
+          {{opts, block}, i} <- Enum.with_index(site_blocks(routes)) do
+        pipeline = Keyword.get(opts, :pipe_through, :browser)
+        gate = :"plugin_site_gate_#{slug}"
+
+        body =
+          if pipeline == :browser do
+            quote do
+              live_session unquote(:"plugin_site_#{slug}_#{i}"),
+                on_mount: [{Bacon8Web.UserAuth, :default}, {Bacon8Web.PluginGate, {unquote(slug), "/"}}],
+                layout: {Bacon8Web.Layouts, :app} do
+                unquote(block)
+              end
+            end
+          else
+            block
+          end
+
+        quote do
+          scope unquote("/#{mount}"), unquote(routes.__namespace__()) do
+            pipe_through [unquote(pipeline), unquote(gate)]
+            unquote(body)
+          end
+        end
+      end
+
+    {:__block__, [], scopes}
+  end
+
+  @doc """
+  Site APIs at /api/<mount>/... (`:api` unless the block says otherwise) and
+  `fixed` routes at their absolute paths. Expand before any core `/api` scope
+  that could capture them.
+  """
+  defmacro plugin_site_api_routes do
+    scopes =
+      for %{slug: slug, mount: mount, routes: routes} <- plugins_with_routes(),
+          {prefix, blocks} <- [{"/api/#{mount}", if(mount, do: site_api_blocks(routes), else: [])}, {"/", fixed_blocks(routes)}],
+          {opts, block} <- blocks do
+        pipeline = Keyword.get(opts, :pipe_through, :api)
+
+        quote do
+          scope unquote(prefix), unquote(routes.__namespace__()) do
+            pipe_through [unquote(pipeline), unquote(:"plugin_site_gate_#{slug}")]
+            unquote(block)
+          end
+        end
+      end
 
     {:__block__, [], scopes}
   end

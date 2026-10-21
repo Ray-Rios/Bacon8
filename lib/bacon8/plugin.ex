@@ -59,8 +59,67 @@ defmodule Bacon8.Plugin do
   """
   @callback previous_slugs() :: [String.t()]
 
+  @doc """
+  Where a plugin's `site` and `site_api` routes mount: `/<mount>/...` and
+  `/api/<mount>/...` (e.g. "store"). nil (the default) for a plugin without
+  site routes. Lowercase letters, digits, `-` and `_`; must not clash with
+  another plugin or a core path (`Bacon8Web.PluginRouter`).
+  """
+  @callback mount() :: String.t() | nil
+
+  @doc """
+  Slugs of plugins this one needs. `Bacon8.Plugins.activate/2` refuses while
+  one of them is inactive, and `deactivate/2` refuses to turn off a plugin an
+  active plugin requires.
+  """
+  @callback requires() :: [String.t()]
+
   @doc "Processes supervised while the plugin is active."
   @callback children() :: [Supervisor.child_spec() | {module(), term()} | module()]
+
+  @doc """
+  True when this plugin keeps records about the user that must outlive the
+  account (orders, a ledger): `Bacon8.Accounts.delete_user/1` then anonymises
+  instead of deleting. Asked of every *installed* plugin, active or not.
+  """
+  @callback retains_user_data?(user_id :: Ecto.UUID.t()) :: boolean()
+
+  @doc """
+  Storage keys (SHA-256 of the body, as `Bacon8.Storage` names blobs) this
+  plugin still uses outside the drive, so `Bacon8.Drive.gc_blobs/2` keeps them.
+  Asked of every *installed* plugin, active or not.
+  """
+  @callback storage_refs() :: [String.t()]
+
+  @doc "Links this plugin adds to the site navigation and taskbar while active."
+  @callback nav_links(user :: struct() | nil) :: [nav_item()]
+
+  @doc "Links this plugin adds to the profile page while active (e.g. purchase history)."
+  @callback profile_tabs(user :: struct()) :: [nav_item()]
+
+  @doc """
+  Request path prefixes whose raw body must be kept (`conn.private[:raw_body]`),
+  e.g. payment webhooks whose signature covers the exact bytes. Asked of every
+  installed plugin, so a request is read the same way whether or not it ends
+  up refused by the plugin's gate.
+  """
+  @callback raw_body_paths() :: [String.t()]
+
+  @doc """
+  Actions for /admin/api-toolbox while active: maps with `:id`, `:name`,
+  `:category`, `:category_label`, `:method`, `:path`, `:description`, `:fields`
+  and `:run`, a 2-arity function `(params, admin) -> {:ok, map} | {:error,
+  message, detail}`.
+  """
+  @callback admin_tools() :: [map()]
+
+  @doc """
+  What this plugin shows on the admin dashboard while active:
+  `%{stats: [%{label, value, icon}], panels: [%{title, empty, items}]}`, where
+  each item is `%{title, path, subtitle, value, badge}` (all but `:title`
+  optional).
+  """
+  @callback admin_dashboard() :: %{optional(:stats) => [map()], optional(:panels) => [map()]}
 
   @doc "Links added to the admin sidebar while active."
   @callback admin_nav() :: [nav_item()]
@@ -136,7 +195,25 @@ defmodule Bacon8.Plugin do
       @impl true
       def previous_slugs, do: []
       @impl true
+      def mount, do: nil
+      @impl true
+      def requires, do: []
+      @impl true
       def children, do: []
+      @impl true
+      def retains_user_data?(_user_id), do: false
+      @impl true
+      def storage_refs, do: []
+      @impl true
+      def nav_links(_user), do: []
+      @impl true
+      def profile_tabs(_user), do: []
+      @impl true
+      def raw_body_paths, do: []
+      @impl true
+      def admin_tools, do: []
+      @impl true
+      def admin_dashboard, do: %{}
       @impl true
       def admin_nav, do: []
       @impl true
@@ -150,7 +227,9 @@ defmodule Bacon8.Plugin do
       @impl true
       def hub_event(_event), do: :ok
 
-      defoverridable game: 0, routes: 0, previous_slugs: 0, children: 0, admin_nav: 0, desktop_apps: 0,
+      defoverridable game: 0, routes: 0, previous_slugs: 0, mount: 0, requires: 0, children: 0,
+                     retains_user_data?: 1, storage_refs: 0, nav_links: 1, profile_tabs: 1,
+                     raw_body_paths: 0, admin_tools: 0, admin_dashboard: 0, admin_nav: 0, desktop_apps: 0,
                      entitlement_kinds: 0, on_activate: 0, on_deactivate: 0, hub_event: 1
     end
   end

@@ -610,13 +610,10 @@ defmodule Bacon8.Accounts do
   # Delete user
   # ---------------------
 
-  # Rows other tables keep for the record (BACON8.md §8): store orders, the
-  # Gem ledger, license keys sold.
-  defp has_purchases?(user_id) do
-    Repo.exists?(from o in Bacon8.Store.Order, where: o.user_id == ^user_id) or
-      Repo.exists?(from a in Bacon8.Wallet.Account, where: a.user_id == ^user_id) or
-      Repo.exists?(from k in Bacon8.Store.LicenseKey, where: k.user_id == ^user_id)
-  end
+  # Rows plugins keep for the record (BACON8.md §8, §9): the store's orders,
+  # Gem ledger and license keys sold. Asked of every installed plugin, active
+  # or not; a plugin that can't answer counts as yes.
+  defp has_purchases?(user_id), do: Bacon8.Plugins.retains_user_data?(user_id)
 
   # The account can never sign in again and nothing in it identifies the
   # person; its id stays so purchase records still point somewhere.

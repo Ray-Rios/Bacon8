@@ -1,6 +1,6 @@
 defmodule Bacon8Web.AdminLive.Dashboard do
   use Bacon8Web, :live_view
-  alias Bacon8.{Accounts, Content, Security, RateLimiter, Store}
+  alias Bacon8.{Accounts, Content, Security, RateLimiter}
   alias Bacon8Web.Components.AdminSidebar
 
   on_mount {Bacon8Web.UserAuth, :require_admin_user}
@@ -44,43 +44,27 @@ defmodule Bacon8Web.AdminLive.Dashboard do
 
   defp get_dashboard_stats do
     try do
-      store = Store.stats()
-
       %{
         total_users: Accounts.count_users() || 0,
-        total_orders: store.orders,
-        total_products: store.products,
         total_posts: Content.count_posts() || 0,
         total_pages: Content.count_pages() || 0,
         recent_users: Accounts.list_recent_users(5) || [],
-        recent_orders: safe_list_orders() || [],
-        revenue_today: Store.format_price(store.revenue_today_cents, "usd"),
-        revenue_month: Store.format_price(store.revenue_month_cents, "usd"),
-        uploads_size: get_uploads_size()
+        uploads_size: get_uploads_size(),
+        # Cards and panels from active plugins (BACON8.md §9), e.g. the store's
+        # revenue and recent orders. A plugin that fails is skipped.
+        plugins: Bacon8.Plugins.admin_dashboard()
       }
     rescue
-      e -> 
+      e ->
         IO.inspect(e, label: "Dashboard stats error")
         %{
           total_users: 0,
-          total_orders: 0,
-          total_products: 0,
           total_posts: 0,
           total_pages: 0,
           recent_users: [],
-          recent_orders: [],
-          revenue_today: "$0.00",
-          revenue_month: "$0.00",
-          uploads_size: %{bytes: 0, formatted: "0 KB", file_count: 0}
+          uploads_size: %{bytes: 0, formatted: "0 KB", file_count: 0},
+          plugins: %{stats: [], panels: []}
         }
-    end
-  end
-
-  defp safe_list_orders do
-    try do
-      Store.list_orders(limit: 5)
-    rescue
-      _ -> []
     end
   end
 
@@ -257,35 +241,12 @@ defmodule Bacon8Web.AdminLive.Dashboard do
         <.stat_card icon="👥" value={@stats.total_users} label="Users" color="blue" />
         <.stat_card icon="📝" value={@stats.total_posts} label="Blog Posts" color="green" />
         <.stat_card icon="📄" value={@stats.total_pages} label="Pages" color="purple" />
-        <.stat_card icon="💎" value={@stats.total_products} label="Products on sale" color="amber" />
+        <%!-- Cards from active plugins (BACON8.md §9), e.g. the store's products and revenue --%>
+        <.stat_card :for={stat <- @stats.plugins.stats} icon={Map.get(stat, :icon, "🔌")} value={stat.value} label={stat.label} color="amber" />
       </div>
 
-      <!-- Revenue & Storage Row -->
+      <!-- Storage Row -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-              <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-gray-400 text-sm">Revenue Today</p>
-                    <p class="text-3xl font-bold text-green-400 mt-1"><%= @stats.revenue_today %></p>
-                  </div>
-                  <div class="p-3 bg-green-500/10 rounded-lg">
-                    <span class="text-2xl">💵</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-gray-400 text-sm">Revenue This Month</p>
-                    <p class="text-3xl font-bold text-green-400 mt-1"><%= @stats.revenue_month %></p>
-                  </div>
-                  <div class="p-3 bg-green-500/10 rounded-lg">
-                    <span class="text-2xl">📈</span>
-                  </div>
-                </div>
-              </div>
-              
               <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
                 <div class="flex items-center justify-between">
                   <div>
@@ -349,34 +310,27 @@ defmodule Bacon8Web.AdminLive.Dashboard do
                 </div>
               </div>
 
-              <!-- Recent Orders -->
-              <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
-                <h3 class="text-lg font-semibold text-white mb-4">Recent Orders</h3>
+              <!-- Panels from active plugins (BACON8.md §9), e.g. the store's recent orders -->
+              <div :for={panel <- @stats.plugins.panels} class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+                <h3 class="text-lg font-semibold text-white mb-4"><%= panel.title %></h3>
                 <div class="space-y-3">
-                  <%= if @stats.recent_orders == [] do %>
-                    <p class="text-gray-500 text-sm">No orders yet</p>
+                  <%= if Map.get(panel, :items, []) == [] do %>
+                    <p class="text-gray-500 text-sm"><%= Map.get(panel, :empty, "Nothing yet") %></p>
                   <% else %>
-                    <%= for order <- @stats.recent_orders do %>
-                      <div class="flex items-center justify-between">
-                        <div>
-                          <.link navigate={~p"/admin/orders/#{order.id}"} class="text-white text-sm font-medium hover:underline"><%= order.product_name %></.link>
-                          <p class="text-gray-500 text-xs"><%= order.user && order.user.email %></p>
-                        </div>
-                        <div class="text-right">
-                          <p class="text-green-400 font-bold text-sm"><%= Store.order_price(order) %></p>
-                          <span class={["text-xs px-2 py-0.5 rounded",
-                                      case order.status do
-                                        "awaiting_payment" -> "bg-yellow-600/30 text-yellow-300"
-                                        s when s in ["paid", "fulfilled"] -> "bg-green-600/30 text-green-300"
-                                        "disputed" -> "bg-orange-600/30 text-orange-300"
-                                        s when s in ["failed", "charged_back"] -> "bg-red-600/30 text-red-300"
-                                        _ -> "bg-gray-600/30 text-gray-300"
-                                      end]}>
-                            <%= order.status |> String.replace("_", " ") |> String.capitalize() %>
-                          </span>
-                        </div>
+                    <div :for={item <- panel.items} class="flex items-center justify-between">
+                      <div>
+                        <%= if item[:path] do %>
+                          <.link navigate={item.path} class="text-white text-sm font-medium hover:underline"><%= item.title %></.link>
+                        <% else %>
+                          <span class="text-white text-sm font-medium"><%= item.title %></span>
+                        <% end %>
+                        <p :if={item[:subtitle]} class="text-gray-500 text-xs"><%= item.subtitle %></p>
                       </div>
-                    <% end %>
+                      <div class="text-right">
+                        <p :if={item[:value]} class="text-green-400 font-bold text-sm"><%= item.value %></p>
+                        <span :if={item[:badge]} class="text-xs px-2 py-0.5 rounded bg-gray-600/30 text-gray-300"><%= item.badge %></span>
+                      </div>
+                    </div>
                   <% end %>
                 </div>
               </div>

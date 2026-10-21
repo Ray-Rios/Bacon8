@@ -35,7 +35,7 @@ config :bacon8, Bacon8Web.Endpoint,
 config :bacon8, dev_routes: true
 
 # The store's pretend payment provider (/store/fake-checkout/...).
-config :bacon8, Bacon8.Payments, fake_enabled: true
+config :bacon8, BaconStore.Payments, fake_enabled: true
 config :logger, :console, format: "[$level] $message\n"
 config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime

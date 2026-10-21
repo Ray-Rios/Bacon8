@@ -89,9 +89,6 @@ defmodule Bacon8Web.Router do
     get "/files/:id", DriveController, :show
     get "/s/:token", DriveController, :shared
 
-    # Store product images (public) and downloads (buyers only), BACON8.md §8.
-    get "/store/media/:id", StoreFileController, :media
-    get "/store/download/:id", StoreFileController, :download
   end
 
   # --------------------
@@ -132,14 +129,6 @@ defmodule Bacon8Web.Router do
     live "/blog/:slug", BlogLive, :show
     
     live "/pages/:slug", PageLive, :show
-    # The store (BACON8.md §8): products, the buyer's library, purchase history, and the fake
-    # provider's checkout page (refuses unless the fake provider is enabled).
-    live "/store", StoreLive, :index
-    live "/store/p/:slug", StoreProductLive, :show
-    live "/store/library", StoreLibraryLive, :index
-    live "/store/orders", StoreOrderLive, :index
-    live "/store/orders/:id", StoreOrderLive, :show
-    live "/store/fake-checkout/:ref", FakeCheckoutLive, :show
     live "/forum", ForumLive, :index
     live "/forum/:channel_id", ForumLive, :channel
     live "/games", GamesLive, :index
@@ -147,7 +136,6 @@ defmodule Bacon8Web.Router do
     # Profile routes (with auth check in mount)
     live "/profile", ProfileLive, :index
     live "/profile/security", ProfileLive, :security
-    live "/profile/orders", ProfileLive, :orders
     live "/profile/uploads", ProfileUploadsLive, :index
     live "/avatar", AvatarLive, :index
 
@@ -157,11 +145,6 @@ defmodule Bacon8Web.Router do
     live "/admin/blog-management/:id", AdminLive.BlogManagement, :edit
     live "/admin/pages", AdminLive.Pages, :index
     live "/admin/pages/:id", AdminLive.Pages, :edit
-    live "/admin/products", AdminLive.Products, :index
-    live "/admin/products/new", AdminLive.ProductEditor, :new
-    live "/admin/products/:id", AdminLive.ProductEditor, :edit
-    live "/admin/orders", AdminLive.Orders, :index
-    live "/admin/orders/:id", AdminLive.Orders, :show
     live "/admin/projects", AdminLive.Projects, :index
     live "/admin/scheduler", AdminLive.Scheduler, :index
     live "/admin/uploads", AdminLive.Uploads, :index
@@ -181,6 +164,9 @@ defmodule Bacon8Web.Router do
 
   # Plugin admin pages: /admin/<plugin slug>/..., admins only.
   plugin_admin_routes()
+
+  # Plugin site pages: /<mount>/... (e.g. the store at /store).
+  plugin_site_routes()
 
   # Renamed plugins: 301 from /games/<old slug>/... and /admin/<old slug>/...
   plugin_redirect_routes()
@@ -236,19 +222,18 @@ defmodule Bacon8Web.Router do
   end
 
   # --------------------
-  # Payment provider webhooks (BACON8.md §8). Authenticated by the provider's
-  # signature over the raw body, checked in the controller. No session, no
-  # rate limit: the provider retries on failure, and a refused retry is a
-  # missed payment.
+  # For webhooks from outside services (plugins use it via `pipe_through:`;
+  # the store's payment webhooks, BACON8.md §8). The sender authenticates by a
+  # signature the controller checks. No session, no rate limit: the sender
+  # retries on failure, and a refused retry is a missed event.
   # --------------------
   pipeline :webhooks do
     plug :accepts, ["json"]
   end
 
-  scope "/api/webhooks/payments", Bacon8Web do
-    pipe_through :webhooks
-    post "/:provider", PaymentWebhookController, :create
-  end
+  # Plugins' site APIs (/api/<mount>/...) and fixed paths, before the core
+  # /api scopes below.
+  plugin_site_api_routes()
 
   # --------------------
   # Scheduler Webhook (Public with secret)

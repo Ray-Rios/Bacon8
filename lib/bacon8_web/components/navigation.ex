@@ -25,8 +25,9 @@ defmodule Bacon8Web.Components.Navigation do
               Bacon<span class="rainbow-text">8</span>
             </.link>
             <div class="hidden lg:flex space-x-4 flex-1 justify-center">
-              <.link navigate={~p"/store"} class="text-white hover:text-blue-400 transition-colors duration-300 text-sm">
-                💎 Store
+              <%!-- Links from active plugins (BACON8.md §9), e.g. the store --%>
+              <.link :for={item <- Bacon8.Plugins.nav_links(@current_user)} navigate={item.path} class="text-white hover:text-blue-400 transition-colors duration-300 text-sm">
+                <%= item.icon %> <%= item.label %>
               </.link>
               <.link navigate={~p"/forum"} class="text-white hover:text-blue-400 transition-colors duration-300 text-sm">
                 💬 Forum

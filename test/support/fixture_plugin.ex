@@ -30,6 +30,44 @@ defmodule Bacon8.Test.FixturePlugin do
     send(self(), {:fixture_hub_event, event})
     :ok
   end
+
+  # Phase 2 hooks (ADR 0001). The data hooks answer from app config, so tests
+  # can set them: :fixture_retains (user ids) and :fixture_storage_refs.
+  @impl true
+  def retains_user_data?(user_id), do: user_id in Application.get_env(:bacon8, :fixture_retains, [])
+
+  @impl true
+  def storage_refs, do: Application.get_env(:bacon8, :fixture_storage_refs, [])
+
+  @impl true
+  def nav_links(_user), do: [%{label: "Fixture Shop", path: "/fixture", icon: "🧪"}]
+
+  @impl true
+  def profile_tabs(_user), do: [%{label: "Fixture Orders", path: "/fixture/orders", icon: "🧾"}]
+
+  @impl true
+  def raw_body_paths, do: ["/api/fixture/hooks/"]
+
+  @impl true
+  def admin_tools do
+    [%{id: "fixture_tool", name: "Fixture Tool", category: "fixture", category_label: "Fixture",
+       method: "GET", path: "/api/fixture", description: "Says hello.", fields: [],
+       run: fn _params, _admin -> {:ok, %{message: "hello"}} end}]
+  end
+
+  @impl true
+  def admin_dashboard do
+    %{stats: [%{label: "Fixture things", value: 7, icon: "🧪"}],
+      panels: [%{title: "Fixture panel", empty: "None", items: [%{title: "One"}]}]}
+  end
+end
+
+defmodule Bacon8.Test.RequiringPlugin do
+  @moduledoc "A plugin that needs the fixture plugin active (`requires/0`)."
+  use Bacon8.Plugin, slug: "requiring_plugin", name: "Requirer"
+
+  @impl true
+  def requires, do: ["fixture_plugin"]
 end
 
 defmodule Bacon8.Test.CrashingPlugin do
@@ -38,6 +76,15 @@ defmodule Bacon8.Test.CrashingPlugin do
 
   @impl true
   def hub_event(_event), do: raise("boom")
+
+  @impl true
+  def retains_user_data?(_user_id), do: raise("boom")
+  @impl true
+  def storage_refs, do: raise("boom")
+  @impl true
+  def nav_links(_user), do: raise("boom")
+  @impl true
+  def admin_dashboard, do: raise("boom")
 end
 
 defmodule Bacon8.Test.RefusingPlugin do

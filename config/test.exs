@@ -26,14 +26,15 @@ config :logger, level: :warning
 
 # Drive: no background janitor in tests; bodies go to a throwaway directory.
 config :bacon8, Bacon8.Drive.Janitor, enabled: false
-config :bacon8, Bacon8.Store.Sweeper, enabled: false
+config :bacon8, BaconStore.Store.Sweeper, enabled: false
 
 # Plugins: tests drive activation themselves; no background runtime, a fixture
 # plugin, and nothing active by default.
 config :bacon8, Bacon8.Plugins.Runtime, enabled: false
 config :bacon8, :extra_plugins, [Bacon8.Test.FixturePlugin]
 config :bacon8, :default_active_plugins, []
-config :bacon8, Bacon8.Payments, fake_enabled: true
+# The store plugin's payments: the fake provider on, and no keys from the shell.
+config :bacon8, BaconStore.Payments, fake_enabled: true, read_env: false
 config :bacon8, Bacon8.Storage, root: Path.join(System.tmp_dir!(), "bacon8_test_drive")
 
 # Tests register accounts and then log in as them; without this the login gate

@@ -23,7 +23,7 @@ data:
   # Plugins active from the first boot (BACON8.md §9). Replaces the hub's
   # default list, so it names every plugin that should be on, not only the
   # private one. A choice saved on /admin/plugins still wins.
-  BACON8_ACTIVE_PLUGINS: "bacon_world,rays_space_sim"
+  BACON8_ACTIVE_PLUGINS: "bacon_world,bacon_store,rays_space_sim"
 
   # --- Holo-sim instance orchestration (RaysSpaceSim plugin) ---------------
   #

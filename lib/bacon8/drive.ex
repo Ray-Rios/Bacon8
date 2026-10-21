@@ -605,6 +605,19 @@ defmodule Bacon8.Drive do
   Returns the number deleted.
   """
   def gc_blobs(grace_seconds \\ 3600, limit \\ 500) do
+    # Plugins share the blob store (the store's product images and downloads):
+    # keep what they still use. If one can't say, delete nothing this round.
+    case Bacon8.Plugins.storage_refs() do
+      {:ok, plugin_refs} ->
+        gc_unreferenced_blobs(grace_seconds, limit, MapSet.to_list(plugin_refs))
+
+      {:error, slug} ->
+        Logger.warning("Drive: blob GC skipped; plugin #{slug} could not list the blobs it uses")
+        0
+    end
+  end
+
+  defp gc_unreferenced_blobs(grace_seconds, limit, plugin_refs) do
     cutoff = DateTime.add(DateTime.utc_now(), -grace_seconds, :second)
 
     {:ok, count} =
@@ -614,8 +627,7 @@ defmodule Bacon8.Drive do
             as: :blob,
             where: b.last_referenced_at < ^cutoff,
             where: not exists(from f in DFile, where: f.blob_sha256 == parent_as(:blob).sha256, select: 1),
-            # Store product images and downloads share the blob store (Bacon8.Store.Catalog).
-            where: not exists(from sf in "store_product_files", where: sf.sha256 == parent_as(:blob).sha256, select: 1),
+            where: b.sha256 not in ^plugin_refs,
             select: b.sha256,
             limit: ^limit,
             lock: "FOR UPDATE SKIP LOCKED"

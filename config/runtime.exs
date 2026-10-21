@@ -18,22 +18,8 @@ end
 
 config :bacon8, games_server_api_key: System.get_env("GAMES_SERVER_API_KEY") || ""
 
-# Stripe (BACON8.md §8). Test keys (sk_test_..., whsec_...) in development,
-# live keys in production, always from the environment / k8s secret, never
-# from a file in the repo. With a key set, Stripe is the default provider;
-# PAYMENTS_PROVIDER=fake switches back to the pretend one in development.
-# Ignored in tests, which set their own (a key in your shell mustn't change them).
-case config_env() != :test && System.get_env("STRIPE_SECRET_KEY") do
-  key when is_binary(key) and key != "" ->
-    config :bacon8, Bacon8.Payments.Stripe,
-      secret_key: key,
-      webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET")
-
-    config :bacon8, Bacon8.Payments, default_provider: System.get_env("PAYMENTS_PROVIDER") || "stripe"
-
-  _ ->
-    :ok
-end
+# Payments (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, PAYMENTS_PROVIDER) are
+# read at runtime by the store plugin itself (BaconStore.Payments, BACON8.md §8).
 
 # -------------------------------------------------
 # SECRET_KEY_BASE

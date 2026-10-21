@@ -44,6 +44,12 @@ defmodule Bacon8Web.AdminLive.Plugins do
 
         {:error, {:hook_failed, reason}} ->
           put_flash(socket, :error, "The plugin refused: #{inspect(reason)}")
+
+        {:error, {:requires, missing}} ->
+          put_flash(socket, :error, "Activate #{Enum.join(missing, ", ")} first: this plugin requires it.")
+
+        {:error, {:required_by, dependents}} ->
+          put_flash(socket, :error, "Deactivate #{Enum.join(dependents, ", ")} first: it requires this plugin.")
       end
 
     {:noreply, load(socket)}
@@ -91,6 +97,12 @@ defmodule Bacon8Web.AdminLive.Plugins do
                         <div class="font-semibold text-white"><%= plugin.name %></div>
                         <div class="text-xs text-gray-500"><%= plugin.slug %></div>
                         <div class="text-sm text-gray-400 mt-1"><%= plugin.description %></div>
+                        <div :if={plugin.module.requires() != []} class="text-xs text-gray-500 mt-1">
+                          Requires: <%= Enum.join(plugin.module.requires(), ", ") %>
+                        </div>
+                        <div :if={plugin.module.mount()} class="text-xs text-gray-500 mt-1">
+                          Mounted at /<%= plugin.module.mount() %>
+                        </div>
                       </td>
                       <td class="px-4 py-4 text-sm"><%= plugin.version %></td>
                       <td class="px-4 py-4 text-sm">

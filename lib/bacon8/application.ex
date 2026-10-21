@@ -41,8 +41,6 @@ defmodule Bacon8.Application do
       Bacon8.Scheduler.Worker,
       # Drive maintenance: 30-day purge + blob GC (BACON8.md §7)
       Bacon8.Drive.Janitor,
-      # Store maintenance: ends expired passes, cancels stale checkouts (BACON8.md §8)
-      Bacon8.Store.Sweeper,
       # Plugins (BACON8.md §9): active plugins' processes, kept in step with
       # /admin/plugins across the cluster by Plugins.Runtime.
       {DynamicSupervisor, name: Bacon8.PluginSupervisor, strategy: :one_for_one},
