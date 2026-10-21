@@ -16,8 +16,9 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-21**: Web Lobby renamed to **Bacon World** (`bacon_world`,
-ADR 0001 phase 1; §9); third-party content replaced with our own and
+Last substantive update: **2026-10-21**: the store became the **Bacon Store** plugin, with
+site routes, plugin requirements and hooks (ADR 0001 phases 2 and 3; §8, §9); Web Lobby
+renamed to **Bacon World** (`bacon_world`, ADR 0001 phase 1; §9); third-party content replaced with our own and
 CC0 work; the Bacon8 humans in the lobby; placeholder legal pages; and the direction
 for a reusable core with games and commerce as plugins (ADR 0001: Bacon World, Bacon
 Store, a site kit). Before that, **2026-10-20**: the move to Bacon8 is finished; unused
@@ -131,6 +132,8 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-20 | **Direction: a reusable core, with games and commerce as plugins** (`docs/adr/0001-core-and-plugins.md`). Web Lobby becomes **Bacon World** (`bacon_world`). The store, Gems and payments become **Bacon Store** (`bacon_store`). The games platform becomes a plugin later. The core becomes the starting point for other stand-alone sites. | Owner's decision. A site that sells nothing or runs no games shouldn't carry the code for them. |
 | 2026-10-21 | **Web Lobby is renamed Bacon World** (`web_lobby` -> `bacon_world`), stored names included: the three `bacon_world_*` tables with their keys and indexes, the game row and the `plugin_states` row, by the plugin's own migrations. Plugins gain `previous_slugs/0`; old `/games/web_lobby/...` and `/admin/web_lobby/...` links answer 301. Ledger rows keep the slug they were written with. | ADR 0001, phase 1. A first-party game's name should say what it is; the redirect keeps old links and bookmarks working. |
 | 2026-10-21 | **Web pods wait for migrations.** An init container in `bacon8-web` runs `Bacon8.Release.await_migrations/0` and starts the app only when no migration is pending. | A deploy starts `db-init` and the web pods together, so new code could serve the old schema for a few seconds, or write rows a stored-name migration then has to merge (found during ADR 0001 phase 1). |
+| 2026-10-21 | **The store is a plugin, `bacon_store`**, mounted at `/store`, with the plugin framework it needs (site, site_api and fixed routes, `requires/0`, hooks). Its tables and migrations keep their names and versions; its admin moves to `/admin/bacon_store`; Stripe's webhook gets `/api/store/webhooks/stripe`, with the old URL kept as a `fixed` route until the dashboard is switched. Phases 2 and 3 shipped in one deploy. | ADR 0001. Core stops knowing about money; the owner chose one deploy for both phases. |
+| 2026-10-21 | **Plugin data hooks ask every installed plugin and fail safe** (a crash means keep the user's data, or delete no blobs). | Switching a plugin off must not let core delete what the plugin still owns. |
 
 ---
 
@@ -203,12 +206,12 @@ lib/
 priv/repo/migrations       site DB
 priv/games_repo/migrations games DB
 assets/                    esbuild + tailwind; three.js background scenes; vendor/ shims for plugins
-plugins/                   installed plugins, one folder each (§9); bacon_world/ is the example
+plugins/                   installed plugins, one folder each (§9); bacon_world/ (a game) and bacon_store/ (a site plugin) are the examples
 k3s/                       kustomize base + overlays (dev, prod)
 config/runtime.exs         all deploy-time configuration via env vars
 ```
 
-**Not part of the hub:** any plugin folder other than `plugins/bacon_world` (gitignored; a
+**Not part of the hub:** any plugin folder other than `plugins/bacon_world` and `plugins/bacon_store` (gitignored; a
 private plugin is its own repository), and a game repository checked out at the root
 (`/RaysSpaceSim/`, gitignored). RaysSpaceSim's deploy and build scripts, k8s manifests,
 code map, mix task and admin pages moved into its private plugin on 2026-10-16.
@@ -422,48 +425,66 @@ from the current UI and should be deleted in milestone 5.
 
 ### Status
 
+**A plugin since 2026-10-21** (ADR 0001, phase 3): everything below lives in
+`plugins/bacon_store` (`BaconStore`, `BaconStoreWeb`; slug `bacon_store`, mounted at
+`/store`). Its tables keep their names (`store_*`, `wallet_*`, `payment_events`): a
+documented exception to the `<slug>_` prefix, because renaming a ledger buys nothing.
+Its three migrations moved unchanged (same versions, so production ran nothing), and a
+core migration (`20261022000000`) drops the old shop's leftovers on installs without the
+store. Core reaches it only through plugin hooks (§9): account deletion
+(`retains_user_data?/1`), blob GC (`storage_refs/0`), navigation, profile, admin
+dashboard and API toolbox. Its admin pages moved to `/admin/bacon_store/...`.
+Entitlements stay in core; the store registers its kinds (`store_download`,
+`channel_access`, `channel_slots`).
+
 **Milestone 4a, implemented 2026-10-16:** Gems and the store, with a fake payment provider.
 
 | Piece | Where |
 |---|---|
-| Double-entry Gem ledger (`wallet_accounts`, `wallet_transactions`, `wallet_entries`) | `Bacon8.Wallet`: `balance/1`, `credit_purchase/4`, `spend/3`, `grant/3`, `clawback/3`, `history/2`. Every call has an idempotency key; user rows are locked, system accounts aren't (see its moduledoc) |
-| Products and orders (`store_products`, `store_orders`) | `Bacon8.Store`: `gem_packs/0`, `can_buy/1`, `start_checkout/3`, `apply_event/1`. Packs are validated at 100 Gems/$; extra Gems only as a dated promotion (`bonus_gems`, `promo_starts_at`/`ends_at`) |
-| Event inbox (`payment_events`) | `Bacon8.Payments`: `ingest/1` stores then applies; a failed event is retried on re-delivery (and its `error` cleared once it succeeds). A dispute that arrives before its order knows the PaymentIntent waits unprocessed and is replayed when the checkout completes (`replay_waiting/2`) |
-| Providers | `Bacon8.Payments.Provider` (`create_checkout/2`, `parse_webhook/2`; no refund callback). `Payments.Fake` for dev/test, refused unless `fake_enabled` |
+| Double-entry Gem ledger (`wallet_accounts`, `wallet_transactions`, `wallet_entries`) | `BaconStore.Wallet`: `balance/1`, `credit_purchase/4`, `spend/3`, `grant/3`, `clawback/3`, `history/2`. Every call has an idempotency key; user rows are locked, system accounts aren't (see its moduledoc) |
+| Products and orders (`store_products`, `store_orders`) | `BaconStore.Store`: `gem_packs/0`, `can_buy/1`, `start_checkout/3`, `apply_event/1`. Packs are validated at 100 Gems/$; extra Gems only as a dated promotion (`bonus_gems`, `promo_starts_at`/`ends_at`) |
+| Event inbox (`payment_events`) | `BaconStore.Payments`: `ingest/1` stores then applies; a failed event is retried on re-delivery (and its `error` cleared once it succeeds). A dispute that arrives before its order knows the PaymentIntent waits unprocessed and is replayed when the checkout completes (`replay_waiting/2`) |
+| Providers | `BaconStore.Payments.Provider` (`create_checkout/2`, `parse_webhook/2`; no refund callback). `Payments.Fake` for dev/test, refused unless `fake_enabled` |
 | Pages | `/store`, `/store/orders`, `/store/orders/:id` (updates live), `/store/fake-checkout/:ref` (dev/test). The "all sales are final" checkbox was removed in 4c |
 
 **Milestone 4b:** Stripe, admin pages, and the old shop retired.
 
 | Piece | Where |
 |---|---|
-| Stripe Checkout (one-time payments) | `Bacon8.Payments.Stripe`, plain HTTPS through `Bacon8.Finch` (no Stripe library). Enabled when `STRIPE_SECRET_KEY` is set; then it is the default provider unless `PAYMENTS_PROVIDER` says otherwise |
-| Webhooks | `POST /api/webhooks/payments/:provider` (`PaymentWebhookController`). `Bacon8Web.RawBodyReader` keeps the raw body for that path only; Stripe's `Stripe-Signature` HMAC is checked against `STRIPE_WEBHOOK_SECRET` with a 5-minute tolerance. 200 = handled or ignored, 400 = bad signature/body (not retried), 500 = processing failed (Stripe retries) |
+| Stripe Checkout (one-time payments) | `BaconStore.Payments.Stripe`, plain HTTPS through `Bacon8.Finch` (no Stripe library). Enabled when `STRIPE_SECRET_KEY` is set; then it is the default provider unless `PAYMENTS_PROVIDER` says otherwise |
+| Webhooks | `POST /api/store/webhooks/:provider` (`BaconStoreWeb.PaymentWebhookController`); the old `/api/webhooks/payments/:provider` stays as a `fixed` route until Stripe's dashboard is switched. `Bacon8Web.RawBodyReader` keeps the raw body for the paths the plugin names (`raw_body_paths/0`); Stripe's `Stripe-Signature` HMAC is checked against `STRIPE_WEBHOOK_SECRET` with a 5-minute tolerance. 200 = handled or ignored, 400 = bad signature/body (not retried), 500 = processing failed (Stripe retries) |
 | Events used | `checkout.session.completed` (when `paid`), `checkout.session.async_payment_succeeded`/`_failed`, `checkout.session.expired`, `charge.dispute.created`, `charge.dispute.closed` (won/lost). Disputes find the order by its PaymentIntent (`store_orders.provider_payment_ref`) |
-| Admin | `/admin/products` (Gem packs: price, Gems, dated promotion, badge, on/off sale; never deleted), `/admin/orders` (orders, order detail, the payment event inbox; read-only) |
+| Admin | `/admin/bacon_store/products` (Gem packs: price, Gems, dated promotion, badge, on/off sale; never deleted), `/admin/bacon_store/orders` (orders, order detail, the payment event inbox; read-only) |
 | Old shop | Removed: `Commerce`, `/shop`, `/cart`, `/checkout`, the old admin products/orders/subscriptions pages, their tables and the users columns only they used (migration `20261016210000`) |
 
 **Setting up Stripe.** Test mode first. Locally: export `STRIPE_SECRET_KEY` (an
-`sk_test_` key), run `stripe listen --forward-to localhost:4000/api/webhooks/payments/stripe`
+`sk_test_` key), run `stripe listen --forward-to localhost:4000/api/store/webhooks/stripe`
 and export the `whsec_` it prints as `STRIPE_WEBHOOK_SECRET`. In production both go in
 the gitignored `k3s/overlays/prod/secrets.yaml`, and the webhook endpoint
-`https://<host>/api/webhooks/payments/stripe` is added in the Stripe dashboard with the
-events above. Keys never go in the repository.
+`https://<host>/api/store/webhooks/stripe` is added in the Stripe dashboard with the
+events above. Keys never go in the repository. The plugin reads `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET` and `PAYMENTS_PROVIDER` itself, at runtime (not `runtime.exs`).
+
+**Operator step (once, after the 2026-10-21 deploy):** a Stripe dashboard that still names
+`https://<host>/api/webhooks/payments/stripe` keeps working (a `fixed` route in
+`BaconStoreWeb.Routes`). Change the endpoint to `/api/store/webhooks/stripe`, check that
+events arrive, then delete the `fixed` block.
 
 **Milestone 4c:** digital products.
 
 | Piece | Where |
 |---|---|
 | Kinds | `Store.Product.kind`: `gem_pack`, `download`, `item`, `access`, `license_key` (table in its moduledoc). Prices: `price_cents` and/or `price_gems` |
-| Catalog | `Bacon8.Store.Catalog`: categories (`store_categories`), products, images and download files (`store_product_files`), license key pools (`store_license_keys`). File bodies use `Bacon8.Storage` like drive files; `Drive.gc_blobs/2` keeps any body a product file names |
-| Delivery | `Bacon8.Store.Fulfilment`: entitlements with `source_type` "store_order" (`store_download`, a plugin's item kind, `channel_access`, `channel_slots`), keys from the pool, Gems to the wallet. An open bank dispute takes it all away at once (Gems too, even into a negative balance); a won dispute gives it back, a lost one makes it permanent. Plugins get `{:entitlement_granted, e}` / `{:entitlement_revoked, e}` hub events |
+| Catalog | `BaconStore.Store.Catalog`: categories (`store_categories`), products, images and download files (`store_product_files`), license key pools (`store_license_keys`). File bodies use `Bacon8.Storage` like drive files; `Drive.gc_blobs/2` keeps any body a product file names |
+| Delivery | `BaconStore.Store.Fulfilment`: entitlements with `source_type` "store_order" (`store_download`, a plugin's item kind, `channel_access`, `channel_slots`), keys from the pool, Gems to the wallet. An open bank dispute takes it all away at once (Gems too, even into a negative balance); a won dispute gives it back, a lost one makes it permanent. Plugins get `{:entitlement_granted, e}` / `{:entitlement_revoked, e}` hub events |
 | Gems | `Store.buy_with_gems/2`: spend and deliver in one transaction |
-| Card | `Store.start_checkout/3` reserves a license key until the order is paid, fails or is cancelled. Paid but undeliverable (keys ran out) stays "paid" with a reason; `/admin/orders` has "Retry delivery" |
-| Expiry | `Bacon8.Store.Sweeper` (every 5 min, advisory lock): ends timed items and passes (a pass's channel membership goes with it), cancels card orders unpaid for 48 h |
+| Card | `Store.start_checkout/3` reserves a license key until the order is paid, fails or is cancelled. Paid but undeliverable (keys ran out) stays "paid" with a reason; `/admin/bacon_store/orders` has "Retry delivery" |
+| Expiry | `BaconStore.Store.Sweeper` (every 5 min, advisory lock): ends timed items and passes (a pass's channel membership goes with it), cancels card orders unpaid for 48 h |
 | Pages | `/store` (category tabs, product grid, Gem packs), `/store/p/:slug` (gallery, Buy with card / Gems), `/store/library` (downloads, keys, items and passes), `GET /store/media/:id` (images), `GET /store/download/:id` (buyers only, attachment) |
-| Admin | `/admin/products` (all products, new-product buttons per kind, categories), `/admin/products/new?kind=…` and `/admin/products/:id` (`AdminLive.ProductEditor`: text, prices, delivery, images, files, keys) |
+| Admin | `/admin/bacon_store/products` (all products, new-product buttons per kind, categories), `/admin/bacon_store/products/new?kind=…` and `/admin/bacon_store/products/:id` (`BaconStoreWeb.Admin.ProductEditor`: text, prices, delivery, images, files, keys) |
 | Accounts | `Accounts.delete_user/1` anonymizes a user with orders, ledger entries or keys instead of deleting the row |
 
-Download size is capped by `config :bacon8, Bacon8.Store, max_download_bytes:` (default 2 GiB). Uploads go through the LiveView socket in 1 MB chunks and are staged in the pod's temp directory first, so the pod needs that much free temp space.
+Download size is capped by `config :bacon8, BaconStore.Store, max_download_bytes:` (default 2 GiB). Uploads go through the LiveView socket in 1 MB chunks and are staged in the pod's temp directory first, so the pod needs that much free temp space.
 
 Next: card subscriptions for storage tiers and VIP channels (Stripe Billing), then PayPal.
 
@@ -490,12 +511,12 @@ paid|fulfilled → disputed → (won → fulfilled | lost → charged_back)
 
 Order items snapshot name, price and currency at purchase time.
 
-**Payment providers** implement `Bacon8.Payments.Provider`:
+**Payment providers** implement `BaconStore.Payments.Provider`:
 
 ```elixir
 @callback create_checkout(order, opts) :: {:ok, %{redirect_url: String.t(), provider_ref: String.t()}} | {:error, term}
 @callback verify_webhook(raw_body :: binary, headers :: list) :: {:ok, provider_event :: map} | {:error, term}
-@callback normalize(provider_event :: map) :: {:ok, %Bacon8.Payments.Event{}} | :ignore
+@callback normalize(provider_event :: map) :: {:ok, %BaconStore.Payments.Event{}} | :ignore
 @callback create_subscription(user, plan, opts) :: {:ok, %{redirect_url: String.t(), provider_ref: String.t()}} | {:error, term}
 @callback cancel_subscription(subscription) :: :ok | {:error, term}
 ```
@@ -514,7 +535,7 @@ touches our servers.
 - A user returning from checkout sees "processing" until the webhook marks the order
   paid. Never fulfil from the redirect.
 
-**Gems.** The hub-wide currency (implemented: `Bacon8.Wallet`, `Bacon8.Store`). **100 Gems = US$1**, so a pack's price is its Gems / 100
+**Gems.** The hub-wide currency (implemented: `BaconStore.Wallet`, `BaconStore.Store`). **100 Gems = US$1**, so a pack's price is its Gems / 100
 dollars; no bonus Gems except in promotional events (a promotion is a pack with extra
 Gems and an active window, set by an admin). **No refunds, ever** (decisions log): there is
 no refund path in the code, and the store, checkout and terms say so before payment. A
@@ -678,6 +699,8 @@ defmodule Bacon8.Plugin do
   @callback game() :: %{name: String.t(), path: String.t(), description: String.t(), icon: String.t()} | nil
   @callback routes() :: module() | nil                 # e.g. BaconWorldWeb.Routes
   @callback previous_slugs() :: [String.t()]           # slugs before a rename; old links 301
+  @callback mount() :: String.t() | nil                # site plugins: "store" -> /store, /api/store
+  @callback requires() :: [String.t()]                 # plugin slugs this one needs
   @callback children() :: [Supervisor.child_spec()]    # under Bacon8.PluginSupervisor
   @callback admin_nav() :: [%{label: String.t(), path: String.t(), icon: String.t()}]
   @callback desktop_apps() :: [Bacon8.Desktop.App.t()]   # §10
@@ -685,6 +708,8 @@ defmodule Bacon8.Plugin do
   @callback on_activate() :: :ok | {:error, term()}
   @callback on_deactivate() :: :ok
   @callback hub_event(tuple()) :: :ok                     # see "Hub events"
+  # Hooks (see "Site plugins" below): retains_user_data?/1, storage_refs/0,
+  # raw_body_paths/0, nav_links/1, profile_tabs/1, admin_tools/0, admin_dashboard/0
 end
 ```
 
@@ -712,6 +737,44 @@ time. Activation is checked per request, so it never needs a recompile:
   lead to does. Renaming the plugin's stored names (tables, game row, `plugin_states`) is
   the plugin's own migrations' job (§5); Bacon World's are the example.
 
+**Site plugins** (implemented 2026-10-21, ADR 0001 phase 2). A plugin that is a site
+feature rather than a game returns `mount/0` (e.g. "store") and declares:
+
+- `site do ... end`: pages at `/<mount>/...`. With `:browser` (the default) they get a
+  `live_session` of their own (`UserAuth` + `PluginGate`, the app layout, no game
+  background); `site pipe_through: :drive_files do ... end` and the like give a plain
+  scope. Several `site` blocks may be declared, one per pipeline.
+- `site_api do ... end`: `/api/<mount>/...`, `:api` unless `pipe_through:` says otherwise
+  (the store uses `:webhooks`: no session, no rate limit).
+- `fixed reason: "...", pipe_through: ... do ... end`: absolute paths, for a URL an
+  outside party already uses. The reason is required, so it's clear when it can go.
+
+All three sit behind the plugin's gate (404 while inactive). The router refuses at
+compile time a mount that is a core path, used by two plugins, or missing while site
+routes exist.
+
+**Requirements.** `requires/0` lists plugin slugs. `activate/2` refuses while one is
+inactive (`{:error, {:requires, slugs}}`), `deactivate/2` refuses to turn off a plugin an
+active one requires (`{:error, {:required_by, slugs}}`), and a plugin switched on by
+default or by a saved row is left inactive while its requirements aren't met.
+`/admin/plugins` shows requirements and mounts.
+
+**Hooks** that replace core's direct calls into a plugin:
+
+| Hook | Asked of | Used by |
+|---|---|---|
+| `retains_user_data?(user_id)` | every installed plugin; a crash counts as yes | `Accounts.delete_user/1`: anonymise instead of delete |
+| `storage_refs()` | every installed plugin; a crash means delete nothing | `Drive.gc_blobs/2` keeps those blobs |
+| `raw_body_paths()` | every installed plugin | `Bacon8Web.RawBodyReader` |
+| `nav_links(user)` | active plugins | site navigation, taskbar |
+| `profile_tabs(user)` | active plugins | `/profile` |
+| `admin_tools()` | active plugins | `/admin/api-toolbox` |
+| `admin_dashboard()` | active plugins | `/admin` cards and panels |
+
+Data hooks ask installed plugins because an inactive plugin's data still exists; a plugin
+that raises gets the safe answer and the error is logged (`Bacon8.Plugins`). Display hooks
+skip a plugin that raises.
+
 Adding or removing a plugin *folder* recompiles the router (it has a `__mix_recompile__?`
 guard); activating or deactivating never does.
 
@@ -737,7 +800,9 @@ channel_id, user_id}` (kick or ban). Plugins must ignore events they don't know.
 
 **Files and settings.** `Bacon8.Plugins.priv_dir/1` finds a plugin's `priv/` in a release
 or the source tree. A plugin reads its own environment variables at runtime; the hub's
-`config/runtime.exs` doesn't know it.
+`config/runtime.exs` doesn't know it (the store's Stripe settings are the example). App
+config keyed by a plugin module (`config :bacon8, BaconStore.Payments, ...`) is fine for
+development and tests: it names an atom, so core still compiles without the plugin.
 
 **Private plugins in deploys.** `.dockerignore` keeps every plugin's `.git`, `k3s/`,
 `scripts/` and `*.sh` out of images. `deploy-prod.sh` applies each `plugins/*/k3s` (with a
@@ -864,8 +929,8 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 | 5 | **Start menu redesign** (§10) | Every app maps to a real feature; apps are registered data. |
 | 6 | **Stored-name cutover** (§5) | Cookie, release, node, DB and k8s names are Bacon8; runbook written and executed. *Done 2026-10-18 (decisions log).* |
 | 7 | **Bacon World** (ADR 0001, phase 1) | `web_lobby` is renamed everywhere, its stored names are migrated (tables, game row, plugin state) and old links redirect. *Done 2026-10-21.* |
-| 8 | **Site plugins** (phase 2) | Plugins can mount site routes (e.g. `/store`) and declare required plugins. Hooks replace core's direct calls into the store. |
-| 9 | **Bacon Store** (phase 3) | Core compiles and its suite passes without `plugins/bacon_store`; with it, everything in §8 behaves as before. |
+| 8 | **Site plugins** (phase 2) | Plugins can mount site routes (e.g. `/store`) and declare required plugins. Hooks replace core's direct calls into the store. *Done 2026-10-21.* |
+| 9 | **Bacon Store** (phase 3) | Core compiles and its suite passes without `plugins/bacon_store`; with it, everything in §8 behaves as before. *Done 2026-10-21; Stripe's dashboard still to be pointed at the new webhook URL (§8).* |
 | 10 | **Games platform as a plugin** (phase 4) | The core runs with one database; Bacon World and RaysSpaceSim require `bacon_games`. |
 | 11 | **Site kit** (phase 5) | A new stand-alone site from the core is a configuration change and a deploy. |
 

@@ -29,6 +29,12 @@ Rules of the road:
 - API routes mount at `/api/games/<game slug>/...` (controllers get `params["game_slug"]`,
   as the hub's own game routes do); pages at `/games/<slug>/...`; admin pages at
   `/admin/<slug>/...` (admins only - link them from `admin_nav/0`).
+- A site feature rather than a game? Return `mount/0` (e.g. "store") and declare `site`
+  (pages at `/<mount>/...`), `site_api` (`/api/<mount>/...`) and, for a URL an outside
+  service already uses, `fixed` (absolute paths, with a `reason:`). Need another plugin?
+  `requires/0`. Hooks let core ask you things without knowing you: whether a user's data
+  must outlive the account, which stored blobs you use, links for the navigation and the
+  profile, admin dashboard cards and API-toolbox actions (BACON8.md §9).
 - Need to react to the hub? Implement `hub_event/1` (channel updated/deleted, member
   removed - see `Bacon8.Plugin`). It's called for installed plugins, active or not.
 - Shipping files you read at runtime? Put them in `priv/` and find them with
@@ -47,7 +53,8 @@ Rules of the road:
   of the public repo, and `.dockerignore` keeps its `.git`, `k3s/` and scripts out of
   images. Switch it on from the first boot with `BACON8_ACTIVE_PLUGINS`.
 
-`bacon_world/` is the reference plugin: copy it to start your own.
+`bacon_world/` is the reference game plugin and `bacon_store/` the reference site plugin:
+copy the closer one to start your own.
 
 Renaming a plugin changes stored names (BACON8.md §5). Return the old slug from
 `previous_slugs/0` so `/games/<old>/...` and `/admin/<old>/...` redirect, and rename your

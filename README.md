@@ -38,7 +38,7 @@ practical: each subsystem says what it is and roughly what removing it costs.
 | **Accounts & auth** | Registration, email verification by 6-digit code, login by email *or* username, password reset, Guardian JWT sessions, 2FA scaffolding | `lib/bacon8/accounts`, `auth` |
 | **Account security** | Login-attempt tracking, lockout after repeated failures, device fingerprinting, block/allow identifier lists, behavioural bot signals, IP rate limiting | `lib/bacon8/security`, `rate_limiter.ex` |
 | **Content / CMS** | Posts, pages, comments, media library with tags, plus a WordPress-shaped `cms_*` set (posts, terms, taxonomies, meta) | `lib/bacon8/content` |
-| **Store & Gems** | Digital products (downloads, game items, access passes, license keys) and Gem packs, bought with a card or with Gems; a double-entry Gem ledger; Stripe Checkout behind a provider behaviour with an idempotent webhook inbox; a buyer's library | `lib/bacon8/store`, `wallet.ex`, `payments` |
+| **Store & Gems** | Digital products (downloads, game items, access passes, license keys) and Gem packs, bought with a card or with Gems; a double-entry Gem ledger; Stripe Checkout behind a provider behaviour with an idempotent webhook inbox; a buyer's library. A plugin (**Bacon Store**, mounted at `/store`): delete the folder for a site without a store | `plugins/bacon_store` |
 | **Forum & social** | Channels, threads, attachments, presence | `lib/bacon8/forum`, `social` |
 | **Chat** | Phoenix Channels with presence, optional Redis bridge for cross-pod delivery | `lib/bacon8_web/channels`, `redis_pubsub.ex` |
 | **Desktop UI** | A taskbar-and-windows shell rendered as a global `live_component` on every authenticated page — not a route | `lib/bacon8/desktop`, `desktop_live.ex` |

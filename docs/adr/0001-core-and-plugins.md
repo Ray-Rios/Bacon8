@@ -1,7 +1,9 @@
 # ADR 0001: A reusable core, with the store and the games as plugins
 
-- **Status:** Accepted (direction), 2026-10-20. **Phase 1 done 2026-10-21** (Web Lobby is
-  Bacon World); phases 2-5 are planned.
+- **Status:** Accepted (direction), 2026-10-20. **Phases 1-3 done 2026-10-21** (Web Lobby is
+  Bacon World; the plugin framework for site plugins; the store is `bacon_store`, shipped
+  with phase 2 in one deploy at the owner's choice). Phase 3's operator step (Stripe's
+  webhook URL) is pending. Phases 4-5 are planned.
 - **Deciders:** the owner.
 - **Supersedes:** nothing. Extends the plugin system in BACON8.md §9.
 
@@ -130,7 +132,7 @@ in Docker) and is deployed before the next starts.
 **Done when:** `grep -ri web_lobby` matches only the migrations, `previous_slugs` and
 history notes. Existing characters still load. `/games/web_lobby` redirects.
 
-### Phase 2: plugin framework for site plugins
+### Phase 2: plugin framework for site plugins (done 2026-10-21)
 
 1. **Mount points.** Extend `Bacon8.Plugin.Routes` with `site` (browser) and `site_api`
    blocks mounted at `/<mount>` and `/api/<mount>`. A plugin declares `mount/0`; for
@@ -152,7 +154,12 @@ history notes. Existing characters still load. `/games/web_lobby` redirects.
    | `admin_tools/0` (optional) | the API toolbox's store section |
 4. **Tests.** Tests for each hook, using the fixture plugin.
 
-### Phase 3: extract the store as `bacon_store`
+   *As built:* also `admin_dashboard/0` (core's dashboard read the store's stats and recent
+   orders), several `site` blocks per plugin (one per pipeline: the store's downloads use
+   `:drive_files`), and `pipe_through:` on `site_api` and `fixed` (webhooks use `:webhooks`).
+   Data hooks are asked of installed plugins and fail safe; display hooks of active ones.
+
+### Phase 3: extract the store as `bacon_store` (done 2026-10-21)
 
 1. Move `lib/bacon8/{store,wallet,payments}*`, the store LiveViews, `StoreFileController`,
    `PaymentWebhookController`, the store admin pages and `store_components.ex` into
