@@ -1,6 +1,7 @@
 // Character Model Manager - Replaces Babylon.js character system
 import * as THREE from "../../../../assets/js/vendor/three";
 import { SkeletonUtils } from "../../../../assets/js/vendor/three-loaders";
+import { PACE } from './controls-math';
 import UniversalModelLoader from './universal-model-loader';
 import type { 
   PlayerCharacter, 
@@ -16,12 +17,14 @@ import type {
 const PREFERRED_CLIPS: Record<string, string[]> = {
   idle: ['idle', 'idle_loop'],
   walk: ['walk', 'walk_loop'],
-  run: ['run', 'jog_fwd_loop', 'jog', 'sprint_loop', 'sprint'],
+  run: ['jog_fwd_loop', 'run', 'jog'],
+  sprint: ['sprint_loop', 'sprint'],
   jump: ['jump', 'jump_loop'],
   attack: ['attack', 'overhandthrow', 'attack_throw', 'throw'],
   cast: ['cast', 'spell_simple_shoot'],
   death: ['death', 'death01'],
-  crouch: ['crouch', 'crouch_idle_loop'],
+  crouch: ['crouch_idle_loop', 'crouch'],
+  crouch_walk: ['crouch_fwd_loop', 'crouch_walk'],
   hit: ['hit', 'hit_chest', 'hit_react'],
 };
 
@@ -429,20 +432,39 @@ export class CharacterModelManager {
     mixer.addEventListener('finished', onFinished);
   }
 
+  // Picks the clip for a character's motion (RaysSpaceSim's paces, controls-math.ts):
+  // airborne -> jump; crouching -> crouch idle / crouch walk; under 0.3 m/s -> idle;
+  // sprinting (Shift, or over 5.5 m/s) -> sprint; otherwise the jog.
   updateCharacterMotionState(
     characterId: string,
-    state: { isMoving: boolean; isRunning?: boolean; isJumping?: boolean }
+    state: {
+      isMoving: boolean;
+      isRunning?: boolean;
+      isJumping?: boolean;
+      isSprinting?: boolean;
+      isCrouching?: boolean;
+      speed?: number;
+    }
   ): void {
     const character = this.characters.get(characterId);
     if (!character || !character.mixer || character.animations.size === 0) return;
 
+    const moving = state.speed !== undefined ? state.speed >= PACE.idleBelow : state.isMoving;
+    const sprinting = !!state.isSprinting || (state.speed !== undefined && state.speed > PACE.jogUpTo);
+
     const requested = state.isJumping
       ? 'jump'
-      : state.isMoving
-        ? state.isRunning
-          ? 'run'
-          : 'walk'
-        : 'idle';
+      : state.isCrouching
+        ? moving
+          ? 'crouch_walk'
+          : 'crouch'
+        : !moving
+          ? 'idle'
+          : sprinting
+            ? 'sprint'
+            : state.isRunning === false
+              ? 'walk'
+              : 'run';
 
     const resolved = this.resolveAvailableAnimation(character.animations, requested);
     const previous = this.activeCharacterAnimations.get(characterId);
@@ -669,8 +691,10 @@ export class CharacterModelManager {
     if (animations.has(requested)) return requested;
 
     const fallbackChain: Record<string, string[]> = {
+      sprint: ['run', 'walk', 'idle'],
       run: ['walk', 'idle'],
       walk: ['run', 'idle'],
+      crouch_walk: ['crouch', 'walk', 'idle'],
       jump: ['run', 'walk', 'idle'],
       attack: ['idle'],
       cast: ['idle'],

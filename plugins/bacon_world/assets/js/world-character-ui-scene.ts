@@ -1,6 +1,7 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { CharacterModelManager } from './model-manager';
 import CharacterController from './character-controller';
+import { PACE, UNITS_PER_METRE } from './controls-math';
 import { SkySystem } from './sky-system';
 import { LobbyAudio } from './lobby-audio';
 
@@ -46,6 +47,8 @@ export const WorldCharacterUIScene = {
   lastSentLocalPosition: null as { x: number; y: number; z: number; heading: number } | null,
   remoteNetTargets: new Map<string, { x: number; y: number; z: number; heading: number; updatedAt: number }>(),
   remoteLastSeenMs: new Map<string, number>(),
+  // Remote players' horizontal speed (m/s), smoothed, for their animations.
+  remoteSpeeds: new Map<string, number>(),
   remoteStaleTimeoutMs: 30000,
   worldInitialized: false,
   remoteSyncInProgress: false,
@@ -55,6 +58,11 @@ export const WorldCharacterUIScene = {
   chatPanel: null as HTMLDivElement | null,
   chatInput: null as HTMLInputElement | null,
   chatOutsideClickHandler: null as ((event: MouseEvent) => void) | null,
+  // Mouse-look hints: shown while the pointer is free / locked (character-controller.ts).
+  lookHintEl: null as HTMLDivElement | null,
+  lookDotEl: null as HTMLDivElement | null,
+  // When a click last closed chat: that click mustn't also lock the pointer.
+  chatClosedAtMs: 0,
   nameplateEls: new Map<string, HTMLDivElement>(),
   creatorOverlay: null as HTMLDivElement | null,
   // sky & combat state
@@ -615,13 +623,15 @@ export const WorldCharacterUIScene = {
     if (localCharacter && !this.controller) {
       this.ensureLocalMarker(localCharacter.mesh);
       this.controller = new CharacterController(localCharacter.mesh, this.camera, {
-        moveSpeed: 4.5,
-        runSpeed: 8.0,
-        cameraDistance: 9,
-        cameraHeight: 3,
-        cameraSmoothing: 0.12,
-        flyMode: false
+        canvas: this.renderer.domElement,
+        // No pointer lock while typing in chat or dead (the overlay needs the cursor).
+        canLock: () =>
+          !this.isDead &&
+          document.activeElement !== this.chatInput &&
+          performance.now() - this.chatClosedAtMs > 300,
+        onPointerLockChange: (locked: boolean) => this.updateLookHint(locked),
       });
+      this.updateLookHint(false);
       this.controller.setPositionCallback((x: number, y: number, z: number, rotation: number) => {
         this.sendLocalPosition(x, y, z, rotation);
       });
@@ -741,6 +751,7 @@ export const WorldCharacterUIScene = {
             this.characterManager?.removeCharacter(id);
             this.remoteNetTargets.delete(id);
             this.remoteLastSeenMs.delete(id);
+            this.remoteSpeeds.delete(id);
           }
         }
       });
@@ -768,6 +779,8 @@ export const WorldCharacterUIScene = {
       }
 
       const currentPos = character.mesh.position;
+      const prevX = currentPos.x;
+      const prevZ = currentPos.z;
       const dx = target.x - currentPos.x;
       const dy = target.y - currentPos.y;
       const dz = target.z - currentPos.z;
@@ -788,9 +801,22 @@ export const WorldCharacterUIScene = {
       character.position.set(currentPos.x, currentPos.y, currentPos.z);
       character.rotation.set(0, character.mesh.rotation.y, 0);
 
-      const isMoving = distance > 0.06;
-      const isRunning = distance > 0.28;
-      this.characterManager.updateCharacterMotionState(id, { isMoving, isRunning, isJumping: false });
+      // Speed from how far the smoothed position moved this frame (m/s), eased so a
+      // late network update doesn't flicker the clip. Same paces as the local player.
+      let speed = 0;
+      if (distance <= snapDistance && deltaSeconds > 0) {
+        const frameSpeed = Math.hypot(currentPos.x - prevX, currentPos.z - prevZ) / deltaSeconds / UNITS_PER_METRE;
+        const previous = this.remoteSpeeds.get(id) ?? frameSpeed;
+        speed = previous + (frameSpeed - previous) * Math.min(1, deltaSeconds * 8);
+      }
+      this.remoteSpeeds.set(id, speed);
+      this.characterManager.updateCharacterMotionState(id, {
+        isMoving: speed >= PACE.idleBelow,
+        isRunning: true,
+        isSprinting: speed > PACE.jogUpTo,
+        isJumping: false,
+        speed
+      });
     });
   },
 
@@ -803,7 +829,10 @@ export const WorldCharacterUIScene = {
     this.characterManager.updateCharacterMotionState(currentId, {
       isMoving: !!movementState?.isMoving,
       isRunning: !!movementState?.isRunning,
-      isJumping: movementState ? !movementState.isGrounded : false
+      isSprinting: !!movementState?.isSprinting,
+      isCrouching: !!movementState?.isCrouching,
+      isJumping: movementState ? !movementState.isGrounded : false,
+      speed: movementState?.speed ?? 0
     });
 
     if (movementState && this.audio && !this.isDead) {
@@ -811,12 +840,12 @@ export const WorldCharacterUIScene = {
       if (this.wasGrounded && !grounded) this.audio.play('jump', 0.8);
       if (!this.wasGrounded && grounded) this.audio.play('land', 0.8);
       this.wasGrounded = grounded;
-      // two steps per walk/run cycle (1.0 s / 0.66 s clips)
+      // Steps by pace: sprint 260 ms, jog 330 ms, crouch-walk 500 ms.
       const now = performance.now();
-      const interval = movementState.isRunning ? 330 : 500;
+      const interval = movementState.isCrouching ? 500 : movementState.isSprinting ? 260 : 330;
       if (grounded && movementState.isMoving && now - this.lastStepMs > interval) {
         this.lastStepMs = now;
-        this.audio.footstep(!!movementState.isRunning);
+        this.audio.footstep(!movementState.isCrouching);
       }
     }
   },
@@ -867,6 +896,7 @@ export const WorldCharacterUIScene = {
     this._pushPending = false;
     this.remoteNetTargets.clear();
     this.remoteLastSeenMs.clear();
+    this.remoteSpeeds.clear();
     this.worldInitialized = false;
     this.remoteSyncInProgress = false;
     this.remoteSyncQueued = false;
@@ -1114,9 +1144,22 @@ export const WorldCharacterUIScene = {
     spellBar.appendChild(throwStoneSlot);
     layer.appendChild(spellBar);
 
+    // Mouse look (character-controller.ts): a hint while the cursor is free, a
+    // centre dot (what a click targets) while it's locked.
+    const lookHint = document.createElement('div');
+    lookHint.className = 'absolute bottom-24 left-1/2 -translate-x-1/2 text-[11px] text-cyan-200/80 bg-black/50 rounded px-2 py-0.5 select-none hidden';
+    lookHint.textContent = 'Click to look around · Esc for cursor';
+    layer.appendChild(lookHint);
+
+    const lookDot = document.createElement('div');
+    lookDot.className = 'absolute top-1/2 left-1/2 w-1 h-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/80 hidden';
+    layer.appendChild(lookDot);
+
     this.el.appendChild(layer);
 
     this.nameplateLayer = layer;
+    this.lookHintEl = lookHint;
+    this.lookDotEl = lookDot;
     this.chatPanel = chatPanel;
     this.chatInput = input;
     this.hudEl = hud;
@@ -1129,6 +1172,8 @@ export const WorldCharacterUIScene = {
       if (this.chatPanel && this.chatPanel.contains(target)) return;
       if (document.activeElement === this.chatInput) {
         this.chatInput?.blur();
+        // This click only closes chat; the next one may lock the pointer.
+        this.chatClosedAtMs = performance.now();
       }
     };
 
@@ -1166,11 +1211,18 @@ export const WorldCharacterUIScene = {
     }
   },
 
+  updateLookHint(this: any, locked: boolean) {
+    this.lookHintEl?.classList.toggle('hidden', locked);
+    this.lookDotEl?.classList.toggle('hidden', !locked);
+  },
+
   removeWorldOverlayUI(this: any) {
     if (this.nameplateLayer && this.nameplateLayer.parentElement) {
       this.nameplateLayer.parentElement.removeChild(this.nameplateLayer);
     }
     this.nameplateLayer = null;
+    this.lookHintEl = null;
+    this.lookDotEl = null;
     this.chatPanel = null;
     this.chatInput = null;
     this.hudEl = null;
@@ -1187,6 +1239,7 @@ export const WorldCharacterUIScene = {
 
   enterDeathState(this: any, respawnInMs: number) {
     this.isDead = true;
+    this.controller?.releasePointerLock();
 
     // Play death animation on local character
     const myId = this.state?.currentPlayer?.character_id;
@@ -1309,7 +1362,10 @@ export const WorldCharacterUIScene = {
         return;
       }
 
-      const movementKeys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'KeyC'];
+      const movementKeys = [
+        'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+        'Space', 'ShiftLeft', 'ShiftRight', 'KeyC'
+      ];
       if (movementKeys.includes(event.code)) {
         event.stopImmediatePropagation();
       }
@@ -1332,6 +1388,7 @@ export const WorldCharacterUIScene = {
     if (event.key !== 'Enter') return;
     if (!this.chatInput) return;
     event.preventDefault();
+    this.controller?.releasePointerLock();
     this.chatInput.focus();
   },
 
@@ -1813,12 +1870,17 @@ export const WorldCharacterUIScene = {
       return;
     }
 
-    // In world mode: ray-cast for characters first (targeting)
+    // In world mode: ray-cast for characters (targeting). With the pointer locked
+    // the cursor is hidden, so aim at the centre of the screen (the dot).
     if (!this.camera || !this.renderer) return;
-    const rect = this.renderer.domElement.getBoundingClientRect();
     if (!this.pointer) return;
-    this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    if (this.controller?.isPointerLocked()) {
+      this.pointer.set(0, 0);
+    } else {
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    }
     this.raycaster!.setFromCamera(this.pointer, this.camera);
 
     const allMeshes: THREE.Object3D[] = [];
