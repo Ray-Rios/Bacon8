@@ -1,9 +1,9 @@
 {
   "name": "Bacon8",
   "short_name": "Bacon8",
-  "description": "Games, chat channels and a store for the people who play them.",
-  "mark_color": "#C2412D",
-  "mark_ink": "#FFF4E6",
+  "description": "The kitchen sink.",
+  "mark_color": "#247DF1",
+  "mark_ink": "#E7F1FD",
   "background_color": "#14100F",
   "theme_color": "#14100F"
 }

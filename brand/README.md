@@ -20,5 +20,6 @@ docker run --rm -v "$(pwd -W):/work" -w /work python:3.12-slim \
   sh -c "pip install -q pillow && python scripts/brand/build_brand_assets.py"
 ```
 
-The files here on 2026-10-20 are placeholders: a "B8" monogram set in Inter
-(SIL Open Font License) and an "RSS" mark for the game.
+The Bacon8 logo is the "B8" monogram set in Inter Display Black (SIL Open Font
+License): cream `#E7F1FD` on blue `#247DF1`, shown on near-black `#14100F`
+(decided 2026-10-20). The game's icon is an "RSS" mark over a ringed planet.
