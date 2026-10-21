@@ -2,6 +2,7 @@ import * as THREE from '../../../../assets/js/vendor/three';
 import { CharacterModelManager } from './model-manager';
 import CharacterController from './character-controller';
 import { SkySystem } from './sky-system';
+import { LobbyAudio } from './lobby-audio';
 
 type CharacterCard = {
   id: string;
@@ -61,6 +62,10 @@ export const WorldCharacterUIScene = {
   ambientLight: null as THREE.AmbientLight | null,
   targetId: null as string | null,
   targetRingMesh: null as THREE.Mesh | null,
+  // sound: effects, footsteps and the lobby music (see lobby-audio.ts)
+  audio: null as LobbyAudio | null,
+  wasGrounded: true,
+  lastStepMs: 0,
   // death state
   isDead: false,
   deathOverlayEl: null as HTMLDivElement | null,
@@ -113,6 +118,7 @@ export const WorldCharacterUIScene = {
     this.pointer = new THREE.Vector2();
     this.characterManager = new CharacterModelManager();
     this.characterManager.setActiveScene(this.scene);
+    this.audio = new LobbyAudio();
     this.worldGroup = new THREE.Group();
     this.scene.add(this.worldGroup);
 
@@ -250,6 +256,21 @@ export const WorldCharacterUIScene = {
       if (!result) return;
       const myId = this.state?.currentPlayer?.character_id;
 
+      // Everyone sees the caster throw; the stone's sounds come from where they happen.
+      if (result.caster_id) {
+        this.characterManager?.playOneShot(result.caster_id, 'attack');
+        this.audio?.play('throw', 0.9, this.distanceToCharacter(result.caster_id));
+      }
+      if (result.hit && result.target_id) {
+        const d = this.distanceToCharacter(result.target_id);
+        const flight = this.stoneFlightMs(result.caster_id, result.target_id);
+        setTimeout(() => this.audio?.play('hit', 1, d), flight);
+        if (result.target_id === myId && !result.target_died) setTimeout(() => this.audio?.play('hurt', 0.9), flight + 30);
+      }
+      if (result.target_died && result.target_id && result.target_id !== myId) {
+        this.audio?.play('death', 0.8, this.distanceToCharacter(result.target_id));
+      }
+
       // Update our own MP if we were the caster
       if (result.caster_id === myId && this.state?.currentPlayer) {
         this.state.currentPlayer.mp = result.caster_mp;
@@ -322,6 +343,7 @@ export const WorldCharacterUIScene = {
         this.state.currentPlayer.hp = 0;
         this.updateHUD();
       }
+      this.audio?.play('death', 1);
       this.enterDeathState(payload.respawn_in_ms ?? 30000);
     });
 
@@ -360,6 +382,7 @@ export const WorldCharacterUIScene = {
       }
       this.deathSpawnCoords = null;
       if (myId) this.characterManager?.playCharacterAnimation(myId, 'idle', true);
+      this.audio?.play('respawn', 0.9);
     });
 
     this.handleEvent('spell_error', (payload: any) => {
@@ -427,6 +450,8 @@ export const WorldCharacterUIScene = {
     }
     this.controller?.dispose();
     this.characterManager?.dispose();
+    this.audio?.dispose();
+    this.audio = null;
     this.clearPanels();
     this.scene = null;
     this.camera = null;
@@ -603,6 +628,8 @@ export const WorldCharacterUIScene = {
     }
 
     this.worldInitialized = true;
+    this.audio?.setMusic(true);
+    this.audio?.preload();
 
     // Start day/night sky system
     if (!this.skySystem && this.ambientLight) {
@@ -778,6 +805,41 @@ export const WorldCharacterUIScene = {
       isRunning: !!movementState?.isRunning,
       isJumping: movementState ? !movementState.isGrounded : false
     });
+
+    if (movementState && this.audio && !this.isDead) {
+      const grounded = !!movementState.isGrounded;
+      if (this.wasGrounded && !grounded) this.audio.play('jump', 0.8);
+      if (!this.wasGrounded && grounded) this.audio.play('land', 0.8);
+      this.wasGrounded = grounded;
+      // two steps per walk/run cycle (1.0 s / 0.66 s clips)
+      const now = performance.now();
+      const interval = movementState.isRunning ? 330 : 500;
+      if (grounded && movementState.isMoving && now - this.lastStepMs > interval) {
+        this.lastStepMs = now;
+        this.audio.footstep(!!movementState.isRunning);
+      }
+    }
+  },
+
+  // How long a thrown stone is in the air (same rule as launchProjectile), so the
+  // hit sound lands with it.
+  stoneFlightMs(this: any, casterId: string | null | undefined, targetId: string | null | undefined): number {
+    const chars = this.characterManager?.getAllCharacters();
+    const a = casterId ? chars?.get(casterId) : null;
+    const b = targetId ? chars?.get(targetId) : null;
+    if (!a || !b) return 350;
+    return Math.max(250, Math.min(600, a.mesh.position.distanceTo(b.mesh.position) * 25));
+  },
+
+  // Distance from the local player to another character, for quieter far-away sounds.
+  distanceToCharacter(this: any, characterId: string | null | undefined): number {
+    const myId = this.state?.currentPlayer?.character_id;
+    if (!characterId || !myId || characterId === myId) return 0;
+    const chars = this.characterManager?.getAllCharacters();
+    const me = chars?.get(myId);
+    const other = chars?.get(characterId);
+    if (!me || !other) return 0;
+    return me.mesh.position.distanceTo(other.mesh.position);
   },
 
   shortestAngleDiff(this: any, from: number, to: number): number {
@@ -788,6 +850,7 @@ export const WorldCharacterUIScene = {
   },
 
   teardownWorldMode(this: any) {
+    this.audio?.setMusic(false);
     if (this.positionHeartbeatInterval) {
       clearInterval(this.positionHeartbeatInterval);
       this.positionHeartbeatInterval = null;
@@ -922,9 +985,21 @@ export const WorldCharacterUIScene = {
       (this.pushEvent('toggle_pvp', {}) as any)?.catch?.(() => {});
     });
 
+    // Sound on/off (remembered in this browser)
+    const soundBtn = document.createElement('button');
+    soundBtn.className = 'mt-1 ml-1 text-[10px] rounded px-2 py-0.5 bg-slate-700/80 border border-slate-600 text-slate-300 hover:bg-slate-600 cursor-pointer pointer-events-auto';
+    soundBtn.setAttribute('data-sound-btn', 'true');
+    const soundLabel = () => (this.audio?.enabled ? 'Sound: ON' : 'Sound: OFF');
+    soundBtn.textContent = soundLabel();
+    soundBtn.addEventListener('click', () => {
+      this.audio?.toggle();
+      soundBtn.textContent = soundLabel();
+    });
+
     hud.appendChild(hpRow);
     hud.appendChild(mpRow);
     hud.appendChild(pvpBtn);
+    hud.appendChild(soundBtn);
     layer.appendChild(hud);
 
     // ── Target Frame (top-center) ───────────────────────────────────────────

@@ -230,7 +230,7 @@ defmodule WebLobby.World do
       user_id: c.user_id,
       name: c.name,
       character_type: settings["character_type"] || "",
-      model_path: settings["model_path"] || "",
+      model_path: current_model(settings["model_path"]),
       zone_slug: settings["zone_slug"] || @default_zone_slug,
       hp: stat(c, "hp"),
       max_hp: stat(c, "max_hp"),
@@ -284,4 +284,23 @@ defmodule WebLobby.World do
 
   defp num(n) when is_number(n), do: n * 1.0
   defp num(_), do: 0.0
+
+  # Models are files on a volume, curated by supported_models.txt, so one can be
+  # removed after characters picked it. Those characters wear the first model still
+  # offered instead of an empty path (which the client draws as a grey box).
+  defp current_model(path) when is_binary(path) and path != "" do
+    case Models.validate(path) do
+      {:ok, path} -> path
+      {:error, _} -> default_model()
+    end
+  end
+
+  defp current_model(_), do: default_model()
+
+  defp default_model do
+    case Models.list() do
+      [%{model_path: path} | _] -> path
+      [] -> ""
+    end
+  end
 end

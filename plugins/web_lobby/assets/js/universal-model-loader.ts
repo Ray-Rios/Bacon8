@@ -1,6 +1,6 @@
 // Universal Model Loader for GLTF and FBX with fallbacks
 import * as THREE from '../../../../assets/js/vendor/three';
-import { GLTFLoader, FBXLoader } from '../../../../assets/js/vendor/three-loaders';
+import { GLTFLoader, FBXLoader, SkeletonUtils } from '../../../../assets/js/vendor/three-loaders';
 
 export interface ModelInfo {
   name: string;
@@ -269,7 +269,8 @@ export class UniversalModelLoader {
    * Clone a loaded model for instancing
    */
   cloneModel(asset: LoadedModelAsset): THREE.Object3D {
-    const clone = asset.model.clone();
+    // SkeletonUtils.clone also rebinds skinned meshes to the clone's own bones.
+    const clone = SkeletonUtils.clone(asset.model);
     
     // Clone materials to prevent shared state
     clone.traverse((child) => {
@@ -296,22 +297,6 @@ export class UniversalModelLoader {
 
     const mixer = new THREE.AnimationMixer(model);
     return mixer;
-  }
-
-  /**
-   * Get list of available creature models
-   */
-  getAvailableCreatures(): string[] {
-    return [
-      'Aligator', 'Armadillo', 'Badger', 'Bear', 'Beaver',
-      'Bighorn', 'Bison', 'Boar', 'Bull', 'Cat', 'Chicken',
-      'Chipmunk', 'Condor', 'Coyote', 'Crab', 'Crow', 'Deer',
-      'Doe', 'Donkey', 'Eagle', 'Egret', 'Elk', 'Fox', 'Goat',
-      'Goose', 'Hawk', 'Heron', 'Iguana', 'Mammoth', 'Moose',
-      'Owl', 'Owlbear', 'Panther', 'Pig', 'Possum', 'Raccoon',
-      'Rat', 'Rooster', 'Seagull', 'Sheep', 'Skunk', 'Squirrel',
-      'Turkey', 'Vulture', 'Woodpecker'
-    ];
   }
 
   /**

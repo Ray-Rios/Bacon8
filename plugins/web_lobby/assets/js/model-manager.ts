@@ -1,5 +1,6 @@
 // Character Model Manager - Replaces Babylon.js character system
 import * as THREE from "../../../../assets/js/vendor/three";
+import { SkeletonUtils } from "../../../../assets/js/vendor/three-loaders";
 import UniversalModelLoader from './universal-model-loader';
 import type { 
   PlayerCharacter, 
@@ -8,12 +9,32 @@ import type {
   ModelLoadOptions 
 } from './types';
 
+// Clip names (lower case) each lobby action prefers, best first. The Bacon8 humans
+// carry Quaternius Universal Animation Library clips (CC0) baked onto the B8
+// skeleton, so their names are listed alongside the generic ones; anything not
+// listed falls back to pattern matching in canonicalAnimationName().
+const PREFERRED_CLIPS: Record<string, string[]> = {
+  idle: ['idle', 'idle_loop'],
+  walk: ['walk', 'walk_loop'],
+  run: ['run', 'jog_fwd_loop', 'jog', 'sprint_loop', 'sprint'],
+  jump: ['jump', 'jump_loop'],
+  attack: ['attack', 'overhandthrow', 'attack_throw', 'throw'],
+  cast: ['cast', 'spell_simple_shoot'],
+  death: ['death', 'death01'],
+  crouch: ['crouch', 'crouch_idle_loop'],
+  hit: ['hit', 'hit_chest', 'hit_react'],
+};
+
 export class CharacterModelManager {
   private loadedModels: Map<string, LoadedModel> = new Map();
   private characters: Map<string, PlayerCharacter> = new Map();
   private creatures: Map<string, CreatureNPC> = new Map();
   private creatingCharacters: Map<string, Promise<PlayerCharacter>> = new Map();
+  // The clip each character is playing. "oneshot:<clip>" (a throw) and "hold:<clip>"
+  // (death) are not interrupted by movement updates; see playOneShot / playCharacterAnimation.
   private activeCharacterAnimations: Map<string, string> = new Map();
+  // A one-shot that just finished, so the next locomotion clip can fade out of it.
+  private fadingFrom: Map<string, THREE.AnimationAction> = new Map();
   private universalLoader: UniversalModelLoader;
   private activeScene: THREE.Scene | null = null;
 
@@ -358,15 +379,54 @@ export class CharacterModelManager {
     // Stop current animations
     character.animations.forEach(action => action.stop());
 
-    // Play new animation
+    // Play new animation. A non-looping clip (death) plays once and holds its last
+    // frame until the character moves again.
     const action = character.animations.get(animationName)!;
     action.reset();
     if (loop) {
-      action.setLoop(2, Infinity); // THREE.LoopRepeat
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      action.clampWhenFinished = false;
+    } else {
+      action.setLoop(THREE.LoopOnce, 1);
+      action.clampWhenFinished = true;
     }
     action.play();
+    this.fadingFrom.delete(characterId);
+    this.activeCharacterAnimations.set(characterId, loop ? animationName : `hold:${animationName}`);
+  }
 
-    console.log(`🎬 Playing animation ${animationName} for character ${characterId}`);
+  // Play a clip once over whatever the character is doing (the throw when casting),
+  // then fade back to walking/idling. Does nothing if the model has no such clip.
+  playOneShot(characterId: string, animationName: string): void {
+    const character = this.characters.get(characterId);
+    if (!character || !character.mixer) return;
+    const current = this.activeCharacterAnimations.get(characterId);
+    if (current && current.startsWith('hold:')) return; // dead characters don't throw
+
+    const action = character.animations.get(animationName);
+    if (!action) return;
+    const previous = current && !current.startsWith('oneshot:') ? character.animations.get(current) : undefined;
+
+    action.reset();
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.enabled = true;
+    if (previous && previous !== action) {
+      action.crossFadeFrom(previous, 0.12, false);
+    }
+    action.play();
+    this.activeCharacterAnimations.set(characterId, `oneshot:${animationName}`);
+
+    const mixer = character.mixer;
+    const onFinished = (event: any) => {
+      if (event.action !== action) return;
+      mixer.removeEventListener('finished', onFinished);
+      if (this.activeCharacterAnimations.get(characterId) === `oneshot:${animationName}`) {
+        this.activeCharacterAnimations.delete(characterId);
+        this.fadingFrom.set(characterId, action);
+      }
+    };
+    mixer.addEventListener('finished', onFinished);
   }
 
   updateCharacterMotionState(
@@ -387,12 +447,17 @@ export class CharacterModelManager {
     const resolved = this.resolveAvailableAnimation(character.animations, requested);
     const previous = this.activeCharacterAnimations.get(characterId);
 
+    // Let a throw finish; keep a death pose until the character moves (respawned).
+    if (previous && previous.startsWith('oneshot:')) return;
+    if (previous && previous.startsWith('hold:') && !state.isMoving) return;
     if (previous === resolved) return;
 
     const nextAction = character.animations.get(resolved);
     if (!nextAction) return;
 
-    const prevAction = previous ? character.animations.get(previous) : undefined;
+    const prevKey = previous ? previous.replace(/^hold:/, '') : undefined;
+    const prevAction = (prevKey ? character.animations.get(prevKey) : undefined) || this.fadingFrom.get(characterId);
+    this.fadingFrom.delete(characterId);
 
     nextAction.enabled = true;
     nextAction.reset();
@@ -518,8 +583,9 @@ export class CharacterModelManager {
   }
 
   private cloneModel(loadedModel: LoadedModel): any {
-    // Clone the Three.js group/mesh
-    return loadedModel.mesh.clone();
+    // SkeletonUtils.clone rebinds each copy's skinned meshes to the copy's own bones;
+    // a plain clone() would leave every player's mesh following the template's skeleton.
+    return SkeletonUtils.clone(loadedModel.mesh);
   }
 
   private getCharacterModelPath(characterType: string): string {
@@ -554,6 +620,15 @@ export class CharacterModelManager {
     const animationMap = new Map<string, THREE.AnimationAction>();
     if (!mixer || clips.length === 0) return animationMap;
 
+    // 1) Exact clip names first, so a model that ships several matching clips
+    //    (Idle_Loop, Idle_Talking_Loop, ...) gets the intended one.
+    const byName = new Map(clips.map((clip) => [(clip.name || '').toLowerCase(), clip]));
+    for (const [key, names] of Object.entries(PREFERRED_CLIPS)) {
+      const clip = names.map((n) => byName.get(n)).find(Boolean);
+      if (clip) animationMap.set(key, mixer.clipAction(clip));
+    }
+
+    // 2) Then pattern matching for anything still missing.
     clips.forEach((clip, index) => {
       const key = this.canonicalAnimationName(clip.name, index);
       const action = mixer.clipAction(clip);
@@ -664,4 +739,4 @@ export class CharacterModelManager {
   }
 }
 
-export default CharacterModelManager;
+export default CharacterModelManager;

@@ -122,6 +122,13 @@ defmodule WebLobby.WorldTest do
     assert %{mp: 9} = World.get_character_for_user(user_id, caster.id)
   end
 
+  test "a character whose model was removed wears the first model still offered", %{user_id: user_id, model: model} do
+    c = create!(user_id, model, "Remodelled")
+    {:ok, _} = Games.update_character(Games.get_character!(c.id), %{settings: %{"model_path" => "/models/gone/away.glb"}})
+
+    assert %{model_path: ^model} = World.get_character_for_user(user_id, c.id)
+  end
+
   test "characters of other games can't be targeted", %{user_id: user_id, model: model} do
     caster = create!(user_id, model, "Lobbyist")
     {:ok, true} = World.toggle_pvp(user_id, caster.id)
