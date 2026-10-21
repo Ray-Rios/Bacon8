@@ -8,6 +8,7 @@ defmodule Bacon8Web.PluginRouter do
       plugin_api_routes()       # BEFORE the core "/api/games/:game_slug" scopes
       plugin_browser_routes()   # after the main live_session
       plugin_admin_routes()     # likewise
+      plugin_redirect_routes()  # after both: 301s from renamed plugins' old slugs
 
   Routes of *installed* plugins are always compiled in; the gate pipeline
   (`Bacon8Web.Plugs.PluginActive`) and the LiveView `on_mount` hook
@@ -125,6 +126,60 @@ defmodule Bacon8Web.PluginRouter do
     end
 
     {:__block__, [], scopes}
+  end
+
+  @doc """
+  301 redirects for renamed plugins: `/games/<old>` and `/admin/<old>`, and
+  everything under them, to the same path under the current slug, with the
+  query string kept. Old slugs come from `c:Bacon8.Plugin.previous_slugs/0`.
+  Redirects don't check activation: the page they lead to does.
+  """
+  defmacro plugin_redirect_routes do
+    renames = previous_slugs!()
+
+    routes =
+      for {old, new} <- renames, prefix <- ["/games", "/admin"] do
+        from = "#{prefix}/#{old}"
+        private = Macro.escape(%{plugin_redirect: {from, "#{prefix}/#{new}"}})
+
+        quote do
+          get unquote(from), Bacon8Web.PluginRedirectController, :show, private: unquote(private)
+          get unquote(from <> "/*path"), Bacon8Web.PluginRedirectController, :show, private: unquote(private)
+        end
+      end
+
+    quote do
+      scope "/" do
+        unquote({:__block__, [], routes})
+      end
+    end
+  end
+
+  @doc false
+  def previous_slugs! do
+    plugins = Discovery.discover()
+    installed = MapSet.new(plugins, & &1.slug)
+
+    for %{slug: slug, module: mod} <- plugins,
+        ensure_plugin!(slug, mod),
+        old <- mod.previous_slugs(),
+        reduce: [] do
+      acc ->
+        cond do
+          not (is_binary(old) and Regex.match?(Bacon8.Plugin.slug_format(), old)) ->
+            raise ArgumentError, "plugin #{slug}: previous slug #{inspect(old)} is not a valid slug"
+
+          MapSet.member?(installed, old) ->
+            raise ArgumentError, "plugin #{slug}: previous slug #{inspect(old)} is an installed plugin's slug"
+
+          List.keymember?(acc, old, 0) ->
+            raise ArgumentError, "previous slug #{inspect(old)} is claimed by more than one plugin"
+
+          true ->
+            [{old, slug} | acc]
+        end
+    end
+    |> Enum.reverse()
   end
 
   @doc "Admin pages at /admin/<plugin slug>/..., admins only, in a live_session per plugin."

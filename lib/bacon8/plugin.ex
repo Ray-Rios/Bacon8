@@ -5,20 +5,20 @@ defmodule Bacon8.Plugin do
   A plugin is a folder under `plugins/`. The folder name is the plugin's slug,
   and the main module is `<Camelized slug>.Plugin`:
 
-      plugins/web_lobby/lib/web_lobby/plugin.ex
+      plugins/bacon_world/lib/bacon_world/plugin.ex
 
-      defmodule WebLobby.Plugin do
+      defmodule BaconWorld.Plugin do
         use Bacon8.Plugin,
-          slug: "web_lobby",
-          name: "Web Lobby",
+          slug: "bacon_world",
+          name: "Bacon World",
           version: "0.1.0",
           description: "A small multiplayer 3D arcade that runs in the browser."
 
         @impl true
-        def game, do: %{name: "Web Lobby", description: "...", path: "/games/web_lobby"}
+        def game, do: %{name: "Bacon World", description: "...", path: "/games/bacon_world"}
 
         @impl true
-        def routes, do: WebLobbyWeb.Routes
+        def routes, do: BaconWorldWeb.Routes
       end
 
   `use Bacon8.Plugin` defines the required callbacks from its options and gives
@@ -50,6 +50,14 @@ defmodule Bacon8.Plugin do
 
   @doc "A module using `Bacon8.Plugin.Routes`, or nil."
   @callback routes() :: module() | nil
+
+  @doc """
+  Slugs this plugin was installed under before a rename. Old links keep working:
+  `/games/<old>/...` and `/admin/<old>/...` answer 301 to the same path under
+  the current slug (`Bacon8Web.PluginRouter`). Stored names (tables, the game
+  row, `plugin_states`) are the plugin's own migrations' job (BACON8.md §5).
+  """
+  @callback previous_slugs() :: [String.t()]
 
   @doc "Processes supervised while the plugin is active."
   @callback children() :: [Supervisor.child_spec() | {module(), term()} | module()]
@@ -126,6 +134,8 @@ defmodule Bacon8.Plugin do
       @impl true
       def routes, do: nil
       @impl true
+      def previous_slugs, do: []
+      @impl true
       def children, do: []
       @impl true
       def admin_nav, do: []
@@ -140,7 +150,7 @@ defmodule Bacon8.Plugin do
       @impl true
       def hub_event(_event), do: :ok
 
-      defoverridable game: 0, routes: 0, children: 0, admin_nav: 0, desktop_apps: 0,
+      defoverridable game: 0, routes: 0, previous_slugs: 0, children: 0, admin_nav: 0, desktop_apps: 0,
                      entitlement_kinds: 0, on_activate: 0, on_deactivate: 0, hub_event: 1
     end
   end

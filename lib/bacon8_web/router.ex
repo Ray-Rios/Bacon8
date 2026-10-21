@@ -182,6 +182,9 @@ defmodule Bacon8Web.Router do
   # Plugin admin pages: /admin/<plugin slug>/..., admins only.
   plugin_admin_routes()
 
+  # Renamed plugins: 301 from /games/<old slug>/... and /admin/<old slug>/...
+  plugin_redirect_routes()
+
   # --------------------
   # Auth Controller Actions (non-Live)
   # --------------------
