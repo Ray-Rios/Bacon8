@@ -16,8 +16,9 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-21**: third-party content replaced with our own and
-CC0 work; the Bacon8 humans in the Web Lobby; placeholder legal pages; and the direction
+Last substantive update: **2026-10-21**: Web Lobby renamed to **Bacon World** (`bacon_world`,
+ADR 0001 phase 1; §9); third-party content replaced with our own and
+CC0 work; the Bacon8 humans in the lobby; placeholder legal pages; and the direction
 for a reusable core with games and commerce as plugins (ADR 0001: Bacon World, Bacon
 Store, a site kit). Before that, **2026-10-20**: the move to Bacon8 is finished; unused
 API side doors removed (invariant 16); brand assets generated from `brand/`.
@@ -56,7 +57,7 @@ A self-hostable Phoenix/LiveView server for running an online community around g
   (accounts, characters, server registry, client release distribution with a
   self-updating launcher)
 
-Games plug into the hub as **plugins** (§9), WordPress-style. The repository ships one, **Web Lobby**: a
+Games plug into the hub as **plugins** (§9), WordPress-style. The repository ships one, **Bacon World**: a
 small in-browser 3D multiplayer arcade that serves as both the demo and the reference
 implementation of the plugin API. Larger games live in their own repositories and
 depend on the hub; nothing in this repo may depend on them.
@@ -128,6 +129,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-20 | **Characters use our own skeleton, "B8 skeleton v1".** It has Unreal-style names, which Unreal's IK Retargeter, Unity's Humanoid and Godot's BoneMap all map. It has 3 spine bones, twist bones, breast and glute jiggle bones on every body, and `weapon_l`/`weapon_r` grip bones. Male and female share it. The bodies are Blender Studio's CC0 base meshes; the animations are Quaternius' CC0 Universal Animation Library, baked onto the skeleton. Built in the game repository (`SourceAssets/Characters/B8Human`). | Owner's decision. Epic's skeleton and animations may only be used in Unreal, and the web, Unity and Godot versions must look the same as the Unreal game. |
 | 2026-10-20 | **Legal pages are CMS pages:** `/pages/terms`, `privacy`, `refunds`, `copyright`, `contact`, `credits` and `gems`. They are seeded unpublished as placeholders to be reviewed with a lawyer, and the store's small print links to them. | Owner's decision. They can be edited in `/admin/pages` without a deploy. |
 | 2026-10-20 | **Direction: a reusable core, with games and commerce as plugins** (`docs/adr/0001-core-and-plugins.md`). Web Lobby becomes **Bacon World** (`bacon_world`). The store, Gems and payments become **Bacon Store** (`bacon_store`). The games platform becomes a plugin later. The core becomes the starting point for other stand-alone sites. | Owner's decision. A site that sells nothing or runs no games shouldn't carry the code for them. |
+| 2026-10-21 | **Web Lobby is renamed Bacon World** (`web_lobby` -> `bacon_world`), stored names included: the three `bacon_world_*` tables with their keys and indexes, the game row and the `plugin_states` row, by the plugin's own migrations. Plugins gain `previous_slugs/0`; old `/games/web_lobby/...` and `/admin/web_lobby/...` links answer 301. Ledger rows keep the slug they were written with. | ADR 0001, phase 1. A first-party game's name should say what it is; the redirect keeps old links and bookmarks working. |
 
 ---
 
@@ -200,12 +202,12 @@ lib/
 priv/repo/migrations       site DB
 priv/games_repo/migrations games DB
 assets/                    esbuild + tailwind; three.js background scenes; vendor/ shims for plugins
-plugins/                   installed plugins, one folder each (§9); web_lobby/ is the example
+plugins/                   installed plugins, one folder each (§9); bacon_world/ is the example
 k3s/                       kustomize base + overlays (dev, prod)
 config/runtime.exs         all deploy-time configuration via env vars
 ```
 
-**Not part of the hub:** any plugin folder other than `plugins/web_lobby` (gitignored; a
+**Not part of the hub:** any plugin folder other than `plugins/bacon_world` (gitignored; a
 private plugin is its own repository), and a game repository checked out at the root
 (`/RaysSpaceSim/`, gitignored). RaysSpaceSim's deploy and build scripts, k8s manifests,
 code map, mix task and admin pages moved into its private plugin on 2026-10-16.
@@ -605,13 +607,13 @@ A plugin is a folder, the way WordPress plugins are:
 
 ```
 plugins/
-  web_lobby/                         folder name = slug = game slug = table prefix
+  bacon_world/                       folder name = slug = game slug = table prefix
     README.md                        what it is, how to enable it
-    lib/web_lobby/plugin.ex          WebLobby.Plugin - implements Bacon8.Plugin
-    lib/web_lobby/...                contexts and schemas      (namespace: WebLobby)
-    lib/web_lobby_web/...            LiveViews, controllers    (namespace: WebLobbyWeb)
-    lib/web_lobby_web/routes.ex      WebLobbyWeb.Routes - api + browser routes
-    priv/games_repo/migrations/      tables prefixed web_lobby_
+    lib/bacon_world/plugin.ex        BaconWorld.Plugin - implements Bacon8.Plugin
+    lib/bacon_world/...              contexts and schemas      (namespace: BaconWorld)
+    lib/bacon_world_web/...          LiveViews, controllers    (namespace: BaconWorldWeb)
+    lib/bacon_world_web/routes.ex    BaconWorldWeb.Routes - api + browser routes
+    priv/games_repo/migrations/      tables prefixed bacon_world_
     priv/repo/migrations/            (optional) site-DB tables
     assets/js/index.ts               `export const hooks = {...}` (LiveView hooks)
     test/                            run with the core suite
@@ -619,10 +621,10 @@ plugins/
 
 **Conventions** (what makes a plugin a template other people can copy):
 
-- One top-level namespace per plugin (`WebLobby`, `WebLobbyWeb`), never `Bacon8.*`.
+- One top-level namespace per plugin (`BaconWorld`, `BaconWorldWeb`), never `Bacon8.*`.
 - The folder name is the slug: lowercase letters, digits, underscores. It names the main
-  module (`web_lobby` -> `WebLobby.Plugin`), prefixes every table the plugin owns
-  (`web_lobby_zones`), and is the game slug unless `game/0` returns its own `:slug`.
+  module (`bacon_world` -> `BaconWorld.Plugin`), prefixes every table the plugin owns
+  (`bacon_world_zones`), and is the game slug unless `game/0` returns its own `:slug`.
 - A plugin uses the hub only through public context functions (`Bacon8.Games`,
   `Bacon8.Drive`, `Bacon8.Entitlements`, ...). Core never references a plugin module.
 - Characters are platform `GameCharacter`s. Plugin tables may reference
@@ -639,7 +641,7 @@ in production, `mix bacon8.migrate` in development; plain `mix ecto.migrate` onl
 A plugin is *active* when an admin activates it on **/admin/plugins** (implemented
 2026-10-15). Each toggle is saved as a row in `plugin_states` (slug, active, who, when); a
 plugin that has never been toggled is active if its slug is in
-`config :bacon8, :default_active_plugins` (`["web_lobby"]`, or the `BACON8_ACTIVE_PLUGINS`
+`config :bacon8, :default_active_plugins` (`["bacon_world"]`, or the `BACON8_ACTIVE_PLUGINS`
 environment variable when set). Deliberately not stored in
 `cms_options` (see §13).
 
@@ -663,12 +665,13 @@ refreshes its cache and starts or stops the plugin's processes.
 
 ```elixir
 defmodule Bacon8.Plugin do
-  @callback slug() :: String.t()                       # "web_lobby"
+  @callback slug() :: String.t()                       # "bacon_world"
   @callback name() :: String.t()
   @callback version() :: String.t()
   @callback description() :: String.t()
   @callback game() :: %{name: String.t(), path: String.t(), description: String.t(), icon: String.t()} | nil
-  @callback routes() :: module() | nil                 # e.g. WebLobbyWeb.Routes
+  @callback routes() :: module() | nil                 # e.g. BaconWorldWeb.Routes
+  @callback previous_slugs() :: [String.t()]           # slugs before a rename; old links 301
   @callback children() :: [Supervisor.child_spec()]    # under Bacon8.PluginSupervisor
   @callback admin_nav() :: [%{label: String.t(), path: String.t(), icon: String.t()}]
   @callback desktop_apps() :: [Bacon8.Desktop.App.t()]   # §10
@@ -679,7 +682,7 @@ defmodule Bacon8.Plugin do
 end
 ```
 
-`use Bacon8.Plugin, slug: "web_lobby", name: ..., version: ...` fills in the required
+`use Bacon8.Plugin, slug: "bacon_world", name: ..., version: ...` fills in the required
 callbacks and defaults the rest, so a plugin overrides only what it uses.
 
 **Routes.** Phoenix routes are compiled and LiveView expects one router, so a plugin's
@@ -696,6 +699,12 @@ time. Activation is checked per request, so it never needs a recompile:
   a full page load.
 - Admin routes mount at `/admin/<plugin slug>/...` in their own `live_session` with
   `UserAuth :require_admin_user`; link them from `admin_nav/0`.
+
+- **Renamed plugins.** For each slug in `previous_slugs/0`, `/games/<old>/...` and
+  `/admin/<old>/...` answer **301** to the same path under the current slug, query string
+  kept (`Bacon8Web.PluginRedirectController`). They don't check activation; the page they
+  lead to does. Renaming the plugin's stored names (tables, game row, `plugin_states`) is
+  the plugin's own migrations' job (§5); Bacon World's are the example.
 
 Adding or removing a plugin *folder* recompiles the router (it has a `__mix_recompile__?`
 guard); activating or deactivating never does.
@@ -733,14 +742,19 @@ creates it on demand for plugins active by default that were never toggled (plug
 get their game id, and `Plugins.Runtime` calls it at boot).
 
 **Status:** framework, admin page and Web Lobby done (2026-10-15). Tests: the fixture plugin
-(`test/support/fixture_plugin.ex`) and Web Lobby's own `plugins/web_lobby/test`. Each plugin
+(`test/support/fixture_plugin.ex`) and Bacon World's own `plugins/bacon_world/test`. Each plugin
 test folder needs a `test_helper.exs` (mix requires one per test path; it can be empty).
 
-**Done means:** Web Lobby runs entirely as `plugins/web_lobby` with no Lobby references in
+**Done means:** Bacon World runs entirely as `plugins/bacon_world` with no references to it in
 core (met), and a second plugin can be added by dropping in a folder, deploying and
 activating it.
 
-### Web Lobby (the template plugin)
+### Bacon World (the template plugin)
+
+**Renamed 2026-10-21** from Web Lobby (`web_lobby`; ADR 0001, phase 1). Its migrations
+renamed the tables, the game row and the `plugin_states` row; `/games/web_lobby/...` answers
+301 to `/games/bacon_world/...` (`previous_slugs/0`). Its first migration keeps the old name
+(invariant 14).
 
 Moved 2026-10-15. Lobby used to be `Bacon8.Game` (zones, characters, spells, combat) plus
 `GamesLive` (three.js client, presence, chat, movement validation, PvP, respawn) on the site
@@ -748,18 +762,18 @@ DB:
 
 | Was | Now |
 |---|---|
-| `characters` (site DB) | `game_characters` of game `web_lobby`: HP, MP, PvP in `stats`; type, model, zone and last position in `settings`. Single-key writes merge in SQL (`jsonb \|\|`) so a position save can't overwrite HP another player's spell just changed |
-| `zones`, `spells`, `character_spells` (site DB) | `web_lobby_zones`, `web_lobby_spells`, `web_lobby_character_spells` (games DB), seeded by the plugin's migrations |
-| `Bacon8.Game` | `WebLobby.World` (characters, zones, positions), `WebLobby.Combat` (spells, damage, respawn), `WebLobby.Models` (model list) |
-| `GamesLive` | core `GamesLive` = a games index built from active plugins' `game/0`; the game itself = `WebLobbyWeb.PlayLive` at `/games/web_lobby` |
-| three.js hooks in `assets/js/threejs` | `plugins/web_lobby/assets/js` (the four unused files there were deleted; core keeps the background scenes and camera controllers) |
-| PubSub / Presence topics `presence:zone:*`, `presence:account:*`, `user:*:characters` | `web_lobby:zone:*`, `web_lobby:account:*`, `web_lobby:user:*:characters` |
+| `characters` (site DB) | `game_characters` of game `bacon_world`: HP, MP, PvP in `stats`; type, model, zone and last position in `settings`. Single-key writes merge in SQL (`jsonb \|\|`) so a position save can't overwrite HP another player's spell just changed |
+| `zones`, `spells`, `character_spells` (site DB) | `bacon_world_zones`, `bacon_world_spells`, `bacon_world_character_spells` (games DB), seeded by the plugin's migrations |
+| `Bacon8.Game` | `BaconWorld.World` (characters, zones, positions), `BaconWorld.Combat` (spells, damage, respawn), `BaconWorld.Models` (model list) |
+| `GamesLive` | core `GamesLive` = a games index built from active plugins' `game/0`; the game itself = `BaconWorldWeb.PlayLive` at `/games/bacon_world` |
+| three.js hooks in `assets/js/threejs` | `plugins/bacon_world/assets/js` (the four unused files there were deleted; core keeps the background scenes and camera controllers) |
+| PubSub / Presence topics `presence:zone:*`, `presence:account:*`, `user:*:characters` | `bacon_world:zone:*`, `bacon_world:account:*`, `bacon_world:user:*:characters` |
 
 Existing Lobby characters were not migrated (decisions log): the old site-DB tables
 (`zones`, `characters`, `spells`, `character_spells`, and the never-used `items`,
 `character_inventory`, `character_equipment`) were dropped in production and are absent
 from the site baseline.
-Combat now also checks that the target is a Web Lobby character, which the old code didn't.
+Combat now also checks that the target is a Bacon World character, which the old code didn't.
 
 **Characters (2026-10-20).** Players pick `Humans/Male.glb` or `Humans/Female.glb` from
 `priv/static/models`, which is synced to the models volume. These are CC0 bodies on the B8
@@ -767,7 +781,7 @@ skeleton with 20 CC0 clips. `PREFERRED_CLIPS` in `model-manager.ts` maps the lob
 actions to clip names (idle → `Idle_Loop`, run → `Jog_Fwd_Loop`, attack → `OverhandThrow`, …),
 and pattern matching covers other models. The sources, all 89 clips, the Unreal assets and
 the test weapons live in the game repository (`SourceAssets/`). The rename to
-**Bacon World** is phase 1 of ADR 0001.
+**Bacon World** was phase 1 of ADR 0001 (done 2026-10-21, above).
 
 ## 10. Desktop shell and start menu
 
@@ -843,7 +857,7 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 | 4 | **Commerce** (§8, §11) | Ledger + entitlements; Stripe then PayPal; currency packs, items, subscriptions; storage tiers and VIP channels driven by entitlements; webhook inbox idempotent. |
 | 5 | **Start menu redesign** (§10) | Every app maps to a real feature; apps are registered data. |
 | 6 | **Stored-name cutover** (§5) | Cookie, release, node, DB and k8s names are Bacon8; runbook written and executed. *Done 2026-10-18 (decisions log).* |
-| 7 | **Bacon World** (ADR 0001, phase 1) | `web_lobby` is renamed everywhere, its stored names are migrated (tables, game row, plugin state) and old links redirect. |
+| 7 | **Bacon World** (ADR 0001, phase 1) | `web_lobby` is renamed everywhere, its stored names are migrated (tables, game row, plugin state) and old links redirect. *Done 2026-10-21.* |
 | 8 | **Site plugins** (phase 2) | Plugins can mount site routes (e.g. `/store`) and declare required plugins. Hooks replace core's direct calls into the store. |
 | 9 | **Bacon Store** (phase 3) | Core compiles and its suite passes without `plugins/bacon_store`; with it, everything in §8 behaves as before. |
 | 10 | **Games platform as a plugin** (phase 4) | The core runs with one database; Bacon World and RaysSpaceSim require `bacon_games`. |
@@ -911,7 +925,7 @@ Ordered roughly by how much it hurts.
 - `POST /api/webhooks/scheduler/:secret` carries its secret in the URL, so the request
   line in the app and ingress logs still shows it (parameter filtering only covers the
   parameters). Move it to a header.
-- Web Lobby's three.js client has seven pre-existing TypeScript errors under
+- Bacon World's three.js client has seven pre-existing TypeScript errors under
   `npm run type-check` (implicit `any`s, one loop-style enum); it bundles fine.
 - `Files` has a `:timer.sleep(10000)` in an upload path (goes with the legacy file system above).
 - The admin files page links to `/uploads/user_files/...`, which is not where files are

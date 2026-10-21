@@ -47,7 +47,7 @@ practical: each subsystem says what it is and roughly what removing it costs.
 | **Notifications & email** | Swoosh + SMTP, HTML templates, delivery logging | `lib/bacon8/email`, `notifications` |
 | **Moderation & audit** | Audit log, moderation queue, admin LiveViews | `lib/bacon8/moderation`, `audit.ex` |
 | **Games platform** | Games, characters, the game-server registry, single-session claims, client releases and launcher downloads. Game-specific features come from plugins. **Its own database.** | `lib/bacon8/games` |
-| **Plugins** | WordPress-style: a game or feature is a folder under `plugins/`, compiled in and switched on or off from `/admin/plugins` without a redeploy. **Web Lobby** (an in-browser 3D game, being renamed **Bacon World**) ships as the example | `lib/bacon8/plugin.ex`, `plugins`, `plugins/web_lobby` |
+| **Plugins** | WordPress-style: a game or feature is a folder under `plugins/`, compiled in and switched on or off from `/admin/plugins` without a redeploy. **Bacon World** (an in-browser 3D game, formerly Web Lobby) ships as the example | `lib/bacon8/plugin.ex`, `plugins`, `plugins/bacon_world` |
 
 The **games platform** is the least generic and the most actively developed part.
 If you are here for a web app, it is the first thing to delete — it is cleanly
@@ -173,7 +173,7 @@ mix phx.gen.secret      # GUARDIAN_SECRET_KEY
 
 | Variable | Notes |
 |---|---|
-| `BACON8_ACTIVE_PLUGINS` | comma-separated plugin slugs active until an admin toggles them on /admin/plugins (default: `web_lobby`) |
+| `BACON8_ACTIVE_PLUGINS` | comma-separated plugin slugs active until an admin toggles them on /admin/plugins (default: `bacon_world`) |
 
 A plugin's own settings are documented in its README.
 
@@ -212,7 +212,7 @@ outward as well, so several pods see each other's events. Nothing else changes.
 A plugin is a folder under `plugins/<slug>/` with its own namespace, routes,
 migrations, LiveView hooks and tests, compiled into the app. An admin activates
 or deactivates it on `/admin/plugins`; an inactive plugin's routes answer 404 and
-its processes stop, but its data stays. `plugins/README.md` and `plugins/web_lobby`
+its processes stop, but its data stays. `plugins/README.md` and `plugins/bacon_world`
 show the shape. A private plugin is its own git repository cloned into `plugins/`,
 which the hub's `.gitignore` already ignores.
 

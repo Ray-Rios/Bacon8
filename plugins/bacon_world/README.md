@@ -1,4 +1,4 @@
-# Web Lobby
+# Bacon World
 
 A small multiplayer 3D arcade that runs in the browser: make a character, walk
 around the lobby with other players, chat with people nearby, and throw stones
@@ -7,28 +7,33 @@ at anyone who has PvP turned on.
 It is also Bacon8's **reference plugin**. Copy this folder to start your own
 (see `plugins/README.md` and BACON8.md §9).
 
+It was called **Web Lobby** (slug `web_lobby`) until 2026-10-21. Old links
+(`/games/web_lobby/...`) answer 301 to `/games/bacon_world/...`, and the migrations below
+renamed its tables, its game row and its `plugin_states` row.
+
 ## What's where
 
 | Path | What it is |
 |---|---|
-| `lib/web_lobby/plugin.ex` | The plugin: name, version, its game card, its routes |
-| `lib/web_lobby/world.ex` | Characters, zones, positions |
-| `lib/web_lobby/combat.ex` | Spells, HP/MP, respawn (server-authoritative) |
-| `lib/web_lobby/models.ex` | Which character models players can pick |
-| `lib/web_lobby/{zone,spell,character_spell}.ex` | Schemas for the plugin's own tables |
-| `lib/web_lobby_web/routes.ex` | `/games/web_lobby` |
-| `lib/web_lobby_web/play_live.ex` | Character select and the live world |
-| `priv/games_repo/migrations/` | `web_lobby_zones`, `web_lobby_spells`, `web_lobby_character_spells` |
+| `lib/bacon_world/plugin.ex` | The plugin: name, version, its game card, its routes |
+| `lib/bacon_world/world.ex` | Characters, zones, positions |
+| `lib/bacon_world/combat.ex` | Spells, HP/MP, respawn (server-authoritative) |
+| `lib/bacon_world/models.ex` | Which character models players can pick |
+| `lib/bacon_world/{zone,spell,character_spell}.ex` | Schemas for the plugin's own tables |
+| `lib/bacon_world_web/routes.ex` | `/games/bacon_world` |
+| `lib/bacon_world_web/play_live.ex` | Character select and the live world |
+| `priv/games_repo/migrations/` | `bacon_world_zones`, `bacon_world_spells`, `bacon_world_character_spells` (created as `web_lobby_*`, renamed by `20261021120000`) |
+| `priv/repo/migrations/` | the site DB's `plugin_states` row, renamed by `20261021120100` |
 | `assets/js/` | The three.js client (`WorldCharacterUIScene` hook); `lobby-audio.ts` for sound |
 | `test/` | Runs with `mix test` |
 
 ## Data
 
-Characters are the hub's `game_characters` rows for game `web_lobby`, so they
-are not a Web Lobby table at all. Lobby-only values sit in the row's JSON maps:
+Characters are the hub's `game_characters` rows for game `bacon_world`, so they
+are not a Bacon World table at all. Lobby-only values sit in the row's JSON maps:
 `stats` holds HP, MP and the PvP flag; `settings` holds the character type,
 model, zone and last position. The plugin's own tables, in the games
-database, are prefixed `web_lobby_`.
+database, are prefixed `bacon_world_`.
 
 ## Character models
 
@@ -80,6 +85,6 @@ first click or key press.
 
 ## Multiplayer
 
-All on the hub's PubSub and Presence, topics prefixed `web_lobby:`. Moves are
+All on the hub's PubSub and Presence, topics prefixed `bacon_world:`. Moves are
 checked on the server for speed, height and collisions; chat reaches players
 within 64 units; one character per account can be in the world at a time.

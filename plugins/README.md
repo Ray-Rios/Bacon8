@@ -21,9 +21,9 @@ plugins/<slug>/
 Rules of the road:
 
 - The folder name is the slug: lowercase letters, digits and underscores
-  (`web_lobby`). It names your module (`WebLobby.Plugin`), prefixes your tables
-  (`web_lobby_zones`) and is your game slug unless `game/0` says otherwise.
-- Use your own namespace (`WebLobby`, `WebLobbyWeb`), never `Bacon8.*`.
+  (`bacon_world`). It names your module (`BaconWorld.Plugin`), prefixes your tables
+  (`bacon_world_zones`) and is your game slug unless `game/0` says otherwise.
+- Use your own namespace (`BaconWorld`, `BaconWorldWeb`), never `Bacon8.*`.
 - Talk to the hub only through its public contexts (`Bacon8.Games`, `Bacon8.Drive`,
   `Bacon8.Entitlements`, ...). Core code never references a plugin.
 - API routes mount at `/api/games/<game slug>/...` (controllers get `params["game_slug"]`,
@@ -47,4 +47,9 @@ Rules of the road:
   of the public repo, and `.dockerignore` keeps its `.git`, `k3s/` and scripts out of
   images. Switch it on from the first boot with `BACON8_ACTIVE_PLUGINS`.
 
-`web_lobby/` is the reference plugin: copy it to start your own.
+`bacon_world/` is the reference plugin: copy it to start your own.
+
+Renaming a plugin changes stored names (BACON8.md §5). Return the old slug from
+`previous_slugs/0` so `/games/<old>/...` and `/admin/<old>/...` redirect, and rename your
+tables, game row and `plugin_states` row in a new migration; never edit the first one.
+Bacon World (formerly `web_lobby`) is the worked example.

@@ -1,7 +1,7 @@
 # ADR 0001: A reusable core, with the store and the games as plugins
 
-- **Status:** Accepted (direction), 2026-10-20. The phases below are planned; none is
-  implemented yet.
+- **Status:** Accepted (direction), 2026-10-20. **Phase 1 done 2026-10-21** (Web Lobby is
+  Bacon World); phases 2-5 are planned.
 - **Deciders:** the owner.
 - **Supersedes:** nothing. Extends the plugin system in BACON8.md §9.
 
@@ -92,7 +92,7 @@ use their own names.
 Each phase ends green (compile with warnings as errors, plus the full test suite, both
 in Docker) and is deployed before the next starts.
 
-### Phase 1: rename Web Lobby to Bacon World (small, do first)
+### Phase 1: rename Web Lobby to Bacon World (done 2026-10-21)
 
 1. **Code.** `git mv plugins/web_lobby plugins/bacon_world`, then rename the modules:
    - `WebLobby` → `BaconWorld`
