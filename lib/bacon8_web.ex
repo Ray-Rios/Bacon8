@@ -4,7 +4,7 @@ defmodule Bacon8Web do
   as controllers, components, channels, and so on.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt sitemap.xml site.webmanifest)
+  def static_paths, do: ~w(assets audio fonts images favicon.ico robots.txt sitemap.xml site.webmanifest)
 
   def router do
     quote do

@@ -12,11 +12,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        brand: "#FD4F00",
-      },
-      fontFamily: {
-        'sad-machine': ['SadMachine', 'monospace'],
-        '8-bit': ['8-bit-hud', 'monospace'],
+        brand: "#247DF1",
       },
     },
   },

@@ -86,6 +86,7 @@
             COPY priv/static/favicon.ico ./priv/static/
             COPY priv/static/site.webmanifest ./priv/static/
             COPY priv/static/images ./priv/static/images
+            COPY priv/static/audio ./priv/static/audio
             COPY priv/static/robots.txt ./priv/static/
             COPY priv/static/sitemap.xml ./priv/static/
             COPY priv/static/.well-known ./priv/static/.well-known

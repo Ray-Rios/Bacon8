@@ -32,7 +32,7 @@ defmodule Bacon8Web.HomeLive do
                     phx-update="ignore"
                     class="mb-8">
                     <div class="text-green-400">
-                      <span class="typewriter-text font-sad-machine" data-text="IT'S A SECRET TO EVERYBODY."></span>
+                      <span class="typewriter-text font-mono" data-text="IT'S A SECRET TO EVERYBODY."></span>
                       <span class="typewriter-cursor">_</span>
                     </div>
                   </div>

@@ -272,7 +272,7 @@ defmodule Bacon8Web.DesktopLive do
   def handle_event("test_sound", _params, socket) do
     if socket.assigns.current_user do
       volume = socket.assigns.current_user.master_volume || 0.5
-      sound_path = "/uploads/public/audio/Blaster Master SFX (3).wav"
+      sound_path = "/audio/ui/notification.mp3"
       {:noreply, push_event(socket, "play_sound", %{path: sound_path, volume: volume})}
     else
       {:noreply, socket}
@@ -1239,7 +1239,7 @@ defmodule Bacon8Web.DesktopLive do
     # Play notification sound if enabled
     socket = if socket.assigns.current_user && socket.assigns.current_user.notification_sound_enabled do
       volume = socket.assigns.current_user.master_volume || 0.5
-      sound_path = "/uploads/public/audio/Blaster Master SFX (3).wav"
+      sound_path = "/audio/ui/notification.mp3"
       push_event(socket, "play_sound", %{path: sound_path, volume: volume})
     else
       socket
@@ -1266,7 +1266,7 @@ defmodule Bacon8Web.DesktopLive do
     # Play notification sound if enabled
     socket = if socket.assigns.current_user && socket.assigns.current_user.notification_sound_enabled do
       volume = socket.assigns.current_user.master_volume || 0.5
-      sound_path = "/uploads/public/audio/Blaster Master SFX (3).wav"
+      sound_path = "/audio/ui/notification.mp3"
       push_event(socket, "play_sound", %{path: sound_path, volume: volume})
     else
       socket

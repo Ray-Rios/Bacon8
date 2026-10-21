@@ -67,7 +67,6 @@ RUN --mount=type=cache,target=/root/.npm cd assets && npm install --no-audit --n
 # Copy asset source files (but preserve node_modules by copying specific folders)
 COPY assets/css ./assets/css
 COPY assets/js ./assets/js
-COPY assets/fonts ./assets/fonts
 COPY assets/scripts ./assets/scripts
 COPY assets/*.js ./assets/
 COPY assets/*.cjs ./assets/
@@ -96,6 +95,7 @@ COPY plugins ./plugins
 COPY priv/static/favicon.ico ./priv/static/
 COPY priv/static/site.webmanifest ./priv/static/
 COPY priv/static/images ./priv/static/images
+COPY priv/static/audio ./priv/static/audio
 COPY priv/static/robots.txt ./priv/static/
 COPY priv/static/sitemap.xml ./priv/static/
 COPY priv/static/.well-known ./priv/static/.well-known
@@ -183,6 +183,7 @@ COPY --from=assets-builder /app/priv/static ./priv/static
 COPY priv/static/favicon.ico ./priv/static/
 COPY priv/static/site.webmanifest ./priv/static/
 COPY priv/static/images ./priv/static/images
+COPY priv/static/audio ./priv/static/audio
 COPY priv/static/robots.txt ./priv/static/
 COPY priv/static/sitemap.xml ./priv/static/
 

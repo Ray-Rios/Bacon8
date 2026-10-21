@@ -33,10 +33,10 @@ defmodule Bacon8.Avatar do
   end
 
   def default_url(:thumb) do
-    "/uploads/public/images/default_avatar.jpg"
+    "/images/default-avatar.png"
   end
 
   def default_url(_version) do
-    "/uploads/public/images/default_avatar.jpg"
+    "/images/default-avatar.png"
   end
 end

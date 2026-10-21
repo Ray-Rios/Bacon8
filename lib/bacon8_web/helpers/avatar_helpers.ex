@@ -65,7 +65,7 @@ defmodule Bacon8Web.AvatarHelpers do
       # Priority 3: Default avatar image
       true ->
         ~H"""
-        <img src="/uploads/public/images/default_avatar.jpg" alt="Default Avatar" class={"#{@size_class} object-cover #{@shape_classes}"} />
+        <img src="/images/default-avatar.png" alt="Default Avatar" class={"#{@size_class} object-cover #{@shape_classes}"} />
         """
     end
   end
@@ -126,7 +126,7 @@ defmodule Bacon8Web.AvatarHelpers do
       avatar_url && String.trim(avatar_url) != "" ->
         avatar_url
       true ->
-        "/uploads/public/images/default_avatar.jpg"
+        "/images/default-avatar.png"
     end
   end
 
