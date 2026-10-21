@@ -147,7 +147,7 @@ defmodule Bacon8.PluginsTest do
   end
 
   test "priv_dir points at a plugin's priv folder" do
-    assert Plugins.priv_dir("web_lobby") |> String.ends_with?(Path.join(["web_lobby", "priv"]))
+    assert Plugins.priv_dir("bacon_world") |> String.ends_with?(Path.join(["bacon_world", "priv"]))
   end
 end
 
@@ -164,7 +164,7 @@ defmodule Bacon8.PluginDefinitionTest do
   end
 
   test "invalid slugs are a compile error" do
-    for bad <- ["Web-Lobby", "9lives", "web lobby", ""] do
+    for bad <- ["Web-Lobby", "9lives", "bacon world", ""] do
       assert_raise ArgumentError, ~r/plugin slug/, fn ->
         Code.eval_string("""
         defmodule Bacon8.Test.BadSlug#{System.unique_integer([:positive])} do

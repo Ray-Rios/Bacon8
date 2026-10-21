@@ -1,4 +1,4 @@
-// Web Lobby sound: effects through Web Audio (low latency, overlapping), music as
+// Bacon World sound: effects through Web Audio (low latency, overlapping), music as
 // a looping <audio> element. The files are the hub's original sounds under
 // /audio/ (scripts/audio/make_sounds.py). Browsers only allow sound after the
 // player has clicked or pressed a key, so nothing plays before that.
@@ -18,12 +18,23 @@ const EFFECTS: Record<string, string> = {
   step4: '/audio/lobby/footstep-4.mp3',
 };
 const MUSIC_URL = '/audio/music/arcade-lobby.mp3';
-const PREF_KEY = 'web_lobby:sound';
+const PREF_KEY = 'bacon_world:sound';
+// The key before the plugin was renamed from Web Lobby (2026-10-21). Read once,
+// moved to PREF_KEY, so players keep their setting.
+const OLD_PREF_KEY = 'web_lobby:sound';
 const HEARING_RANGE = 40; // world units; matches roughly what the camera shows
 
 function readPref(): boolean {
   try {
-    return window.localStorage.getItem(PREF_KEY) !== 'off';
+    let value = window.localStorage.getItem(PREF_KEY);
+    if (value === null) {
+      value = window.localStorage.getItem(OLD_PREF_KEY);
+      if (value !== null) {
+        window.localStorage.setItem(PREF_KEY, value);
+        window.localStorage.removeItem(OLD_PREF_KEY);
+      }
+    }
+    return value !== 'off';
   } catch {
     return true;
   }

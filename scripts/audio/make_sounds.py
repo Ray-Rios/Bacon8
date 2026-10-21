@@ -6,8 +6,8 @@ loops or presets from anywhere else are used.
 
 Writes (from the repository root):
     priv/static/audio/ui/*.mp3       desktop and site sounds (served at /audio/ui/...)
-    priv/static/audio/lobby/*.mp3    Web Lobby sound effects
-    priv/static/audio/music/*.mp3    Web Lobby music and the Bacon8 sting
+    priv/static/audio/lobby/*.mp3    Bacon World sound effects
+    priv/static/audio/music/*.mp3    Bacon World music and the Bacon8 sting
 and, when the game repository is checked out beside this one (./RaysSpaceSim):
     RaysSpaceSim/SourceAssets/Audio/{SFX,UI,Music}/*.wav   48 kHz 16-bit, for import into Unreal
 
@@ -199,7 +199,7 @@ def ui_gems():
     return master(reverb(buf, 1.8, wet=0.28), peak_db=-7)
 
 
-# ================================================================ Web Lobby
+# ================================================================ Bacon World
 
 def lobby_footstep(variant):
     rng = np.random.default_rng(100 + variant)
@@ -458,7 +458,7 @@ class Song:
 
 
 def music_arcade_lobby():
-    """Web Lobby theme: 80s arcade synthwave, A minor, 108 BPM, 32 bars."""
+    """Bacon World theme: 80s arcade synthwave, A minor, 108 BPM, 32 bars."""
     song = Song(108, 32)
     B = song.beat
     chords = {

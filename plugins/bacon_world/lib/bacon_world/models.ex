@@ -1,4 +1,4 @@
-defmodule WebLobby.Models do
+defmodule BaconWorld.Models do
   @moduledoc """
   Character models players can pick from.
 
@@ -15,7 +15,7 @@ defmodule WebLobby.Models do
 
   The folders searched can be overridden (tests point this at a fixture):
 
-      config :bacon8, WebLobby.Models, roots: ["/path/to/models"]
+      config :bacon8, BaconWorld.Models, roots: ["/path/to/models"]
   """
 
   @valid_extensions [".glb", ".gltf", ".fbx"]

@@ -1,13 +1,13 @@
-defmodule WebLobby.WorldTest do
+defmodule BaconWorld.WorldTest do
   # Not async: the models folder is application config, shared by all tests.
   use Bacon8.DataCase, async: false
 
   alias Bacon8.Games
-  alias WebLobby.{Combat, Models, World}
+  alias BaconWorld.{Combat, Models, World}
 
   setup do
     # A tiny models folder, so tests never walk a real (possibly huge) one.
-    dir = Path.join(System.tmp_dir!(), "web_lobby_models_#{System.unique_integer([:positive])}")
+    dir = Path.join(System.tmp_dir!(), "bacon_world_models_#{System.unique_integer([:positive])}")
     File.mkdir_p!(Path.join(dir, "heroes"))
     File.write!(Path.join(dir, "heroes/runner.glb"), "glTF")
     File.write!(Path.join(dir, "notes.txt"), "not a model")
@@ -27,11 +27,11 @@ defmodule WebLobby.WorldTest do
     c
   end
 
-  test "characters are platform GameCharacters for the web_lobby game", %{user_id: user_id, model: model} do
+  test "characters are platform GameCharacters for the bacon_world game", %{user_id: user_id, model: model} do
     c = create!(user_id, model, "Wesley")
 
-    assert {:ok, game} = Bacon8.Plugins.ensure_game("web_lobby")
-    assert game.slug == "web_lobby"
+    assert {:ok, game} = Bacon8.Plugins.ensure_game("bacon_world")
+    assert game.slug == "bacon_world"
     assert [%{id: id}] = Enum.filter(Games.list_characters(game.id, user_id), &(&1.name == "Wesley"))
     assert id == c.id
 

@@ -1,9 +1,9 @@
-defmodule WebLobby.Zone do
+defmodule BaconWorld.Zone do
   @moduledoc "A place characters spawn and meet. Seeded with the default 'lobby' zone."
   use Ecto.Schema
 
   @primary_key {:id, :binary_id, autogenerate: true}
-  schema "web_lobby_zones" do
+  schema "bacon_world_zones" do
     field :name, :string
     field :slug, :string
     field :description, :string

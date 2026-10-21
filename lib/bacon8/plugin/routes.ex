@@ -2,7 +2,7 @@ defmodule Bacon8.Plugin.Routes do
   @moduledoc """
   How a plugin declares its routes:
 
-      defmodule WebLobbyWeb.Routes do
+      defmodule BaconWorldWeb.Routes do
         use Bacon8.Plugin.Routes
 
         # Mounted at /api/games/<game slug>, `:games_api` pipeline
@@ -27,7 +27,7 @@ defmodule Bacon8.Plugin.Routes do
   written for either work unchanged.
 
   Module names inside the blocks are relative to the routes module's parent
-  namespace (`WebLobbyWeb` here). The blocks are stored as quoted code and
+  namespace (`BaconWorldWeb` here). The blocks are stored as quoted code and
   expanded by `Bacon8Web.PluginRouter` inside the core router at compile time,
   so they can use anything a Phoenix router scope can.
   """

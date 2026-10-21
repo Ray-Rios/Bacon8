@@ -1,9 +1,9 @@
-defmodule WebLobby.Spell do
+defmodule BaconWorld.Spell do
   @moduledoc "A castable spell. Seeded with 'throw_stone'."
   use Ecto.Schema
 
   @primary_key {:id, :binary_id, autogenerate: true}
-  schema "web_lobby_spells" do
+  schema "bacon_world_spells" do
     field :slug, :string
     field :name, :string
     field :description, :string

@@ -1,6 +1,6 @@
-defmodule WebLobbyWeb.PlayLive do
+defmodule BaconWorldWeb.PlayLive do
   @moduledoc """
-  /games/web_lobby - character selection, then the live 3D zone.
+  /games/bacon_world - character selection, then the live 3D zone.
 
   The 3D client is the `WorldCharacterUIScene` hook (this plugin's
   `assets/js`). The server is authoritative: it checks every move for speed,
@@ -11,7 +11,7 @@ defmodule WebLobbyWeb.PlayLive do
   """
   use Bacon8Web, :live_view
   require Logger
-  alias WebLobby.{Combat, Models, World}
+  alias BaconWorld.{Combat, Models, World}
   alias Phoenix.PubSub
   alias Bacon8Web.Presence
 
@@ -31,11 +31,11 @@ defmodule WebLobbyWeb.PlayLive do
       case World.character_login_payload(socket.assigns.current_user.id, character_id) do
         {:ok, payload} ->
           if account_online_elsewhere?(socket) do
-            Logger.warning("web_lobby:handle_params account_already_online user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id}")
+            Logger.warning("bacon_world:handle_params account_already_online user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id}")
             {:noreply,
              socket
              |> put_flash(:error, "You already have a character logged in from another session. Log out there first.")
-             |> push_patch(to: ~p"/games/web_lobby")}
+             |> push_patch(to: ~p"/games/bacon_world")}
           else
             socket = socket |> leave_zone_presence() |> join_zone_presence(payload) |> track_account_presence(payload.character_id)
 
@@ -86,7 +86,7 @@ defmodule WebLobbyWeb.PlayLive do
 
     {:ok,
      assign(socket,
-       page_title: "Web Lobby",
+       page_title: "Bacon World",
        characters: characters,
        selected_character_id: nil,
        current_character_payload: nil,
@@ -132,12 +132,12 @@ defmodule WebLobbyWeb.PlayLive do
   end
 
   def handle_event("create_character", %{"character" => params}, socket) do
-    Logger.info("web_lobby:create_character user_id=#{socket.assigns.current_user.id} name=#{inspect(params["name"])} type=#{inspect(params["character_type"])} model=#{inspect(params["model_path"])}")
+    Logger.info("bacon_world:create_character user_id=#{socket.assigns.current_user.id} name=#{inspect(params["name"])} type=#{inspect(params["character_type"])} model=#{inspect(params["model_path"])}")
 
     case World.create_character(socket.assigns.current_user.id, params) do
       {:ok, _character} ->
         characters = World.list_user_characters(socket.assigns.current_user.id)
-        Logger.info("web_lobby:create_character success user_id=#{socket.assigns.current_user.id} character_count=#{length(characters)}")
+        Logger.info("bacon_world:create_character success user_id=#{socket.assigns.current_user.id} character_count=#{length(characters)}")
 
         PubSub.broadcast(Bacon8.PubSub, characters_topic(socket.assigns.current_user.id), :characters_updated)
 
@@ -152,19 +152,19 @@ defmodule WebLobbyWeb.PlayLive do
          |> put_flash(:info, "Character created and approved.")}
 
       {:error, :character_limit_reached} ->
-        Logger.warning("web_lobby:create_character limit_reached user_id=#{socket.assigns.current_user.id}")
+        Logger.warning("bacon_world:create_character limit_reached user_id=#{socket.assigns.current_user.id}")
         {:noreply, put_flash(socket, :error, "You already have the maximum of 16 characters.")}
 
       {:error, :invalid_model_path} ->
-        Logger.warning("web_lobby:create_character invalid_model user_id=#{socket.assigns.current_user.id} model=#{inspect(params["model_path"])}")
+        Logger.warning("bacon_world:create_character invalid_model user_id=#{socket.assigns.current_user.id} model=#{inspect(params["model_path"])}")
         {:noreply, put_flash(socket, :error, "Selected model is not valid.")}
 
       {:error, :default_zone_missing} ->
-        Logger.error("web_lobby:create_character missing_default_zone user_id=#{socket.assigns.current_user.id}")
+        Logger.error("bacon_world:create_character missing_default_zone user_id=#{socket.assigns.current_user.id}")
         {:noreply, put_flash(socket, :error, "The lobby zone is missing. Run mix bacon8.migrate.")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        Logger.warning("web_lobby:create_character changeset_error user_id=#{socket.assigns.current_user.id} errors=#{inspect(changeset.errors)}")
+        Logger.warning("bacon_world:create_character changeset_error user_id=#{socket.assigns.current_user.id} errors=#{inspect(changeset.errors)}")
         {:noreply,
          socket
          |> assign(create_form: to_form(changeset, as: "character"))
@@ -176,10 +176,10 @@ defmodule WebLobbyWeb.PlayLive do
     character = World.get_character_for_user(socket.assigns.current_user.id, character_id)
 
     if character do
-      Logger.info("web_lobby:select_character user_id=#{socket.assigns.current_user.id} character_id=#{character.id} name=#{character.name}")
+      Logger.info("bacon_world:select_character user_id=#{socket.assigns.current_user.id} character_id=#{character.id} name=#{character.name}")
       {:noreply, assign(socket, selected_character_id: character.id, scene_characters: to_scene_characters(socket.assigns.characters))}
     else
-      Logger.warning("web_lobby:select_character not_found user_id=#{socket.assigns.current_user.id} character_id=#{character_id}")
+      Logger.warning("bacon_world:select_character not_found user_id=#{socket.assigns.current_user.id} character_id=#{character_id}")
       {:noreply, put_flash(socket, :error, "Could not select that character.")}
     end
   end
@@ -190,12 +190,12 @@ defmodule WebLobbyWeb.PlayLive do
 
   def handle_event("three_ui_create_character", params, socket) do
     normalized_params = normalize_three_ui_create_params(params, socket.assigns.scene_model_paths)
-    Logger.info("web_lobby:three_ui_create_character user_id=#{socket.assigns.current_user.id} params=#{inspect(normalized_params)}")
+    Logger.info("bacon_world:three_ui_create_character user_id=#{socket.assigns.current_user.id} params=#{inspect(normalized_params)}")
 
     case World.create_character(socket.assigns.current_user.id, normalized_params) do
       {:ok, _character} ->
         characters = World.list_user_characters(socket.assigns.current_user.id)
-        Logger.info("web_lobby:three_ui_create_character success user_id=#{socket.assigns.current_user.id} character_count=#{length(characters)}")
+        Logger.info("bacon_world:three_ui_create_character success user_id=#{socket.assigns.current_user.id} character_count=#{length(characters)}")
 
         PubSub.broadcast(Bacon8.PubSub, characters_topic(socket.assigns.current_user.id), :characters_updated)
 
@@ -210,35 +210,35 @@ defmodule WebLobbyWeb.PlayLive do
          |> put_flash(:info, "Character created from 3D interface.")}
 
       {:error, :character_limit_reached} ->
-        Logger.warning("web_lobby:three_ui_create_character limit_reached user_id=#{socket.assigns.current_user.id}")
+        Logger.warning("bacon_world:three_ui_create_character limit_reached user_id=#{socket.assigns.current_user.id}")
         {:noreply, put_flash(socket, :error, "You already have the maximum of 16 characters.")}
 
       {:error, :invalid_model_path} ->
-        Logger.warning("web_lobby:three_ui_create_character invalid_model user_id=#{socket.assigns.current_user.id}")
+        Logger.warning("bacon_world:three_ui_create_character invalid_model user_id=#{socket.assigns.current_user.id}")
         {:noreply, put_flash(socket, :error, "3D selection used an invalid model.")}
 
       {:error, %Ecto.Changeset{} = _changeset} ->
-        Logger.warning("web_lobby:three_ui_create_character invalid_input user_id=#{socket.assigns.current_user.id}")
+        Logger.warning("bacon_world:three_ui_create_character invalid_input user_id=#{socket.assigns.current_user.id}")
         {:noreply, put_flash(socket, :error, "3D create input is invalid. Use name/type at least 2 characters.")}
 
       {:error, :default_zone_missing} ->
-        Logger.error("web_lobby:three_ui_create_character missing_default_zone user_id=#{socket.assigns.current_user.id}")
+        Logger.error("bacon_world:three_ui_create_character missing_default_zone user_id=#{socket.assigns.current_user.id}")
         {:noreply, put_flash(socket, :error, "The lobby zone is missing. Run mix bacon8.migrate.")}
     end
   end
 
   def handle_event("login_character", _params, socket) do
     selected_character_id = socket.assigns.selected_character_id
-    Logger.info("web_lobby:login_character user_id=#{socket.assigns.current_user.id} selected_character_id=#{inspect(selected_character_id)}")
+    Logger.info("bacon_world:login_character user_id=#{socket.assigns.current_user.id} selected_character_id=#{inspect(selected_character_id)}")
 
     case selected_character_id && World.character_login_payload(socket.assigns.current_user.id, selected_character_id) do
       {:ok, payload} ->
         if account_online_elsewhere?(socket) do
-          Logger.warning("web_lobby:login_character account_already_online user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id}")
+          Logger.warning("bacon_world:login_character account_already_online user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id}")
           {:noreply, put_flash(socket, :error, "You already have a character logged in from another session. Log out there first.")}
         else
           socket = socket |> leave_zone_presence() |> join_zone_presence(payload) |> track_account_presence(payload.character_id)
-          Logger.info("web_lobby:login_character success user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id} zone=#{payload.zone.slug}")
+          Logger.info("bacon_world:login_character success user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id} zone=#{payload.zone.slug}")
 
           {:noreply,
            socket
@@ -250,11 +250,11 @@ defmodule WebLobbyWeb.PlayLive do
            )
            |> push_event("zone_presence_state", %{online_characters: socket.assigns.zone_online_characters})
            |> push_event("character_login_ready", payload)
-           |> push_patch(to: ~p"/games/web_lobby?ch=#{payload.character_id}")}
+           |> push_patch(to: ~p"/games/bacon_world?ch=#{payload.character_id}")}
         end
 
       _ ->
-        Logger.warning("web_lobby:login_character missing_selection user_id=#{socket.assigns.current_user.id}")
+        Logger.warning("bacon_world:login_character missing_selection user_id=#{socket.assigns.current_user.id}")
         {:noreply, put_flash(socket, :error, "Select a character before logging in.")}
     end
   end
@@ -265,14 +265,14 @@ defmodule WebLobbyWeb.PlayLive do
      |> leave_world()
      |> push_event("zone_presence_state", %{online_characters: []})
      |> push_event("world_logged_out", %{})
-     |> push_patch(to: ~p"/games/web_lobby")}
+     |> push_patch(to: ~p"/games/bacon_world")}
   end
 
   def handle_event("delete_character", %{"character_id" => character_id}, socket) do
     user_id = socket.assigns.current_user.id
 
     if active_account_character_id(user_id) == character_id do
-      Logger.warning("web_lobby:delete_character blocked_active user_id=#{user_id} character_id=#{character_id}")
+      Logger.warning("bacon_world:delete_character blocked_active user_id=#{user_id} character_id=#{character_id}")
       {:noreply, put_flash(socket, :error, "Log out of this character before deleting it.")}
     else
       case World.delete_character_for_user(user_id, character_id) do
@@ -280,7 +280,7 @@ defmodule WebLobbyWeb.PlayLive do
           characters = World.list_user_characters(user_id)
           selected_character_id = if socket.assigns.selected_character_id == character.id, do: nil, else: socket.assigns.selected_character_id
 
-          Logger.info("web_lobby:delete_character success user_id=#{user_id} character_id=#{character.id} remaining=#{length(characters)}")
+          Logger.info("bacon_world:delete_character success user_id=#{user_id} character_id=#{character.id} remaining=#{length(characters)}")
 
           PubSub.broadcast(Bacon8.PubSub, characters_topic(user_id), :characters_updated)
 
@@ -295,11 +295,11 @@ defmodule WebLobbyWeb.PlayLive do
            |> put_flash(:info, "Character deleted.")}
 
         {:error, :not_found} ->
-          Logger.warning("web_lobby:delete_character not_found user_id=#{user_id} character_id=#{character_id}")
+          Logger.warning("bacon_world:delete_character not_found user_id=#{user_id} character_id=#{character_id}")
           {:noreply, put_flash(socket, :error, "Character not found.")}
 
         {:error, reason} ->
-          Logger.warning("web_lobby:delete_character failed user_id=#{user_id} character_id=#{character_id} reason=#{inspect(reason)}")
+          Logger.warning("bacon_world:delete_character failed user_id=#{user_id} character_id=#{character_id} reason=#{inspect(reason)}")
           {:noreply, put_flash(socket, :error, "Could not delete character.")}
       end
     end
@@ -379,11 +379,11 @@ defmodule WebLobbyWeb.PlayLive do
        )}
     else
       {:error, :invalid_move} ->
-        Logger.warning("web_lobby:world_position_update_REJECTED invalid_move character_id=#{inspect(current_character(socket) && current_character(socket).character_id)}")
+        Logger.warning("bacon_world:world_position_update_REJECTED invalid_move character_id=#{inspect(current_character(socket) && current_character(socket).character_id)}")
         {:noreply, push_authoritative_correction(socket)}
 
       other ->
-        Logger.warning("web_lobby:world_position_update_REJECTED other=#{inspect(other)} character_id=#{inspect(current_character(socket) && current_character(socket).character_id)}")
+        Logger.warning("bacon_world:world_position_update_REJECTED other=#{inspect(other)} character_id=#{inspect(current_character(socket) && current_character(socket).character_id)}")
         {:noreply, socket}
     end
   end
@@ -701,10 +701,10 @@ defmodule WebLobbyWeb.PlayLive do
 
   # Account-wide presence: only one character may be logged in per account at a time,
   # regardless of which browser/session/zone it's in.
-  defp account_topic(user_id), do: "web_lobby:account:#{user_id}"
+  defp account_topic(user_id), do: "bacon_world:account:#{user_id}"
 
   # Other tabs of the same account refresh their character list on changes.
-  defp characters_topic(user_id), do: "web_lobby:user:#{user_id}:characters"
+  defp characters_topic(user_id), do: "bacon_world:user:#{user_id}:characters"
 
   defp account_online_elsewhere?(socket) do
     user_id = socket.assigns.current_user.id
@@ -750,7 +750,7 @@ defmodule WebLobbyWeb.PlayLive do
 
   defp join_zone_presence(socket, payload) do
     zone_id = payload.zone.id
-    topic = "web_lobby:zone:#{zone_id}"
+    topic = "bacon_world:zone:#{zone_id}"
 
     presence_key = payload.character_id
 
@@ -782,7 +782,7 @@ defmodule WebLobbyWeb.PlayLive do
         joined_at: DateTime.utc_now() |> DateTime.to_iso8601()
       })
 
-      Logger.info("web_lobby:join_zone_presence user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id} topic=#{topic}")
+      Logger.info("bacon_world:join_zone_presence user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id} topic=#{topic}")
 
     end
 
@@ -937,7 +937,7 @@ defmodule WebLobbyWeb.PlayLive do
 
         {:error, reason} ->
           Logger.warning(
-            "web_lobby:position_persist_failed user_id=#{user_id} character_id=#{current_character.character_id} reason=#{inspect(reason)}"
+            "bacon_world:position_persist_failed user_id=#{user_id} character_id=#{current_character.character_id} reason=#{inspect(reason)}"
           )
       end
     end)

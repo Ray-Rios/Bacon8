@@ -94,7 +94,7 @@ config :cors_plug,
 # Ecto Repo defaults
 # ----------------------------
 # Plugins active until an admin saves a choice on /admin/plugins (BACON8.md §9).
-config :bacon8, :default_active_plugins, ["web_lobby"]
+config :bacon8, :default_active_plugins, ["bacon_world"]
 
 # Payments (BACON8.md §8). "fake" is a pretend provider for development and
 # tests; it refuses to work unless fake_enabled is true (dev.exs, test.exs).

@@ -1,4 +1,4 @@
-defmodule WebLobby.Combat do
+defmodule BaconWorld.Combat do
   @moduledoc """
   Spells, HP/MP and respawning. Server-authoritative: the client asks, this
   module decides.
@@ -7,7 +7,7 @@ defmodule WebLobby.Combat do
   import Ecto.Query, only: [from: 2]
 
   alias Bacon8.GamesRepo
-  alias WebLobby.{CharacterSpell, Spell, World}
+  alias BaconWorld.{CharacterSpell, Spell, World}
 
   @throw_stone_hit_chance 0.85
 

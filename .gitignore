@@ -89,7 +89,7 @@ uploads/
 # ============================================================
 /plugins/*
 !/plugins/README.md
-!/plugins/web_lobby/
+!/plugins/bacon_world/
 
 # A game's own repository checked out at the root for tooling (its plugin's
 # build scripts look for it there). Same gitlink reason as above.

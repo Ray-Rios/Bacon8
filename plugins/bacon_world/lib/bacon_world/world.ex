@@ -1,6 +1,6 @@
-defmodule WebLobby.World do
+defmodule BaconWorld.World do
   @moduledoc """
-  Web Lobby's characters, zones and positions.
+  Bacon World's characters, zones and positions.
 
   Characters are the platform's `Bacon8.Games.GameCharacter` rows for this
   plugin's game, so they show up wherever the hub lists a player's characters.
@@ -19,9 +19,9 @@ defmodule WebLobby.World do
 
   alias Bacon8.{Games, GamesRepo}
   alias Bacon8.Games.GameCharacter
-  alias WebLobby.{Combat, Models, Zone}
+  alias BaconWorld.{Combat, Models, Zone}
 
-  @plugin_slug "web_lobby"
+  @plugin_slug "bacon_world"
   @max_characters_per_user 16
   @default_zone_slug "lobby"
   @default_stats %{"hp" => 10, "max_hp" => 10, "mp" => 10, "max_mp" => 10, "pvp_flagged" => false}
@@ -175,7 +175,7 @@ defmodule WebLobby.World do
   end
 
   # ---------------------------------------------------------------------------
-  # Shared helpers (also used by WebLobby.Combat)
+  # Shared helpers (also used by BaconWorld.Combat)
   # ---------------------------------------------------------------------------
 
   @doc false

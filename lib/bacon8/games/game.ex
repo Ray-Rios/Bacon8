@@ -1,6 +1,6 @@
 defmodule Bacon8.Games.Game do
   @moduledoc """
-  A registered game/title in the games platform (e.g. "web_lobby").
+  A registered game/title in the games platform (e.g. "bacon_world").
 
   New games are added here first; `GameCharacter` records reference a game
   by `game_id` so the schema stays generic across future titles.
@@ -24,7 +24,7 @@ defmodule Bacon8.Games.Game do
     game
     |> cast(attrs, [:slug, :name, :is_active])
     |> validate_required([:slug, :name])
-    # Underscores allowed since 2026-10-15: plugin slugs (e.g. "web_lobby") are
+    # Underscores allowed since 2026-10-15: plugin slugs (e.g. "bacon_world") are
     # also game slugs, and plugin slugs map to Elixir module names.
     |> validate_format(:slug, ~r/^[a-z0-9][a-z0-9_\-]*$/, message: "must be lowercase letters, digits, hyphens or underscores")
     |> unique_constraint(:slug)

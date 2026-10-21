@@ -6,7 +6,7 @@ defmodule Bacon8.Plugins.Discovery do
 
   Each folder whose name is a valid slug and that has `lib/<slug>/plugin.ex` is
   a plugin, and its main module is `<Camelized slug>.Plugin`
-  (`plugins/web_lobby` -> `WebLobby.Plugin`).
+  (`plugins/bacon_world` -> `BaconWorld.Plugin`).
 
   Other folders are ignored: names that aren't slugs (`_template`,
   `README.md`), and folders without a `plugin.ex`, such as an empty or
