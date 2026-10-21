@@ -739,4 +739,4 @@ export class CharacterModelManager {
   }
 }
 
-export default CharacterModelManager;
+export default CharacterModelManager;
