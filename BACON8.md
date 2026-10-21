@@ -16,8 +16,11 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-20**: the move to Bacon8 is finished; unused API
-side doors removed (invariant 16); brand assets generated from `brand/`.
+Last substantive update: **2026-10-21**: third-party content replaced with our own and
+CC0 work; the Bacon8 humans in the Web Lobby; placeholder legal pages; and the direction
+for a reusable core with games and commerce as plugins (ADR 0001: Bacon World, Bacon
+Store, a site kit). Before that, **2026-10-20**: the move to Bacon8 is finished; unused
+API side doors removed (invariant 16); brand assets generated from `brand/`.
 
 ---
 
@@ -120,6 +123,11 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-20 | **The move is finished**: production has run under the new names since 2026-10-18, the game and launcher are rebuilt against them, and the old deployment, its volumes and the old working copy are deleted. The legacy wire names it kept alive (`holo_sim_id`, `PUT .../holo_location`) and the game's CoreRedirects for the old plugin are removed. | Every client and server in use was rebuilt, so nothing sends the old names. |
 | 2026-10-20 | **Removed: the GraphQL API, `POST /api/auth/authenticate` and `GET /api/auth/users`.** Nothing used them. The GraphQL `login` and `/authenticate` checked passwords without the lockout, rate limit or banned/unverified checks the real login applies (and `/authenticate` said which of email or password was wrong); `/users` listed every account's email to anyone. | Security: they were open doors with no callers. |
 | 2026-10-20 | **Brand assets come from masters in `brand/`** (and the game's `RaysSpaceSim/Brand/`), turned into every icon, favicon, manifest and splash by `scripts/brand/build_brand_assets.py`. The masters are placeholders until the real artwork exists. The Phoenix favicon and the Start button image are gone. | One drop-in point for the artwork; and the old images were other companies' marks. |
+| 2026-10-20 | **Brand:** the logo is the "B8" monogram. The colours are blue `#247DF1`, cream `#E7F1FD` and near-black `#14100F`. The one-line description is "The kitchen sink." | Owner's decision. |
+| 2026-10-20 | **All flagged third-party material is removed** and replaced with our own or CC0 work: synthesized sound effects and music (`scripts/audio/`), an original default avatar, no third-party fonts, and new character models (next row). The removed files wait in a gitignored holding folder until the owner deletes them. | Owner's decision; it was placeholder content. |
+| 2026-10-20 | **Characters use our own skeleton, "B8 skeleton v1".** It has Unreal-style names, which Unreal's IK Retargeter, Unity's Humanoid and Godot's BoneMap all map. It has 3 spine bones, twist bones, breast and glute jiggle bones on every body, and `weapon_l`/`weapon_r` grip bones. Male and female share it. The bodies are Blender Studio's CC0 base meshes; the animations are Quaternius' CC0 Universal Animation Library, baked onto the skeleton. Built in the game repository (`SourceAssets/Characters/B8Human`). | Owner's decision. Epic's skeleton and animations may only be used in Unreal, and the web, Unity and Godot versions must look the same as the Unreal game. |
+| 2026-10-20 | **Legal pages are CMS pages:** `/pages/terms`, `privacy`, `refunds`, `copyright`, `contact`, `credits` and `gems`. They are seeded unpublished as placeholders to be reviewed with a lawyer, and the store's small print links to them. | Owner's decision. They can be edited in `/admin/pages` without a deploy. |
+| 2026-10-20 | **Direction: a reusable core, with games and commerce as plugins** (`docs/adr/0001-core-and-plugins.md`). Web Lobby becomes **Bacon World** (`bacon_world`). The store, Gems and payments become **Bacon Store** (`bacon_store`). The games platform becomes a plugin later. The core becomes the starting point for other stand-alone sites. | Owner's decision. A site that sells nothing or runs no games shouldn't carry the code for them. |
 
 ---
 
@@ -753,6 +761,14 @@ Existing Lobby characters were not migrated (decisions log): the old site-DB tab
 from the site baseline.
 Combat now also checks that the target is a Web Lobby character, which the old code didn't.
 
+**Characters (2026-10-20).** Players pick `Humans/Male.glb` or `Humans/Female.glb` from
+`priv/static/models`, which is synced to the models volume. These are CC0 bodies on the B8
+skeleton with 20 CC0 clips. `PREFERRED_CLIPS` in `model-manager.ts` maps the lobby's
+actions to clip names (idle → `Idle_Loop`, run → `Jog_Fwd_Loop`, attack → `OverhandThrow`, …),
+and pattern matching covers other models. The sources, all 89 clips, the Unreal assets and
+the test weapons live in the game repository (`SourceAssets/`). The rename to
+**Bacon World** is phase 1 of ADR 0001.
+
 ## 10. Desktop shell and start menu
 
 `DesktopLive` is a global `live_component` rendered on every authenticated page:
@@ -827,6 +843,11 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 | 4 | **Commerce** (§8, §11) | Ledger + entitlements; Stripe then PayPal; currency packs, items, subscriptions; storage tiers and VIP channels driven by entitlements; webhook inbox idempotent. |
 | 5 | **Start menu redesign** (§10) | Every app maps to a real feature; apps are registered data. |
 | 6 | **Stored-name cutover** (§5) | Cookie, release, node, DB and k8s names are Bacon8; runbook written and executed. *Done 2026-10-18 (decisions log).* |
+| 7 | **Bacon World** (ADR 0001, phase 1) | `web_lobby` is renamed everywhere, its stored names are migrated (tables, game row, plugin state) and old links redirect. |
+| 8 | **Site plugins** (phase 2) | Plugins can mount site routes (e.g. `/store`) and declare required plugins. Hooks replace core's direct calls into the store. |
+| 9 | **Bacon Store** (phase 3) | Core compiles and its suite passes without `plugins/bacon_store`; with it, everything in §8 behaves as before. |
+| 10 | **Games platform as a plugin** (phase 4) | The core runs with one database; Bacon World and RaysSpaceSim require `bacon_games`. |
+| 11 | **Site kit** (phase 5) | A new stand-alone site from the core is a configuration change and a deploy. |
 
 ---
 
@@ -838,12 +859,12 @@ Ordered roughly by how much it hurts.
   `WORLD_*`, and `deploy-game.sh` writes `HOLOSIM_IMAGE` there), so a game deploy edits a
   hub file. Move them to a configmap the plugin's `k3s/` owns and have the hub deployment
   read it with `envFrom` (`optional: true`).
-- **Third-party material is served to players** and has to be replaced or licensed before
-  Bacon8 is marketed: ripped game sound effects in `uploads/public/audio`, a
-  non-commercial (CC BY-NC) model in the character list, models of trademarked
-  characters and of a real person, a default avatar made from another site's artwork,
-  CC BY models with no credits page, and fonts of unknown licence. The branding and IP
-  checklist (owner's notes, outside this repo) lists each with its replacement.
+- ~~Third-party material served to players~~ (removed from the repository and replaced
+  2026-10-20 with original sounds and music, an original default avatar, no third-party
+  fonts and CC0-based characters). **Still to do in production:** delete the old files
+  from the uploads and models volumes, and sync the new models.
+- **The legal pages are unpublished drafts.** Publish them from `/admin/pages` after the
+  lawyer's review, and before the store takes live payments.
 - **Game releases are Development builds**: the console works for players and the window
   title carries debug info. Ship Shipping builds (`CLIENT_CONFIG=Shipping`).
 - A few core comments still mention RaysSpaceSim as history. Harmless; don't add new ones.
@@ -890,7 +911,7 @@ Ordered roughly by how much it hurts.
 - `POST /api/webhooks/scheduler/:secret` carries its secret in the URL, so the request
   line in the app and ingress logs still shows it (parameter filtering only covers the
   parameters). Move it to a header.
-- Web Lobby's three.js client has eight pre-existing TypeScript errors under
+- Web Lobby's three.js client has seven pre-existing TypeScript errors under
   `npm run type-check` (implicit `any`s, one loop-style enum); it bundles fine.
 - `Files` has a `:timer.sleep(10000)` in an upload path (goes with the legacy file system above).
 - The admin files page links to `/uploads/user_files/...`, which is not where files are

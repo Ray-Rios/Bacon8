@@ -47,7 +47,7 @@ practical: each subsystem says what it is and roughly what removing it costs.
 | **Notifications & email** | Swoosh + SMTP, HTML templates, delivery logging | `lib/bacon8/email`, `notifications` |
 | **Moderation & audit** | Audit log, moderation queue, admin LiveViews | `lib/bacon8/moderation`, `audit.ex` |
 | **Games platform** | Games, characters, the game-server registry, single-session claims, client releases and launcher downloads. Game-specific features come from plugins. **Its own database.** | `lib/bacon8/games` |
-| **Plugins** | WordPress-style: a game or feature is a folder under `plugins/`, compiled in and switched on or off from `/admin/plugins` without a redeploy. **Web Lobby** (a small in-browser 3D arcade) ships as the example | `lib/bacon8/plugin.ex`, `plugins`, `plugins/web_lobby` |
+| **Plugins** | WordPress-style: a game or feature is a folder under `plugins/`, compiled in and switched on or off from `/admin/plugins` without a redeploy. **Web Lobby** (an in-browser 3D game, being renamed **Bacon World**) ships as the example | `lib/bacon8/plugin.ex`, `plugins`, `plugins/web_lobby` |
 
 The **games platform** is the least generic and the most actively developed part.
 If you are here for a web app, it is the first thing to delete — it is cleanly
@@ -166,6 +166,7 @@ mix phx.gen.secret      # GUARDIAN_SECRET_KEY
 | `BACON8_HOST`, `PORT` | public host and bind port |
 | `CORS_ALLOWED_ORIGINS` | comma-separated |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_VERIFY` | dev defaults to port 1025 (MailHog) |
+| `FROM_EMAIL`, `FROM_NAME`, `REPLY_TO_EMAIL` | sender of the site's mail (default `no-reply@bacon8.net`, "Bacon8") and, optionally, where replies go. With Namecheap Private Email the sender can be an alias of the mailbox in `SMTP_USER` |
 | `ENABLE_REDIS`, `REDIS_URL` | set both to bridge pubsub across pods |
 
 ### Plugins
@@ -391,6 +392,15 @@ An honest map of what it costs to remove each piece, largest win first:
 The pieces most likely to be useful on their own: the **security stack** (device
 fingerprints, identifier lists, lockout, rate limiting), the **Gem ledger and
 webhook inbox**, and the **plugin system**.
+
+**Where this is going (2026-10-20):**
+[`docs/adr/0001-core-and-plugins.md`](docs/adr/0001-core-and-plugins.md) moves the
+store (with Gems and payments) and later the games platform into plugins. A new site
+then starts as the core plus the plugins it wants, rather than by deleting
+subsystems.
+
+Shipped media is our own or CC0. The site's Credits page (`/pages/credits`, a CMS
+page) lists the sources.
 
 ---
 
