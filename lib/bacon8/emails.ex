@@ -4,10 +4,20 @@ defmodule Bacon8.Emails do
   defp from_email, do: System.get_env("FROM_EMAIL") || "no-reply@bacon8.net"
   defp from_name, do: System.get_env("FROM_NAME") || "Bacon8"
 
+  # Where replies go when the sender is a no-reply address (e.g. support@).
+  # Unset or empty: no Reply-To header.
+  defp put_reply_to(email) do
+    case System.get_env("REPLY_TO_EMAIL") do
+      address when is_binary(address) and address != "" -> reply_to(email, address)
+      _ -> email
+    end
+  end
+
   def password_reset_email(user, reset_url) do
     new()
     |> to(user.email)
     |> from({from_name(), from_email()})
+    |> put_reply_to()
     |> subject("Reset your Bacon8 password")
     |> html_body(password_reset_html_body(user, reset_url))
     |> text_body(password_reset_text_body(user, reset_url))
@@ -17,6 +27,7 @@ defmodule Bacon8.Emails do
     new()
     |> to(user.email)
     |> from({from_name(), from_email()})
+    |> put_reply_to()
     |> subject("Verify your Bacon8 account")
     |> html_body(verification_html_body(user, verification_code))
     |> text_body(verification_text_body(user, verification_code))

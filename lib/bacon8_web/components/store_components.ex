@@ -146,10 +146,19 @@ defmodule Bacon8Web.StoreComponents do
     end
   end
 
-  @doc "Small print under Buy buttons."
+  @doc """
+  Small print under Buy buttons. The linked pages are CMS pages (/admin/pages),
+  seeded as unpublished placeholders on 2026-10-21; publish them before taking
+  real payments.
+  """
   def small_print(assigns) do
     ~H"""
-    <p class="text-xs text-gray-500">All sales are final. Gems have no cash value.</p>
+    <p class="text-xs text-gray-500">
+      All sales are final (<a href="/pages/refunds" class="underline hover:text-gray-300">refunds &amp; cancellations</a>).
+      Gems have no cash value (<a href="/pages/gems" class="underline hover:text-gray-300">Gems &amp; promotions</a>).
+      Buying means you accept the <a href="/pages/terms" class="underline hover:text-gray-300">Terms</a>
+      and the <a href="/pages/privacy" class="underline hover:text-gray-300">Privacy Policy</a>.
+    </p>
     """
   end
 end
