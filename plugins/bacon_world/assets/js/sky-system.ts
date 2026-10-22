@@ -90,7 +90,9 @@ export class SkySystem {
 
     // Sun
     const sunGeo = new THREE.SphereGeometry(1.8, 12, 12);
-    const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffde7 });
+    // fog: false - the village's scene fog (world-dressing.ts) would tint a far-off
+    // sun toward the sky colour, which made it look green against the blue.
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffde7, fog: false });
     this.sunMesh = new THREE.Mesh(sunGeo, sunMat);
     scene.add(this.sunMesh);
 
@@ -100,7 +102,7 @@ export class SkySystem {
 
     // Moon
     const moonGeo = new THREE.SphereGeometry(1.2, 12, 12);
-    const moonMat = new THREE.MeshBasicMaterial({ color: 0xd0d8e8 });
+    const moonMat = new THREE.MeshBasicMaterial({ color: 0xd0d8e8, fog: false });
     this.moonMesh = new THREE.Mesh(moonGeo, moonMat);
     scene.add(this.moonMesh);
 

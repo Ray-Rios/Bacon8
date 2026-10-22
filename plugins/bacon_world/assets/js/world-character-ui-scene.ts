@@ -25,11 +25,18 @@ function writeSetting(key: string, value: string): void {
 }
 import { SkySystem } from './sky-system';
 import { LobbyAudio } from './lobby-audio';
+import { HumanFactory, HumanAssets } from './human-factory';
+import { CharacterStage } from './character-stage';
+import { FrontUI } from './front-ui';
+import { WorldDressing, Collider } from './world-dressing';
+import { BODY_MODEL, isHumanModel, randomAppearance } from './appearance';
 
 type CharacterCard = {
   id: string;
   name: string;
   character_type: string;
+  model_path?: string;
+  appearance?: unknown;
 };
 
 type SceneState = {
@@ -121,6 +128,21 @@ export const WorldCharacterUIScene = {
     duration: number;
   }>,
   spellCooldowns: {} as Record<string, number>,
+  // character select / creator (front-ui.ts) on the 3D stage (character-stage.ts)
+  humanFactory: null as HumanFactory | null,
+  stage: null as CharacterStage | null,
+  front: null as FrontUI | null,
+  keyLight: null as THREE.DirectionalLight | null,
+  rimLight: null as THREE.DirectionalLight | null,
+  enteringTimer: null as ReturnType<typeof setTimeout> | null,
+  // the lobby village (world-dressing.ts) and what players can't walk through
+  dressing: null as WorldDressing | null,
+  worldColliders: [] as Collider[],
+  // other players' looks, fetched once per session (fetch_appearances)
+  appearanceCache: new Map<string, unknown>(),
+  appearanceWaiters: new Map<string, Array<(a: unknown) => void>>(),
+  appearanceQueue: new Set<string>(),
+  appearanceTimer: null as ReturnType<typeof setTimeout> | null,
 
   mounted(this: any) {
     if (!this.el) return;
@@ -148,14 +170,19 @@ export const WorldCharacterUIScene = {
 
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
+    this.humanFactory = new HumanFactory(this.readHumanAssets());
     this.characterManager = new CharacterModelManager();
     this.characterManager.setActiveScene(this.scene);
+    this.characterManager.setHumanFactory(this.humanFactory);
     this.audio = new LobbyAudio();
     this.worldGroup = new THREE.Group();
     this.scene.add(this.worldGroup);
 
     this.setupLights();
     this.createAmbientStars();
+    this.stage = new CharacterStage(this.scene, this.camera, this.renderer, this.humanFactory);
+    this.front = this.createFrontUI();
+    this.stage.onLoading = (on: boolean) => this.front?.setLoading(on);
     this.readState();
     this.syncSceneMode();
 
@@ -217,16 +244,20 @@ export const WorldCharacterUIScene = {
       }
 
       if (!this.characterManager?.getAllCharacters().has(payload.character_id) && this.state?.uiState === 'world' && this.characterManager) {
-        const currentModelPath = this.state.currentPlayer?.model_path as string;
-        void this.characterManager
-          .createPlayerCharacterFromModelPath(
-            payload.character_id,
-            payload.character_name || 'Player',
-            payload.character_type || 'AA',
-            payload.model_path || currentModelPath,
-            { x: payload.x || 0, y: payload.y || 0, z: payload.z || 0 },
-            false
-          )
+        const modelPath = payload.model_path || (this.state.currentPlayer?.model_path as string);
+        void (isHumanModel(modelPath) ? this.getAppearance(payload.character_id) : Promise.resolve(undefined))
+          .then((appearance: unknown) => {
+            if (!this.characterManager || this.state?.uiState !== 'world') return;
+            return this.characterManager.createPlayerCharacterFromModelPath(
+              payload.character_id,
+              payload.character_name || 'Player',
+              payload.character_type || 'AA',
+              modelPath,
+              { x: payload.x || 0, y: payload.y || 0, z: payload.z || 0 },
+              false,
+              appearance
+            );
+          })
           .catch(() => {
             // If creation races with presence sync, ignore and let the next sync resolve.
           });
@@ -484,6 +515,12 @@ export const WorldCharacterUIScene = {
     this.characterManager?.dispose();
     this.audio?.dispose();
     this.audio = null;
+    this.stage?.dispose();
+    this.stage = null;
+    this.front?.dispose();
+    this.front = null;
+    if (this.enteringTimer) clearTimeout(this.enteringTimer);
+    if (this.appearanceTimer) clearTimeout(this.appearanceTimer);
     this.clearPanels();
     this.scene = null;
     this.camera = null;
@@ -524,6 +561,8 @@ export const WorldCharacterUIScene = {
     const rim = new THREE.DirectionalLight(0xa855f7, 0.45);
     rim.position.set(-7, -3, 6);
 
+    this.keyLight = key;
+    this.rimLight = rim;
     this.scene.add(ambient, key, rim);
   },
 
@@ -593,6 +632,7 @@ export const WorldCharacterUIScene = {
   syncSceneMode(this: any) {
     if (this.state?.uiState === 'world' && this.state.currentPlayer) {
       this.clearPanels();
+      this.hideFront();
 
       if (!this.worldInitialized) {
         void this.initializeWorldMode();
@@ -604,8 +644,124 @@ export const WorldCharacterUIScene = {
     }
 
     this.teardownWorldMode();
-    this.resetSelectionCamera();
-    this.buildPanelsFromState();
+    this.showFront();
+  },
+
+  // ── Character select and creator ────────────────────────────────────────────
+
+  readHumanAssets(this: any): HumanAssets {
+    try {
+      return JSON.parse(this.el.dataset.humanAssets || '{}');
+    } catch (_err) {
+      return {};
+    }
+  },
+
+  createFrontUI(this: any): FrontUI {
+    const reply = (event: string, payload: any, fallback: any): Promise<any> =>
+      new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(fallback), 12000);
+        try {
+          this.pushEvent(event, payload, (res: any) => {
+            clearTimeout(timer);
+            resolve(res || fallback);
+          });
+        } catch (_e) {
+          clearTimeout(timer);
+          resolve(fallback);
+        }
+      });
+    return new FrontUI(this.el, {
+      select: (id: string) => {
+        (this.pushEvent('select_character', { character_id: id }) as any)?.catch?.(() => {});
+      },
+      play: (id: string) => {
+        this.front?.setEntering(true);
+        if (this.enteringTimer) clearTimeout(this.enteringTimer);
+        // the server answers with character_login_ready, or a flash if it refuses
+        this.enteringTimer = setTimeout(() => this.front?.setEntering(false), 15000);
+        this.pushEvent('select_character', { character_id: id }, () => {
+          (this.pushEvent('login_character', {}) as any)?.catch?.(() => {});
+        });
+      },
+      remove: (id: string) => {
+        (this.pushEvent('delete_character', { character_id: id }) as any)?.catch?.(() => {});
+      },
+      create: (name: string, title: string, a: any) =>
+        reply('three_ui_create_character', { name, character_type: title, model_path: BODY_MODEL[a.body as 'male' | 'female'], appearance: a },
+          { ok: false, error: 'No answer from the server. Try again.' }),
+      updateLook: (id: string, a: any) =>
+        reply('three_ui_update_appearance', { character_id: id, appearance: a }, { ok: false, error: 'No answer from the server. Try again.' }),
+      preview: (a: any) => {
+        if (!this.stage) return;
+        if (a) void this.stage.setAppearance(a);
+        else {
+          const st = this.humanFactory?.styles('male') || { hair: [], facial: [] };
+          void this.stage.setAppearance(randomAppearance('male', st.hair.map((x: any) => x.id), [], 20261021));
+        }
+      },
+      framing: (f: any) => this.stage?.setFraming(f),
+      insets: (l: number, r: number, t?: number, b?: number) => this.stage?.setInsets(l, r, t || 0, b || 0),
+      styles: (b: any) => this.humanFactory?.styles(b) || { hair: [], facial: [] },
+      iconUrl: (e: any) => this.humanFactory?.iconUrl(e) || null,
+      back: () => {},
+    });
+  },
+
+  showFront(this: any) {
+    if (!this.stage || !this.front || !this.state) return;
+    this.clearPanels();
+    this.stage.show();
+    if (this.keyLight) this.keyLight.visible = false;
+    if (this.rimLight) this.rimLight.visible = false;
+    if (this.ambientStars) this.ambientStars.visible = false;
+    if (this.ambientLight) this.ambientLight.intensity = 0.15;
+    this.front.setCharacters(this.state.characters, this.state.selectedCharacterId);
+    if (this.front.current === 'hidden') this.front.showSelect();
+  },
+
+  hideFront(this: any) {
+    this.front?.hide();
+    this.stage?.hide();
+    if (this.keyLight) this.keyLight.visible = true;
+    if (this.rimLight) this.rimLight.visible = true;
+    if (this.ambientStars) this.ambientStars.visible = true;
+    if (this.ambientLight) this.ambientLight.intensity = 0.8;
+  },
+
+  // Other players' looks: batched requests, answered by the LiveView (fetch_appearances).
+  getAppearance(this: any, characterId: string): Promise<unknown> {
+    if (this.appearanceCache.has(characterId)) return Promise.resolve(this.appearanceCache.get(characterId));
+    return new Promise((resolve) => {
+      const list = this.appearanceWaiters.get(characterId) || [];
+      list.push(resolve);
+      this.appearanceWaiters.set(characterId, list);
+      this.appearanceQueue.add(characterId);
+      if (this.appearanceTimer) return;
+      this.appearanceTimer = setTimeout(() => {
+        this.appearanceTimer = null;
+        const ids = [...this.appearanceQueue].slice(0, 64);
+        ids.forEach((id) => this.appearanceQueue.delete(id));
+        const settle = (map: Record<string, unknown>) => {
+          for (const id of ids) {
+            const a = map?.[id] ?? null;
+            if (a) this.appearanceCache.set(id, a);
+            (this.appearanceWaiters.get(id) || []).forEach((fn: any) => fn(a));
+            this.appearanceWaiters.delete(id);
+          }
+        };
+        const timer = setTimeout(() => settle({}), 4000);
+        try {
+          this.pushEvent('fetch_appearances', { ids }, (res: any) => {
+            clearTimeout(timer);
+            settle(res?.appearances || {});
+          });
+        } catch (_e) {
+          clearTimeout(timer);
+          settle({});
+        }
+      }, 60);
+    });
   },
 
   async initializeWorldMode(this: any) {
@@ -626,6 +782,17 @@ export const WorldCharacterUIScene = {
 
     this.createWorldOverlayUI();
 
+    // The village replaces the plain ground and grid once its models have loaded.
+    if (!this.dressing && this.scene && this.renderer) {
+      this.dressing = new WorldDressing(this.scene, this.renderer);
+      const plain = [...this.worldGroup.children];
+      void this.dressing.build(this.worldGroup).then(() => {
+        if (!this.dressing) return;
+        this.worldColliders = this.dressing.colliders();
+        if (this.worldColliders.length) plain.forEach((o: THREE.Object3D) => (o.visible = false));
+      });
+    }
+
     const currentPlayer = this.state.currentPlayer;
     const localExists = this.characterManager.getAllCharacters().has(currentPlayer.character_id);
     if (!localExists) {
@@ -639,7 +806,8 @@ export const WorldCharacterUIScene = {
           y: currentPlayer.position.y,
           z: currentPlayer.position.z
         },
-        true
+        true,
+        currentPlayer.appearance
       );
     }
 
@@ -654,6 +822,9 @@ export const WorldCharacterUIScene = {
         onPointerLockChange: (locked: boolean) => this.updateLookHint(locked),
         onPointerLockError: () => this.flashLookHint('Click again to look around'),
         onEscape: (reason: 'key' | 'lock-lost') => this.handleGameEscape(reason),
+        // The village's colliders (world-dressing.ts); empty until it has loaded.
+        collide: (x: number, z: number) =>
+          this.worldColliders.length ? WorldDressing.pushOut(this.worldColliders, x, z, 0.32 * UNITS_PER_METRE) : { x, z },
       });
       this.controller.setMouseSettings(
         Number(readSetting(MOUSE_SENS_KEY)) || SENSITIVITY.default,
@@ -666,6 +837,8 @@ export const WorldCharacterUIScene = {
     }
 
     this.worldInitialized = true;
+    if (this.enteringTimer) clearTimeout(this.enteringTimer);
+    this.front?.setEntering(false);
     this.audio?.setMusic(true);
     this.audio?.preload();
 
@@ -719,13 +892,17 @@ export const WorldCharacterUIScene = {
         this.remoteLastSeenMs.set(online.character_id, now);
 
         if (!this.characterManager.getAllCharacters().has(online.character_id)) {
+          const modelPath = online.model_path || (this.state.currentPlayer.model_path as string);
+          const appearance = isHumanModel(modelPath) ? await this.getAppearance(online.character_id) : undefined;
+          if (!this.characterManager || !this.state?.currentPlayer) return;
           await this.characterManager.createPlayerCharacterFromModelPath(
             online.character_id,
             online.character_name || 'Player',
             online.character_type || 'AA',
-            online.model_path || (this.state.currentPlayer.model_path as string),
+            modelPath,
             { x: online.x || 0, y: online.y || 0, z: online.z || 0 },
-            false
+            false,
+            appearance
           );
           this.remoteNetTargets.set(online.character_id, {
             x: online.x || 0,
@@ -935,6 +1112,12 @@ export const WorldCharacterUIScene = {
       this.skySystem = null;
     }
 
+    if (this.dressing) {
+      this.dressing.dispose();
+      this.dressing = null;
+      this.worldColliders = [];
+    }
+
     if (this.targetRingMesh) {
       this.scene?.remove(this.targetRingMesh);
       this.targetRingMesh.geometry.dispose();
@@ -973,6 +1156,7 @@ export const WorldCharacterUIScene = {
       this.characterManager.dispose();
       this.characterManager = new CharacterModelManager();
       this.characterManager.setActiveScene(this.scene);
+      this.characterManager.setHumanFactory(this.humanFactory);
     }
 
     if (this.worldGroup) {
@@ -1836,6 +2020,7 @@ export const WorldCharacterUIScene = {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    this.stage?.applyViewOffset();
   },
 
   sendLocalPosition(this: any, x: number, y: number, z: number, heading: number, force = false) {
@@ -2016,14 +2201,21 @@ export const WorldCharacterUIScene = {
       this.ambientStars.rotation.y += 0.0008;
     }
 
+    if (this.stage?.isVisible) {
+      this.stage.update(deltaSeconds);
+    }
+
     // Day/night sky tick (only in world mode, SkySystem controls ambient+sky)
     if (this.worldInitialized && this.skySystem) {
       this.skySystem.tick();
+      if (this.dressing && this.ambientLight) this.dressing.tick((this.ambientLight.intensity - 0.04) / 0.81);
     }
 
     if (this.state?.uiState === 'world') {
       // Freeze controller while dead — character cannot move
       if (!this.isDead) {
+        // Walls, stalls and trees are kept out inside the controller (its `collide`
+        // option), before it places the camera and reports the position.
         this.controller?.update(deltaSeconds);
       }
 
@@ -2131,7 +2323,8 @@ export const WorldCharacterUIScene = {
   },
 
   _handleSelectionClick(this: any, event: MouseEvent) {
-    // Existing panel click logic (previously in handleClick for selection mode)
+    // The select screen and creator are HTML (front-ui.ts); the stage handles dragging.
+    if (this.stage?.isVisible) return;
     if (!this.camera || !this.renderer) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     if (!this.pointer) return;

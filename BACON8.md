@@ -855,6 +855,26 @@ and pattern matching covers other models. The sources, all 89 clips, the Unreal 
 the test weapons live in the game repository (`SourceAssets/`). The rename to
 **Bacon World** was phase 1 of ADR 0001 (done 2026-10-21, above).
 
+**Looks, the creator and the village (2026-10-21).** Character select and the creator are
+HTML (`front-ui.ts`) over a lit 3D stage (`character-stage.ts`), replacing the floating 3D
+panels. A look (body type, height, body and face sliders driving the v2 humans' morph
+targets, skin, eyes, 45 hair styles, 6 facial hair, outfit pieces and colours) is stored in
+the character's `settings["appearance"]` and normalised by `BaconWorld.Appearance`, which
+trusts nothing from the client. `human-factory.ts` builds each human from its look (shared
+geometry, per-outfit index buffers that hide covered skin, hair bound to the body's bones).
+Events: `three_ui_create_character` (now replies), `three_ui_update_appearance` (not while
+in the world), `fetch_appearances`. The humans' slider and hair manifests are `.json`, which
+`/models` refuses (invariant 17), so the LiveView passes them in `data-human-assets`. The
+lobby is a village from the B8 props and building kit (`world-dressing.ts`), merged per
+material, with client-side colliders the controller applies, and fog and lamps that follow
+the day/night cycle. The v2 humans, hair and village GLBs are on the models volume
+(`sync-models-to-k8s.sh`), not in git; without them looks change nothing.
+
+**Controls (2026-10-21).** RaysSpaceSim's on-foot movement (camera-relative WASD, the
+character turning to face its movement, its speeds and acceleration in `controls-math.ts`)
+with EverQuest-style mouse handling: click to lock the pointer, hold the right button to
+steer (the character faces the camera), Ctrl frees the cursor, Esc opens the game menu.
+
 ## 10. Desktop shell and start menu
 
 `DesktopLive` is a global `live_component` rendered on every authenticated page:
@@ -997,6 +1017,14 @@ Ordered roughly by how much it hurts.
 - `POST /api/webhooks/scheduler/:secret` carries its secret in the URL, so the request
   line in the app and ingress logs still shows it (parameter filtering only covers the
   parameters). Move it to a header.
+- Bacon World follow-ups (2026-10-21):
+  - The animation packs (`Humans/Anims`, `anims.json`) aren't installed or used yet.
+  - Remote players' crouch and airborne state aren't sent, so they never show those clips.
+  - `/models` GLBs would compress well (meshopt is built for gzip). `Plug.Static`'s
+    `gzip: true` on the models static would serve a `.glb.gz` beside each `.glb`; the guard
+    allows it, because it checks the requested name (`.glb`), and a direct `.gz` request
+    stays 404. Needs the `.gz` copies made at sync time.
+  - The village's colliders are client-side only; the server checks speed, not walls.
 - Bacon World's three.js client has seven pre-existing TypeScript errors under
   `npm run type-check` (implicit `any`s, one loop-style enum); it bundles fine.
 - `Files` has a `:timer.sleep(10000)` in an upload path (goes with the legacy file system above).

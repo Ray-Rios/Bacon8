@@ -58,7 +58,7 @@ const CSS = `
 .bwf-hero-name{font-size:38px;font-weight:800;letter-spacing:.02em;text-shadow:0 4px 24px rgba(0,0,0,.6)}
 .bwf-hero-sub{font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:rgba(231,241,253,.6);margin-top:-10px}
 .bwf-actions{display:flex;gap:10px;pointer-events:auto}
-.bwf .bwf-btn{padding:11px 18px;border-radius:12px;font-weight:700;font-size:14px;background:rgba(231,241,253,.08);border:1px solid rgba(231,241,253,.12)!important;transition:background .15s,transform .1s}
+.bwf .bwf-btn{white-space:nowrap;padding:11px 18px;border-radius:12px;font-weight:700;font-size:14px;background:rgba(231,241,253,.08);border:1px solid rgba(231,241,253,.12)!important;transition:background .15s,transform .1s}
 .bwf .bwf-btn:hover:not(:disabled){background:rgba(231,241,253,.14)}
 .bwf .bwf-btn:active:not(:disabled){transform:translateY(1px)}
 .bwf .bwf-primary{background:linear-gradient(180deg,#3B8BFF,#247DF1);border-color:rgba(255,255,255,.18)!important;box-shadow:0 10px 30px rgba(36,125,241,.35);padding:13px 30px;font-size:16px;letter-spacing:.04em}

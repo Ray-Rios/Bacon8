@@ -45,6 +45,12 @@ export interface ControllerOptions {
   onEscape?: (reason: 'key' | 'lock-lost') => void;
   /** The character's height in scene units, for the camera pivot. */
   characterHeight?: number;
+  /**
+   * Keeps the character out of solid things: given where it would stand (scene
+   * units), returns where it may. Applied right after moving, before the camera
+   * is placed and the position is reported.
+   */
+  collide?: (x: number, z: number) => { x: number; z: number };
 }
 
 export type MovementState = {
@@ -344,9 +350,28 @@ export class CharacterController {
     if (!this.isGrounded) this.verticalSpeed -= MOVE.gravity * dt;
 
     const pos = this.character.position;
+    const fromX = pos.x;
+    const fromZ = pos.z;
     pos.x += this.velocity.x * UNITS_PER_METRE * dt;
     pos.z += this.velocity.z * UNITS_PER_METRE * dt;
     pos.y += this.verticalSpeed * UNITS_PER_METRE * dt;
+
+    // Walls, stalls, trees: slide along them. Velocity becomes what we actually
+    // covered, so running straight into a wall stops the jog instead of
+    // animating on the spot.
+    if (this.options.collide && dt > 0) {
+      const ok = this.options.collide(pos.x, pos.z);
+      if (ok.x !== pos.x || ok.z !== pos.z) {
+        pos.x = ok.x;
+        pos.z = ok.z;
+        const vx = (pos.x - fromX) / UNITS_PER_METRE / dt;
+        const vz = (pos.z - fromZ) / UNITS_PER_METRE / dt;
+        const moved = Math.hypot(vx, vz);
+        const scale = moved > this.speed && moved > 0 ? this.speed / moved : 1;
+        this.velocity = { x: vx * scale, z: vz * scale };
+        this.speed = Math.hypot(this.velocity.x, this.velocity.z);
+      }
+    }
 
     const ground = this.groundHeight(pos.x, pos.z);
     if (pos.y <= ground) {
