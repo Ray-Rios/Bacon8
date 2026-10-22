@@ -1,6 +1,6 @@
 // Universal Model Loader for GLTF and FBX with fallbacks
 import * as THREE from '../../../../assets/js/vendor/three';
-import { GLTFLoader, FBXLoader, SkeletonUtils } from '../../../../assets/js/vendor/three-loaders';
+import { GLTFLoader, FBXLoader, SkeletonUtils, MeshoptDecoder } from '../../../../assets/js/vendor/three-loaders';
 
 export interface ModelInfo {
   name: string;
@@ -26,6 +26,8 @@ export class UniversalModelLoader {
 
   constructor() {
     this.gltfLoader = new GLTFLoader();
+    // Models packed with gltf-transform's meshopt step need the decoder.
+    this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
     this.fbxLoader = new FBXLoader();
     console.log('📦 Universal Model Loader initialized');
   }

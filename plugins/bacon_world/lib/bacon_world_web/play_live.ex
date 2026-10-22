@@ -1,9 +1,11 @@
 defmodule BaconWorldWeb.PlayLive do
   @moduledoc """
-  /games/bacon_world - character selection, then the live 3D zone.
+  /games/bacon_world - character select and creator, then the live 3D zone.
 
   The 3D client is the `WorldCharacterUIScene` hook (this plugin's
-  `assets/js`). The server is authoritative: it checks every move for speed,
+  `assets/js`): the select screen and creator are `front-ui.ts` over the 3D stage
+  (`character-stage.ts`), and characters are dressed from their appearance
+  (`human-factory.ts`, `BaconWorld.Appearance`). The server is authoritative: it checks every move for speed,
   bounds and collisions, runs combat, and relays positions and chat to
   nearby players over PubSub and Presence.
 
@@ -87,6 +89,7 @@ defmodule BaconWorldWeb.PlayLive do
     {:ok,
      assign(socket,
        page_title: "Bacon World",
+       human_assets: Models.human_assets(),
        characters: characters,
        selected_character_id: nil,
        current_character_payload: nil,
@@ -189,43 +192,65 @@ defmodule BaconWorldWeb.PlayLive do
   end
 
   def handle_event("three_ui_create_character", params, socket) do
+    user_id = socket.assigns.current_user.id
     normalized_params = normalize_three_ui_create_params(params, socket.assigns.scene_model_paths)
-    Logger.info("bacon_world:three_ui_create_character user_id=#{socket.assigns.current_user.id} params=#{inspect(normalized_params)}")
+    Logger.info("bacon_world:three_ui_create_character user_id=#{user_id} name=#{inspect(normalized_params["name"])} body=#{inspect(get_in(normalized_params, ["appearance", "body"]))}")
 
-    case World.create_character(socket.assigns.current_user.id, normalized_params) do
-      {:ok, _character} ->
-        characters = World.list_user_characters(socket.assigns.current_user.id)
-        Logger.info("bacon_world:three_ui_create_character success user_id=#{socket.assigns.current_user.id} character_count=#{length(characters)}")
+    case World.create_character(user_id, normalized_params) do
+      {:ok, character} ->
+        characters = World.list_user_characters(user_id)
+        Logger.info("bacon_world:three_ui_create_character success user_id=#{user_id} character_count=#{length(characters)}")
 
-        PubSub.broadcast(Bacon8.PubSub, characters_topic(socket.assigns.current_user.id), :characters_updated)
+        PubSub.broadcast(Bacon8.PubSub, characters_topic(user_id), :characters_updated)
 
-        {:noreply,
+        {:reply, %{ok: true, character_id: character.id},
          socket
          |> assign(
            characters: characters,
            has_characters?: true,
+           selected_character_id: character.id,
            scene_characters: to_scene_characters(characters),
            create_form: to_form(%{"name" => "", "character_type" => "", "model_path" => ""}, as: "character")
-         )
-         |> put_flash(:info, "Character created from 3D interface.")}
+         )}
 
-      {:error, :character_limit_reached} ->
-        Logger.warning("bacon_world:three_ui_create_character limit_reached user_id=#{socket.assigns.current_user.id}")
-        {:noreply, put_flash(socket, :error, "You already have the maximum of 16 characters.")}
-
-      {:error, :invalid_model_path} ->
-        Logger.warning("bacon_world:three_ui_create_character invalid_model user_id=#{socket.assigns.current_user.id}")
-        {:noreply, put_flash(socket, :error, "3D selection used an invalid model.")}
-
-      {:error, %Ecto.Changeset{} = _changeset} ->
-        Logger.warning("bacon_world:three_ui_create_character invalid_input user_id=#{socket.assigns.current_user.id}")
-        {:noreply, put_flash(socket, :error, "3D create input is invalid. Use name/type at least 2 characters.")}
-
-      {:error, :default_zone_missing} ->
-        Logger.error("bacon_world:three_ui_create_character missing_default_zone user_id=#{socket.assigns.current_user.id}")
-        {:noreply, put_flash(socket, :error, "The lobby zone is missing. Run mix bacon8.migrate.")}
+      {:error, reason} ->
+        Logger.warning("bacon_world:three_ui_create_character failed user_id=#{user_id} reason=#{inspect(create_error_reason(reason))}")
+        {:reply, %{ok: false, error: create_error_message(reason)}, socket}
     end
   end
+
+  def handle_event("three_ui_update_appearance", %{"character_id" => character_id, "appearance" => look}, socket) do
+    user_id = socket.assigns.current_user.id
+
+    if active_account_character_id(user_id) == character_id do
+      {:reply, %{ok: false, error: "Leave the world with this character before changing its look."}, socket}
+    else
+      case World.update_appearance(user_id, character_id, look) do
+        {:ok, _look} ->
+          characters = World.list_user_characters(user_id)
+          PubSub.broadcast(Bacon8.PubSub, characters_topic(user_id), :characters_updated)
+          {:reply, %{ok: true}, assign(socket, characters: characters, scene_characters: to_scene_characters(characters))}
+
+        {:error, :not_found} ->
+          {:reply, %{ok: false, error: "Character not found."}, socket}
+
+        {:error, reason} ->
+          Logger.warning("bacon_world:update_appearance failed user_id=#{user_id} character_id=#{character_id} reason=#{inspect(reason)}")
+          {:reply, %{ok: false, error: "That look couldn't be saved."}, socket}
+      end
+    end
+  end
+
+  def handle_event("three_ui_update_appearance", _params, socket) do
+    {:reply, %{ok: false, error: "That look couldn't be saved."}, socket}
+  end
+
+  # Other players' looks, for drawing them (the client batches unknown ids).
+  def handle_event("fetch_appearances", %{"ids" => ids}, socket) when is_list(ids) do
+    {:reply, %{appearances: World.appearances_for(ids)}, socket}
+  end
+
+  def handle_event("fetch_appearances", _params, socket), do: {:reply, %{appearances: %{}}, socket}
 
   def handle_event("login_character", _params, socket) do
     selected_character_id = socket.assigns.selected_character_id
@@ -988,10 +1013,30 @@ defmodule BaconWorldWeb.PlayLive do
       %{
         id: character.id,
         name: character.name,
-        character_type: character.character_type
+        character_type: character.character_type,
+        model_path: character.model_path,
+        appearance: character.appearance
       }
     end)
   end
+
+  defp create_error_reason(%Ecto.Changeset{errors: errors}), do: {:changeset, Keyword.keys(errors)}
+  defp create_error_reason(reason), do: reason
+
+  defp create_error_message(:character_limit_reached), do: "You already have the maximum of 16 characters."
+  defp create_error_message(:invalid_model_path), do: "That body type isn't available right now."
+  defp create_error_message(:invalid_appearance), do: "That look couldn't be saved. Try another."
+  defp create_error_message(:default_zone_missing), do: "The world isn't set up yet (the lobby zone is missing)."
+
+  defp create_error_message(%Ecto.Changeset{} = changeset) do
+    case changeset.errors[:name] do
+      {"has already been taken", _} -> "That name is taken. Try another."
+      {_msg, opts} -> if opts[:validation] == :length, do: "Names need 2 to 24 characters.", else: "That name can't be used."
+      nil -> "Please check the name and title."
+    end
+  end
+
+  defp create_error_message(_), do: "Something went wrong. Try again."
 
   defp scene_state(assigns) do
     cond do
@@ -1032,11 +1077,16 @@ defmodule BaconWorldWeb.PlayLive do
     fallback_type = "AA"
     fallback_model = List.first(available_model_paths) || ""
 
-    %{
+    base = %{
       "name" => if(String.length(name) >= 2, do: name, else: fallback_name),
       "character_type" => if(String.length(character_type) >= 2, do: character_type, else: fallback_type),
       "model_path" => if(model_path != "", do: model_path, else: fallback_model)
     }
+
+    case Map.get(params, "appearance") do
+      look when is_map(look) -> Map.put(base, "appearance", look)
+      _ -> base
+    end
   end
 
   @impl true
@@ -1063,6 +1113,7 @@ defmodule BaconWorldWeb.PlayLive do
           data-model-paths={Jason.encode!(@scene_model_paths)}
           data-available-models={Jason.encode!(@available_models)}
           data-current-player={Jason.encode!(@current_character_payload)}
+          data-human-assets={Jason.encode!(@human_assets)}
           phx-update="ignore"
         ></div>
 

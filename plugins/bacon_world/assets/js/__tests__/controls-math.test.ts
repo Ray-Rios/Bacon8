@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CAMERA,
+  applyMouseLook,
   MOVE,
   UNITS_PER_METRE,
   cameraBasis,
@@ -153,6 +154,22 @@ test('look pitch is clamped to -70..+55 degrees; zoom to 1.5..9 m', () => {
   near(zoomDistance(4, -100000), CAMERA.minDistance);
   assert.ok(zoomDistance(4, 100) > 4);
   assert.ok(zoomDistance(4, -100) < 4);
+});
+
+test('mouse look: right turns right, up looks up; invert and sensitivity apply', () => {
+  const k = CAMERA.mouseSensitivity;
+  // Right turns the view right: the new forward is the old right vector.
+  const turned = applyMouseLook(0, 0, Math.PI / 2 / k, 0);
+  nearVec(cameraBasis(turned.yaw).forward, -1, 0, 1e-9);
+  // Mouse up (negative movementY) raises the look pitch.
+  assert.ok(applyMouseLook(0, 0, 0, -10).lookPitch > 0);
+  assert.ok(applyMouseLook(0, 0, 0, -10, 1, true).lookPitch < 0);
+  // Inverting doesn't touch yaw; sensitivity scales both.
+  near(applyMouseLook(0, 0, 10, 0, 1, true).yaw, -10 * k);
+  near(applyMouseLook(0, 0, 10, 0, 2).yaw, -20 * k);
+  // Pitch stays clamped.
+  near(applyMouseLook(0, 0, 0, -1e6).lookPitch, CAMERA.maxLookPitch);
+  near(applyMouseLook(0, 0, 0, 1e6).lookPitch, CAMERA.minLookPitch);
 });
 
 test('speeds fit the server limit (30 units/s, play_live.ex)', () => {

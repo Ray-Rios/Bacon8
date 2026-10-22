@@ -3,6 +3,8 @@ import * as THREE from "../../../../assets/js/vendor/three";
 import { SkeletonUtils } from "../../../../assets/js/vendor/three-loaders";
 import { PACE } from './controls-math';
 import UniversalModelLoader from './universal-model-loader';
+import { HumanFactory, HumanInstance } from './human-factory';
+import { appearanceKey, bodyFromModelPath, isHumanModel, normalizeAppearance } from './appearance';
 import type { 
   PlayerCharacter, 
   CreatureNPC, 
@@ -40,6 +42,11 @@ export class CharacterModelManager {
   private fadingFrom: Map<string, THREE.AnimationAction> = new Map();
   private universalLoader: UniversalModelLoader;
   private activeScene: THREE.Scene | null = null;
+  // Bacon8 humans (Humans/Male.glb, Female.glb) are built from an appearance by the
+  // HumanFactory (human-factory.ts) instead of being cloned as they are.
+  private humans: HumanFactory | null = null;
+  private humanInstances: Map<string, HumanInstance> = new Map();
+  private humanKeys: Map<string, string> = new Map();
 
   constructor() {
     this.universalLoader = new UniversalModelLoader();
@@ -48,6 +55,39 @@ export class CharacterModelManager {
 
   setActiveScene(scene: THREE.Scene | null): void {
     this.activeScene = scene;
+  }
+
+  setHumanFactory(factory: HumanFactory | null): void {
+    this.humans = factory;
+  }
+
+  /** The built human for a character (bones for weapons, current appearance), if any. */
+  getHuman(characterId: string): HumanInstance | undefined {
+    return this.humanInstances.get(characterId);
+  }
+
+  /**
+   * Re-dresses a character that is a Bacon8 human. Same body: updated in place;
+   * a different body (rare: a look edited elsewhere) rebuilds the character where it stands.
+   */
+  async applyAppearance(characterId: string, appearance: unknown): Promise<void> {
+    const inst = this.humanInstances.get(characterId);
+    const character = this.characters.get(characterId);
+    if (!inst || !character) return;
+    const a = normalizeAppearance(appearance, inst.body);
+    const key = appearanceKey(a);
+    if (this.humanKeys.get(characterId) === key) return;
+    this.humanKeys.set(characterId, key);
+    if (a.body === inst.body) {
+      await inst.apply(a);
+      return;
+    }
+    const pos = character.mesh.position.clone();
+    const rotY = character.mesh.rotation.y;
+    const { name, isLocalPlayer } = character;
+    this.removeCharacter(characterId);
+    const rebuilt = await this.createPlayerCharacterFromModelPath(characterId, name, '', a.body === 'female' ? '/models/Humans/Female.glb' : '/models/Humans/Male.glb', { x: pos.x, y: pos.y, z: pos.z }, isLocalPlayer, a);
+    rebuilt.mesh.rotation.y = rotY;
   }
 
   // Load FBX character models
@@ -154,7 +194,8 @@ export class CharacterModelManager {
     characterType: string,
     modelPath: string,
     position: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 },
-    isLocalPlayer: boolean = false
+    isLocalPlayer: boolean = false,
+    appearance?: unknown
   ): Promise<PlayerCharacter> {
     const existingCharacter = this.characters.get(id);
     if (existingCharacter) {
@@ -172,7 +213,8 @@ export class CharacterModelManager {
       characterType,
       modelPath,
       position,
-      isLocalPlayer
+      isLocalPlayer,
+      appearance
     );
 
     this.creatingCharacters.set(id, createPromise);
@@ -190,13 +232,24 @@ export class CharacterModelManager {
     characterType: string,
     modelPath: string,
     position: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 },
-    isLocalPlayer: boolean = false
+    isLocalPlayer: boolean = false,
+    appearance?: unknown
   ): Promise<PlayerCharacter> {
     let characterMesh: any;
     let mixer: THREE.AnimationMixer | null = null;
     let animations: any = new Map();
+    let human: HumanInstance | null = null;
 
-    if (modelPath.startsWith('builtin://')) {
+    if (this.humans && isHumanModel(modelPath)) {
+      // Feet at the origin and scaled by height (UNITS_PER_METRE), so no normalising.
+      const a = normalizeAppearance(appearance, bodyFromModelPath(modelPath));
+      human = await this.humans.create(a);
+      characterMesh = human.root;
+      characterMesh.position.set(position.x, position.y, position.z);
+      mixer = new THREE.AnimationMixer(characterMesh);
+      animations = this.buildAnimationActionMap(mixer, human.clips);
+      this.humanKeys.set(id, appearanceKey(a));
+    } else if (modelPath.startsWith('builtin://')) {
       characterMesh = this.buildBuiltinCharacterMesh(modelPath);
       characterMesh.position.set(position.x, position.y, position.z);
     } else {
@@ -258,6 +311,7 @@ export class CharacterModelManager {
     }
 
     this.characters.set(id, character);
+    if (human) this.humanInstances.set(id, human);
 
     const sceneRef = this.activeScene || window.ThreeJSMMO?.scene?.scene || null;
     if (sceneRef) {
@@ -532,9 +586,18 @@ export class CharacterModelManager {
         sceneRef.remove(character.mesh);
       }
       
-      // Dispose resources
-      this.disposeCharacterMesh(character.mesh);
-      
+      // Dispose resources. A human shares its geometry with every other copy of that
+      // body, so only its own materials go.
+      const human = this.humanInstances.get(characterId);
+      character.mixer?.stopAllAction();
+      if (human) {
+        human.dispose();
+        this.humanInstances.delete(characterId);
+        this.humanKeys.delete(characterId);
+      } else {
+        this.disposeCharacterMesh(character.mesh);
+      }
+
       this.characters.delete(characterId);
       this.activeCharacterAnimations.delete(characterId);
       console.log(`🗑️ Character removed: ${characterId}`);

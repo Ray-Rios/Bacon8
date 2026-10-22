@@ -147,6 +147,29 @@ export function cameraPosition(
   };
 }
 
+/** Mouse-sensitivity multiplier range for the game menu's slider. */
+export const SENSITIVITY = { min: 0.25, max: 3, default: 1 } as const;
+
+/**
+ * Apply one mouse movement (pixels) to the view. Moving right turns the view
+ * right (yaw decreases); moving up looks up, unless `invertY`. `sensitivity`
+ * multiplies CAMERA.mouseSensitivity.
+ */
+export function applyMouseLook(
+  yaw: number,
+  lookPitch: number,
+  dx: number,
+  dy: number,
+  sensitivity: number = 1,
+  invertY: boolean = false
+): { yaw: number; lookPitch: number } {
+  const k = CAMERA.mouseSensitivity * sensitivity;
+  return {
+    yaw: yaw - dx * k,
+    lookPitch: clampLookPitch(lookPitch + (invertY ? dy : -dy) * k),
+  };
+}
+
 /** Zoom the boom by a wheel delta (pixels), multiplicatively, within its range (m). */
 export function zoomDistance(distance: number, wheelDeltaY: number): number {
   const next = distance * Math.exp(wheelDeltaY * 0.001);

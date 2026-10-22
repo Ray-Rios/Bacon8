@@ -1,15 +1,25 @@
-// Third-person controls with RaysSpaceSim's on-foot feel (ARSSCharacter: Unreal's
-// third-person template). An orbit camera on a boom follows the mouse; WASD and
-// the arrows move relative to the camera; the character turns to face where it
-// moves. The maths and the numbers live in controls-math.ts.
+// Third-person controls: RaysSpaceSim's on-foot movement (ARSSCharacter, Unreal's
+// third-person template) with EverQuest-style mouse handling. The maths and the
+// numbers live in controls-math.ts.
+//
+//   Left-click the game   lock the pointer: free look, the character turns to
+//                         face where it moves
+//   Right button held     mouselook: the camera turns and the character keeps
+//                         facing the camera's direction (W runs, S backpedals,
+//                         A/D strafe). Works with or without the lock.
+//   Ctrl                  free the cursor
+//   Esc                   free the cursor and ask the scene for its game menu
+//   WASD / arrows         move relative to the camera; Shift sprints, C crouches,
+//                         Space jumps; the wheel zooms
 import * as THREE from '../../../../assets/js/vendor/three';
 import {
   CAMERA,
   CHARACTER_HEIGHT_UNITS,
   MOVE,
   PACE,
+  SENSITIVITY,
   UNITS_PER_METRE,
-  clampLookPitch,
+  applyMouseLook,
   cameraPosition,
   facingYaw,
   moveDirection,
@@ -22,10 +32,17 @@ import {
 export interface ControllerOptions {
   /** The renderer's canvas: mouse look, zoom and pointer lock happen here. */
   canvas: HTMLCanvasElement;
-  /** Asked before requesting pointer lock (false while chatting or dead). */
+  /** Asked before requesting pointer lock (false while dead or in the menu). */
   canLock?: () => boolean;
   /** Told when pointer lock starts or ends, to show the hint or the centre dot. */
   onPointerLockChange?: (locked: boolean) => void;
+  /** The browser refused the lock (Chrome waits ~1 s after Esc): ask for another click. */
+  onPointerLockError?: () => void;
+  /**
+   * Esc pressed ('key': toggle the menu), or the lock lost without us releasing
+   * it ('lock-lost': the browser kept the Esc; open the menu).
+   */
+  onEscape?: (reason: 'key' | 'lock-lost') => void;
   /** The character's height in scene units, for the camera pivot. */
   characterHeight?: number;
 }
@@ -47,7 +64,7 @@ const MOVEMENT_CODES = new Set([
 ]);
 
 // Browsers can report one huge movementX/Y as pointer lock starts or ends.
-const MAX_MOUSE_DELTA = 300;
+const MAX_MOUSE_DELTA = 400;
 
 function isEditable(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -77,23 +94,30 @@ export class CharacterController {
   private distance: number = CAMERA.distance;
   private pivotY: number | null = null;
 
+  // Settings (the game menu)
+  private sensitivity: number = SENSITIVITY.default;
+  private invertY = false;
+
   // Input
   private keys = new Set<string>();
-  private rightDragging = false;
+  private inputEnabled = true;
+  private steering = false; // right button held: mouselook, character faces the camera
   private skipNextMouseMove = false;
+  private releasingLock = false; // we asked for the lock to go (Ctrl, chat, menu, death)
 
   // Bound once, so dispose() removes the same functions it added.
   private readonly handleKeyDown = (e: KeyboardEvent) => this.onKeyDown(e);
   private readonly handleKeyUp = (e: KeyboardEvent) => this.onKeyUp(e);
-  private readonly handleBlur = () => this.keys.clear();
-  private readonly handleVisibility = () => { if (document.hidden) this.keys.clear(); };
+  private readonly handleBlur = () => this.clearInput();
+  private readonly handleVisibility = () => { if (document.hidden) this.clearInput(); };
   private readonly handleMouseDown = (e: MouseEvent) => this.onMouseDown(e);
-  private readonly handleMouseUp = (e: MouseEvent) => this.onMouseUp(e);
+  private readonly handleWindowMouseUp = (e: MouseEvent) => this.onMouseUp(e);
   private readonly handleMouseMove = (e: MouseEvent) => this.onMouseMove(e);
   private readonly handleWheel = (e: WheelEvent) => this.onWheel(e);
   private readonly handleClick = (e: MouseEvent) => this.onClick(e);
   private readonly handleContextMenu = (e: MouseEvent) => e.preventDefault();
   private readonly handlePointerLockChange = () => this.onPointerLockChange();
+  private readonly handlePointerLockError = () => this.options.onPointerLockError?.();
 
   private onPositionUpdate?: (x: number, y: number, z: number, rotation: number) => void;
 
@@ -109,10 +133,14 @@ export class CharacterController {
     document.addEventListener('keyup', this.handleKeyUp);
     document.addEventListener('visibilitychange', this.handleVisibility);
     document.addEventListener('pointerlockchange', this.handlePointerLockChange);
+    document.addEventListener('pointerlockerror', this.handlePointerLockError);
     window.addEventListener('blur', this.handleBlur);
+    // Mouse buttons start on the canvas; moves and releases are followed on the
+    // window, so a drag that slides off the canvas keeps turning the camera and
+    // a release anywhere ends it.
     this.canvas.addEventListener('mousedown', this.handleMouseDown);
-    this.canvas.addEventListener('mouseup', this.handleMouseUp);
-    this.canvas.addEventListener('mousemove', this.handleMouseMove);
+    window.addEventListener('mouseup', this.handleWindowMouseUp);
+    window.addEventListener('mousemove', this.handleMouseMove);
     this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
     this.canvas.addEventListener('click', this.handleClick);
     this.canvas.addEventListener('contextmenu', this.handleContextMenu);
@@ -124,7 +152,18 @@ export class CharacterController {
 
   private onKeyDown(event: KeyboardEvent): void {
     if (isEditable(event.target)) return;
-    if (!MOVEMENT_CODES.has(event.code)) return;
+
+    if (event.code === 'ControlLeft' || event.code === 'ControlRight') {
+      this.releasePointerLock();
+      return;
+    }
+    if (event.code === 'Escape') {
+      this.releasePointerLock();
+      this.options.onEscape?.('key');
+      return;
+    }
+
+    if (!this.inputEnabled || !MOVEMENT_CODES.has(event.code)) return;
     this.keys.add(event.code);
     // Space and the arrows would scroll the page.
     if (event.code === 'Space' || event.code.startsWith('Arrow')) event.preventDefault();
@@ -136,18 +175,24 @@ export class CharacterController {
   }
 
   private onMouseDown(event: MouseEvent): void {
-    if (event.button === 2 && !this.isPointerLocked()) {
-      this.rightDragging = true;
+    if (event.button === 2 && this.inputEnabled) {
+      this.steering = true;
       this.skipNextMouseMove = true;
     }
   }
 
   private onMouseUp(event: MouseEvent): void {
-    if (event.button === 2) this.rightDragging = false;
+    if (event.button === 2) this.steering = false;
   }
 
   private onMouseMove(event: MouseEvent): void {
-    if (!this.isPointerLocked() && !this.rightDragging) return;
+    if (!this.inputEnabled) return;
+    if (!this.isPointerLocked() && !this.steering) return;
+    // A missed mouseup (released outside the window) must not leave us steering.
+    if (this.steering && !this.isPointerLocked() && (event.buttons & 2) === 0) {
+      this.steering = false;
+      return;
+    }
     if (this.skipNextMouseMove) {
       this.skipNextMouseMove = false;
       return;
@@ -156,9 +201,9 @@ export class CharacterController {
     const dy = event.movementY || 0;
     if (Math.abs(dx) > MAX_MOUSE_DELTA || Math.abs(dy) > MAX_MOUSE_DELTA) return;
 
-    // Mouse right turns the view right (psi decreases); mouse up looks up.
-    this.yaw -= dx * CAMERA.mouseSensitivity;
-    this.lookPitch = clampLookPitch(this.lookPitch - dy * CAMERA.mouseSensitivity);
+    const look = applyMouseLook(this.yaw, this.lookPitch, dx, dy, this.sensitivity, this.invertY);
+    this.yaw = look.yaw;
+    this.lookPitch = look.lookPitch;
   }
 
   private onWheel(event: WheelEvent): void {
@@ -169,32 +214,68 @@ export class CharacterController {
   private onClick(event: MouseEvent): void {
     if (event.button !== 0 || this.isPointerLocked()) return;
     if (event.target !== this.canvas) return;
-    if (this.options.canLock && !this.options.canLock()) return;
-
-    try {
-      // Chrome returns a promise (and rejects if asked again too soon after Esc).
-      const result = this.canvas.requestPointerLock() as unknown as Promise<void> | undefined;
-      if (result && typeof result.catch === 'function') result.catch(() => {});
-    } catch (_e) {
-      // Not available (an iframe without permission): right-drag still works.
-    }
+    this.requestPointerLock();
   }
 
   private onPointerLockChange(): void {
     const locked = this.isPointerLocked();
     // The first move after the lock starts or ends can be a jump across the screen.
     this.skipNextMouseMove = true;
-    if (locked) this.rightDragging = false;
+    if (!locked && !this.releasingLock) {
+      // We didn't let go: the browser did, on Esc (it keeps that key to itself
+      // while locked). Treat it as Esc.
+      this.clearInput();
+      this.options.onEscape?.('lock-lost');
+    }
+    this.releasingLock = false;
     this.options.onPointerLockChange?.(locked);
+  }
+
+  /** Lock the pointer for free look (call from a click: browsers require a gesture). */
+  requestPointerLock(): void {
+    if (this.isPointerLocked() || !this.inputEnabled) return;
+    if (this.options.canLock && !this.options.canLock()) return;
+    try {
+      // Chrome returns a promise, and rejects if asked again too soon after Esc.
+      const result = this.canvas.requestPointerLock() as unknown as Promise<void> | undefined;
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => this.options.onPointerLockError?.());
+      }
+    } catch (_e) {
+      // Not available (an iframe without permission): right-drag still works.
+      this.options.onPointerLockError?.();
+    }
   }
 
   isPointerLocked(): boolean {
     return document.pointerLockElement === this.canvas;
   }
 
-  /** Give the cursor back (chat opened, character died). */
+  /** Give the cursor back (Ctrl, chat, the menu, death). */
   releasePointerLock(): void {
-    if (this.isPointerLocked()) document.exitPointerLock();
+    if (!this.isPointerLocked()) return;
+    this.releasingLock = true;
+    document.exitPointerLock();
+  }
+
+  /** Stop or resume reading movement keys and the mouse (the game menu is open). */
+  setInputEnabled(enabled: boolean): void {
+    this.inputEnabled = enabled;
+    if (!enabled) {
+      this.clearInput();
+      this.releasePointerLock();
+    }
+  }
+
+  /** Mouse sensitivity multiplier (SENSITIVITY.min..max) and inverted Y, from the game menu. */
+  setMouseSettings(sensitivity: number, invertY: boolean): void {
+    this.sensitivity = Math.min(SENSITIVITY.max, Math.max(SENSITIVITY.min, sensitivity));
+    this.invertY = invertY;
+  }
+
+  private clearInput(): void {
+    this.keys.clear();
+    this.steering = false;
   }
 
   // ---------------------------------------------------------------------------
@@ -203,12 +284,12 @@ export class CharacterController {
 
   update(deltaTime: number): void {
     const dt = Math.min(deltaTime, 0.1); // a stalled tab mustn't fling the character
-    const before = { x: this.character.position.x, y: this.character.position.y, z: this.character.position.z, heading: this.character.rotation.y };
+    const p = this.character.position;
+    const before = { x: p.x, y: p.y, z: p.z, heading: this.character.rotation.y };
 
     this.updateMovement(dt);
     this.updateCamera(dt);
 
-    const p = this.character.position;
     const changed = p.x !== before.x || p.y !== before.y || p.z !== before.z || this.character.rotation.y !== before.heading;
     if (this.onPositionUpdate && changed) {
       this.onPositionUpdate(p.x, p.y, p.z, this.character.rotation.y);
@@ -247,8 +328,11 @@ export class CharacterController {
     );
     this.speed = Math.hypot(this.velocity.x, this.velocity.z);
 
-    // Face the way we move (bOrientRotationToMovement), not the camera.
-    if (hasInput) {
+    if (this.steering) {
+      // Mouselook: the character faces where the camera looks; A/D strafe, S backpedals.
+      this.character.rotation.y = turnToward(this.character.rotation.y, this.yaw, MOVE.turnRate * 2 * dt);
+    } else if (hasInput) {
+      // Free look: face the way we move (bOrientRotationToMovement), not the camera.
       this.character.rotation.y = turnToward(this.character.rotation.y, facingYaw(dir), MOVE.turnRate * dt);
     }
 
@@ -356,14 +440,15 @@ export class CharacterController {
     document.removeEventListener('keyup', this.handleKeyUp);
     document.removeEventListener('visibilitychange', this.handleVisibility);
     document.removeEventListener('pointerlockchange', this.handlePointerLockChange);
+    document.removeEventListener('pointerlockerror', this.handlePointerLockError);
     window.removeEventListener('blur', this.handleBlur);
     this.canvas.removeEventListener('mousedown', this.handleMouseDown);
-    this.canvas.removeEventListener('mouseup', this.handleMouseUp);
-    this.canvas.removeEventListener('mousemove', this.handleMouseMove);
+    window.removeEventListener('mouseup', this.handleWindowMouseUp);
+    window.removeEventListener('mousemove', this.handleMouseMove);
     this.canvas.removeEventListener('wheel', this.handleWheel);
     this.canvas.removeEventListener('click', this.handleClick);
     this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
-    this.keys.clear();
+    this.clearInput();
   }
 }
 

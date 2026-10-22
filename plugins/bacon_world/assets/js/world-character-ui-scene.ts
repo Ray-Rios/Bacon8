@@ -1,7 +1,28 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { CharacterModelManager } from './model-manager';
 import CharacterController from './character-controller';
-import { PACE, UNITS_PER_METRE } from './controls-math';
+import { PACE, SENSITIVITY, UNITS_PER_METRE } from './controls-math';
+
+// Mouse settings from the game menu, remembered in this browser.
+const MOUSE_SENS_KEY = 'bacon_world:mouse_sensitivity';
+const LOOK_HINT = 'Click to look around · Hold right button to steer · Ctrl frees the cursor · Esc for menu';
+const INVERT_Y_KEY = 'bacon_world:invert_mouse_y';
+
+function readSetting(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSetting(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // private mode or blocked storage: the setting lasts for this visit
+  }
+}
 import { SkySystem } from './sky-system';
 import { LobbyAudio } from './lobby-audio';
 
@@ -61,8 +82,11 @@ export const WorldCharacterUIScene = {
   // Mouse-look hints: shown while the pointer is free / locked (character-controller.ts).
   lookHintEl: null as HTMLDivElement | null,
   lookDotEl: null as HTMLDivElement | null,
-  // When a click last closed chat: that click mustn't also lock the pointer.
-  chatClosedAtMs: 0,
+  // The game menu (Esc): its element, and when it last opened (a browser may
+  // report Esc twice: as the key and as the lost pointer lock).
+  gameMenuEl: null as HTMLDivElement | null,
+  gameMenuOpenedAtMs: 0,
+  lookHintTimer: null as ReturnType<typeof setTimeout> | null,
   nameplateEls: new Map<string, HTMLDivElement>(),
   creatorOverlay: null as HTMLDivElement | null,
   // sky & combat state
@@ -624,13 +648,17 @@ export const WorldCharacterUIScene = {
       this.ensureLocalMarker(localCharacter.mesh);
       this.controller = new CharacterController(localCharacter.mesh, this.camera, {
         canvas: this.renderer.domElement,
-        // No pointer lock while typing in chat or dead (the overlay needs the cursor).
-        canLock: () =>
-          !this.isDead &&
-          document.activeElement !== this.chatInput &&
-          performance.now() - this.chatClosedAtMs > 300,
+        // No pointer lock while dead or in the menu (they need the cursor). A click
+        // that closes chat locks too: the chat's pointerdown handler blurs it first.
+        canLock: () => !this.isDead && !this.isGameMenuOpen(),
         onPointerLockChange: (locked: boolean) => this.updateLookHint(locked),
+        onPointerLockError: () => this.flashLookHint('Click again to look around'),
+        onEscape: (reason: 'key' | 'lock-lost') => this.handleGameEscape(reason),
       });
+      this.controller.setMouseSettings(
+        Number(readSetting(MOUSE_SENS_KEY)) || SENSITIVITY.default,
+        readSetting(INVERT_Y_KEY) === 'on'
+      );
       this.updateLookHint(false);
       this.controller.setPositionCallback((x: number, y: number, z: number, rotation: number) => {
         this.sendLocalPosition(x, y, z, rotation);
@@ -1148,12 +1176,14 @@ export const WorldCharacterUIScene = {
     // centre dot (what a click targets) while it's locked.
     const lookHint = document.createElement('div');
     lookHint.className = 'absolute bottom-24 left-1/2 -translate-x-1/2 text-[11px] text-cyan-200/80 bg-black/50 rounded px-2 py-0.5 select-none hidden';
-    lookHint.textContent = 'Click to look around · Esc for cursor';
+    lookHint.textContent = LOOK_HINT;
     layer.appendChild(lookHint);
 
     const lookDot = document.createElement('div');
     lookDot.className = 'absolute top-1/2 left-1/2 w-1 h-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/80 hidden';
     layer.appendChild(lookDot);
+
+    layer.appendChild(this.buildGameMenu());
 
     this.el.appendChild(layer);
 
@@ -1172,8 +1202,6 @@ export const WorldCharacterUIScene = {
       if (this.chatPanel && this.chatPanel.contains(target)) return;
       if (document.activeElement === this.chatInput) {
         this.chatInput?.blur();
-        // This click only closes chat; the next one may lock the pointer.
-        this.chatClosedAtMs = performance.now();
       }
     };
 
@@ -1212,8 +1240,184 @@ export const WorldCharacterUIScene = {
   },
 
   updateLookHint(this: any, locked: boolean) {
-    this.lookHintEl?.classList.toggle('hidden', locked);
+    const menuOpen = this.isGameMenuOpen();
+    this.lookHintEl?.classList.toggle('hidden', locked || menuOpen);
     this.lookDotEl?.classList.toggle('hidden', !locked);
+  },
+
+  // Show a different hint for a few seconds (e.g. the browser refused the lock).
+  flashLookHint(this: any, text: string) {
+    if (!this.lookHintEl) return;
+    this.lookHintEl.textContent = text;
+    this.lookHintEl.classList.remove('hidden');
+    if (this.lookHintTimer) clearTimeout(this.lookHintTimer);
+    this.lookHintTimer = setTimeout(() => {
+      this.lookHintTimer = null;
+      if (this.lookHintEl) this.lookHintEl.textContent = LOOK_HINT;
+      this.updateLookHint(!!this.controller?.isPointerLocked());
+    }, 2500);
+  },
+
+  // ── Game menu (Esc) ────────────────────────────────────────────────────────
+
+  isGameMenuOpen(this: any): boolean {
+    return !!this.gameMenuEl && !this.gameMenuEl.classList.contains('hidden');
+  },
+
+  handleGameEscape(this: any, reason: 'key' | 'lock-lost') {
+    if (this.isDead) return;
+    if (reason === 'lock-lost') {
+      this.openGameMenu();
+      return;
+    }
+    // The same Esc can arrive as a lost lock and then as the key: don't close
+    // a menu that has only just opened.
+    if (this.isGameMenuOpen()) {
+      if (performance.now() - this.gameMenuOpenedAtMs > 250) this.closeGameMenu();
+    } else {
+      this.openGameMenu();
+    }
+  },
+
+  openGameMenu(this: any) {
+    if (!this.gameMenuEl || this.isGameMenuOpen()) return;
+    this.gameMenuEl.classList.remove('hidden');
+    this.gameMenuOpenedAtMs = performance.now();
+    this.controller?.setInputEnabled(false);
+    this.syncGameMenu();
+    this.updateLookHint(false);
+  },
+
+  closeGameMenu(this: any) {
+    if (!this.gameMenuEl) return;
+    this.gameMenuEl.classList.add('hidden');
+    this.controller?.setInputEnabled(true);
+    this.updateLookHint(!!this.controller?.isPointerLocked());
+  },
+
+  // Refresh the menu's controls from the current settings.
+  syncGameMenu(this: any) {
+    const menu = this.gameMenuEl;
+    if (!menu) return;
+    const sens = menu.querySelector('[data-menu-sensitivity]') as HTMLInputElement | null;
+    const sensValue = menu.querySelector('[data-menu-sensitivity-value]') as HTMLElement | null;
+    const invert = menu.querySelector('[data-menu-invert]') as HTMLInputElement | null;
+    const sound = menu.querySelector('[data-menu-sound]') as HTMLButtonElement | null;
+    const value = Number(readSetting(MOUSE_SENS_KEY)) || SENSITIVITY.default;
+    if (sens) sens.value = String(value);
+    if (sensValue) sensValue.textContent = `${value.toFixed(2)}×`;
+    if (invert) invert.checked = readSetting(INVERT_Y_KEY) === 'on';
+    if (sound) sound.textContent = this.audio?.enabled ? 'Sound: ON' : 'Sound: OFF';
+  },
+
+  buildGameMenu(this: any): HTMLDivElement {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'absolute inset-0 hidden bg-black/60 flex items-center justify-center pointer-events-auto z-50';
+    backdrop.setAttribute('data-game-menu', 'true');
+
+    const panel = document.createElement('div');
+    panel.className = 'w-[320px] max-w-[92%] rounded-lg border border-cyan-900/70 bg-slate-950/95 p-4 text-cyan-50 shadow-[0_0_40px_rgba(34,211,238,0.15)]';
+    backdrop.appendChild(panel);
+
+    const title = document.createElement('div');
+    title.className = 'text-sm font-bold uppercase tracking-wide text-cyan-200 mb-3';
+    title.textContent = 'Game Menu';
+    panel.appendChild(title);
+
+    const button = (label: string, cls: string, onClick: () => void) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `w-full rounded px-3 py-2 text-sm mb-2 ${cls}`;
+      b.textContent = label;
+      b.addEventListener('click', onClick);
+      return b;
+    };
+
+    // Resume locks the pointer straight away (this click is the gesture browsers need).
+    panel.appendChild(button('Resume', 'bg-cyan-700 hover:bg-cyan-600 text-white', () => {
+      this.closeGameMenu();
+      this.controller?.requestPointerLock();
+    }));
+
+    // Mouse sensitivity
+    const sensRow = document.createElement('label');
+    sensRow.className = 'block text-xs text-slate-300 mt-2 mb-1';
+    const sensText = document.createElement('div');
+    sensText.className = 'flex justify-between';
+    const sensLabel = document.createElement('span');
+    sensLabel.textContent = 'Mouse sensitivity';
+    const sensValue = document.createElement('span');
+    sensValue.setAttribute('data-menu-sensitivity-value', 'true');
+    sensText.appendChild(sensLabel);
+    sensText.appendChild(sensValue);
+    const sens = document.createElement('input');
+    sens.type = 'range';
+    sens.min = String(SENSITIVITY.min);
+    sens.max = String(SENSITIVITY.max);
+    sens.step = '0.05';
+    sens.className = 'w-full accent-cyan-500';
+    sens.setAttribute('data-menu-sensitivity', 'true');
+    sens.addEventListener('input', () => {
+      const value = Number(sens.value);
+      writeSetting(MOUSE_SENS_KEY, String(value));
+      sensValue.textContent = `${value.toFixed(2)}×`;
+      this.controller?.setMouseSettings(value, readSetting(INVERT_Y_KEY) === 'on');
+    });
+    sensRow.appendChild(sensText);
+    sensRow.appendChild(sens);
+    panel.appendChild(sensRow);
+
+    // Invert mouse Y
+    const invertRow = document.createElement('label');
+    invertRow.className = 'flex items-center gap-2 text-xs text-slate-300 mb-3 cursor-pointer';
+    const invert = document.createElement('input');
+    invert.type = 'checkbox';
+    invert.className = 'accent-cyan-500';
+    invert.setAttribute('data-menu-invert', 'true');
+    invert.addEventListener('change', () => {
+      writeSetting(INVERT_Y_KEY, invert.checked ? 'on' : 'off');
+      this.controller?.setMouseSettings(Number(readSetting(MOUSE_SENS_KEY)) || SENSITIVITY.default, invert.checked);
+    });
+    const invertText = document.createElement('span');
+    invertText.textContent = 'Invert mouse Y';
+    invertRow.appendChild(invert);
+    invertRow.appendChild(invertText);
+    panel.appendChild(invertRow);
+
+    // Sound (the same setting as the HUD's button)
+    const sound = button('Sound', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => {
+      this.audio?.toggle();
+      this.syncGameMenu();
+      const hudSound = this.hudEl?.querySelector('[data-sound-btn]') as HTMLButtonElement | null;
+      if (hudSound) hudSound.textContent = this.audio?.enabled ? 'Sound: ON' : 'Sound: OFF';
+    });
+    sound.setAttribute('data-menu-sound', 'true');
+    panel.appendChild(sound);
+
+    // Controls
+    const help = document.createElement('div');
+    help.className = 'text-[11px] leading-5 text-slate-400 border-t border-slate-800 pt-2 mt-1 mb-3';
+    help.innerHTML = [
+      '<b class="text-slate-300">Click</b> look around (free look)',
+      '<b class="text-slate-300">Hold right button</b> steer: face where the camera looks',
+      '<b class="text-slate-300">WASD / arrows</b> move · <b class="text-slate-300">Shift</b> sprint · <b class="text-slate-300">C</b> crouch · <b class="text-slate-300">Space</b> jump',
+      '<b class="text-slate-300">Wheel</b> zoom · <b class="text-slate-300">Ctrl</b> free the cursor · <b class="text-slate-300">Esc</b> this menu',
+      '<b class="text-slate-300">Enter</b> chat · <b class="text-slate-300">/</b> command · <b class="text-slate-300">Tab</b> next target · <b class="text-slate-300">1</b> throw stone',
+    ].join('<br>');
+    panel.appendChild(help);
+
+    panel.appendChild(button('Log out', 'bg-rose-700 hover:bg-rose-600 text-white', () => {
+      this.closeGameMenu();
+      (this.pushEvent('logout_character', {}) as any)?.catch?.(() => {});
+    }));
+
+    // Clicking outside the panel closes the menu.
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) this.closeGameMenu();
+    });
+
+    this.gameMenuEl = backdrop;
+    return backdrop;
   },
 
   removeWorldOverlayUI(this: any) {
@@ -1223,6 +1427,11 @@ export const WorldCharacterUIScene = {
     this.nameplateLayer = null;
     this.lookHintEl = null;
     this.lookDotEl = null;
+    this.gameMenuEl = null;
+    if (this.lookHintTimer) {
+      clearTimeout(this.lookHintTimer);
+      this.lookHintTimer = null;
+    }
     this.chatPanel = null;
     this.chatInput = null;
     this.hudEl = null;
@@ -1239,6 +1448,7 @@ export const WorldCharacterUIScene = {
 
   enterDeathState(this: any, respawnInMs: number) {
     this.isDead = true;
+    this.closeGameMenu();
     this.controller?.releasePointerLock();
 
     // Play death animation on local character
@@ -1380,13 +1590,23 @@ export const WorldCharacterUIScene = {
     }
 
     // 1: cast Throw Stone
-    if (event.key === '1') {
+    if (event.key === '1' && !this.isGameMenuOpen()) {
       this.castSpell('throw_stone');
       return;
     }
 
+    // "/" starts a slash command: chat opens with the slash already typed.
+    if (event.key === '/' && this.chatInput && !this.isGameMenuOpen()) {
+      event.preventDefault();
+      this.controller?.releasePointerLock();
+      this.chatInput.value = '/';
+      this.chatInput.focus();
+      this.chatInput.setSelectionRange(1, 1);
+      return;
+    }
+
     if (event.key !== 'Enter') return;
-    if (!this.chatInput) return;
+    if (!this.chatInput || this.isGameMenuOpen()) return;
     event.preventDefault();
     this.controller?.releasePointerLock();
     this.chatInput.focus();
@@ -1874,6 +2094,9 @@ export const WorldCharacterUIScene = {
     // the cursor is hidden, so aim at the centre of the screen (the dot).
     if (!this.camera || !this.renderer) return;
     if (!this.pointer) return;
+    // A click with the cursor free also grabs the mouse: it can pick a target,
+    // but missing shouldn't drop the one you have.
+    const grabbing = !this.controller?.isPointerLocked();
     if (this.controller?.isPointerLocked()) {
       this.pointer.set(0, 0);
     } else {
@@ -1903,8 +2126,8 @@ export const WorldCharacterUIScene = {
       }
     }
 
-    // Clicked empty space — deselect
-    this.setTarget(null);
+    // Clicked empty space with the pointer locked: deselect
+    if (!grabbing) this.setTarget(null);
   },
 
   _handleSelectionClick(this: any, event: MouseEvent) {

@@ -83,6 +83,63 @@ defmodule BaconWorld.Models do
 
   def validate(_), do: {:error, :invalid_model_path}
 
+  @doc """
+  What the 3D client needs to dress the Bacon8 humans, read from the models folder:
+
+    * `"bodies"` - `Humans/Male.json` and `Humans/Female.json` (which body regions
+      each garment hides, material roles, morph names)
+    * `"hair"` - the `"styles"` of `Humans/Hair/hair_manifest.json` (hair and facial
+      hair per body, with thumbnails)
+
+  The client can't fetch these itself: `/models` serves only runtime formats
+  (invariant 17), not `.json`. Missing or unreadable files are left out.
+  """
+  def human_assets do
+    bodies =
+      Enum.reduce([{"Male", "Humans/Male.json"}, {"Female", "Humans/Female.json"}], %{}, fn {key, rel}, acc ->
+        case read_json(rel) do
+          %{} = manifest -> Map.put(acc, key, Map.take(manifest, ~w(regions hides slots colors morphs materials)))
+          _ -> acc
+        end
+      end)
+
+    hair =
+      case read_json("Humans/Hair/hair_manifest.json") do
+        %{"styles" => styles} when is_map(styles) -> styles
+        _ -> %{}
+      end
+
+    %{"bodies" => bodies, "hair" => hair}
+  end
+
+  @doc "Hair and facial hair style ids per body type (`male`/`female`), from the hair manifest."
+  def human_style_ids(assets \\ nil) do
+    hair = (assets || human_assets())["hair"] || %{}
+
+    for {key, body} <- [{"Male", "male"}, {"Female", "female"}], into: %{} do
+      entry = hair[key] || %{}
+      ids = fn kind -> for(%{"id" => id} <- List.wrap(entry[kind]), is_binary(id), do: id) end
+      {body, %{"hair" => ids.("hair"), "facial" => ids.("facial")}}
+    end
+  end
+
+  @max_manifest_bytes 512_000
+
+  # A JSON file under a models root, or nil. Relative paths here are fixed strings,
+  # never from a client.
+  defp read_json(rel) do
+    with path when is_binary(path) <- Enum.find_value(roots(), &existing(Path.join(&1, rel))),
+         {:ok, %File.Stat{size: size}} when size <= @max_manifest_bytes <- File.stat(path),
+         {:ok, body} <- File.read(path),
+         {:ok, data} <- Jason.decode(body) do
+      data
+    else
+      _ -> nil
+    end
+  end
+
+  defp existing(path), do: if(File.regular?(path), do: path)
+
   defp supported?(rel) do
     supported = manifest()
     if MapSet.size(supported) == 0, do: not hashed_variant?(%{relative_path: rel}), else: MapSet.member?(supported, rel)

@@ -8,7 +8,8 @@ defmodule BaconWorld.World do
 
     * `stats`    - `"hp"`, `"max_hp"`, `"mp"`, `"max_mp"`, `"pvp_flagged"`
     * `settings` - `"character_type"`, `"model_path"`, `"zone_slug"`,
-                   `"position" => %{"x", "y", "z", "heading"}`
+                   `"position" => %{"x", "y", "z", "heading"}`,
+                   `"appearance"` (the look of a Bacon8 human; `BaconWorld.Appearance`)
 
   Writes to a single key go through `merge_stats/2` and `merge_settings/2`,
   which merge in SQL (`jsonb ||`), so a position save never overwrites HP that
@@ -19,7 +20,7 @@ defmodule BaconWorld.World do
 
   alias Bacon8.{Games, GamesRepo}
   alias Bacon8.Games.GameCharacter
-  alias BaconWorld.{Combat, Models, Zone}
+  alias BaconWorld.{Appearance, Combat, Models, Zone}
 
   @plugin_slug "bacon_world"
   @max_characters_per_user 16
@@ -64,8 +65,10 @@ defmodule BaconWorld.World do
 
   @doc """
   Creates a character in the default zone with full HP/MP and the starter
-  spells. Errors: `:character_limit_reached`, `:invalid_model_path`,
-  `:default_zone_missing`, or an `Ecto.Changeset` for bad name/type.
+  spells. With an `"appearance"` (a Bacon8 human's look), its body type picks the
+  model and the normalised look is saved. Errors: `:character_limit_reached`,
+  `:invalid_model_path`, `:invalid_appearance`, `:default_zone_missing`, or an
+  `Ecto.Changeset` for bad name/type.
   """
   def create_character(user_id, attrs) when is_binary(user_id) and is_map(attrs) do
     attrs = Map.new(attrs, fn {k, v} -> {to_string(k), v} end)
@@ -73,20 +76,24 @@ defmodule BaconWorld.World do
     with {:ok, game_id} <- game_id(),
          :ok <- ensure_character_cap(game_id, user_id),
          {:ok, fields} <- validate_new(attrs),
-         {:ok, model_path} <- Models.validate(attrs["model_path"]),
+         {:ok, model_path, look} <- resolve_look(attrs),
          {:ok, zone} <- default_zone() do
       GamesRepo.transaction(fn ->
-        attrs = %{
-          user_id: user_id,
-          game_id: game_id,
-          name: fields.name,
-          stats: @default_stats,
-          settings: %{
+        settings =
+          %{
             "character_type" => fields.character_type,
             "model_path" => model_path,
             "zone_slug" => zone.slug,
             "position" => spawn_position(zone)
           }
+          |> then(&if(look, do: Map.put(&1, "appearance", look), else: &1))
+
+        attrs = %{
+          user_id: user_id,
+          game_id: game_id,
+          name: fields.name,
+          stats: @default_stats,
+          settings: settings
         }
 
         case Games.create_character(attrs) do
@@ -100,6 +107,78 @@ defmodule BaconWorld.World do
       end)
     end
   end
+
+  # The model, and the look when one was sent: a look's body type decides the model.
+  defp resolve_look(%{"appearance" => raw} = attrs) when not is_nil(raw) do
+    fallback = Appearance.body_for_model(attrs["model_path"])
+
+    with {:ok, look} <- Appearance.normalize(raw, fallback, Models.human_style_ids()),
+         {:ok, path} <- Models.validate(Appearance.model_path(look["body"])) do
+      {:ok, path, look}
+    end
+  end
+
+  defp resolve_look(attrs) do
+    with {:ok, path} <- Models.validate(attrs["model_path"]), do: {:ok, path, nil}
+  end
+
+  @doc """
+  Saves a new look for one of the user's characters. The body type is fixed at
+  creation, so a different `"body"` in `raw` is ignored. Returns `{:ok, look}`,
+  `{:error, :not_found}` or `{:error, :invalid_appearance}`.
+  """
+  def update_appearance(user_id, character_id, raw) do
+    case owned(user_id, character_id) do
+      nil ->
+        {:error, :not_found}
+
+      character ->
+        model = current_model((character.settings || %{})["model_path"])
+
+        with true <- Appearance.human_model?(model) || {:error, :invalid_appearance},
+             true <- is_map(raw) || {:error, :invalid_appearance},
+             body = Appearance.body_for_model(model),
+             {:ok, look} <- Appearance.normalize(Map.put(stringify(raw), "body", body), body, Models.human_style_ids()) do
+          merge_settings(owned_query(user_id, character_id), %{"appearance" => look})
+          {:ok, look}
+        end
+    end
+  end
+
+  @doc """
+  The looks of up to 64 Bacon World characters by id (for drawing other players),
+  as `%{id => look}`. Ids that aren't Bacon World characters are left out; a
+  character that isn't a Bacon8 human maps to nil.
+  """
+  def appearances_for(ids) when is_list(ids) do
+    uuids =
+      ids
+      |> Enum.take(64)
+      |> Enum.flat_map(fn id ->
+        case Ecto.UUID.cast(id) do
+          {:ok, uuid} -> [uuid]
+          :error -> []
+        end
+      end)
+      |> Enum.uniq()
+
+    if uuids == [] do
+      %{}
+    else
+      game_id = game_id!()
+
+      from(c in GameCharacter, where: c.game_id == ^game_id and c.id in ^uuids, select: {c.id, c.settings})
+      |> GamesRepo.all()
+      |> Map.new(fn {id, settings} ->
+        settings = settings || %{}
+        {id, Appearance.for_settings(settings, current_model(settings["model_path"]))}
+      end)
+    end
+  end
+
+  def appearances_for(_), do: %{}
+
+  defp stringify(map), do: Map.new(map, fn {k, v} -> {to_string(k), v} end)
 
   # Name and type rules beyond GameCharacter's: at least two characters each.
   defp validate_new(attrs) do
@@ -144,6 +223,7 @@ defmodule BaconWorld.World do
            mp: c.mp,
            max_mp: c.max_mp,
            pvp_flagged: c.pvp_flagged,
+           appearance: c.appearance,
            spells: Enum.map(Combat.list_character_spells(c.id), &Combat.spell_payload/1),
            zone: %{id: zone && zone.id, name: zone && zone.name, slug: zone && zone.slug},
            position: c.position
@@ -224,13 +304,15 @@ defmodule BaconWorld.World do
   def view(%GameCharacter{} = c) do
     settings = c.settings || %{}
     pos = settings["position"] || %{}
+    model_path = current_model(settings["model_path"])
 
     %{
       id: c.id,
       user_id: c.user_id,
       name: c.name,
       character_type: settings["character_type"] || "",
-      model_path: current_model(settings["model_path"]),
+      model_path: model_path,
+      appearance: Appearance.for_settings(settings, model_path),
       zone_slug: settings["zone_slug"] || @default_zone_slug,
       hp: stat(c, "hp"),
       max_hp: stat(c, "max_hp"),
