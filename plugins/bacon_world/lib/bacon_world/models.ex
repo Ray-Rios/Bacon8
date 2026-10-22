@@ -90,6 +90,7 @@ defmodule BaconWorld.Models do
       each garment hides, material roles, morph names)
     * `"hair"` - the `"styles"` of `Humans/Hair/hair_manifest.json` (hair and facial
       hair per body, with thumbnails)
+    * `"versions"` - `asset_versions/0`, for the model URLs
 
   The client can't fetch these itself: `/models` serves only runtime formats
   (invariant 17), not `.json`. Missing or unreadable files are left out.
@@ -109,7 +110,37 @@ defmodule BaconWorld.Models do
         _ -> %{}
       end
 
-    %{"bodies" => bodies, "hair" => hair}
+    %{"bodies" => bodies, "hair" => hair, "versions" => asset_versions()}
+  end
+
+  @versioned_dirs ~w(Humans World Weapons Mobs)
+  @versioned_exts ~w(.glb .gltf .png .jpg .jpeg .webp .ktx2)
+
+  @doc """
+  A short version for every model, texture and thumbnail the 3D client loads
+  (`%{"Humans/Male.glb" => "5f1c09a2", ...}`), from each file's size and
+  modification time. The client adds it to the URL (`?vsn=5f1c09a2`, which Plug.Static
+  caches as immutable), so an
+  updated model is fetched again even though `/models` lets browsers cache files
+  for a day; an unchanged one stays cached.
+  """
+  def asset_versions do
+    # The first root that has a file wins, as when the file is served.
+    roots()
+    |> Enum.reverse()
+    |> Enum.reduce(%{}, fn root, acc -> Map.merge(acc, versions_in(root)) end)
+  end
+
+  defp versions_in(root) do
+    for dir <- @versioned_dirs,
+        abs <- Path.wildcard(Path.join([root, dir, "**", "*"])),
+        (abs |> Path.extname() |> String.downcase()) in @versioned_exts,
+        {:ok, %File.Stat{type: :regular, size: size, mtime: mtime}} <- [File.stat(abs, time: :posix)],
+        into: %{} do
+      rel = abs |> Path.relative_to(root) |> String.replace("\\", "/")
+      hash = :crypto.hash(:sha256, "#{rel}:#{size}:#{mtime}") |> Base.encode16(case: :lower) |> binary_part(0, 8)
+      {rel, hash}
+    end
   end
 
   @doc "Hair and facial hair style ids per body type (`male`/`female`), from the hair manifest."

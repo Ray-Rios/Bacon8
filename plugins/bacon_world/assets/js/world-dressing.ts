@@ -11,6 +11,7 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { GLTFLoader, MeshoptDecoder, RoomEnvironment } from '../../../../assets/js/vendor/three-loaders';
 import { UNITS_PER_METRE } from './controls-math';
+import { modelUrl } from './asset-url';
 
 export const WORLD_BASE = '/models/World';
 
@@ -46,7 +47,8 @@ export class WorldDressing {
   private glow: THREE.MeshStandardMaterial[] = [];
   private hemi: THREE.HemisphereLight;
   private env: THREE.Texture | null = null;
-  private built = false;
+  private built: Promise<void> | null = null;
+  private campsDone = false;
 
   constructor(private scene: THREE.Scene, private renderer: THREE.WebGLRenderer) {
     this.loader = new GLTFLoader();
@@ -57,16 +59,19 @@ export class WorldDressing {
   }
 
   private load(url: string): Promise<THREE.Object3D | null> {
-    return new Promise((resolve) => this.loader.load(url, (g: any) => resolve(g.scene), undefined, (err) => {
+    return new Promise((resolve) => this.loader.load(modelUrl(url), (g: any) => resolve(g.scene), undefined, (err) => {
       console.warn('[world] could not load', url, err);
       resolve(null);
     }));
   }
 
-  /** Builds the village into `parent` (the hook's world group). Safe to call once. */
-  async build(parent: THREE.Object3D): Promise<void> {
-    if (this.built) return;
-    this.built = true;
+  /** Builds the village into `parent` (the hook's world group). Safe to call more than once. */
+  build(parent: THREE.Object3D): Promise<void> {
+    if (!this.built) this.built = this.buildOnce(parent);
+    return this.built;
+  }
+
+  private async buildOnce(parent: THREE.Object3D): Promise<void> {
     parent.add(this.group);
     this.scene.add(this.hemi);
     this.group.add(this.ground());
@@ -323,6 +328,176 @@ export class WorldDressing {
     }
   }
 
+  // ---------------------------------------------------------------- creature camps
+
+  /**
+   * Dresses the creature camps the server sent (`fetch_mobs`: world units): a walled
+   * graveyard, a ruined chapel, a barrow mound with standing stones. Once, after
+   * build(); merged like the village, with colliders.
+   */
+  async addCamps(camps: Array<{ id: string; theme: string; x: number; z: number; radius: number }>): Promise<void> {
+    await this.build(this.group.parent || this.scene);
+    if (this.campsDone || !this.templates.size) return;
+    this.campsDone = true;
+    const U = UNITS_PER_METRE;
+    for (const c of camps) {
+      let seed = 7;
+      for (const ch of c.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+      const r = rng(seed);
+      const cx = c.x / U, cz = c.z / U, R = c.radius / U;
+      // the side facing the village, where the way in is
+      const toTown = Math.atan2(-cx, -cz);
+      if (c.theme === 'graveyard') this.graveyard(cx, cz, R, toTown, r);
+      else if (c.theme === 'ruins') this.ruins(cx, cz, R, toTown, r);
+      else this.barrow(cx, cz, R, toTown, r);
+    }
+    this.merge();
+  }
+
+  private patch(cx: number, cz: number, radius: number, color: string, seed: number) {
+    const mat = new THREE.MeshStandardMaterial({ map: noiseTexture(color, shadeHex(color, -0.18), shadeHex(color, 0.12), seed), roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    mat.map!.repeat.set(radius / 2, radius / 2);
+    const m = new THREE.Mesh(new THREE.CircleGeometry(radius, 40), mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(cx, 0.012, cz);
+    m.receiveShadow = true;
+    this.group.add(m);
+  }
+
+  // A low stone wall in a ring, broken here and there, open toward `gap`.
+  private ring(cx: number, cz: number, radius: number, gap: number, r: () => number, piece = 'K_Fence_Stone', keep = 0.8) {
+    const n = Math.max(8, Math.round((2 * Math.PI * radius) / 3));
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      let d = a - gap;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      if (Math.abs(d) < 0.32 || r() > keep) continue;
+      const x = cx + Math.sin(a) * radius, z = cz + Math.cos(a) * radius;
+      // a piece's length runs along its local X, which a turn of `a` lays along the ring
+      const rot = a / D2R;
+      this.put(piece, x, z, rot + (r() - 0.5) * 6);
+      this.box(x, z, 1.5, 0.25, rot);
+    }
+  }
+
+  private graveyard(cx: number, cz: number, R: number, toTown: number, r: () => number) {
+    this.patch(cx, cz, R + 3.5, '#5B5242', 31);
+    this.ring(cx, cz, R + 2.5, toTown, r);
+    // rows of headstones, turned to face the way in
+    const face0 = toTown / D2R;
+    for (let row = -1; row <= 1; row++) {
+      for (let k = -2; k <= 2; k++) {
+        if (r() < 0.2) continue;
+        const lx = k * 2.6 + (r() - 0.5) * 0.6, lz = row * 3.2 + (r() - 0.5) * 0.6;
+        const x = cx + lx * Math.cos(toTown) + lz * Math.sin(toTown);
+        const z = cz - lx * Math.sin(toTown) + lz * Math.cos(toTown);
+        this.prop('Tombstone', x, z, face0 + (r() - 0.5) * 24, 0.3, 0, 0.9 + r() * 0.3);
+      }
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = r() * Math.PI * 2, d = r() * R;
+      this.prop('Skull', cx + Math.sin(a) * d, cz + Math.cos(a) * d, r() * 360, 0);
+    }
+    for (let i = 0; i < 4; i++) {
+      const a = r() * Math.PI * 2;
+      this.prop('TreeDead', cx + Math.sin(a) * (R + 4.5 + r() * 3), cz + Math.cos(a) * (R + 4.5 + r() * 3), r() * 360, 0.45, 0, 0.9 + r() * 0.4);
+    }
+    const bx = cx + Math.sin(toTown) * (R + 3.4), bz = cz + Math.cos(toTown) * (R + 3.4);
+    for (const s of [-1, 1]) this.prop('Brazier', bx + Math.cos(toTown) * 2 * s, bz - Math.sin(toTown) * 2 * s, 0, 0.35);
+  }
+
+  private ruins(cx: number, cz: number, R: number, toTown: number, r: () => number) {
+    this.patch(cx, cz, R + 3, '#6E685C', 37);
+    // a 12 x 9 m chapel outline: walls along the long sides, half walls, pillars at the corners
+    const rot = toTown / D2R;
+    const at = (lx: number, lz: number) => ({
+      x: cx + lx * Math.cos(toTown) + lz * Math.sin(toTown),
+      z: cz - lx * Math.sin(toTown) + lz * Math.cos(toTown),
+    });
+    for (let i = -1; i <= 2; i++) {
+      for (const side of [-1, 1]) {
+        if (r() < 0.3) continue;
+        const p = at(side * 6, -4.5 + i * 3);
+        const piece = r() < 0.5 ? 'K_Wall_Stone_Half' : 'K_Wall_Stone';
+        this.put(piece, p.x, p.z, rot + 90);
+        this.box(p.x, p.z, 0.3, 1.5, rot);
+      }
+    }
+    for (let i = -1; i <= 1; i++) {
+      if (r() < 0.35) continue;
+      const p = at(i * 3, -6);
+      this.put('K_Wall_Stone', p.x, p.z, rot);
+      this.box(p.x, p.z, 1.5, 0.3, rot);
+    }
+    for (const [lx, lz] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) {
+      if (r() < 0.25) continue;
+      const p = at(lx, lz);
+      this.prop('K_Pillar_Stone', p.x, p.z, rot, 0.35);
+    }
+    const door = at(0, 6.2);
+    this.put('K_Arch_Stone', door.x, door.z, rot);
+    for (let i = 0; i < 9; i++) {
+      const a = r() * Math.PI * 2, d = R * (0.4 + r() * 0.8);
+      this.prop(r() < 0.5 ? 'Rock1' : 'Rock2', cx + Math.sin(a) * d, cz + Math.cos(a) * d, r() * 360, 0.3, 0, 0.5 + r() * 0.5);
+    }
+    for (let i = 0; i < 4; i++) {
+      const a = r() * Math.PI * 2, d = r() * R;
+      this.prop('Skull', cx + Math.sin(a) * d, cz + Math.cos(a) * d, r() * 360, 0);
+    }
+    const st = at(0, -4.2);
+    this.prop('Statue', st.x, st.z, rot, 0.6, 0, 0.9);
+  }
+
+  private barrow(cx: number, cz: number, R: number, toTown: number, r: () => number) {
+    this.patch(cx, cz, R + 4, '#4E5A3A', 41);
+    // the mound, behind the camp (away from town), its door facing the camp
+    const away = toTown + Math.PI;
+    const mx = cx + Math.sin(away) * (R + 3), mz = cz + Math.cos(away) * (R + 3);
+    const grass = new THREE.MeshStandardMaterial({ map: noiseTexture('#4F6A35', '#3E5629', '#5E7A40', 43), roughness: 1 });
+    grass.map!.repeat.set(6, 6);
+    const mound = new THREE.Mesh(new THREE.SphereGeometry(6, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), grass);
+    mound.scale.set(1, 0.42, 1);
+    mound.position.set(mx, -0.05, mz);
+    mound.castShadow = true;
+    mound.receiveShadow = true;
+    this.group.add(mound);
+    this.cols.push({ kind: 'circle', x: mx, z: mz, r: 5.4 });
+    const dx = mx + Math.sin(toTown) * 5.6, dz = mz + Math.cos(toTown) * 5.6;
+    this.put('K_Wall_Stone_Gateway', dx, dz, toTown / D2R);
+    this.prop('Brazier', dx + Math.cos(toTown) * 2.2, dz - Math.sin(toTown) * 2.2, 0, 0.35);
+    this.prop('Brazier', dx - Math.cos(toTown) * 2.2, dz + Math.sin(toTown) * 2.2, 0, 0.35);
+    // standing stones around the camp
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + r() * 0.2;
+      let d = a - toTown;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      if (Math.abs(d) < 0.35) continue;
+      const x = cx + Math.sin(a) * (R + 1.5), z = cz + Math.cos(a) * (R + 1.5);
+      this.put('Boulder', x, z, r() * 360, 0, 0.45, 1.5 + r() * 0.7, 0.45);
+      this.cols.push({ kind: 'circle', x, z, r: 0.55 });
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = r() * Math.PI * 2, d = r() * R;
+      this.prop('Skull', cx + Math.sin(a) * d, cz + Math.cos(a) * d, r() * 360, 0);
+    }
+  }
+
+  /** What the ground is at (x, z) in metres: the cobbled plaza, a dirt path, or grass (footsteps). */
+  static surfaceAt(x: number, z: number): 'stone' | 'gravel' | 'grass' {
+    const d = Math.hypot(x, z);
+    if (d < 14.2) return 'stone';
+    for (const a of [0, 90, 180, 270, 45, -45]) {
+      const len = a % 90 === 0 ? 40 : 24;
+      const s = Math.sin(a * D2R), c = Math.cos(a * D2R);
+      const along = x * s + z * c;
+      const across = Math.abs(x * c - z * s);
+      if (across < 1.7 && along > 9.5 && along < 10 + len) return 'gravel';
+    }
+    return 'grass';
+  }
+
   // ---------------------------------------------------------------- merging
 
   private merge() {
@@ -399,6 +574,8 @@ export class WorldDressing {
       mesh.receiveShadow = true;
       this.group.add(mesh);
     }
+    // Merged: a later merge (the camps) only takes what was placed after this.
+    this.placements = [];
   }
 
   // ---------------------------------------------------------------- ground
@@ -496,4 +673,11 @@ function cobbleTexture(): THREE.CanvasTexture {
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
   return t;
+}
+
+function shadeHex(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (v: number) => Math.max(0, Math.min(255, Math.round(v + (amount > 0 ? (255 - v) * amount : v * amount))));
+  const r = f((n >> 16) & 255), g = f((n >> 8) & 255), b = f(n & 255);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 }

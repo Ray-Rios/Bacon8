@@ -11,11 +11,16 @@ import type {
   LoadedModel, 
   ModelLoadOptions 
 } from './types';
+import { CharacterAnimator } from './anim-driver';
+import { WeaponModels, gearOf, holdItem } from './items';
 
 // Clip names (lower case) each lobby action prefers, best first. The Bacon8 humans
 // carry Quaternius Universal Animation Library clips (CC0) baked onto the B8
 // skeleton, so their names are listed alongside the generic ones; anything not
 // listed falls back to pattern matching in canonicalAnimationName().
+// A remote character reported as moving without a speed: assume a jog (m/s).
+const MOVE_FALLBACK_SPEED = 4;
+
 const PREFERRED_CLIPS: Record<string, string[]> = {
   idle: ['idle', 'idle_loop'],
   walk: ['walk', 'walk_loop'],
@@ -38,6 +43,11 @@ export class CharacterModelManager {
   // The clip each character is playing. "oneshot:<clip>" (a throw) and "hold:<clip>"
   // (death) are not interrupted by movement updates; see playOneShot / playCharacterAnimation.
   private activeCharacterAnimations: Map<string, string> = new Map();
+  // Bacon8 humans (and creatures on the same skeleton) are animated by an
+  // anim-driver.ts animator: strafes, stances, swings with either hand.
+  private animators: Map<string, CharacterAnimator> = new Map();
+  private gear: Map<string, { main: string | null; off: string | null }> = new Map();
+  readonly weapons = new WeaponModels();
   // A one-shot that just finished, so the next locomotion clip can fade out of it.
   private fadingFrom: Map<string, THREE.AnimationAction> = new Map();
   private universalLoader: UniversalModelLoader;
@@ -59,6 +69,28 @@ export class CharacterModelManager {
 
   setHumanFactory(factory: HumanFactory | null): void {
     this.humans = factory;
+  }
+
+  /** The animator of a Bacon8 human (swings, reactions), if it has one. */
+  getAnimator(characterId: string): CharacterAnimator | undefined {
+    return this.animators.get(characterId);
+  }
+
+  /** What a character holds (catalogue item ids): the models go in its hands, the animator takes the stance. */
+  async setGear(characterId: string, main: string | null, off: string | null): Promise<void> {
+    this.gear.set(characterId, { main, off });
+    const character = this.characters.get(characterId);
+    if (!character) return;
+    const twoHanded = gearOf(main)?.hands === 2;
+    this.animators.get(characterId)?.setGear(gearOf(main), twoHanded ? null : gearOf(off));
+    await Promise.all([
+      holdItem(this.weapons, character.mesh, 'main', main),
+      holdItem(this.weapons, character.mesh, 'off', twoHanded ? null : off),
+    ]);
+  }
+
+  getGear(characterId: string): { main: string | null; off: string | null } {
+    return this.gear.get(characterId) || { main: null, off: null };
   }
 
   /** The built human for a character (bones for weapons, current appearance), if any. */
@@ -311,7 +343,18 @@ export class CharacterModelManager {
     }
 
     this.characters.set(id, character);
-    if (human) this.humanInstances.set(id, human);
+    if (human && mixer) {
+      this.humanInstances.set(id, human);
+      const animator = new CharacterAnimator(characterMesh, mixer, human.clips);
+      this.animators.set(id, animator);
+      const factory = this.humans;
+      void factory?.loadAnimPacks(human.body).then((clips) => {
+        if (this.animators.get(id) === animator) animator.addClips(clips);
+      });
+      // A rebuilt character (new body) keeps what it held.
+      const held = this.gear.get(id);
+      if (held) void this.setGear(id, held.main, held.off);
+    }
 
     const sceneRef = this.activeScene || window.ThreeJSMMO?.scene?.scene || null;
     if (sceneRef) {
@@ -427,6 +470,13 @@ export class CharacterModelManager {
   }
   // Play character animation
   playCharacterAnimation(characterId: string, animationName: string, loop: boolean = true): void {
+    const animator = this.animators.get(characterId);
+    if (animator) {
+      if (animationName === 'death') animator.die();
+      else if (animationName === 'idle') animator.revive();
+      else animator.oneShot(animationName);
+      return;
+    }
     const character = this.characters.get(characterId);
     if (!character || !character.animations.has(animationName)) {
       console.warn(`Animation ${animationName} not found for character ${characterId}`);
@@ -455,6 +505,12 @@ export class CharacterModelManager {
   // Play a clip once over whatever the character is doing (the throw when casting),
   // then fade back to walking/idling. Does nothing if the model has no such clip.
   playOneShot(characterId: string, animationName: string): void {
+    const animator = this.animators.get(characterId);
+    if (animator) {
+      // 'attack' is the Throw Stone cast: an overhand throw on the upper body.
+      animator.oneShot(animationName === 'attack' ? 'OverhandThrow' : animationName, { upperOnly: true });
+      return;
+    }
     const character = this.characters.get(characterId);
     if (!character || !character.mixer) return;
     const current = this.activeCharacterAnimations.get(characterId);
@@ -498,8 +554,23 @@ export class CharacterModelManager {
       isSprinting?: boolean;
       isCrouching?: boolean;
       speed?: number;
+      /** Movement relative to facing (+x right, +z forward), for strafes and backpedals. */
+      dirX?: number;
+      dirZ?: number;
     }
   ): void {
+    const animator = this.animators.get(characterId);
+    if (animator) {
+      animator.setMotion({
+        speed: state.speed ?? (state.isMoving ? MOVE_FALLBACK_SPEED : 0),
+        dirX: state.dirX ?? 0,
+        dirZ: state.dirZ ?? 1,
+        grounded: !state.isJumping,
+        crouch: !!state.isCrouching,
+        sprint: !!state.isSprinting,
+      });
+      return;
+    }
     const character = this.characters.get(characterId);
     if (!character || !character.mixer || character.animations.size === 0) return;
 
@@ -549,7 +620,8 @@ export class CharacterModelManager {
   }
 
   updateAnimations(deltaSeconds: number): void {
-    this.characters.forEach((character) => {
+    this.characters.forEach((character, id) => {
+      this.animators.get(id)?.update(deltaSeconds);
       character.mixer?.update(deltaSeconds);
     });
 
@@ -589,6 +661,8 @@ export class CharacterModelManager {
       // Dispose resources. A human shares its geometry with every other copy of that
       // body, so only its own materials go.
       const human = this.humanInstances.get(characterId);
+      this.animators.get(characterId)?.dispose();
+      this.animators.delete(characterId);
       character.mixer?.stopAllAction();
       if (human) {
         human.dispose();

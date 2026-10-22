@@ -5,8 +5,9 @@ import { PACE, SENSITIVITY, UNITS_PER_METRE } from './controls-math';
 
 // Mouse settings from the game menu, remembered in this browser.
 const MOUSE_SENS_KEY = 'bacon_world:mouse_sensitivity';
-const LOOK_HINT = 'Click to look around · Hold right button to steer · Ctrl frees the cursor · Esc for menu';
 const INVERT_Y_KEY = 'bacon_world:invert_mouse_y';
+const QUALITY_KEY = 'bacon_world:quality'; // auto | full | low
+const SMOOTH_KEY = 'bacon_world:smooth_camera'; // on | off
 
 function readSetting(key: string): string | null {
   try {
@@ -30,6 +31,11 @@ import { CharacterStage } from './character-stage';
 import { FrontUI } from './front-ui';
 import { WorldDressing, Collider } from './world-dressing';
 import { BODY_MODEL, isHumanModel, randomAppearance } from './appearance';
+import { Nameplates, PLAYER_COLOR, plateHeight } from './nameplates';
+import { setAssetVersions } from './asset-url';
+import { GameWorld } from './game-world';
+import type { GameUI } from './game-ui';
+import type { MobsView } from './mobs-view';
 
 type CharacterCard = {
   id: string;
@@ -75,8 +81,11 @@ export const WorldCharacterUIScene = {
   lastSentLocalPosition: null as { x: number; y: number; z: number; heading: number } | null,
   remoteNetTargets: new Map<string, { x: number; y: number; z: number; heading: number; updatedAt: number }>(),
   remoteLastSeenMs: new Map<string, number>(),
-  // Remote players' horizontal speed (m/s), smoothed, for their animations.
+  // Remote players' horizontal speed (m/s) and direction relative to their facing,
+  // smoothed, for their animations.
   remoteSpeeds: new Map<string, number>(),
+  remoteDirs: new Map<string, { x: number; z: number }>(),
+  airborneSince: 0,
   remoteStaleTimeoutMs: 30000,
   worldInitialized: false,
   remoteSyncInProgress: false,
@@ -86,7 +95,8 @@ export const WorldCharacterUIScene = {
   chatPanel: null as HTMLDivElement | null,
   chatInput: null as HTMLInputElement | null,
   chatOutsideClickHandler: null as ((event: MouseEvent) => void) | null,
-  // Mouse-look hints: shown while the pointer is free / locked (character-controller.ts).
+  // Mouse look (character-controller.ts): the centre dot, and a message shown
+  // briefly when the browser refuses pointer lock.
   lookHintEl: null as HTMLDivElement | null,
   lookDotEl: null as HTMLDivElement | null,
   // The game menu (Esc): its element, and when it last opened (a browser may
@@ -94,7 +104,19 @@ export const WorldCharacterUIScene = {
   gameMenuEl: null as HTMLDivElement | null,
   gameMenuOpenedAtMs: 0,
   lookHintTimer: null as ReturnType<typeof setTimeout> | null,
-  nameplateEls: new Map<string, HTMLDivElement>(),
+  // Names over heads (nameplates.ts): sprites placed every frame before drawing.
+  nameplates: null as Nameplates | null,
+  // The game (game-world.ts): windows, creatures, what we carry and hold, our level.
+  gameUI: null as GameUI | null,
+  mobsView: null as MobsView | null,
+  inventory: null as any,
+  localGear: null as { main: string | null; off: string | null } | null,
+  progress: null as any,
+  nextSwing: { left: 0, right: 0, both: 0 } as Record<string, number>,
+  lootingId: null as string | null,
+  camps: [] as any[],
+  refreshTargetSoon: 0,
+  rmbDown: null as { x: number; y: number; t: number } | null,
   creatorOverlay: null as HTMLDivElement | null,
   // sky & combat state
   skySystem: null as SkySystem | null,
@@ -160,7 +182,8 @@ export const WorldCharacterUIScene = {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent || '');
     const maxPixelRatio = isFirefox ? 1.5 : 2;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
+    this.basePixelRatio = Math.min(window.devicePixelRatio || 1, maxPixelRatio);
+    this.renderer.setPixelRatio(this.basePixelRatio * this.qualityScale());
     this.renderer.setSize(width, height);
     this.renderer.domElement.className = 'w-full h-full rounded-xl border border-cyan-900/60 shadow-[0_0_40px_rgba(34,211,238,0.08)]';
 
@@ -188,11 +211,14 @@ export const WorldCharacterUIScene = {
 
     this.handleResize = this.handleResize.bind(this);
     this.handleClick = this.handleClick.bind(this);
+    this.handleRightButton = this.handleRightButton.bind(this);
     this.handleWorldKeyDown = this.handleWorldKeyDown.bind(this);
 
     window.addEventListener('resize', this.handleResize);
     window.addEventListener('keydown', this.handleWorldKeyDown);
     this.renderer.domElement.addEventListener('click', this.handleClick);
+    this.renderer.domElement.addEventListener('mousedown', this.handleRightButton);
+    this.renderer.domElement.addEventListener('mouseup', this.handleRightButton);
 
     this.handleEvent('zone_presence_state', (payload: any) => {
       if (payload?.online_characters && this.state) {
@@ -328,10 +354,11 @@ export const WorldCharacterUIScene = {
         const d = this.distanceToCharacter(result.target_id);
         const flight = this.stoneFlightMs(result.caster_id, result.target_id);
         setTimeout(() => this.audio?.play('hit', 1, d), flight);
-        if (result.target_id === myId && !result.target_died) setTimeout(() => this.audio?.play('hurt', 0.9), flight + 30);
+        if (result.target_id === myId && !result.target_died) setTimeout(() => this.audio?.say('hurt', 0.8), flight + 30);
       }
       if (result.target_died && result.target_id && result.target_id !== myId) {
-        this.audio?.play('death', 0.8, this.distanceToCharacter(result.target_id));
+        const body = (this.appearanceCache.get(result.target_id) as any)?.body;
+        this.audio?.say('death', 0.7, this.distanceToCharacter(result.target_id), body === 'female' ? 'f' : 'm');
       }
 
       // Update our own MP if we were the caster
@@ -406,7 +433,9 @@ export const WorldCharacterUIScene = {
         this.state.currentPlayer.hp = 0;
         this.updateHUD();
       }
-      this.audio?.play('death', 1);
+      this.audio?.say('death', 1);
+      if (this.lootingId) this.closeLoot();
+      this.combatLog('You have been slain!', '#FF5A4A');
       this.enterDeathState(payload.respawn_in_ms ?? 30000);
     });
 
@@ -476,6 +505,20 @@ export const WorldCharacterUIScene = {
       }
     });
 
+    // Creatures (game-world.ts, mobs-view.ts) and other players' weapons.
+    this.handleEvent('mob_events', (payload: any) => {
+      for (const e of payload?.events || []) this.mobsView?.event(e);
+    });
+    this.handleEvent('mob_motion', (payload: any) => {
+      this.mobsView?.motion(payload?.m || []);
+    });
+    this.handleEvent('zone_gear', (payload: any) => {
+      if (!payload?.character_id) return;
+      const c = this.state?.onlineCharacters?.find((o: any) => o.character_id === payload.character_id);
+      if (c) c.gear = payload.gear;
+      this.applyRemoteGear(payload.character_id, payload.gear);
+    });
+
     this.handleEvent('character_stats_update', (payload: any) => {
       if (!payload || !this.state?.currentPlayer) return;
       // Don't update HUD stats while dead — keep showing 0 HP until respawn
@@ -509,6 +552,8 @@ export const WorldCharacterUIScene = {
     window.removeEventListener('keydown', this.handleWorldKeyDown);
     if (this.renderer) {
       this.renderer.domElement.removeEventListener('click', this.handleClick);
+      this.renderer.domElement.removeEventListener('mousedown', this.handleRightButton);
+      this.renderer.domElement.removeEventListener('mouseup', this.handleRightButton);
       this.renderer.dispose();
     }
     this.controller?.dispose();
@@ -531,7 +576,8 @@ export const WorldCharacterUIScene = {
     this.controller = null;
     this.worldGroup = null;
     this.removeWorldOverlayUI();
-    this.nameplateEls.clear();
+    this.nameplates?.clear();
+    this.nameplates = null;
   },
 
   reconnected(this: any) {
@@ -651,7 +697,10 @@ export const WorldCharacterUIScene = {
 
   readHumanAssets(this: any): HumanAssets {
     try {
-      return JSON.parse(this.el.dataset.humanAssets || '{}');
+      const assets = JSON.parse(this.el.dataset.humanAssets || '{}');
+      // Model URLs carry each file's version (asset-url.ts), so updates aren't cached.
+      setAssetVersions(assets?.versions);
+      return assets;
     } catch (_err) {
       return {};
     }
@@ -687,8 +736,9 @@ export const WorldCharacterUIScene = {
       remove: (id: string) => {
         (this.pushEvent('delete_character', { character_id: id }) as any)?.catch?.(() => {});
       },
-      create: (name: string, title: string, a: any) =>
-        reply('three_ui_create_character', { name, character_type: title, model_path: BODY_MODEL[a.body as 'male' | 'female'], appearance: a },
+      // No classes: every character starts the same (one skill tree, one start).
+      create: (name: string, a: any) =>
+        reply('three_ui_create_character', { name, character_type: 'Adventurer', model_path: BODY_MODEL[a.body as 'male' | 'female'], appearance: a },
           { ok: false, error: 'No answer from the server. Try again.' }),
       updateLook: (id: string, a: any) =>
         reply('three_ui_update_appearance', { character_id: id, appearance: a }, { ok: false, error: 'No answer from the server. Try again.' }),
@@ -725,7 +775,8 @@ export const WorldCharacterUIScene = {
     this.stage?.hide();
     if (this.keyLight) this.keyLight.visible = true;
     if (this.rimLight) this.rimLight.visible = true;
-    if (this.ambientStars) this.ambientStars.visible = true;
+    // The old lobby's floating blue specks don't belong in the village.
+    if (this.ambientStars) this.ambientStars.visible = false;
     if (this.ambientLight) this.ambientLight.intensity = 0.8;
   },
 
@@ -781,6 +832,10 @@ export const WorldCharacterUIScene = {
     }
 
     this.createWorldOverlayUI();
+    if (!this.nameplates) {
+      this.nameplates = new Nameplates();
+      this.scene.add(this.nameplates.group);
+    }
 
     // The village replaces the plain ground and grid once its models have loaded.
     if (!this.dressing && this.scene && this.renderer) {
@@ -813,7 +868,6 @@ export const WorldCharacterUIScene = {
 
     const localCharacter = this.characterManager.getAllCharacters().get(currentPlayer.character_id);
     if (localCharacter && !this.controller) {
-      this.ensureLocalMarker(localCharacter.mesh);
       this.controller = new CharacterController(localCharacter.mesh, this.camera, {
         canvas: this.renderer.domElement,
         // No pointer lock while dead or in the menu (they need the cursor). A click
@@ -822,6 +876,8 @@ export const WorldCharacterUIScene = {
         onPointerLockChange: (locked: boolean) => this.updateLookHint(locked),
         onPointerLockError: () => this.flashLookHint('Click again to look around'),
         onEscape: (reason: 'key' | 'lock-lost') => this.handleGameEscape(reason),
+        // Mouse-look on: the left button swings the left hand, the right button the right.
+        onAttack: (hand: 'left' | 'right') => this.meleeAttack(hand),
         // The village's colliders (world-dressing.ts); empty until it has loaded.
         collide: (x: number, z: number) =>
           this.worldColliders.length ? WorldDressing.pushOut(this.worldColliders, x, z, 0.32 * UNITS_PER_METRE) : { x, z },
@@ -830,6 +886,7 @@ export const WorldCharacterUIScene = {
         Number(readSetting(MOUSE_SENS_KEY)) || SENSITIVITY.default,
         readSetting(INVERT_Y_KEY) === 'on'
       );
+      this.controller.setSmoothing(readSetting(SMOOTH_KEY) === 'on' ? 0.07 : 0);
       this.updateLookHint(false);
       this.controller.setPositionCallback((x: number, y: number, z: number, rotation: number) => {
         this.sendLocalPosition(x, y, z, rotation);
@@ -841,6 +898,7 @@ export const WorldCharacterUIScene = {
     this.front?.setEntering(false);
     this.audio?.setMusic(true);
     this.audio?.preload();
+    this.initGame();
 
     // Start day/night sky system
     if (!this.skySystem && this.ambientLight) {
@@ -911,7 +969,9 @@ export const WorldCharacterUIScene = {
             heading: online.heading || 0,
             updatedAt: performance.now()
           });
+          this.applyRemoteGear(online.character_id, online.gear);
         } else {
+          this.applyRemoteGear(online.character_id, online.gear);
           const existingTarget = this.remoteNetTargets.get(online.character_id);
           const onlineX = online.x || 0;
           const onlineY = online.y || 0;
@@ -1015,12 +1075,26 @@ export const WorldCharacterUIScene = {
         speed = previous + (frameSpeed - previous) * Math.min(1, deltaSeconds * 8);
       }
       this.remoteSpeeds.set(id, speed);
+      // Which way it moves relative to where it faces: strafing and backpedalling
+      // players show the right clips here too.
+      const mx = currentPos.x - prevX;
+      const mz = currentPos.z - prevZ;
+      const ml = Math.hypot(mx, mz);
+      const hh = character.mesh.rotation.y;
+      const dirZ = ml > 1e-5 ? (mx * Math.sin(hh) + mz * Math.cos(hh)) / ml : 1;
+      const dirX = ml > 1e-5 ? (-mx * Math.cos(hh) + mz * Math.sin(hh)) / ml : 0;
+      const prevDir = this.remoteDirs.get(id) || { x: 0, z: 1 };
+      const k = Math.min(1, deltaSeconds * 6);
+      const dir = { x: prevDir.x + (dirX - prevDir.x) * k, z: prevDir.z + (dirZ - prevDir.z) * k };
+      this.remoteDirs.set(id, dir);
       this.characterManager.updateCharacterMotionState(id, {
         isMoving: speed >= PACE.idleBelow,
         isRunning: true,
         isSprinting: speed > PACE.jogUpTo,
         isJumping: false,
-        speed
+        speed,
+        dirX: dir.x,
+        dirZ: dir.z
       });
     });
   },
@@ -1037,20 +1111,31 @@ export const WorldCharacterUIScene = {
       isSprinting: !!movementState?.isSprinting,
       isCrouching: !!movementState?.isCrouching,
       isJumping: movementState ? !movementState.isGrounded : false,
-      speed: movementState?.speed ?? 0
+      speed: movementState?.speed ?? 0,
+      dirX: movementState?.dirX ?? 0,
+      dirZ: movementState?.dirZ ?? 1
     });
 
     if (movementState && this.audio && !this.isDead) {
       const grounded = !!movementState.isGrounded;
-      if (this.wasGrounded && !grounded) this.audio.play('jump', 0.8);
-      if (!this.wasGrounded && grounded) this.audio.play('land', 0.8);
-      this.wasGrounded = grounded;
-      // Steps by pace: sprint 260 ms, jog 330 ms, crouch-walk 500 ms.
       const now = performance.now();
+      // A grunt when jumping, a thud when landing (a short hop lands quietly).
+      if (this.wasGrounded && !grounded) {
+        this.airborneSince = now;
+        this.audio.say('jump', 0.55);
+      }
+      if (!this.wasGrounded && grounded) {
+        const air = now - (this.airborneSince || now);
+        this.audio.play('land', air > 450 ? 0.9 : 0.55);
+      }
+      this.wasGrounded = grounded;
+      // Steps by pace: sprint 260 ms, jog 330 ms, crouch-walk 500 ms; the sound by what's underfoot.
       const interval = movementState.isCrouching ? 500 : movementState.isSprinting ? 260 : 330;
       if (grounded && movementState.isMoving && now - this.lastStepMs > interval) {
         this.lastStepMs = now;
-        this.audio.footstep(!movementState.isCrouching);
+        const me = this.localCharacter();
+        const surface = me ? this.surfaceAt(me.mesh.position.x, me.mesh.position.z) : 'grass';
+        this.audio.footstep(!movementState.isCrouching, surface);
       }
     }
   },
@@ -1085,6 +1170,7 @@ export const WorldCharacterUIScene = {
 
   teardownWorldMode(this: any) {
     this.audio?.setMusic(false);
+    this.teardownGame();
     if (this.positionHeartbeatInterval) {
       clearInterval(this.positionHeartbeatInterval);
       this.positionHeartbeatInterval = null;
@@ -1164,7 +1250,7 @@ export const WorldCharacterUIScene = {
     }
 
     this.removeWorldOverlayUI();
-    this.nameplateEls.clear();
+    this.nameplates?.clear();
   },
 
   createWorldOverlayUI(this: any) {
@@ -1172,102 +1258,18 @@ export const WorldCharacterUIScene = {
 
     const layer = document.createElement('div');
     layer.className = 'absolute inset-0 pointer-events-none';
+    // Also inline: the windows inside must not depend on the site's Tailwind build.
+    Object.assign(layer.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
 
-    // ── HP/MP HUD (top-left) ────────────────────────────────────────────────
-    const hud = document.createElement('div');
-    hud.className = 'absolute top-3 left-3 flex flex-col gap-1 pointer-events-auto select-none';
-    hud.setAttribute('data-hud', 'true');
-
-    const hpRow = document.createElement('div');
-    hpRow.className = 'flex items-center gap-2';
-    const hpLabel = document.createElement('span');
-    hpLabel.className = 'text-[11px] text-red-400 w-6 font-bold';
-    hpLabel.textContent = 'HP';
-    const hpBarWrap = document.createElement('div');
-    hpBarWrap.className = 'relative w-32 h-3 bg-black/60 rounded overflow-hidden border border-red-900/60';
-    const hpBar = document.createElement('div');
-    hpBar.className = 'absolute inset-y-0 left-0 bg-red-600 transition-all duration-300';
-    hpBar.style.width = '100%';
-    hpBar.setAttribute('data-hp-bar', 'true');
-    const hpText = document.createElement('span');
-    hpText.className = 'absolute inset-0 flex items-center justify-center text-[9px] text-white font-mono';
-    hpText.setAttribute('data-hp-text', 'true');
-    hpText.textContent = '10/10';
-    hpBarWrap.appendChild(hpBar);
-    hpBarWrap.appendChild(hpText);
-    hpRow.appendChild(hpLabel);
-    hpRow.appendChild(hpBarWrap);
-
-    const mpRow = document.createElement('div');
-    mpRow.className = 'flex items-center gap-2';
-    const mpLabel = document.createElement('span');
-    mpLabel.className = 'text-[11px] text-blue-400 w-6 font-bold';
-    mpLabel.textContent = 'MP';
-    const mpBarWrap = document.createElement('div');
-    mpBarWrap.className = 'relative w-32 h-3 bg-black/60 rounded overflow-hidden border border-blue-900/60';
-    const mpBar = document.createElement('div');
-    mpBar.className = 'absolute inset-y-0 left-0 bg-blue-500 transition-all duration-300';
-    mpBar.style.width = '100%';
-    mpBar.setAttribute('data-mp-bar', 'true');
-    const mpText = document.createElement('span');
-    mpText.className = 'absolute inset-0 flex items-center justify-center text-[9px] text-white font-mono';
-    mpText.setAttribute('data-mp-text', 'true');
-    mpText.textContent = '10/10';
-    mpBarWrap.appendChild(mpBar);
-    mpBarWrap.appendChild(mpText);
-    mpRow.appendChild(mpLabel);
-    mpRow.appendChild(mpBarWrap);
-
-    // PvP flag toggle
-    const pvpBtn = document.createElement('button');
-    pvpBtn.className = 'mt-1 text-[10px] rounded px-2 py-0.5 bg-slate-700/80 border border-slate-600 text-slate-300 hover:bg-slate-600 cursor-pointer pointer-events-auto';
-    pvpBtn.setAttribute('data-pvp-btn', 'true');
-    pvpBtn.textContent = 'PvP: OFF';
-    pvpBtn.addEventListener('click', () => {
-      (this.pushEvent('toggle_pvp', {}) as any)?.catch?.(() => {});
-    });
-
-    // Sound on/off (remembered in this browser)
-    const soundBtn = document.createElement('button');
-    soundBtn.className = 'mt-1 ml-1 text-[10px] rounded px-2 py-0.5 bg-slate-700/80 border border-slate-600 text-slate-300 hover:bg-slate-600 cursor-pointer pointer-events-auto';
-    soundBtn.setAttribute('data-sound-btn', 'true');
-    const soundLabel = () => (this.audio?.enabled ? 'Sound: ON' : 'Sound: OFF');
-    soundBtn.textContent = soundLabel();
-    soundBtn.addEventListener('click', () => {
-      this.audio?.toggle();
-      soundBtn.textContent = soundLabel();
-    });
-
-    hud.appendChild(hpRow);
-    hud.appendChild(mpRow);
-    hud.appendChild(pvpBtn);
-    hud.appendChild(soundBtn);
-    layer.appendChild(hud);
-
-    // ── Target Frame (top-center) ───────────────────────────────────────────
-    const targetFrame = document.createElement('div');
-    targetFrame.className = 'absolute top-3 left-1/2 -translate-x-1/2 hidden flex-col gap-1 pointer-events-none select-none min-w-[140px]';
-    targetFrame.setAttribute('data-target-frame', 'true');
-    const targetName = document.createElement('div');
-    targetName.className = 'text-[11px] text-center text-yellow-300 font-bold';
-    targetName.setAttribute('data-target-name', 'true');
-    const targetHpWrap = document.createElement('div');
-    targetHpWrap.className = 'relative w-full h-3 bg-black/60 rounded overflow-hidden border border-red-900/60';
-    const targetHpBar = document.createElement('div');
-    targetHpBar.className = 'absolute inset-y-0 left-0 bg-red-500 transition-all duration-300';
-    targetHpBar.style.width = '100%';
-    targetHpBar.setAttribute('data-target-hp-bar', 'true');
-    targetHpWrap.appendChild(targetHpBar);
-    targetFrame.appendChild(targetName);
-    targetFrame.appendChild(targetHpWrap);
-    layer.appendChild(targetFrame);
+    // The player, target and inventory windows and the hotbar (game-ui.ts).
+    this.initGameUI(layer);
 
     // ── Chat panel (bottom-left) ─────────────────────────────────────────────
     const chatPanel = document.createElement('div');
-    chatPanel.className = 'absolute left-3 bottom-16 w-[340px] max-w-[92%] rounded border border-cyan-900/60 bg-black/70 text-cyan-100 p-2 pointer-events-auto';
+    chatPanel.className = 'absolute left-3 bottom-3 w-[360px] max-w-[92%] rounded border border-[#6d5b3c] bg-[rgba(17,15,13,0.82)] text-[#e8dcc0] p-2 pointer-events-auto';
 
     const log = document.createElement('div');
-    log.className = 'text-xs h-24 overflow-y-auto space-y-1 pr-1';
+    log.className = 'text-xs h-36 overflow-y-auto space-y-0.5 pr-1';
     log.setAttribute('data-chat-log', 'true');
 
     const form = document.createElement('form');
@@ -1317,50 +1319,11 @@ export const WorldCharacterUIScene = {
     chatPanel.appendChild(form);
     layer.appendChild(chatPanel);
 
-    // ── Spell bar (bottom-center) ─────────────────────────────────────────────
-    const spellBar = document.createElement('div');
-    spellBar.className = 'absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 pointer-events-auto select-none';
-    spellBar.setAttribute('data-spell-bar', 'true');
-
-    // Throw Stone slot (slot 1)
-    const throwStoneSlot = document.createElement('div');
-    throwStoneSlot.className = 'relative w-14 h-14 rounded border-2 border-stone-500 bg-stone-900/80 flex flex-col items-center justify-center cursor-pointer hover:border-stone-300 transition-colors';
-    throwStoneSlot.setAttribute('data-spell-slot', 'throw_stone');
-    throwStoneSlot.title = 'Throw Stone (1)';
-
-    const throwStoneIcon = document.createElement('div');
-    throwStoneIcon.className = 'text-xl';
-    throwStoneIcon.textContent = '🪨';
-
-    const throwStoneLabel = document.createElement('div');
-    throwStoneLabel.className = 'text-[9px] text-stone-300 mt-0.5';
-    throwStoneLabel.textContent = '1 MP';
-
-    const throwStoneKey = document.createElement('div');
-    throwStoneKey.className = 'absolute top-0.5 left-1 text-[8px] text-stone-500';
-    throwStoneKey.textContent = '1';
-
-    const throwStoneCd = document.createElement('div');
-    throwStoneCd.className = 'absolute inset-0 rounded bg-black/70 flex items-center justify-center text-white text-xs hidden';
-    throwStoneCd.setAttribute('data-cd-overlay', 'throw_stone');
-
-    throwStoneSlot.appendChild(throwStoneIcon);
-    throwStoneSlot.appendChild(throwStoneLabel);
-    throwStoneSlot.appendChild(throwStoneKey);
-    throwStoneSlot.appendChild(throwStoneCd);
-
-    throwStoneSlot.addEventListener('click', () => {
-      this.castSpell('throw_stone');
-    });
-
-    spellBar.appendChild(throwStoneSlot);
-    layer.appendChild(spellBar);
-
-    // Mouse look (character-controller.ts): a hint while the cursor is free, a
-    // centre dot (what a click targets) while it's locked.
+    // Mouse look (character-controller.ts): a centre dot while the pointer is
+    // locked, and a short message when the browser refuses the lock. No
+    // standing hint: the controls are in the game menu (Esc).
     const lookHint = document.createElement('div');
     lookHint.className = 'absolute bottom-24 left-1/2 -translate-x-1/2 text-[11px] text-cyan-200/80 bg-black/50 rounded px-2 py-0.5 select-none hidden';
-    lookHint.textContent = LOOK_HINT;
     layer.appendChild(lookHint);
 
     const lookDot = document.createElement('div');
@@ -1376,9 +1339,6 @@ export const WorldCharacterUIScene = {
     this.lookDotEl = lookDot;
     this.chatPanel = chatPanel;
     this.chatInput = input;
-    this.hudEl = hud;
-    this.targetFrameEl = targetFrame;
-    this.spellBarEl = spellBar;
 
     this.chatOutsideClickHandler = (event: MouseEvent) => {
       const target = event.target as Node | null;
@@ -1395,41 +1355,11 @@ export const WorldCharacterUIScene = {
     this.updateHUD();
   },
 
-  updateHUD(this: any) {
-    const cp = this.state?.currentPlayer;
-    if (!cp || !this.hudEl) return;
-
-    const hp = cp.hp ?? 10;
-    const maxHp = cp.max_hp ?? 10;
-    const mp = cp.mp ?? 10;
-    const maxMp = cp.max_mp ?? 10;
-    const pvp = cp.pvp_flagged ?? false;
-
-    const hpBar = this.hudEl.querySelector('[data-hp-bar]') as HTMLDivElement | null;
-    const hpText = this.hudEl.querySelector('[data-hp-text]') as HTMLSpanElement | null;
-    const mpBar = this.hudEl.querySelector('[data-mp-bar]') as HTMLDivElement | null;
-    const mpText = this.hudEl.querySelector('[data-mp-text]') as HTMLSpanElement | null;
-    const pvpBtn = this.hudEl.querySelector('[data-pvp-btn]') as HTMLButtonElement | null;
-
-    if (hpBar) hpBar.style.width = `${maxHp > 0 ? (hp / maxHp) * 100 : 0}%`;
-    if (hpText) hpText.textContent = `${hp}/${maxHp}`;
-    if (mpBar) mpBar.style.width = `${maxMp > 0 ? (mp / maxMp) * 100 : 0}%`;
-    if (mpText) mpText.textContent = `${mp}/${maxMp}`;
-    if (pvpBtn) {
-      pvpBtn.textContent = pvp ? 'PvP: ON' : 'PvP: OFF';
-      pvpBtn.className = pvp
-        ? 'mt-1 text-[10px] rounded px-2 py-0.5 bg-red-700/80 border border-red-500 text-red-100 hover:bg-red-600 cursor-pointer pointer-events-auto'
-        : 'mt-1 text-[10px] rounded px-2 py-0.5 bg-slate-700/80 border border-slate-600 text-slate-300 hover:bg-slate-600 cursor-pointer pointer-events-auto';
-    }
-  },
-
   updateLookHint(this: any, locked: boolean) {
-    const menuOpen = this.isGameMenuOpen();
-    this.lookHintEl?.classList.toggle('hidden', locked || menuOpen);
     this.lookDotEl?.classList.toggle('hidden', !locked);
   },
 
-  // Show a different hint for a few seconds (e.g. the browser refused the lock).
+  // A short message for a few seconds (e.g. the browser refused the lock).
   flashLookHint(this: any, text: string) {
     if (!this.lookHintEl) return;
     this.lookHintEl.textContent = text;
@@ -1437,8 +1367,7 @@ export const WorldCharacterUIScene = {
     if (this.lookHintTimer) clearTimeout(this.lookHintTimer);
     this.lookHintTimer = setTimeout(() => {
       this.lookHintTimer = null;
-      if (this.lookHintEl) this.lookHintEl.textContent = LOOK_HINT;
-      this.updateLookHint(!!this.controller?.isPointerLocked());
+      this.lookHintEl?.classList.add('hidden');
     }, 2500);
   },
 
@@ -1450,6 +1379,8 @@ export const WorldCharacterUIScene = {
 
   handleGameEscape(this: any, reason: 'key' | 'lock-lost') {
     if (this.isDead) return;
+    // Esc closes the inventory or loot window (or drops what the cursor holds) first.
+    if (reason === 'key' && this.gameUI?.closeTop()) return;
     if (reason === 'lock-lost') {
       this.openGameMenu();
       return;
@@ -1492,6 +1423,13 @@ export const WorldCharacterUIScene = {
     if (sensValue) sensValue.textContent = `${value.toFixed(2)}×`;
     if (invert) invert.checked = readSetting(INVERT_Y_KEY) === 'on';
     if (sound) sound.textContent = this.audio?.enabled ? 'Sound: ON' : 'Sound: OFF';
+    const music = menu.querySelector('[data-menu-music]') as HTMLButtonElement | null;
+    if (music) music.textContent = this.audio?.musicOn ? 'Music: ON' : 'Music: OFF';
+    const quality = menu.querySelector('[data-menu-quality]') as HTMLButtonElement | null;
+    const q = readSetting(QUALITY_KEY) || 'auto';
+    if (quality) quality.textContent = `Resolution: ${q === 'auto' ? 'Auto' : q === 'full' ? 'Full' : 'Low'}`;
+    const smooth = menu.querySelector('[data-menu-smooth]') as HTMLButtonElement | null;
+    if (smooth) smooth.textContent = `Smooth camera (remote desktop): ${readSetting(SMOOTH_KEY) === 'on' ? 'ON' : 'OFF'}`;
   },
 
   buildGameMenu(this: any): HTMLDivElement {
@@ -1568,25 +1506,58 @@ export const WorldCharacterUIScene = {
     invertRow.appendChild(invertText);
     panel.appendChild(invertRow);
 
-    // Sound (the same setting as the HUD's button)
+    // Sound (the same setting as the player window's button), and the music on its own
     const sound = button('Sound', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => {
       this.audio?.toggle();
       this.syncGameMenu();
-      const hudSound = this.hudEl?.querySelector('[data-sound-btn]') as HTMLButtonElement | null;
-      if (hudSound) hudSound.textContent = this.audio?.enabled ? 'Sound: ON' : 'Sound: OFF';
+      this.updateHUD();
     });
     sound.setAttribute('data-menu-sound', 'true');
     panel.appendChild(sound);
+    const music = button('Music', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => {
+      this.audio?.toggleMusic();
+      this.syncGameMenu();
+    });
+    music.setAttribute('data-menu-music', 'true');
+    panel.appendChild(music);
+
+    // Graphics: resolution (auto lowers it when frames are slow), and camera smoothing
+    // for remote desktop, which delivers mouse movement in bursts.
+    const quality = button('Resolution', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => {
+      const order = ['auto', 'full', 'low'];
+      const cur = readSetting(QUALITY_KEY) || 'auto';
+      const next = order[(order.indexOf(cur) + 1) % order.length];
+      writeSetting(QUALITY_KEY, next);
+      if (this.perf && next === 'auto') this.perf.scale = 1;
+      this.renderer?.setPixelRatio((this.basePixelRatio || 1) * this.qualityScale());
+      this.handleResize();
+      this.syncGameMenu();
+    });
+    quality.setAttribute('data-menu-quality', 'true');
+    panel.appendChild(quality);
+    const smooth = button('Smooth camera', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => {
+      const on = readSetting(SMOOTH_KEY) !== 'on';
+      writeSetting(SMOOTH_KEY, on ? 'on' : 'off');
+      this.controller?.setSmoothing(on ? 0.07 : 0);
+      this.syncGameMenu();
+    });
+    smooth.setAttribute('data-menu-smooth', 'true');
+    panel.appendChild(smooth);
+    const fps = document.createElement('div');
+    fps.className = 'text-[11px] text-slate-500 mb-2';
+    fps.setAttribute('data-menu-fps', 'true');
+    panel.appendChild(fps);
 
     // Controls
     const help = document.createElement('div');
     help.className = 'text-[11px] leading-5 text-slate-400 border-t border-slate-800 pt-2 mt-1 mb-3';
     help.innerHTML = [
-      '<b class="text-slate-300">Click</b> look around (free look)',
-      '<b class="text-slate-300">Hold right button</b> steer: face where the camera looks',
-      '<b class="text-slate-300">WASD / arrows</b> move · <b class="text-slate-300">Shift</b> sprint · <b class="text-slate-300">C</b> crouch · <b class="text-slate-300">Space</b> jump',
-      '<b class="text-slate-300">Wheel</b> zoom · <b class="text-slate-300">Ctrl</b> free the cursor · <b class="text-slate-300">Esc</b> this menu',
-      '<b class="text-slate-300">Enter</b> chat · <b class="text-slate-300">/</b> command · <b class="text-slate-300">Tab</b> next target · <b class="text-slate-300">1</b> throw stone',
+      '<b class="text-slate-300">Click</b> mouse-look on · <b class="text-slate-300">Ctrl</b> cursor back',
+      'Mouse-look on: <b class="text-slate-300">left / right button</b> swing your left / right hand (hold to keep swinging)',
+      'Cursor free: <b class="text-slate-300">hold right button</b> to steer · <b class="text-slate-300">right-click</b> a corpse to loot it',
+      '<b class="text-slate-300">WASD</b> move · <b class="text-slate-300">Shift</b> sprint · <b class="text-slate-300">C</b> crouch · <b class="text-slate-300">Space</b> jump · <b class="text-slate-300">Wheel</b> zoom',
+      '<b class="text-slate-300">I</b> inventory · <b class="text-slate-300">G</b> loot nearest corpse · <b class="text-slate-300">Tab</b> next target · <b class="text-slate-300">1</b> throw stone',
+      '<b class="text-slate-300">Q E F Z X</b> special attacks (earned in the skill tree) · <b class="text-slate-300">Enter</b> chat · <b class="text-slate-300">Esc</b> this menu',
     ].join('<br>');
     panel.appendChild(help);
 
@@ -1618,9 +1589,8 @@ export const WorldCharacterUIScene = {
     }
     this.chatPanel = null;
     this.chatInput = null;
-    this.hudEl = null;
-    this.targetFrameEl = null;
-    this.spellBarEl = null;
+    this.gameUI?.dispose();
+    this.gameUI = null;
 
     if (this.chatOutsideClickHandler) {
       this.renderer?.domElement.removeEventListener('pointerdown', this.chatOutsideClickHandler, true);
@@ -1779,6 +1749,16 @@ export const WorldCharacterUIScene = {
       return;
     }
 
+    // I: inventory; G: loot the nearest corpse
+    if ((event.key === 'i' || event.key === 'I') && !this.isGameMenuOpen()) {
+      this.gameUI?.toggleInventory();
+      return;
+    }
+    if ((event.key === 'g' || event.key === 'G') && !this.isGameMenuOpen() && !this.isDead) {
+      this.lootNearest();
+      return;
+    }
+
     // "/" starts a slash command: chat opens with the slash already typed.
     if (event.key === '/' && this.chatInput && !this.isGameMenuOpen()) {
       event.preventDefault();
@@ -1796,68 +1776,29 @@ export const WorldCharacterUIScene = {
     this.chatInput.focus();
   },
 
+  // Every character's name over its head (nameplates.ts). Runs after everything
+  // has moved this frame, so the names are drawn exactly where the heads are.
   updateNameplates(this: any) {
-    if (!this.camera || !this.renderer || !this.characterManager || !this.nameplateLayer) return;
-
-    const characters = this.characterManager.getAllCharacters();
-    const seen = new Set<string>();
-    const rect = this.renderer.domElement.getBoundingClientRect();
-
-    characters.forEach((character: any, id: string) => {
-      seen.add(id);
-
-      let label = this.nameplateEls.get(id);
-      if (!label) {
-        label = document.createElement('div');
-        label.className = 'absolute -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded bg-black/85 border border-cyan-400/80 text-xs font-semibold text-cyan-100 whitespace-nowrap shadow-[0_0_12px_rgba(34,211,238,0.45)]';
-        this.nameplateLayer?.appendChild(label);
-        this.nameplateEls.set(id, label);
-      }
-
-      label.textContent = character.isLocalPlayer ? `${character.name} (You)` : character.name;
-
-      const worldPos = character.mesh.position.clone();
-      worldPos.y += 2.8;
-      worldPos.project(this.camera);
-
-      const x = ((worldPos.x + 1) / 2) * rect.width;
-      const y = ((-worldPos.y + 1) / 2) * rect.height;
-      const visible = worldPos.z < 1;
-
-      label.style.display = visible ? 'block' : 'none';
-      if (visible) {
-        label.style.left = `${x}px`;
-        label.style.top = `${y}px`;
-      }
+    if (!this.camera || !this.characterManager || !this.nameplates) return;
+    const keep = new Set<string>();
+    this.characterManager.getAllCharacters().forEach((character: any, id: string) => {
+      keep.add(id);
+      const human = !!this.characterManager.getHuman(id);
+      const known = this.nameplates.has(id);
+      this.nameplates.set(
+        id,
+        character.mesh,
+        { name: character.name, color: PLAYER_COLOR },
+        {
+          // Measured once (bounds are costly); humans follow their height.
+          height: human || !known ? plateHeight(character.mesh, human) : undefined,
+          target: id === this.targetId,
+        }
+      );
     });
-
-    this.nameplateEls.forEach((el: HTMLDivElement, id: string) => {
-      if (!seen.has(id)) {
-        if (el.parentElement) el.parentElement.removeChild(el);
-        this.nameplateEls.delete(id);
-      }
-    });
-  },
-
-  ensureLocalMarker(this: any, mesh: THREE.Object3D) {
-    if ((mesh as any).userData?.localMarkerAttached) return;
-
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.55, 0.8, 28),
-      new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.06;
-    mesh.add(ring);
-
-    const beacon = new THREE.Mesh(
-      new THREE.SphereGeometry(0.14, 14, 14),
-      new THREE.MeshBasicMaterial({ color: 0x34d399, transparent: true, opacity: 0.95 })
-    );
-    beacon.position.set(0, 2.6, 0);
-    mesh.add(beacon);
-
-    (mesh as any).userData = { ...(mesh as any).userData, localMarkerAttached: true };
+    this.mobsView?.nameplateIds?.forEach((id: string) => keep.add(id));
+    this.nameplates.prune(keep);
+    this.nameplates.update(this.camera);
   },
 
   clearPanels(this: any) {
@@ -2010,6 +1951,39 @@ export const WorldCharacterUIScene = {
 
     if (current) lines.push(current);
     return lines.slice(0, 3);
+  },
+
+  // ── Frame rate and resolution ─────────────────────────────────────────────
+  // "Auto" lowers the rendering resolution while the game runs below ~38 fps and
+  // raises it again above ~57 (remote desktop often renders without the GPU);
+  // "Full" and "Low" fix it. The menu shows the frame rate.
+
+  qualityScale(this: any): number {
+    const mode = readSetting(QUALITY_KEY) || 'auto';
+    if (mode === 'low') return 0.55;
+    if (mode === 'full') return 1;
+    return this.perf?.scale ?? 1;
+  },
+
+  adaptQuality(this: any, dt: number) {
+    if (!this.renderer || !(dt > 0)) return;
+    const perf = (this.perf ||= { ema: 1 / 60, t: 0, scale: 1, fps: 60 });
+    perf.ema += (Math.min(dt, 0.5) - perf.ema) * 0.05;
+    perf.t += dt;
+    if (perf.t < 2) return;
+    perf.t = 0;
+    perf.fps = 1 / perf.ema;
+    const fpsEl = this.gameMenuEl?.querySelector('[data-menu-fps]') as HTMLElement | null;
+    if (fpsEl) fpsEl.textContent = `${Math.round(perf.fps)} fps · ${Math.round(this.qualityScale() * 100)}% resolution`;
+    if ((readSetting(QUALITY_KEY) || 'auto') !== 'auto' || this.state?.uiState !== 'world') return;
+    let next = perf.scale;
+    if (perf.fps < 38 && perf.scale > 0.5) next = Math.max(0.5, perf.scale - 0.15);
+    else if (perf.fps > 57 && perf.scale < 1) next = Math.min(1, perf.scale + 0.1);
+    if (next !== perf.scale) {
+      perf.scale = next;
+      this.renderer.setPixelRatio((this.basePixelRatio || 1) * next);
+      this.handleResize();
+    }
   },
 
   handleResize(this: any) {
@@ -2187,7 +2161,11 @@ export const WorldCharacterUIScene = {
   animate(this: any) {
     if (!this.renderer || !this.scene || !this.camera) return;
 
-    const deltaSeconds = Math.min(this.frameClock.getDelta(), 0.05);
+    // Real elapsed time (up to 0.25 s): clamping it shorter made slow machines and
+    // remote desktop run in slow motion and then catch up in spurts.
+    const rawDelta = this.frameClock.getDelta();
+    const deltaSeconds = Math.min(rawDelta, 0.25);
+    this.adaptQuality(rawDelta);
 
     this.panelTargets.forEach(({ mesh, targetX, targetY, targetZ }) => {
       mesh.position.x += (targetX - mesh.position.x) * 0.08;
@@ -2236,6 +2214,7 @@ export const WorldCharacterUIScene = {
       this.applyRemoteSmoothing(deltaSeconds);
       this.syncCharacterAnimations();
       this.characterManager?.updateAnimations(deltaSeconds);
+      this.tickGame(deltaSeconds);
       this.updateNameplates();
       this.tickTargetRing();
       this.tickProjectiles();
@@ -2247,34 +2226,6 @@ export const WorldCharacterUIScene = {
   },
 
   // ── Targeting ───────────────────────────────────────────────────────────────
-
-  setTarget(this: any, characterId: string | null) {
-    this.targetId = characterId;
-    const frame = this.targetFrameEl as HTMLDivElement | null;
-    if (!frame) return;
-
-    if (!characterId) {
-      frame.classList.add('hidden');
-      frame.classList.remove('flex');
-      return;
-    }
-
-    const targetState = this.state?.onlineCharacters?.find((c: any) => c.character_id === characterId);
-    const nameEl = frame.querySelector('[data-target-name]') as HTMLDivElement | null;
-    if (nameEl) nameEl.textContent = targetState?.character_name || characterId;
-
-    const hp = targetState?.hp ?? null;
-    const maxHp = targetState?.max_hp ?? null;
-    const hpBar = frame.querySelector('[data-target-hp-bar]') as HTMLDivElement | null;
-    if (hpBar && hp !== null && maxHp !== null && maxHp > 0) {
-      hpBar.style.width = `${(hp / maxHp) * 100}%`;
-    } else if (hpBar) {
-      hpBar.style.width = '100%';
-    }
-
-    frame.classList.remove('hidden');
-    frame.classList.add('flex');
-  },
 
   handleClick(this: any, event: MouseEvent) {
     if (!this.state?.uiState || this.state.uiState !== 'world') {
@@ -2298,6 +2249,17 @@ export const WorldCharacterUIScene = {
     }
     this.raycaster!.setFromCamera(this.pointer, this.camera);
 
+    // Creatures first: a click targets one; with the cursor free, clicking a corpse loots it.
+    const mobId = this.pickMob(this.raycaster);
+    if (mobId) {
+      const mob = this.mobsView?.get(mobId);
+      if (mob?.view.state === 'dead' && grabbing) {
+        void this.openLoot(mobId);
+      }
+      this.setTarget(mobId);
+      return;
+    }
+
     const allMeshes: THREE.Object3D[] = [];
     this.characterManager?.getAllCharacters().forEach((ch: any, id: string) => {
       if (id !== this.state?.currentPlayer?.character_id) {
@@ -2318,8 +2280,29 @@ export const WorldCharacterUIScene = {
       }
     }
 
-    // Clicked empty space with the pointer locked: deselect
-    if (!grabbing) this.setTarget(null);
+    // A click on nothing keeps the target: with mouse-look on, clicks are swings.
+  },
+
+  // EverQuest's right-click: a quick right click (not a steering drag) on a corpse
+  // loots it, on a creature targets it. Only with the cursor free.
+  handleRightButton(this: any, event: MouseEvent) {
+    if (event.button !== 2 || this.state?.uiState !== 'world' || this.controller?.isPointerLocked()) return;
+    if (event.type === 'mousedown') {
+      this.rmbDown = { x: event.clientX, y: event.clientY, t: performance.now() };
+      return;
+    }
+    const down = this.rmbDown;
+    this.rmbDown = null;
+    if (!down || performance.now() - down.t > 350 || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 6) return;
+    if (!this.camera || !this.renderer || !this.pointer || !this.raycaster) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const mobId = this.pickMob(this.raycaster);
+    if (!mobId) return;
+    if (this.mobsView?.get(mobId)?.view.state === 'dead') void this.openLoot(mobId);
+    this.setTarget(mobId);
   },
 
   _handleSelectionClick(this: any, event: MouseEvent) {
@@ -2373,23 +2356,13 @@ export const WorldCharacterUIScene = {
     return found;
   },
 
-  tabCycleTarget(this: any) {
-    const others = (this.state?.onlineCharacters || [])
-      .filter((c: any) => c.character_id !== this.state?.currentPlayer?.character_id);
-    if (others.length === 0) { this.setTarget(null); return; }
-
-    const currentIdx = others.findIndex((c: any) => c.character_id === this.targetId);
-    const nextIdx = (currentIdx + 1) % others.length;
-    this.setTarget(others[nextIdx].character_id);
-  },
-
   tickTargetRing(this: any) {
     if (!this.targetId) {
       if (this.targetRingMesh) this.targetRingMesh.visible = false;
       return;
     }
 
-    const targetChar = this.characterManager?.getAllCharacters().get(this.targetId);
+    const targetChar = this.characterManager?.getAllCharacters().get(this.targetId) || (this.mobsView?.get(this.targetId) ? { mesh: this.mobsView.get(this.targetId).root } : null);
     if (!targetChar) {
       if (this.targetRingMesh) this.targetRingMesh.visible = false;
       return;
@@ -2457,22 +2430,7 @@ export const WorldCharacterUIScene = {
   },
 
   updateCooldownOverlay(this: any, spellSlug: string, remainingMs: number) {
-    const overlay = this.spellBarEl?.querySelector(`[data-cd-overlay="${spellSlug}"]`) as HTMLDivElement | null;
-    if (!overlay) return;
-    overlay.textContent = (remainingMs / 1000).toFixed(1) + 's';
-    overlay.classList.remove('hidden');
-    const start = Date.now();
-    const total = remainingMs;
-    const tick = () => {
-      const left = total - (Date.now() - start);
-      if (left <= 0) {
-        overlay.classList.add('hidden');
-        return;
-      }
-      overlay.textContent = (left / 1000).toFixed(1) + 's';
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
+    this.gameUI?.cooldown(spellSlug, remainingMs);
   },
 
   // ── Projectile animation ───────────────────────────────────────────────────
@@ -2544,19 +2502,29 @@ export const WorldCharacterUIScene = {
 
   // ── Floating damage text ───────────────────────────────────────────────────
 
-  showFloatingDamage(this: any, worldPos: THREE.Vector3, text: string) {
+  showFloatingDamage(this: any, worldPos: THREE.Vector3, text: string, color = '#F87171', scale = 1) {
     if (!this.el || !this.camera || !this.renderer) return;
 
     const el = document.createElement('div');
-    el.className = 'absolute pointer-events-none font-bold text-sm text-red-400 drop-shadow-lg select-none';
+    el.className = 'absolute pointer-events-none font-bold select-none';
     el.style.transform = 'translate(-50%, -50%)';
+    el.style.position = 'absolute';
+    el.style.pointerEvents = 'none';
+    el.style.zIndex = '4';
+    el.style.color = color;
+    el.style.fontSize = `${Math.round(15 * scale)}px`;
+    el.style.textShadow = '0 1px 2px #000, 0 0 3px #000';
+    el.style.fontFamily = '"Trebuchet MS", "Segoe UI", Arial, sans-serif';
     el.textContent = text;
+    // Spread repeated numbers a little so they don't stack.
+    worldPos.x += (Math.random() - 0.5) * 0.5;
+    worldPos.z += (Math.random() - 0.5) * 0.5;
     this.el.appendChild(el);
 
     this.floatingTexts.push({
       el,
       x: worldPos.x,
-      y: worldPos.y + 2.0,
+      y: worldPos.y + 2.4,
       z: worldPos.z,
       vy: 1.5,
       alpha: 1.0,
@@ -2567,6 +2535,8 @@ export const WorldCharacterUIScene = {
 
   tickFloatingTexts(this: any) {
     if (!this.camera || !this.renderer) return;
+    // Project with this frame's camera (its matrices otherwise update only when rendering).
+    this.camera.updateMatrixWorld();
     const dt = 0.016;
     const remaining: typeof this.floatingTexts = [];
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -2595,4 +2565,7 @@ export const WorldCharacterUIScene = {
 
     this.floatingTexts = remaining;
   },
+
+  // Fighting, creatures, looting, the inventory and the windows (game-world.ts).
+  ...GameWorld,
 };

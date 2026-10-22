@@ -4,9 +4,13 @@
 //
 //   Left-click the game   lock the pointer: free look, the character turns to
 //                         face where it moves
-//   Right button held     mouselook: the camera turns and the character keeps
-//                         facing the camera's direction (W runs, S backpedals,
-//                         A/D strafe). Works with or without the lock.
+//   Mouse buttons, locked attack, Black Desert style: left button the left hand,
+//                         right button the right hand (held: keeps swinging).
+//                         The character turns to face where the camera looks.
+//   Right button held     with the cursor free: mouselook (EverQuest steering).
+//                         The camera turns and the character keeps facing the
+//                         camera's direction: W runs, S backpedals (slower), A/D
+//                         strafe, diagonals turn the body 45 degrees.
 //   Ctrl                  free the cursor
 //   Esc                   free the cursor and ask the scene for its game menu
 //   WASD / arrows         move relative to the camera; Shift sprints, C crouches,
@@ -51,6 +55,8 @@ export interface ControllerOptions {
    * is placed and the position is reported.
    */
   collide?: (x: number, z: number) => { x: number; z: number };
+  /** A mouse button went down with the pointer locked: swing that hand. */
+  onAttack?: (hand: 'left' | 'right') => void;
 }
 
 export type MovementState = {
@@ -61,7 +67,13 @@ export type MovementState = {
   isCrouching: boolean;
   /** Horizontal speed, m/s. */
   speed: number;
+  /** Movement direction relative to where the character faces: +x right, +z forward (unit, or 0). */
+  dirX: number;
+  dirZ: number;
 };
+
+// Facing the camera, moving backwards is slower (EverQuest and WoW backpedal).
+const BACKPEDAL = 0.6;
 
 const MOVEMENT_CODES = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD',
@@ -69,8 +81,10 @@ const MOVEMENT_CODES = new Set([
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC',
 ]);
 
-// Browsers can report one huge movementX/Y as pointer lock starts or ends.
-const MAX_MOUSE_DELTA = 400;
+// Browsers can report one huge movementX/Y as pointer lock starts or ends; those
+// events are skipped. Remote desktop delivers mouse movement in bursts, so other
+// big moves are clamped rather than dropped (dropping lost whole turns).
+const MAX_MOUSE_DELTA = 220;
 
 function isEditable(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -94,9 +108,13 @@ export class CharacterController {
   private isSprinting = false;
   private speed = 0;
 
-  // Camera: yaw psi = 0 looks along +Z; look pitch < 0 looks down.
+  // Camera: yaw psi = 0 looks along +Z; look pitch < 0 looks down. The mouse sets
+  // the target; with smoothing on, the camera eases toward it.
   private yaw = 0;
   private lookPitch = -15 * (Math.PI / 180);
+  private targetYaw = 0;
+  private targetPitch = -15 * (Math.PI / 180);
+  private smoothing = 0; // seconds (time constant); 0 = off
   private distance: number = CAMERA.distance;
   private pivotY: number | null = null;
 
@@ -107,7 +125,9 @@ export class CharacterController {
   // Input
   private keys = new Set<string>();
   private inputEnabled = true;
-  private steering = false; // right button held: mouselook, character faces the camera
+  private steering = false; // right button held (cursor free): mouselook, character faces the camera
+  private attackHeld = { left: false, right: false }; // mouse buttons held with the pointer locked
+  private faceCameraUntil = 0; // ms (performance.now): after a swing the character faces the camera
   private skipNextMouseMove = false;
   private releasingLock = false; // we asked for the lock to go (Ctrl, chat, menu, death)
 
@@ -134,6 +154,7 @@ export class CharacterController {
     this.options = options;
     // Start behind the character, looking where it faces.
     this.yaw = character.rotation.y;
+    this.targetYaw = this.yaw;
 
     document.addEventListener('keydown', this.handleKeyDown);
     document.addEventListener('keyup', this.handleKeyUp);
@@ -181,14 +202,49 @@ export class CharacterController {
   }
 
   private onMouseDown(event: MouseEvent): void {
-    if (event.button === 2 && this.inputEnabled) {
+    if (!this.inputEnabled) return;
+    if (this.isPointerLocked()) {
+      // Mouse-look on: the buttons are the hands.
+      const hand = event.button === 0 ? 'left' : event.button === 2 ? 'right' : null;
+      if (!hand) return;
+      this.attackHeld[hand] = true;
+      this.options.onAttack?.(hand);
+      return;
+    }
+    if (event.button === 2) {
       this.steering = true;
       this.skipNextMouseMove = true;
     }
   }
 
   private onMouseUp(event: MouseEvent): void {
-    if (event.button === 2) this.steering = false;
+    if (event.button === 2) {
+      this.steering = false;
+      this.attackHeld.right = false;
+    }
+    if (event.button === 0) this.attackHeld.left = false;
+  }
+
+  /** True while that hand's button is held with the pointer locked (swing again when ready). */
+  isAttackHeld(hand: 'left' | 'right'): boolean {
+    return this.attackHeld[hand] && this.isPointerLocked() && this.inputEnabled;
+  }
+
+  /** Turn to face where the camera looks for a while (a swing goes where you look). */
+  faceCamera(ms: number): void {
+    this.faceCameraUntil = Math.max(this.faceCameraUntil, performance.now() + ms);
+    // Snap most of the way now, so the swing doesn't start sideways.
+    this.character.rotation.y = turnToward(this.character.rotation.y, this.yaw, Math.PI * 0.75);
+  }
+
+  /** The camera's yaw (where a swing aims). */
+  getYaw(): number {
+    return this.yaw;
+  }
+
+  /** Camera easing for bursty mouse input (remote desktop): 0 = off, else seconds. */
+  setSmoothing(seconds: number): void {
+    this.smoothing = Math.max(0, Math.min(0.2, seconds));
   }
 
   private onMouseMove(event: MouseEvent): void {
@@ -203,13 +259,17 @@ export class CharacterController {
       this.skipNextMouseMove = false;
       return;
     }
-    const dx = event.movementX || 0;
-    const dy = event.movementY || 0;
-    if (Math.abs(dx) > MAX_MOUSE_DELTA || Math.abs(dy) > MAX_MOUSE_DELTA) return;
+    const clamp = (v: number) => Math.max(-MAX_MOUSE_DELTA, Math.min(MAX_MOUSE_DELTA, v));
+    const dx = clamp(event.movementX || 0);
+    const dy = clamp(event.movementY || 0);
 
-    const look = applyMouseLook(this.yaw, this.lookPitch, dx, dy, this.sensitivity, this.invertY);
-    this.yaw = look.yaw;
-    this.lookPitch = look.lookPitch;
+    const look = applyMouseLook(this.targetYaw, this.targetPitch, dx, dy, this.sensitivity, this.invertY);
+    this.targetYaw = look.yaw;
+    this.targetPitch = look.lookPitch;
+    if (this.smoothing <= 0) {
+      this.yaw = this.targetYaw;
+      this.lookPitch = this.targetPitch;
+    }
   }
 
   private onWheel(event: WheelEvent): void {
@@ -282,6 +342,8 @@ export class CharacterController {
   private clearInput(): void {
     this.keys.clear();
     this.steering = false;
+    this.attackHeld.left = false;
+    this.attackHeld.right = false;
   }
 
   // ---------------------------------------------------------------------------
@@ -289,11 +351,19 @@ export class CharacterController {
   // ---------------------------------------------------------------------------
 
   update(deltaTime: number): void {
-    const dt = Math.min(deltaTime, 0.1); // a stalled tab mustn't fling the character
+    // A slow frame (remote desktop, a busy machine) still moves the character its
+    // full distance, in steps of at most 50 ms; only a stalled tab (over 0.25 s) is cut short.
+    const dt = Math.min(deltaTime, 0.25);
+    if (this.smoothing > 0) {
+      const k = 1 - Math.exp(-dt / this.smoothing);
+      this.yaw += (this.targetYaw - this.yaw) * k;
+      this.lookPitch += (this.targetPitch - this.lookPitch) * k;
+    }
     const p = this.character.position;
     const before = { x: p.x, y: p.y, z: p.z, heading: this.character.rotation.y };
 
-    this.updateMovement(dt);
+    const steps = Math.max(1, Math.ceil(dt / 0.05));
+    for (let i = 0; i < steps; i++) this.updateMovement(dt / steps);
     this.updateCamera(dt);
 
     const changed = p.x !== before.x || p.y !== before.y || p.z !== before.z || this.character.rotation.y !== before.heading;
@@ -306,21 +376,27 @@ export class CharacterController {
     return codes.some((c) => this.keys.has(c));
   }
 
+  /** Facing the camera: steering, or just after a swing. */
+  private facingCamera(): boolean {
+    return this.steering || performance.now() < this.faceCameraUntil;
+  }
+
   private updateMovement(dt: number): void {
-    const dir = moveDirection(
-      {
-        forward: this.held('KeyW', 'ArrowUp'),
-        back: this.held('KeyS', 'ArrowDown'),
-        left: this.held('KeyA', 'ArrowLeft'),
-        right: this.held('KeyD', 'ArrowRight'),
-      },
-      this.yaw
-    );
+    const input = {
+      forward: this.held('KeyW', 'ArrowUp'),
+      back: this.held('KeyS', 'ArrowDown'),
+      left: this.held('KeyA', 'ArrowLeft'),
+      right: this.held('KeyD', 'ArrowRight'),
+    };
+    const dir = moveDirection(input, this.yaw);
     const hasInput = dir.x !== 0 || dir.z !== 0;
+    const fwd = (input.forward ? 1 : 0) - (input.back ? 1 : 0);
+    const facingCamera = this.facingCamera();
 
     this.isCrouching = this.held('KeyC') && this.isGrounded;
-    this.isSprinting = this.held('ShiftLeft', 'ShiftRight') && !this.isCrouching;
-    const maxSpeed = this.isCrouching ? MOVE.crouchSpeed : this.isSprinting ? MOVE.sprintSpeed : MOVE.jogSpeed;
+    this.isSprinting = this.held('ShiftLeft', 'ShiftRight') && !this.isCrouching && !(facingCamera && fwd < 0);
+    let maxSpeed = this.isCrouching ? MOVE.crouchSpeed : this.isSprinting ? MOVE.sprintSpeed : MOVE.jogSpeed;
+    if (facingCamera && fwd < 0) maxSpeed *= BACKPEDAL;
 
     const control = this.isGrounded ? 1 : MOVE.airControl;
     const braking = this.isGrounded ? MOVE.brakingGround : MOVE.brakingAir;
@@ -334,9 +410,13 @@ export class CharacterController {
     );
     this.speed = Math.hypot(this.velocity.x, this.velocity.z);
 
-    if (this.steering) {
-      // Mouselook: the character faces where the camera looks; A/D strafe, S backpedals.
-      this.character.rotation.y = turnToward(this.character.rotation.y, this.yaw, MOVE.turnRate * 2 * dt);
+    if (facingCamera) {
+      // Mouselook: the character faces where the camera looks; A/D strafe, S
+      // backpedals. On a diagonal the body turns 45 degrees into it (forward-left
+      // faces forward-left; back-left faces forward-right and backpedals).
+      const moveYaw = facingYaw(dir);
+      const face = !hasInput || fwd === 0 ? this.yaw : fwd > 0 ? moveYaw : moveYaw + Math.PI;
+      this.character.rotation.y = turnToward(this.character.rotation.y, face, MOVE.turnRate * 2 * dt);
     } else if (hasInput) {
       // Free look: face the way we move (bOrientRotationToMovement), not the camera.
       this.character.rotation.y = turnToward(this.character.rotation.y, facingYaw(dir), MOVE.turnRate * dt);
@@ -418,6 +498,7 @@ export class CharacterController {
     this.verticalSpeed = 0;
     this.speed = 0;
     this.yaw = heading;
+    this.targetYaw = heading;
     this.pivotY = null;
     this.updateCamera(0);
   }
@@ -432,7 +513,17 @@ export class CharacterController {
 
   getMovementState(): MovementState {
     const isMoving = this.speed >= PACE.idleBelow;
+    // Velocity in the character's own frame (yaw h faces (sin h, cos h); its right is (-cos h, sin h)).
+    const h = this.character.rotation.y;
+    let dirX = 0;
+    let dirZ = 0;
+    if (this.speed > 1e-3) {
+      dirZ = (this.velocity.x * Math.sin(h) + this.velocity.z * Math.cos(h)) / this.speed;
+      dirX = (-this.velocity.x * Math.cos(h) + this.velocity.z * Math.sin(h)) / this.speed;
+    }
     return {
+      dirX,
+      dirZ,
       isMoving,
       isRunning: isMoving && !this.isCrouching,
       isSprinting: isMoving && this.isGrounded && (this.isSprinting || this.speed > PACE.jogUpTo),

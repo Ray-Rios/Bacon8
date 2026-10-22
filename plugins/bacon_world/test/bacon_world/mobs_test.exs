@@ -1,0 +1,201 @@
+defmodule BaconWorld.MobsTest do
+  # The creature rules (BaconWorld.Mobs.Brain), melee numbers and levels: pure, no database.
+  use ExUnit.Case, async: true
+
+  alias BaconWorld.{Items, Melee, Progression}
+  alias BaconWorld.Mobs.{Brain, Spawns}
+
+  @u 2.2 / 1.8
+
+  setup do
+    :rand.seed(:exsss, {1, 2, 3})
+    :ok
+  end
+
+  defp point(kind \\ "decaying_skeleton"), do: %{id: "test:0", camp: "test", kind: kind, x: 60.0, z: 0.0}
+
+  defp mob(attrs \\ %{}) do
+    point() |> Brain.spawn(0) |> Map.merge(%{level: 1, hp: 30, max_hp: 30, h: 0.0}) |> Map.merge(attrs)
+  end
+
+  # A player `m` metres from the creature's spawn (along -x, toward the village).
+  defp player_at(m, attrs \\ %{}), do: Map.merge(%{x: (60.0 - m) * @u, z: 0.0, dead: false, level: 1}, attrs)
+
+  defp run(mob, players, from, ms, step \\ 100) do
+    Enum.reduce(0..div(ms, step), {mob, []}, fn i, {m, evs} ->
+      {m2, e} = Brain.tick(m, players, from + i * step, step / 1000, point())
+      {m2, evs ++ e}
+    end)
+  end
+
+  describe "spawns" do
+    test "every camp is outside the safe village and spawns its creatures" do
+      points = Spawns.points()
+      assert length(points) == 17
+      assert Enum.all?(points, fn p -> :math.sqrt(p.x * p.x + p.z * p.z) > Spawns.safe_radius() end)
+      assert points |> Enum.map(& &1.id) |> Enum.uniq() |> length() == 17
+    end
+
+    test "creatures hold a weapon from their list; a two-hander leaves the off hand empty" do
+      for _ <- 1..40 do
+        m = Brain.spawn(point("skeleton_warrior"), 0)
+        assert m.level in 3..5
+        assert m.hp == m.max_hp
+        weapon = Items.get(m.weapon)
+        assert weapon
+        if Items.two_handed?(weapon), do: assert(is_nil(m.offhand))
+      end
+    end
+  end
+
+  describe "thinking" do
+    test "a player close by outside the village is chased and hit" do
+      players = %{"p1" => player_at(5)}
+      {m, evs} = run(mob(), players, 0, 6_000)
+      assert {:aggro, "test:0", "p1"} in evs
+      assert m.state == :chase
+      # It closed the distance and swung at least once.
+      assert Enum.any?(evs, &match?({:attack, "test:0", "p1", _, _}, &1))
+      assert :math.sqrt(:math.pow(m.x - players["p1"].x, 2) + :math.pow(m.z - players["p1"].z, 2)) < 2.0 * @u
+    end
+
+    test "nobody is chased into the village, and the dead are left alone" do
+      {m, evs} = run(mob(), %{"p1" => player_at(30.0)}, 0, 2_000)
+      refute Enum.any?(evs, &match?({:aggro, _, _}, &1))
+      assert m.state in [:idle, :wander]
+
+      {_m, evs} = run(mob(), %{"p1" => player_at(4, %{dead: true})}, 0, 2_000)
+      refute Enum.any?(evs, &match?({:aggro, _, _}, &1))
+    end
+
+    test "players who con grey to a creature aren't attacked" do
+      {_m, evs} = run(mob(), %{"p1" => player_at(4, %{level: 20})}, 0, 2_000)
+      refute Enum.any?(evs, &match?({:aggro, _, _}, &1))
+    end
+
+    test "a chase ends at the village edge: the creature runs home and heals" do
+      {m, _} = run(mob(), %{"p1" => player_at(5)}, 0, 1_000)
+      assert m.state == :chase
+      m = %{m | hp: 3}
+      # The player steps into the village.
+      safe = %{"p1" => %{x: 10.0, z: 0.0, dead: false, level: 1}}
+      {m, _} = Brain.tick(m, safe, 2_000, 0.1, point())
+      assert m.state == :return
+      {m, _} = run(m, safe, 2_100, 20_000)
+      assert m.state in [:idle, :wander]
+      assert m.hp == m.max_hp
+      assert Brain.in_safe_zone?(10.0, 0.0)
+    end
+  end
+
+  describe "melee" do
+    defp attack(attrs \\ %{}) do
+      Map.merge(%{id: "p1", level: 1, x: 59.0 * @u, z: 0.0, heading: :math.pi() / 2, item: Items.get("worn_short_sword"), heavy: false, target: nil}, attrs)
+    end
+
+    test "a swing hits what is in front, within reach" do
+      mobs = %{"test:0" => mob()}
+      always = fn -> 0.0 end
+      {mobs2, [hit], evs} = Brain.melee(mobs, attack(), 1_000, always)
+      assert hit.hit and hit.damage > 0 and not hit.killed
+      assert mobs2["test:0"].hp == 30 - hit.damage
+      assert mobs2["test:0"].state == :chase and mobs2["test:0"].target == "p1"
+      assert Enum.any?(evs, &match?({:damaged, "test:0", "p1", _, _, _, 30}, &1))
+
+      # Facing away: nothing.
+      assert {_, [], []} = Brain.melee(mobs, attack(%{heading: -:math.pi() / 2}), 1_000, always)
+      # Out of reach: nothing.
+      assert {_, [], []} = Brain.melee(mobs, attack(%{x: 50.0 * @u}), 1_000, always)
+    end
+
+    test "a kill leaves a corpse with loot; the killer loots first" do
+      mobs = %{"test:0" => mob(%{hp: 1})}
+      {mobs, [hit], evs} = Brain.melee(mobs, attack(), 1_000, fn -> 0.0 end)
+      assert hit.killed
+      assert {:died, "test:0", "p1"} in evs
+      corpse = mobs["test:0"]
+      assert corpse.state == :dead and corpse.corpse.owner == "p1"
+
+      pos = {59.0 * @u, 0.0}
+      assert {:error, :not_yours_yet} = Brain.loot_open(corpse, "p2", pos, 2_000)
+      assert {:error, :too_far} = Brain.loot_open(corpse, "p1", {0.0, 0.0}, 2_000)
+      assert {:ok, opened, coins, items} = Brain.loot_open(corpse, "p1", pos, 2_000)
+      assert coins > 0
+      assert {:error, :someone_else_looting} = Brain.loot_open(opened, "p2", pos, 2_000 + Spawns.loot_lock_ms())
+      # Coins only once.
+      assert {:ok, _, 0, ^items} = Brain.loot_open(opened, "p1", pos, 2_500)
+
+      looted =
+        Enum.reduce(items, opened, fn _, m ->
+          {:ok, m, _item} = Brain.loot_take(m, "p1", 0)
+          m
+        end)
+
+      assert looted.corpse.items == []
+      closed = Brain.loot_close(looted, "p1", 3_000)
+      # An empty corpse decays within seconds, then the creature respawns later.
+      {gone, [{:corpse_gone, "test:0"}]} = Brain.tick(closed, %{}, 6_100, 0.1, point())
+      assert gone.state == :gone
+      {back, [{:spawn, view}]} = Brain.tick(gone, %{}, gone.respawn_at, 0.1, point())
+      assert back.state == :idle and view.id == "test:0"
+    end
+
+    test "two-handers sweep up to three; one-handers hit one" do
+      mobs = for i <- 0..3, into: %{}, do: {"m#{i}", mob(%{id: "m#{i}", x: 60.0 * @u, z: (i - 1.5) * 0.3 * @u})}
+      always = fn -> 0.0 end
+      {_, hits, _} = Brain.melee(mobs, attack(%{item: Items.get("rusty_two_handed_sword")}), 1_000, always)
+      assert length(hits) == 3
+      {_, hits, _} = Brain.melee(mobs, attack(%{target: "m3"}), 1_000, always)
+      assert [%{id: "m3"}] = hits
+    end
+  end
+
+  describe "numbers" do
+    test "damage rolls stay within the weapon's range plus the level bonus" do
+      sword = Items.get("worn_short_sword")
+
+      for _ <- 1..200 do
+        {d, crit} = Melee.roll_damage(sword, 1)
+        if crit, do: assert(d <= round(6 * 1.75)), else: assert(d in 2..6)
+      end
+
+      assert Melee.delay_ms(sword) == 1_200
+      assert Melee.delay_ms(sword, true) == 1_680
+      assert Melee.hit_chance(1, 30) == 0.4
+    end
+
+    test "arcs" do
+      assert Melee.in_arc?({0.0, 0.0}, 0.0, {0.0, 1.0}, 2.0, 90)
+      refute Melee.in_arc?({0.0, 0.0}, 0.0, {0.0, -1.0}, 2.0, 90)
+      refute Melee.in_arc?({0.0, 0.0}, 0.0, {0.0, 3.0}, 2.0, 90)
+      assert Melee.in_arc?({0.0, 0.0}, :math.pi(), {0.0, 0.1}, 2.0, 90), "right on top always counts"
+    end
+
+    test "levels, con and experience" do
+      assert Progression.xp_to_next(1) == 100
+      assert {2, 0} = Progression.apply_xp(1, 100)
+      assert {3, 5} = Progression.apply_xp(1, 100 + Progression.xp_to_next(2) + 5)
+      assert Progression.con(1, 1) == :white
+      assert Progression.con(4, 1) == :red
+      assert Progression.con(2, 1) == :yellow
+      assert Progression.con(1, 10) == :grey
+      assert Progression.kill_xp(1, 10) == 0
+      assert Progression.kill_xp(2, 1) > Progression.kill_xp(1, 1)
+      assert Progression.max_hp(1) == 40
+    end
+
+    test "the item catalogue is consistent" do
+      for item <- Items.all() do
+        assert item.name != ""
+        if item.kind in ["weapon", "shield", "light"], do: assert(item.dmg > 0 and item.dly > 0 and item.set)
+        if item.hands == 2, do: assert(item.slots == ["main"])
+      end
+
+      for {id, _} <- Items.starter_kit(), do: assert(Items.get(id))
+
+      for {_, kind} <- Spawns.kinds(), {id, _} <- kind.weapons ++ kind.offhand ++ Enum.map(kind.loot, &{elem(&1, 0), 0}), id do
+        assert Items.get(id), "#{id} is in the catalogue"
+      end
+    end
+  end
+end

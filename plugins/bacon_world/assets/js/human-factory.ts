@@ -16,6 +16,7 @@ import * as THREE from '../../../../assets/js/vendor/three';
 import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from '../../../../assets/js/vendor/three-loaders';
 import { Appearance, Body, browColor, morphWeights, normalizeAppearance } from './appearance';
 import { UNITS_PER_METRE } from './controls-math';
+import { modelUrl } from './asset-url';
 
 export const HUMANS_BASE = '/models/Humans';
 
@@ -56,6 +57,7 @@ export class HumanFactory {
   private loader: GLTFLoader;
   private bodies = new Map<Body, Promise<BodyAsset>>();
   private parts = new Map<string, Promise<THREE.Object3D | null>>();
+  private packs = new Map<string, Promise<THREE.AnimationClip[]>>();
   assets: HumanAssets;
 
   constructor(assets: HumanAssets = {}) {
@@ -74,11 +76,11 @@ export class HumanFactory {
   }
 
   iconUrl(entry: StyleEntry): string | null {
-    return entry.icon ? `${HUMANS_BASE}/Hair/${entry.icon}` : null;
+    return entry.icon ? modelUrl(`${HUMANS_BASE}/Hair/${entry.icon}`) : null;
   }
 
   private load(url: string): Promise<any> {
-    return new Promise((resolve, reject) => this.loader.load(url, resolve, undefined, reject));
+    return new Promise((resolve, reject) => this.loader.load(modelUrl(url), resolve, undefined, reject));
   }
 
   loadBody(body: Body): Promise<BodyAsset> {
@@ -99,6 +101,28 @@ export class HumanFactory {
       });
       this.bodies.set(body, p);
       p.catch(() => this.bodies.delete(body));
+    }
+    return p;
+  }
+
+  /**
+   * The B8 animation packs for a body (Core: locomotion, strafes, reactions, social;
+   * Combat: every weapon stance and swing), loaded once and shared by everyone with
+   * that body. A missing pack resolves to no clips: the body's own 20 stand in.
+   */
+  loadAnimPacks(body: Body | 'Male' | 'Female'): Promise<THREE.AnimationClip[]> {
+    const tag = body === 'male' || body === 'Male' ? 'Male' : 'Female';
+    let p = this.packs.get(tag);
+    if (!p) {
+      const one = (pack: string) =>
+        this.load(`${HUMANS_BASE}/Anims/B8_${tag}_Anims_${pack}.glb`)
+          .then((g: any) => (g.animations || []) as THREE.AnimationClip[])
+          .catch((err) => {
+            console.warn('[humans] animation pack failed to load', tag, pack, err);
+            return [] as THREE.AnimationClip[];
+          });
+      p = Promise.all([one('Core'), one('Combat')]).then(([a, b]) => [...a, ...b]);
+      this.packs.set(tag, p);
     }
     return p;
   }

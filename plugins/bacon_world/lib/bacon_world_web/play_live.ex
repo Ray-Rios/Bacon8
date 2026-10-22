@@ -13,7 +13,8 @@ defmodule BaconWorldWeb.PlayLive do
   """
   use Bacon8Web, :live_view
   require Logger
-  alias BaconWorld.{Combat, Models, World}
+  alias BaconWorld.{Combat, Items, Models, World}
+  alias BaconWorldWeb.GameEvents
   alias Phoenix.PubSub
   alias Bacon8Web.Presence
 
@@ -24,6 +25,10 @@ defmodule BaconWorldWeb.PlayLive do
   @min_dt_seconds 0.04
   @position_persist_interval_ms 1000
   @presence_broadcast_interval_ms 100
+
+  # Fighting, looting and the inventory (BaconWorldWeb.GameEvents).
+  @game_events ~w(fetch_mobs melee_attack loot_open loot_take loot_all loot_close
+                  inventory_fetch inventory_move inventory_equip inventory_unequip inventory_destroy)
 
   on_mount {Bacon8Web.UserAuth, :require_authenticated_user}
 
@@ -51,7 +56,7 @@ defmodule BaconWorldWeb.PlayLive do
              )
              |> push_event("zone_presence_state", %{online_characters: socket.assigns.zone_online_characters})
              |> push_event("character_login_ready", payload)
-             |> tap(fn _ -> Process.send_after(self(), {:regen_tick, payload.character_id}, 6_000) end)}
+             |> tap(fn _ -> Process.send_after(self(), {:regen_tick, payload.character_id}, 4_000) end)}
           end
 
         _ ->
@@ -90,6 +95,12 @@ defmodule BaconWorldWeb.PlayLive do
      assign(socket,
        page_title: "Bacon World",
        human_assets: Models.human_assets(),
+       item_catalog: Items.catalog_payload(),
+       equipment: %{},
+       swing_at: %{},
+       mobs_zone: nil,
+       looting: nil,
+       level: 1,
        characters: characters,
        selected_character_id: nil,
        current_character_payload: nil,
@@ -342,6 +353,10 @@ defmodule BaconWorldWeb.PlayLive do
     {:noreply, socket}
   end
 
+  def handle_event(event, params, socket) when event in @game_events do
+    GameEvents.handle_event(event, params, socket)
+  end
+
   def handle_event("world_position_update", params, socket) do
     with %{"x" => raw_x, "y" => raw_y, "z" => raw_z, "heading" => raw_heading} <- stringify_keys(params),
          {:ok, x} <- to_float(raw_x),
@@ -538,6 +553,7 @@ defmodule BaconWorldWeb.PlayLive do
          current_character_runtime: updated_character,
          last_world_update_ms: System.monotonic_time(:millisecond)
        )
+       |> GameEvents.set_dead(false)
        |> push_event("character_respawned", %{
             spawn_coords: spawn_coords,
             hp: current.max_hp,
@@ -571,6 +587,7 @@ defmodule BaconWorldWeb.PlayLive do
 
           socket
           |> assign(pending_respawn_timer: timer_ref, pending_spawn_coords: coords, is_dead?: true)
+          |> GameEvents.set_dead(true)
           |> push_event("character_died", %{
                spawn_coords: coords,
                hp: current.max_hp,
@@ -618,6 +635,7 @@ defmodule BaconWorldWeb.PlayLive do
          current_character_runtime: updated_character,
          last_world_update_ms: System.monotonic_time(:millisecond)
        )
+       |> GameEvents.set_dead(false)
        |> push_event("character_respawned", %{
             spawn_coords: spawn_coords,
             hp: current.max_hp,
@@ -638,18 +656,19 @@ defmodule BaconWorldWeb.PlayLive do
       case Combat.get_character_stats(character_id) do
         {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}}
             when hp < max_hp or mp < max_mp ->
-          new_hp = min(hp + 1, max_hp)
-          new_mp = min(mp + 1, max_mp)
+          # About a twelfth of the pool every 4 s (EverQuest-slow, but not 10 HP slow).
+          new_hp = min(hp + max(1, div(max_hp, 12)), max_hp)
+          new_mp = min(mp + max(1, div(max_mp, 12)), max_mp)
           {:ok, _} = Combat.update_character_hp_mp(character_id, new_hp, new_mp)
           socket = push_event(socket, "character_stats_update", %{
             hp: new_hp, max_hp: max_hp, mp: new_mp, max_mp: max_mp
           })
-          Process.send_after(self(), {:regen_tick, character_id}, 6_000)
+          Process.send_after(self(), {:regen_tick, character_id}, 4_000)
           {:noreply, socket}
 
         _ ->
           # Already full — skip DB write, still reschedule
-          Process.send_after(self(), {:regen_tick, character_id}, 6_000)
+          Process.send_after(self(), {:regen_tick, character_id}, 4_000)
           {:noreply, socket}
       end
     else
@@ -698,6 +717,10 @@ defmodule BaconWorldWeb.PlayLive do
         {:noreply, push_event(socket, "zone_position_update", payload)}
     end
   end
+
+  def handle_info({:mob_events, events}, socket), do: {:noreply, GameEvents.mob_events(events, socket)}
+  def handle_info({:mob_motion, list}, socket), do: {:noreply, GameEvents.mob_motion(list, socket)}
+  def handle_info({:zone_gear, payload}, socket), do: {:noreply, GameEvents.zone_gear(payload, socket)}
 
   def handle_info(:characters_updated, socket) do
     characters = World.list_user_characters(socket.assigns.current_user.id)
@@ -805,7 +828,7 @@ defmodule BaconWorldWeb.PlayLive do
         heading: payload.position.heading,
         updated_at: System.system_time(:millisecond),
         joined_at: DateTime.utc_now() |> DateTime.to_iso8601()
-      })
+      } |> Map.merge(GameEvents.presence_meta(payload)))
 
       Logger.info("bacon_world:join_zone_presence user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id} topic=#{topic}")
 
@@ -818,11 +841,15 @@ defmodule BaconWorldWeb.PlayLive do
       |> list_zone_online_characters()
       |> visible_zone_online_characters(payload)
 
-    assign(socket, current_zone_topic: topic, zone_online_characters: zone_online_characters)
+    socket
+    |> assign(current_zone_topic: topic, zone_online_characters: zone_online_characters)
+    |> GameEvents.join(payload)
 
   end
 
   defp leave_zone_presence(socket) do
+    socket = GameEvents.leave(socket)
+
     case socket.assigns.current_zone_topic do
       nil ->
         socket
@@ -886,7 +913,10 @@ defmodule BaconWorldWeb.PlayLive do
         x: meta[:x] || 0.0,
         y: meta[:y] || 0.0,
         z: meta[:z] || 0.0,
-        heading: meta[:heading] || 0.0
+        heading: meta[:heading] || 0.0,
+        level: meta[:level] || 1,
+        gear: meta[:gear] || %{},
+        dead: meta[:dead] == true
       }
     end)
   end
@@ -1015,7 +1045,8 @@ defmodule BaconWorldWeb.PlayLive do
         name: character.name,
         character_type: character.character_type,
         model_path: character.model_path,
-        appearance: character.appearance
+        appearance: character.appearance,
+        level: character.level
       }
     end)
   end
@@ -1114,6 +1145,7 @@ defmodule BaconWorldWeb.PlayLive do
           data-available-models={Jason.encode!(@available_models)}
           data-current-player={Jason.encode!(@current_character_payload)}
           data-human-assets={Jason.encode!(@human_assets)}
+          data-item-catalog={Jason.encode!(@item_catalog)}
           phx-update="ignore"
         ></div>
 

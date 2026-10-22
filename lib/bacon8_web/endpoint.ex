@@ -42,12 +42,16 @@ defmodule Bacon8Web.Endpoint do
   # Serve 3D models from PVC mount (populated by sync-models-to-k8s.sh).
   # The release priv/static does not embed models; they live on the PVC at /app/priv/static/models.
   # ModelsGuard keeps the source files on that volume (.blend, .zip, ...) private.
-  plug Bacon8Web.Plugs.ModelsGuard
+  plug Bacon8Web.Plugs.ModelsGuard, root: "/app/priv/static/models"
 
+  # gzip: a `.glb.gz` beside a `.glb` is sent instead when the browser accepts gzip
+  # (meshopt-compressed GLBs shrink about 8x more). ModelsGuard checks the requested
+  # name (`.glb`), so a direct request for the `.gz` stays 404. Clients version model
+  # URLs (`?vsn=`), which Plug.Static caches as immutable for a year.
   plug Plug.Static,
     at: "/models",
     from: "/app/priv/static/models",
-    gzip: false,
+    gzip: true,
     cache_control_for_etags: "public, max-age=86400"
 
   # Serve additional static asset folders for 3D world (terrain heightmaps, etc.)

@@ -35,7 +35,7 @@ defmodule BaconWorld.WorldTest do
     assert [%{id: id}] = Enum.filter(Games.list_characters(game.id, user_id), &(&1.name == "Wesley"))
     assert id == c.id
 
-    assert %{hp: 10, max_hp: 10, mp: 10, max_mp: 10, pvp_flagged: false, character_type: "Explorer", zone_slug: "lobby"} = c
+    assert %{hp: 40, max_hp: 40, mp: 20, max_mp: 20, level: 1, pvp_flagged: false, character_type: "Explorer", zone_slug: "lobby"} = c
     assert [%{name: "Wesley"}] = World.list_user_characters(user_id)
     assert [%{slug: "throw_stone"}] = Combat.list_character_spells(c.id)
   end
@@ -99,7 +99,7 @@ defmodule BaconWorld.WorldTest do
              World.get_character_for_user(user_id, c.id)
 
     assert {:ok, %{x: _, heading: _}} = Combat.respawn_character(c.id)
-    assert %{hp: 10, position: %{x: x, z: z}} = World.get_character_for_user(user_id, c.id)
+    assert %{hp: 40, position: %{x: x, z: z}} = World.get_character_for_user(user_id, c.id)
     assert x == 0.0 and z == 0.0
   end
 
@@ -117,9 +117,9 @@ defmodule BaconWorld.WorldTest do
     assert {:error, :out_of_range} = Combat.cast_throw_stone(caster.id, target.id, near, %{x: 500.0, z: 0.0})
     assert {:error, :character_not_found} = Combat.cast_throw_stone(caster.id, "not-a-uuid", near, close)
 
-    assert {:ok, %{caster_mp: 9, target_hp: hp, hit: hit}} = Combat.cast_throw_stone(caster.id, target.id, near, close)
-    assert hp == if(hit, do: 9, else: 10)
-    assert %{mp: 9} = World.get_character_for_user(user_id, caster.id)
+    assert {:ok, %{caster_mp: 19, target_hp: hp, hit: hit}} = Combat.cast_throw_stone(caster.id, target.id, near, close)
+    assert hp == if(hit, do: 39, else: 40)
+    assert %{mp: 19} = World.get_character_for_user(user_id, caster.id)
   end
 
   test "a character whose model was removed wears the first model still offered", %{user_id: user_id, model: model} do

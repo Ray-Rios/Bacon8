@@ -2,7 +2,7 @@
 // HTML layer over the 3D stage (character-stage.ts). Plain DOM with its own scoped CSS,
 // so it doesn't depend on the site's Tailwind build.
 import {
-  Appearance, Body, BOTTOMS, CLOTH_COLORS, EYE_COLORS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SHOES, SKIN_TONES, TITLES, TOPS,
+  Appearance, Body, BOTTOMS, CLOTH_COLORS, EYE_COLORS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SHOES, SKIN_TONES, TOPS,
   defaultAppearance, normalizeAppearance, randomAppearance, shade,
 } from './appearance';
 import type { StyleEntry } from './human-factory';
@@ -14,13 +14,15 @@ export interface FrontCharacter {
   model_path?: string;
   appearance?: unknown;
   zone?: string | null;
+  /** Experience level (no classes: everyone grows through one shared skill tree). */
+  level?: number;
 }
 
 export interface FrontCallbacks {
   select(id: string): void;
   play(id: string): void;
   remove(id: string): void;
-  create(name: string, title: string, a: Appearance): Promise<{ ok: boolean; error?: string; character_id?: string }>;
+  create(name: string, a: Appearance): Promise<{ ok: boolean; error?: string; character_id?: string }>;
   updateLook(id: string, a: Appearance): Promise<{ ok: boolean; error?: string }>;
   preview(a: Appearance | null): void;
   framing(f: 'full' | 'upper' | 'face'): void;
@@ -153,7 +155,6 @@ export class FrontUI {
   private selectedId: string | null = null;
   private draft: Appearance = defaultAppearance('male');
   private draftName = '';
-  private draftTitle = TITLES[0];
   private editingId: string | null = null;
   private tab: Tab = 'body';
   private busy = false;
@@ -285,7 +286,7 @@ export class FrontUI {
       const a = this.appearanceOf(c);
       const card = h('button', { class: 'bwf-card' + (c.id === this.selectedId ? ' on' : ''), title: c.name },
         h('div', { class: 'bwf-av', style: { background: a.skin } }, initials(c.name), h('i', { style: { background: a.outfit.top.main } })),
-        h('div', { style: { minWidth: '0' } }, h('div', { class: 'bwf-cn' }, c.name), h('div', { class: 'bwf-cs' }, `${c.character_type || 'Adventurer'} · ${a.body === 'female' ? 'Female' : 'Male'}`)));
+        h('div', { style: { minWidth: '0' } }, h('div', { class: 'bwf-cn' }, c.name), h('div', { class: 'bwf-cs' }, `Level ${c.level || 1} · ${a.body === 'female' ? 'Female' : 'Male'}`)));
       card.onclick = () => {
         if (this.selectedId === c.id) return;
         this.selectedId = c.id;
@@ -310,7 +311,7 @@ export class FrontUI {
         h('div', { class: 'bwf-shade' }),
         h('div', { class: 'bwf-hero', style: { left: `calc(50% + ${shift}px)` } },
           h('div', { class: 'bwf-hero-name' }, sel.name),
-          h('div', { class: 'bwf-hero-sub' }, sel.character_type || 'Adventurer'),
+          h('div', { class: 'bwf-hero-sub' }, `Level ${sel.level || 1}`),
           h('div', { class: 'bwf-actions' },
             h('button', { class: 'bwf-btn', onclick: () => this.openCreator(sel) }, 'Edit look'),
             h('button', { class: 'bwf-btn bwf-primary', onclick: () => this.cb.play(sel.id) }, 'Enter world'),
@@ -342,12 +343,10 @@ export class FrontUI {
     if (edit) {
       this.draft = this.appearanceOf(edit);
       this.draftName = edit.name;
-      this.draftTitle = edit.character_type || TITLES[0];
     } else {
       const body: Body = Math.random() < 0.5 ? 'male' : 'female';
       this.draft = this.randomFor(body);
       this.draftName = '';
-      this.draftTitle = TITLES[0];
     }
     this.renderCreator();
   }
@@ -392,9 +391,6 @@ export class FrontUI {
     const nameIn = h('input', { class: 'bwf-in', maxlength: '24', placeholder: 'Name', value: this.draftName, disabled: editing }) as HTMLInputElement;
     nameIn.oninput = () => { this.draftName = nameIn.value; this.error = ''; errEl.textContent = ''; createBtn.disabled = !this.canSubmit(); };
     nameIn.onkeydown = (e) => { if (e.key === 'Enter' && this.canSubmit()) void this.submit(); };
-    const titleSel = h('select', { class: 'bwf-in', disabled: editing }, ...TITLES.map((t) => h('option', { value: t, selected: t === this.draftTitle }, t))) as HTMLSelectElement;
-    if (!TITLES.includes(this.draftTitle)) titleSel.append(h('option', { value: this.draftTitle, selected: true }, this.draftTitle));
-    titleSel.onchange = () => { this.draftTitle = titleSel.value; };
     const errEl = h('div', { class: 'bwf-err' }, this.error);
     const createBtn = h('button', { class: 'bwf-btn bwf-primary', style: { flex: '1', padding: '12px' }, disabled: !this.canSubmit(), onclick: () => void this.submit() },
       this.busy ? 'Saving…' : editing ? 'Save look' : 'Create character') as HTMLButtonElement;
@@ -404,7 +400,7 @@ export class FrontUI {
       tabs,
       tb,
       h('div', { class: 'bwf-cfoot' },
-        h('div', { class: 'bwf-row' }, nameIn, titleSel),
+        h('div', { class: 'bwf-row' }, nameIn),
         errEl,
         h('div', { class: 'bwf-row' },
           h('button', { class: 'bwf-btn', onclick: () => this.leaveCreator() }, 'Back'),
@@ -442,7 +438,7 @@ export class FrontUI {
         this.showSelect();
       } else {
         const name = this.draftName.trim();
-        const res = await this.cb.create(name, this.draftTitle, this.draft);
+        const res = await this.cb.create(name, this.draft);
         if (!res.ok) throw new Error(res.error || 'Could not create the character.');
         this.pendingSelectName = name;
         if (res.character_id) {

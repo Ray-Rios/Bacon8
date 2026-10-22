@@ -70,8 +70,6 @@ export const SHOES = [
   { id: 'Shoes_Boots', label: 'Boots' },
 ];
 
-export const TITLES = ['Adventurer', 'Explorer', 'Builder', 'Warrior', 'Mage', 'Ranger', 'Merchant', 'Bard', 'Healer', 'Rogue'];
-
 // Palettes (sRGB hex). The colour pickers also accept any custom colour.
 export const SKIN_TONES = [
   '#F6D7C3', '#EFC3A4', '#E5B08C', '#D9A07A', '#C68E6E', '#B57A55',

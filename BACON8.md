@@ -875,6 +875,27 @@ character turning to face its movement, its speeds and acceleration in `controls
 with EverQuest-style mouse handling: click to lock the pointer, hold the right button to
 steer (the character faces the camera), Ctrl frees the cursor, Esc opens the game menu.
 
+**Fighting, creatures, loot and levels (2026-10-22).** No classes: every character starts
+the same and will grow through one shared skill tree (Path of Exile style, with a single
+central start); each level already banks a skill point (`BaconWorld.Progression`). With
+mouse-look on, the mouse buttons swing the left and right hands (Black Desert style; a
+two-hander: quick and heavy); with the cursor free, right-button steering stays. Q E F Z
+X are reserved for the tree's special attacks. Skeletons live in three camps outside the
+village, holding the weapons they drop; one zone process runs them for the cluster
+(`BaconWorld.Mobs.Zone`, `:global`, a `Keeper` child on every node — the plugin's first
+`children/0`). Swings are resolved there (`melee_attack`); a creature's hit on a player is
+applied by that player's LiveView, which owns its HP. Corpses are looted EverQuest style
+(killer first, one looter at a time). Items are a catalogue in code (`BaconWorld.Items`,
+EverQuest DMG/DLY) and what a character carries is a new games-DB table,
+`bacon_world_items` (migration `20261022000000`); coins, level, experience and skill
+points are in `stats`. Characters start with 40 HP (older ones are raised at their next
+login) and get a starter kit once. Animation: `anim-driver.ts` plays the B8 packs on four
+body channels, with strafes, weapon stances and mirrored left-hand swings. Names over
+heads are sprites (no lag, no box). Sound is real CC0 recordings (`/audio/world/`, credits
+beside them) plus nature beds and an ambient music bed. Model URLs carry a version
+(`?vsn=`, from size and mtime) so updated models reach browsers without a hard refresh, and
+`/models` serves `.glb.gz` copies when present (`gzip: true`).
+
 ## 10. Desktop shell and start menu
 
 `DesktopLive` is a global `live_component` rendered on every authenticated page:
@@ -1017,14 +1038,17 @@ Ordered roughly by how much it hurts.
 - `POST /api/webhooks/scheduler/:secret` carries its secret in the URL, so the request
   line in the app and ingress logs still shows it (parameter filtering only covers the
   parameters). Move it to a header.
-- Bacon World follow-ups (2026-10-21):
-  - The animation packs (`Humans/Anims`, `anims.json`) aren't installed or used yet.
+- Bacon World follow-ups (2026-10-22):
   - Remote players' crouch and airborne state aren't sent, so they never show those clips.
-  - `/models` GLBs would compress well (meshopt is built for gzip). `Plug.Static`'s
-    `gzip: true` on the models static would serve a `.glb.gz` beside each `.glb`; the guard
-    allows it, because it checks the requested name (`.glb`), and a direct `.gz` request
-    stays 404. Needs the `.gz` copies made at sync time.
+  - `/models` serves `.glb.gz` copies (`gzip: true`), but only if they exist: make them
+    when syncing the models volume (`gzip -k -9` on every `.glb`). A `.gz` older than
+    its `.glb` is ignored (`ModelsGuard` drops `accept-encoding` for that request).
   - The village's colliders are client-side only; the server checks speed, not walls.
+    Creatures don't collide with anything (they walk straight).
+  - The skill tree itself (Q E F Z X), armour, a merchant for junk, and groups with
+    shared loot rights are still to come.
+  - Creature attacks hit the player's stored HP in the games DB on every hit (a few writes
+    a second in a busy fight). Fine at this scale; batch it if fights get big.
 - Bacon World's three.js client has seven pre-existing TypeScript errors under
   `npm run type-check` (implicit `any`s, one loop-style enum); it bundles fine.
 - `Files` has a `:timer.sleep(10000)` in an upload path (goes with the legacy file system above).

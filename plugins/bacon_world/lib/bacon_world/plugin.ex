@@ -32,4 +32,9 @@ defmodule BaconWorld.Plugin do
 
   @impl true
   def previous_slugs, do: ["web_lobby"]
+
+  # The creatures: one zone process in the cluster (BaconWorld.Mobs.Zone), kept
+  # alive by a keeper on every node.
+  @impl true
+  def children, do: BaconWorld.Mobs.children()
 end

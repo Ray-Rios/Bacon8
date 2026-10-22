@@ -6,7 +6,9 @@ defmodule BaconWorld.World do
   plugin's game, so they show up wherever the hub lists a player's characters.
   Lobby-specific data lives in the two JSON maps:
 
-    * `stats`    - `"hp"`, `"max_hp"`, `"mp"`, `"max_mp"`, `"pvp_flagged"`
+    * `stats`    - `"hp"`, `"max_hp"`, `"mp"`, `"max_mp"`, `"pvp_flagged"`,
+                   `"level"`, `"xp"`, `"skill_points"` (`BaconWorld.Progression`),
+                   `"coins"` (copper) and `"starter_kit"` (`BaconWorld.Inventory`)
     * `settings` - `"character_type"`, `"model_path"`, `"zone_slug"`,
                    `"position" => %{"x", "y", "z", "heading"}`,
                    `"appearance"` (the look of a Bacon8 human; `BaconWorld.Appearance`)
@@ -20,12 +22,23 @@ defmodule BaconWorld.World do
 
   alias Bacon8.{Games, GamesRepo}
   alias Bacon8.Games.GameCharacter
-  alias BaconWorld.{Appearance, Combat, Models, Zone}
+  alias BaconWorld.{Appearance, Combat, Inventory, Models, Progression, Zone}
 
   @plugin_slug "bacon_world"
   @max_characters_per_user 16
   @default_zone_slug "lobby"
-  @default_stats %{"hp" => 10, "max_hp" => 10, "mp" => 10, "max_mp" => 10, "pvp_flagged" => false}
+  @default_stats %{
+    "hp" => 40,
+    "max_hp" => 40,
+    "mp" => 20,
+    "max_mp" => 20,
+    "pvp_flagged" => false,
+    "level" => 1,
+    "xp" => 0,
+    "skill_points" => 0,
+    "coins" => 0,
+    "starter_kit" => false
+  }
 
   def max_characters_per_user, do: @max_characters_per_user
 
@@ -208,8 +221,13 @@ defmodule BaconWorld.World do
         {:error, :not_found}
 
       character ->
+        # Older characters: bring HP/MP up to their level, and hand out the starter kit once.
+        {:ok, _} = Progression.normalize_stats(character.id)
+        Inventory.grant_starter_kit(character.id)
+        character = GamesRepo.one(by_id_query(character.id)) || character
         c = view(character)
         zone = zone_for(c.zone_slug)
+        equipment = Inventory.equipment(c.id)
 
         {:ok,
          %{
@@ -224,6 +242,10 @@ defmodule BaconWorld.World do
            max_mp: c.max_mp,
            pvp_flagged: c.pvp_flagged,
            appearance: c.appearance,
+           level: c.level,
+           progress: Progression.progress(character.stats),
+           gear: Inventory.gear_ids(equipment),
+           inventory: Inventory.payload(c.id),
            spells: Enum.map(Combat.list_character_spells(c.id), &Combat.spell_payload/1),
            zone: %{id: zone && zone.id, name: zone && zone.name, slug: zone && zone.slug},
            position: c.position
@@ -319,6 +341,7 @@ defmodule BaconWorld.World do
       mp: stat(c, "mp"),
       max_mp: stat(c, "max_mp"),
       pvp_flagged: stat(c, "pvp_flagged"),
+      level: stat(c, "level"),
       position: %{
         x: num(pos["x"]),
         y: num(pos["y"]),

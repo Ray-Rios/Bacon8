@@ -1,6 +1,7 @@
 // Universal Model Loader for GLTF and FBX with fallbacks
 import * as THREE from '../../../../assets/js/vendor/three';
 import { GLTFLoader, FBXLoader, SkeletonUtils, MeshoptDecoder } from '../../../../assets/js/vendor/three-loaders';
+import { modelUrl } from './asset-url';
 
 export interface ModelInfo {
   name: string;
@@ -91,7 +92,7 @@ export class UniversalModelLoader {
   private async loadGLTF(path: string): Promise<LoadedModelAsset> {
     return new Promise((resolve, reject) => {
       this.gltfLoader.load(
-        path,
+        modelUrl(path),
         (gltf) => {
           const model = gltf.scene;
           const animations = this.normalizeAnimationClips(gltf.animations || []);
@@ -120,7 +121,7 @@ export class UniversalModelLoader {
   private async loadFBX(path: string): Promise<LoadedModelAsset> {
     return new Promise((resolve, reject) => {
       this.fbxLoader.load(
-        path,
+        modelUrl(path),
         (fbx) => {
           const model = fbx;
           const animations = this.normalizeAnimationClips(fbx.animations || []);

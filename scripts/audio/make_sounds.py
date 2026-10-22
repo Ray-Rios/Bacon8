@@ -6,8 +6,7 @@ loops or presets from anywhere else are used.
 
 Writes (from the repository root):
     priv/static/audio/ui/*.mp3       desktop and site sounds (served at /audio/ui/...)
-    priv/static/audio/lobby/*.mp3    Bacon World sound effects
-    priv/static/audio/music/*.mp3    Bacon World music and the Bacon8 sting
+    priv/static/audio/music/*.mp3    the Bacon8 sting
 and, when the game repository is checked out beside this one (./RaysSpaceSim):
     RaysSpaceSim/SourceAssets/Audio/{SFX,UI,Music}/*.wav   48 kHz 16-bit, for import into Unreal
 
@@ -583,11 +582,10 @@ def music_bacon8_sting():
 HUB_SOUNDS = {
     "ui/notification": ui_notification, "ui/message": ui_message, "ui/send": ui_send, "ui/click": ui_click,
     "ui/open": ui_open, "ui/close": ui_close, "ui/error": ui_error, "ui/success": ui_success, "ui/gems": ui_gems,
-    "lobby/footstep-1": lambda: lobby_footstep(0), "lobby/footstep-2": lambda: lobby_footstep(1),
-    "lobby/footstep-3": lambda: lobby_footstep(2), "lobby/footstep-4": lambda: lobby_footstep(3),
-    "lobby/jump": lobby_jump, "lobby/land": lobby_land, "lobby/throw": lobby_throw, "lobby/hit": lobby_hit,
-    "lobby/hurt": lobby_hurt, "lobby/death": lobby_death, "lobby/respawn": lobby_respawn, "lobby/levelup": lobby_levelup,
-    "music/arcade-lobby": music_arcade_lobby, "music/bacon8-sting": music_bacon8_sting,
+    # Bacon World's synthesised lobby sounds and its arcade music are retired
+    # (2026-10-22): it plays recorded CC0 sounds from priv/static/audio/world/.
+    # The lobby_* and music_arcade_lobby functions above are kept, unused.
+    "music/bacon8-sting": music_bacon8_sting,
 }
 
 GAME_SOUNDS = {
