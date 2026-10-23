@@ -6,17 +6,22 @@
 // Swings are Black Desert style: with mouse-look on, the left button swings the left
 // hand and the right button the right (a two-hander: quick and heavy); held, they
 // keep swinging as the weapon's delay allows. The animation plays at once; the
-// server (BaconWorldWeb.GameEvents) decides what was hit and replies.
+// server (BaconWorldWeb.GameEvents) decides what was hit and replies. Everyone
+// else sees the swing ("zone_swing"); a swing at a player flagged for PvP (both
+// flagged) lands as "pvp_hit", and anyone's health changes arrive as "zone_hp".
 import * as THREE from '../../../../assets/js/vendor/three';
 import { UNITS_PER_METRE } from './controls-math';
 import { GameUI } from './game-ui';
 import { item, money, moneyWords, setCatalog } from './items';
 import { MobsView, type MobEntry, type MobEvent } from './mobs-view';
 import { conColor, PLAYER_COLOR } from './nameplates';
+import { NpcsView, NPC_COLOR } from './npcs-view';
+import { gearKey, type Gear } from './wardrobe';
 import { WorldDressing } from './world-dressing';
 
 const U = UNITS_PER_METRE;
 const LOOT_RANGE = 4.2 * U; // a little inside the server's 4.5 m
+const TRADE_RANGE = 5.6 * U; // a little inside BaconWorld.Merchants.reach/0 (6 m)
 const FIST = { dmg: 3, dly: 9 };
 
 type Hand = 'left' | 'right';
@@ -54,6 +59,9 @@ export const GameWorld = {
       lootTake: (index: number) => void this.lootTake(index),
       lootAll: () => void this.lootAll(),
       lootClose: () => this.closeLoot(),
+      buy: (itemId: string) => void this.merchantBuy(itemId),
+      sell: (slot: string) => void this.merchantSell(slot),
+      merchantClose: () => this.endTrade(),
       cast: (slug: string) => this.castSpell(slug),
       pvp: () => (this.pushEvent('toggle_pvp', {}) as any)?.catch?.(() => {}),
       sound: () => {
@@ -79,6 +87,10 @@ export const GameWorld = {
     this.lootingId = null;
     if (this.audio) this.audio.voice = cp.appearance?.body === 'female' ? 'f' : 'm';
     this.audio?.setAmbience(true);
+    if (!this.npcsView) {
+      this.npcsView = new NpcsView(this.humanFactory, this.nameplates);
+      this.scene.add(this.npcsView.group);
+    }
     if (!this.mobsView) {
       this.mobsView = new MobsView(this.humanFactory, this.characterManager.weapons, this.nameplates, () => ({
         id: this.state?.currentPlayer?.character_id ?? null,
@@ -89,12 +101,14 @@ export const GameWorld = {
       this.mobsView.onSwingLanded = (e: MobEvent, m: MobEntry) => this.onMobSwingLanded(e, m);
       this.scene.add(this.mobsView.group);
     }
-    void reply(this, 'fetch_mobs', {}, { mobs: [], camps: [] }).then((res: any) => {
+    void reply(this, 'fetch_mobs', {}, { mobs: [], camps: [], merchants: [] }).then((res: any) => {
       if (!this.mobsView) return;
       this.mobsView.setAll(res.mobs || []);
       this.camps = res.camps || [];
+      const people = () => [...(this.dressing ? this.dressing.colliders() : this.worldColliders.filter((c: any) => !c.npc)), ...(this.npcsView?.colliders() || []).map((c: any) => ({ ...c, npc: true }))];
+      void this.npcsView?.setAll(res.merchants || []).then(() => (this.worldColliders = people()));
       if (this.dressing && this.camps.length) void this.dressing.addCamps(this.camps).then(() => {
-        if (this.dressing) this.worldColliders = this.dressing.colliders();
+        if (this.dressing) this.worldColliders = people();
       });
     });
     this.updateHUD();
@@ -102,9 +116,14 @@ export const GameWorld = {
 
   teardownGame(this: any) {
     if (this.lootingId) this.closeLoot();
+    this.gameUI?.closeMerchant(false);
+    this.tradingWith = null;
     this.mobsView?.clear();
     if (this.mobsView && this.scene) this.scene.remove(this.mobsView.group);
     this.mobsView = null;
+    this.npcsView?.clear();
+    if (this.npcsView && this.scene) this.scene.remove(this.npcsView.group);
+    this.npcsView = null;
     this.audio?.setAmbience(false);
   },
 
@@ -112,8 +131,15 @@ export const GameWorld = {
 
   tickGame(this: any, dt: number) {
     this.mobsView?.update(dt);
+    this.npcsView?.update(dt, this.targetId);
     const me = this.localCharacter();
     if (!me) return;
+    // Walking away from a merchant ends the trade.
+    if (this.tradingWith) {
+      const n = this.npcsView?.get(this.tradingWith);
+      if (!n || Math.hypot(me.mesh.position.x - n.x, me.mesh.position.z - n.z) > TRADE_RANGE * 1.15) this.gameUI?.closeMerchant();
+      else this.npcsView?.faceWhileTrading(this.tradingWith, me.mesh.position.x, me.mesh.position.z);
+    }
     // Held mouse buttons keep swinging when the hand is ready.
     if (this.controller && !this.isDead) {
       const now = performance.now();
@@ -182,13 +208,85 @@ export const GameWorld = {
     const hitIn = (info?.hitIn ?? 0.25) * 1000;
     setTimeout(() => this.audio?.play('swing', heavy ? 1 : 0.8, 0, heavy ? 0.85 : 1), Math.max(0, hitIn - 120));
     if (Math.random() < (heavy ? 0.8 : 0.35)) this.audio?.say('attack', 0.55);
+    // PvP numbers (broadcast to the zone, ours included) show at the impact too.
+    this.pvpShowAt = now + hitIn - 40;
 
-    const target = this.targetId && this.mobsView?.get(this.targetId) ? this.targetId : null;
+    const target = this.targetId && (this.mobsView?.get(this.targetId) || this.isOtherPlayer(this.targetId)) ? this.targetId : null;
     void reply(this, 'melee_attack', { hand, heading: this.controller.getYaw(), heavy, target_id: target }).then((res: any) => {
       if (!res?.ok) return;
       setTimeout(() => this.showHits(res.hits || []), Math.max(0, hitIn - 40));
       if (res.progress) this.applyProgress(res.progress);
     });
+  },
+
+  isOtherPlayer(this: any, id: string): boolean {
+    return id !== this.state?.currentPlayer?.character_id && !!this.characterManager?.getAllCharacters().get(id);
+  },
+
+  // Someone else swung: their arm moves on our screen too.
+  onRemoteSwing(this: any, p: any) {
+    if (!p?.character_id || p.character_id === this.state?.currentPlayer?.character_id) return;
+    const animator = this.characterManager?.getAnimator(p.character_id);
+    const info = animator?.attack(p.hand === 'left' ? 'left' : 'right', !!p.heavy, (p.delay_ms || 900) / 1000);
+    if (!info) return;
+    const d = this.distanceToCharacter(p.character_id);
+    setTimeout(() => this.audio?.play('swing', p.heavy ? 0.9 : 0.7, d, p.heavy ? 0.85 : 1), Math.max(0, info.hitIn * 1000 - 120));
+  },
+
+  // A PvP swing landed or missed (the target's LiveView already applied the damage).
+  onPvpHit(this: any, h: any) {
+    if (!h?.target_id) return;
+    const myId = this.state?.currentPlayer?.character_id;
+    const mine = h.attacker_id === myId;
+    const onMe = h.target_id === myId;
+    const delay = mine ? Math.max(0, (this.pvpShowAt || 0) - performance.now()) : 200;
+    setTimeout(() => {
+      const target = this.characterManager?.getAllCharacters().get(h.target_id);
+      const d = this.distanceToCharacter(h.target_id);
+      if (h.hit) {
+        if (target && (mine || onMe)) {
+          const color = onMe ? '#FF6A5A' : h.crit ? '#FFD84A' : '#FFFFFF';
+          this.showFloatingDamage(target.mesh.position.clone(), String(h.damage), color, h.crit ? 1.35 : 1);
+        }
+        this.audio?.play('hit_bone', 0.9, d);
+        if (onMe) {
+          this.characterManager?.getAnimator(myId)?.hit();
+          this.audio?.say('hurt', 0.8);
+          this.combatLog(`${h.attacker_name || 'Someone'} hits YOU for ${h.damage} points of damage.`, '#FF8A7A');
+        } else {
+          this.characterManager?.getAnimator(h.target_id)?.hit();
+          if (mine) this.combatLog(h.crit ? `You score a critical hit! (${h.damage})` : `You hit ${h.target_name || 'them'} for ${h.damage} points of damage.`, h.crit ? '#FFD84A' : '#E8E8E8');
+        }
+      } else if (mine) {
+        if (target) this.showFloatingDamage(target.mesh.position.clone(), 'miss', '#A0A0A0', 0.85);
+        this.combatLog(`You try to hit ${h.target_name || 'them'}, but miss!`, '#A0A0A0');
+      } else if (onMe) {
+        this.combatLog(`${h.attacker_name || 'Someone'} tries to hit YOU, but misses!`, '#A0A0A0');
+      }
+    }, delay);
+  },
+
+  // Someone's health changed: the target window follows it; a death and a respawn show.
+  onZoneHp(this: any, p: any) {
+    if (!p?.character_id) return;
+    const myId = this.state?.currentPlayer?.character_id;
+    const list = this.state?.onlineCharacters;
+    const i = list ? list.findIndex((c: any) => c.character_id === p.character_id) : -1;
+    if (i >= 0) list[i] = { ...list[i], hp: p.hp, max_hp: p.max_hp, dead: p.state === 'dead' };
+    if (p.character_id !== myId) {
+      if (p.state === 'dead') {
+        this.characterManager?.playCharacterAnimation(p.character_id, 'death', false);
+        const body = (this.appearanceCache?.get(p.character_id) as any)?.body;
+        this.audio?.say('death', 0.7, this.distanceToCharacter(p.character_id), body === 'female' ? 'f' : 'm');
+        if (p.character_id === this.targetId) {
+          const name = list?.[i]?.character_name || 'Your target';
+          this.combatLog(`${name} has been slain!`, '#FFE58A');
+        }
+      } else if (p.state === 'alive') {
+        this.characterManager?.playCharacterAnimation(p.character_id, 'idle');
+      }
+    }
+    if (p.character_id === this.targetId) this.refreshTarget();
   },
 
   // Our swing landed: numbers over the creatures, sounds, the combat log.
@@ -300,6 +398,11 @@ export const GameWorld = {
       this.gameUI?.setTarget(null);
       return;
     }
+    const npc = this.npcsView?.get(id);
+    if (npc) {
+      this.gameUI.setTarget({ kind: 'npc', name: npc.name, sub: npc.title ? `<${npc.title}>` : undefined, color: NPC_COLOR, hpPct: 100 });
+      return;
+    }
     const m = this.mobsView?.get(id);
     if (m) {
       const lvl = this.progress?.level ?? 1;
@@ -348,6 +451,70 @@ export const GameWorld = {
   /** The creature under a ray (or null). */
   pickMob(this: any, raycaster: THREE.Raycaster): string | null {
     return this.mobsView?.pick(raycaster) ?? null;
+  },
+
+  /** The villager (merchant) under a ray (or null). */
+  pickNpc(this: any, raycaster: THREE.Raycaster): string | null {
+    return this.npcsView?.pick(raycaster) ?? null;
+  },
+
+  // ---------------------------------------------------------------- merchants
+
+  /** Opens a merchant (EverQuest: right-click them). */
+  async openMerchant(this: any, npcId: string) {
+    const n = this.npcsView?.get(npcId);
+    const me = this.localCharacter();
+    if (!n || !me || this.isDead) return;
+    if (Math.hypot(me.mesh.position.x - n.x, me.mesh.position.z - n.z) > TRADE_RANGE) {
+      this.combatLog(`You are too far away to trade with ${n.name}.`, '#B8B8B8');
+      return;
+    }
+    const res = await reply(this, 'merchant_open', { id: npcId });
+    if (!res.ok) {
+      this.combatLog(res.error || "They won't trade with you right now.", '#B8B8B8');
+      return;
+    }
+    this.tradingWith = npcId;
+    if (this.lootingId) this.closeLoot();
+    this.combatLog(`${n.name} says, 'Welcome, ${this.state?.currentPlayer?.name || 'traveller'}! Have a look around.'`, '#8FD3FF');
+    this.gameUI?.openMerchant(res.merchant, res.stock || []);
+    this.audio?.play('bag_open', 0.5);
+  },
+
+  async merchantBuy(this: any, itemId: string) {
+    if (!this.tradingWith) return;
+    const res = await reply(this, 'merchant_buy', { id: this.tradingWith, item_id: itemId });
+    if (res.inventory) {
+      this.inventory = res.inventory;
+      this.gameUI?.setInventory(this.inventory);
+    }
+    if (!res.ok) {
+      this.combatLog(res.error || "You can't buy that.", '#FF9B7A');
+      return;
+    }
+    this.combatLog(`You give ${moneyWords(res.price)} to ${this.npcsView?.get(this.tradingWith)?.name || 'the merchant'}.`, '#F0D77A');
+    this.combatLog(`You receive ${item(res.bought)?.name || res.bought}.`, '#9FE39F');
+    this.audio?.play('coins', 0.8);
+  },
+
+  async merchantSell(this: any, slot: string) {
+    if (!this.tradingWith) return;
+    const res = await reply(this, 'merchant_sell', { id: this.tradingWith, slot });
+    if (res.inventory) {
+      this.inventory = res.inventory;
+      this.gameUI?.setInventory(this.inventory);
+    }
+    if (!res.ok) {
+      this.combatLog(res.error || "You can't sell that.", '#FF9B7A');
+      return;
+    }
+    this.combatLog(`You receive ${moneyWords(res.price)} for ${res.quantity > 1 ? `${res.quantity} ` : 'the '}${item(res.sold)?.name || res.sold}.`, '#F0D77A');
+    this.audio?.play('coins', 0.8);
+  },
+
+  endTrade(this: any) {
+    this.tradingWith = null;
+    this.npcsView?.faceWhileTrading(null);
   },
 
   // ---------------------------------------------------------------- looting
@@ -433,28 +600,28 @@ export const GameWorld = {
     }
     if (!res.ok && res.error) this.combatLog(res.error, '#FF9B7A');
     if (res.ok && res.gear) {
-      const before = JSON.stringify(this.localGear || {});
+      const before = this.localGear || {};
       this.applyLocalGear(res.gear);
-      if (JSON.stringify(this.localGear) !== before) this.audio?.play(res.gear.main || res.gear.off ? 'draw' : 'equip', 0.7);
+      const hands = before.main !== res.gear.main || before.off !== res.gear.off;
+      if (gearKey(before) !== gearKey(res.gear)) this.audio?.play(hands && (res.gear.main || res.gear.off) ? 'draw' : 'equip', 0.7);
     } else if (res.ok) {
       this.audio?.play('click', 0.5);
     }
   },
 
-  /** What we hold: the models, the stance, the hotbar. */
-  applyLocalGear(this: any, gear: { main?: string | null; off?: string | null }) {
+  /** What we hold and wear: the models, the stance, the clothes, the hotbar. */
+  applyLocalGear(this: any, gear: Gear) {
     const myId = this.state?.currentPlayer?.character_id;
-    this.localGear = { main: gear.main ?? null, off: gear.off ?? null };
-    if (myId) void this.characterManager?.setGear(myId, this.localGear.main, this.localGear.off);
+    this.localGear = { ...gear, main: gear.main ?? null, off: gear.off ?? null };
+    if (myId) void this.characterManager?.setGear(myId, this.localGear);
     this.gameUI?.setHands(this.localGear.off, this.localGear.main);
   },
 
-  /** Other players' weapons, from presence or a zone_gear push. */
+  /** Other players' weapons and clothes, from presence or a zone_gear push. */
   applyRemoteGear(this: any, id: string, gear: any) {
     if (!gear || id === this.state?.currentPlayer?.character_id || !this.characterManager?.getAllCharacters().has(id)) return;
-    const now = this.characterManager.getGear(id);
-    if (now.main === (gear.main ?? null) && now.off === (gear.off ?? null)) return;
-    void this.characterManager.setGear(id, gear.main ?? null, gear.off ?? null);
+    if (gearKey(this.characterManager.getGear(id)) === gearKey(gear)) return;
+    void this.characterManager.setGear(id, gear);
   },
 
   // ---------------------------------------------------------------- HUD

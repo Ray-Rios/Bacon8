@@ -5,6 +5,7 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { RoomEnvironment } from '../../../../assets/js/vendor/three-loaders';
 import { Appearance, appearanceKey, normalizeAppearance } from './appearance';
+import type { Gear } from './wardrobe';
 import { HumanFactory, HumanInstance } from './human-factory';
 import { UNITS_PER_METRE } from './controls-math';
 
@@ -37,6 +38,7 @@ export class CharacterStage {
   private instance: HumanInstance | null = null;
   private instanceKey = '';
   private mixer: THREE.AnimationMixer | null = null;
+  private gear: Gear | null = null;
   private idle: THREE.AnimationAction | null = null;
   private pending = 0;
   private visible = false;
@@ -195,19 +197,24 @@ export class CharacterStage {
   }
 
   /** Shows a character with this look. Same body: updated in place; else rebuilt. */
-  async setAppearance(raw: Appearance | unknown, fallbackBody: 'male' | 'female' = 'male') {
+  async setAppearance(raw: Appearance | unknown, fallbackBody: 'male' | 'female' = 'male', gear: Gear | null = null) {
     const a = normalizeAppearance(raw, fallbackBody);
+    this.gear = gear;
     const key = appearanceKey(a);
-    if (key === this.instanceKey && this.instance) return;
+    if (key === this.instanceKey && this.instance) {
+      this.instance.setWorn(gear);
+      return;
+    }
     this.instanceKey = key;
     if (this.instance && this.instance.body === a.body) {
+      this.instance.setWorn(gear);
       await this.instance.apply(a);
       return;
     }
     const ticket = ++this.pending;
     this.onLoading?.(true);
     try {
-      const inst = await this.factory.create(a);
+      const inst = await this.factory.create(a, 'male', this.gear);
       if (ticket !== this.pending || !this.visible) {
         inst.dispose();
         return;
@@ -223,6 +230,7 @@ export class CharacterStage {
         this.idle.play();
       }
       // a later edit may have arrived while this body was loading
+      inst.setWorn(this.gear);
       if (this.instanceKey !== key) await inst.apply(JSON.parse(this.instanceKey));
     } catch (err) {
       console.warn('[stage] could not build the character', err);
@@ -299,6 +307,8 @@ export class CharacterStage {
     if (!this.visible) return;
     this.t += dt;
     this.mixer?.update(dt);
+    // the bones the morphs move, the posture correction and relaxed hands
+    this.instance?.postAnimate(dt);
     if (!this.dragging) {
       this.yawVel *= Math.pow(0.04, dt);
       this.yaw += this.yawVel * dt;

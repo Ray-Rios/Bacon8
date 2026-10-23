@@ -13,8 +13,9 @@ export const ICONS_BASE = '/models/Weapons/icons';
 
 export interface ItemDef {
   name: string;
-  kind: 'weapon' | 'shield' | 'light' | 'junk';
-  slots: Array<'main' | 'off'>;
+  kind: 'weapon' | 'shield' | 'light' | 'armor' | 'junk';
+  /** Hands ('main', 'off') or a worn slot ('under_top', 'under_bottom', 'chest', 'legs', 'feet'). */
+  slots: string[];
   hands: 1 | 2;
   set: GearSet | null;
   skill: string | null;
@@ -26,6 +27,11 @@ export interface ItemDef {
   value: number;
   model: string | null;
   icon: string | null;
+  /** The icon file under /models (weapons: Weapons/icons/W_<model>.png; clothes: Humans/Wardrobe/icons/<id>.png). */
+  icon_path?: string | null;
+  /** How a worn item is drawn on each body (wardrobe.ts), and its colours. */
+  wear?: Record<string, { garment: string; design?: string } | null> | null;
+  colors?: Record<string, string> | null;
 }
 
 export type Catalog = Record<string, ItemDef>;
@@ -42,7 +48,19 @@ export function item(id: string | null | undefined): ItemDef | null {
 
 export function iconUrl(id: string | null | undefined): string | null {
   const it = item(id);
+  if (it?.icon_path) return modelUrl(`/models/${it.icon_path}`);
   return it?.icon ? modelUrl(`${ICONS_BASE}/W_${it.icon}.png`) : null;
+}
+
+/** EverQuest's names for the worn slots. */
+export const SLOT_NAMES: Record<string, string> = {
+  main: 'Primary', off: 'Secondary', under_top: 'Undershirt', under_bottom: 'Underwear',
+  chest: 'Chest', legs: 'Legs', feet: 'Feet',
+};
+
+/** True for things that are worn rather than held. */
+export function isWearable(id: string | null | undefined): boolean {
+  return item(id)?.kind === 'armor';
 }
 
 /** What a hand holds, for the animator. */
@@ -90,6 +108,10 @@ export function describe(id: string): string[] {
   const lines: string[] = [];
   if (it.kind === 'junk') {
     lines.push('Stackable' + (it.stack > 1 ? ` (${it.stack})` : ''));
+  } else if (it.kind === 'armor') {
+    lines.push(`Slot: ${it.slots.map((x) => SLOT_NAMES[x] || x).join(', ')}`);
+    if (it.ac) lines.push(`AC: ${it.ac}`);
+    lines.push(it.slots.includes('under_top') || it.slots.includes('under_bottom') ? 'Worn under clothes and armour' : 'Cloth');
   } else {
     const slot = it.hands === 2 ? 'Primary (two-handed)' : it.slots.length === 2 ? 'Primary, Secondary' : it.slots[0] === 'off' ? 'Secondary' : 'Primary';
     lines.push(`Slot: ${slot}`);

@@ -35,6 +35,19 @@ import { setAssetVersions } from './asset-url';
 import { GameWorld } from './game-world';
 import type { GameUI } from './game-ui';
 import type { MobsView } from './mobs-view';
+import type { NpcsView } from './npcs-view';
+import { STARTER_GEAR, type Gear } from './wardrobe';
+
+// One stylesheet: the game's DOM isn't selectable text, its inputs are.
+function ensureNoSelectStyle() {
+  if (document.getElementById('bw-noselect-style')) return;
+  const s = document.createElement('style');
+  s.id = 'bw-noselect-style';
+  s.textContent =
+    '.bw-noselect{user-select:none;-webkit-user-select:none}' +
+    '.bw-noselect input,.bw-noselect textarea,.bw-noselect [contenteditable="true"]{user-select:text;-webkit-user-select:text}';
+  document.head.appendChild(s);
+}
 
 type CharacterCard = {
   id: string;
@@ -77,9 +90,11 @@ export const WorldCharacterUIScene = {
   worldGroup: null as THREE.Group | null,
   movementAccumulator: 0,
   lastPositionPushMs: 0,
-  lastSentLocalPosition: null as { x: number; y: number; z: number; heading: number } | null,
+  lastSentLocalPosition: null as { x: number; y: number; z: number; heading: number; m: number } | null,
   remoteNetTargets: new Map<string, { x: number; y: number; z: number; heading: number; updatedAt: number }>(),
   remoteLastSeenMs: new Map<string, number>(),
+  // Remote players' motion flags from their position packets: 1 crouching, 2 airborne.
+  remoteMotion: new Map<string, number>(),
   // Remote players' horizontal speed (m/s) and direction relative to their facing,
   // smoothed, for their animations.
   remoteSpeeds: new Map<string, number>(),
@@ -108,8 +123,10 @@ export const WorldCharacterUIScene = {
   // The game (game-world.ts): windows, creatures, what we carry and hold, our level.
   gameUI: null as GameUI | null,
   mobsView: null as MobsView | null,
+  npcsView: null as NpcsView | null,
+  tradingWith: null as string | null,
   inventory: null as any,
-  localGear: null as { main: string | null; off: string | null } | null,
+  localGear: null as Gear | null,
   progress: null as any,
   nextSwing: { left: 0, right: 0, both: 0 } as Record<string, number>,
   lootingId: null as string | null,
@@ -189,6 +206,10 @@ export const WorldCharacterUIScene = {
     this.el.innerHTML = '';
     this.el.style.position = 'relative';
     this.el.appendChild(this.renderer.domElement);
+    // Nothing in the game is text to select (Ctrl+A while Ctrl frees the mouse selected
+    // the whole page, and a drag across the HUD did too); inputs still are.
+    ensureNoSelectStyle();
+    this.el.classList.add('bw-noselect');
 
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
@@ -212,9 +233,13 @@ export const WorldCharacterUIScene = {
     this.handleClick = this.handleClick.bind(this);
     this.handleRightButton = this.handleRightButton.bind(this);
     this.handleWorldKeyDown = this.handleWorldKeyDown.bind(this);
+    this.blockSelectAll = this.blockSelectAll.bind(this);
+    this.clearSelection = this.clearSelection.bind(this);
 
     window.addEventListener('resize', this.handleResize);
     window.addEventListener('keydown', this.handleWorldKeyDown);
+    window.addEventListener('keydown', this.blockSelectAll, true);
+    this.renderer.domElement.addEventListener('mousedown', this.clearSelection);
     this.renderer.domElement.addEventListener('click', this.handleClick);
     this.renderer.domElement.addEventListener('mousedown', this.handleRightButton);
     this.renderer.domElement.addEventListener('mouseup', this.handleRightButton);
@@ -239,6 +264,7 @@ export const WorldCharacterUIScene = {
 
       const now = performance.now();
       this.remoteLastSeenMs.set(payload.character_id, now);
+      this.remoteMotion.set(payload.character_id, typeof payload.m === 'number' ? payload.m : 0);
       this.remoteNetTargets.set(payload.character_id, {
         x: payload.x || 0,
         y: payload.y || 0,
@@ -270,6 +296,7 @@ export const WorldCharacterUIScene = {
 
       if (!this.characterManager?.getAllCharacters().has(payload.character_id) && this.state?.uiState === 'world' && this.characterManager) {
         const modelPath = payload.model_path || (this.state.currentPlayer?.model_path as string);
+        if (payload.gear) void this.characterManager.setGear(payload.character_id, payload.gear);
         void (isHumanModel(modelPath) ? this.getAppearance(payload.character_id) : Promise.resolve(undefined))
           .then((appearance: unknown) => {
             if (!this.characterManager || this.state?.uiState !== 'world') return;
@@ -340,88 +367,10 @@ export const WorldCharacterUIScene = {
       this.appendChatMessage(payload.character_name || 'Player', payload.message);
     });
 
-    this.handleEvent('zone_spell_result', (result: any) => {
-      if (!result) return;
-      const myId = this.state?.currentPlayer?.character_id;
-
-      // Everyone sees the caster throw; the stone's sounds come from where they happen.
-      if (result.caster_id) {
-        this.characterManager?.playOneShot(result.caster_id, 'attack');
-        this.audio?.play('throw', 0.9, this.distanceToCharacter(result.caster_id));
-      }
-      if (result.hit && result.target_id) {
-        const d = this.distanceToCharacter(result.target_id);
-        const flight = this.stoneFlightMs(result.caster_id, result.target_id);
-        setTimeout(() => this.audio?.play('hit', 1, d), flight);
-        if (result.target_id === myId && !result.target_died) setTimeout(() => this.audio?.say('hurt', 0.8), flight + 30);
-      }
-      if (result.target_died && result.target_id && result.target_id !== myId) {
-        const body = (this.appearanceCache.get(result.target_id) as any)?.body;
-        this.audio?.say('death', 0.7, this.distanceToCharacter(result.target_id), body === 'female' ? 'f' : 'm');
-      }
-
-      // Update our own MP if we were the caster
-      if (result.caster_id === myId && this.state?.currentPlayer) {
-        this.state.currentPlayer.mp = result.caster_mp;
-        this.state.currentPlayer.max_mp = result.caster_max_mp;
-        this.updateHUD();
-      }
-
-      // Update target HP in local state (for our own char AND in onlineCharacters for observers)
-      if (result.target_id === myId && this.state?.currentPlayer) {
-        // Don't update HUD while dead — we show 0 HP until respawn
-        if (!this.isDead) {
-          this.state.currentPlayer.hp = result.target_hp;
-          this.state.currentPlayer.max_hp = result.target_max_hp;
-          this.updateHUD();
-        }
-        // character_died event handles the death screen
-      }
-
-      // Always update the target's HP in onlineCharacters so the target frame reflects it
-      if (this.state?.onlineCharacters) {
-        const idx = this.state.onlineCharacters.findIndex((c: any) => c.character_id === result.target_id);
-        if (idx >= 0) {
-          this.state.onlineCharacters[idx] = {
-            ...this.state.onlineCharacters[idx],
-            hp: result.target_hp,
-            max_hp: result.target_max_hp
-          };
-        }
-      }
-      // Refresh the target frame if the damaged character is our current target
-      if (result.target_id === this.targetId) {
-        this.setTarget(this.targetId);
-      }
-
-      // Play death animation on a remote character that just died
-      if (result.target_died && result.target_id !== myId) {
-        this.characterManager?.playCharacterAnimation(result.target_id, 'death', false);
-      }
-
-      // Launch projectile if WE were the caster
-      if (result.caster_id === myId) {
-        const casterChar = myId ? this.characterManager?.getAllCharacters().get(myId) : null;
-        const targetChar = result.target_id ? this.characterManager?.getAllCharacters().get(result.target_id) : null;
-        if (casterChar && targetChar) {
-          this.launchProjectile(
-            casterChar.mesh.position.clone(),
-            targetChar.mesh.position.clone(),
-            result.hit,
-            result.damage,
-            result.target_id
-          );
-        }
-      }
-
-      // Also show floating text for everyone who sees the target
-      if (result.hit && result.damage > 0) {
-        const targetChar = result.target_id ? this.characterManager?.getAllCharacters().get(result.target_id) : null;
-        if (targetChar) {
-          this.showFloatingDamage(targetChar.mesh.position.clone(), `-${result.damage}`);
-        }
-      }
-    });
+    // Someone else's swing, a PvP hit, and anyone's health (a hit, a death, a respawn).
+    this.handleEvent('zone_swing', (payload: any) => this.onRemoteSwing(payload));
+    this.handleEvent('pvp_hit', (payload: any) => this.onPvpHit(payload));
+    this.handleEvent('zone_hp', (payload: any) => this.onZoneHp(payload));
 
     this.handleEvent('character_died', (payload: any) => {
       if (!payload) return;
@@ -549,7 +498,9 @@ export const WorldCharacterUIScene = {
     cancelAnimationFrame(this.animationFrame);
     window.removeEventListener('resize', this.handleResize);
     window.removeEventListener('keydown', this.handleWorldKeyDown);
+    window.removeEventListener('keydown', this.blockSelectAll, true);
     if (this.renderer) {
+      this.renderer.domElement.removeEventListener('mousedown', this.clearSelection);
       this.renderer.domElement.removeEventListener('click', this.handleClick);
       this.renderer.domElement.removeEventListener('mousedown', this.handleRightButton);
       this.renderer.domElement.removeEventListener('mouseup', this.handleRightButton);
@@ -741,12 +692,12 @@ export const WorldCharacterUIScene = {
           { ok: false, error: 'No answer from the server. Try again.' }),
       updateLook: (id: string, a: any) =>
         reply('three_ui_update_appearance', { character_id: id, appearance: a }, { ok: false, error: 'No answer from the server. Try again.' }),
-      preview: (a: any) => {
+      preview: (a: any, gear?: Gear | null) => {
         if (!this.stage) return;
-        if (a) void this.stage.setAppearance(a);
+        if (a) void this.stage.setAppearance(a, 'male', gear || STARTER_GEAR);
         else {
           const st = this.humanFactory?.styles('male') || { hair: [], facial: [] };
-          void this.stage.setAppearance(randomAppearance('male', st.hair.map((x: any) => x.id), [], 20261021));
+          void this.stage.setAppearance(randomAppearance('male', st.hair.map((x: any) => x.id), [], 20261021), 'male', STARTER_GEAR);
         }
       },
       framing: (f: any) => this.stage?.setFraming(f),
@@ -850,6 +801,7 @@ export const WorldCharacterUIScene = {
     const currentPlayer = this.state.currentPlayer;
     const localExists = this.characterManager.getAllCharacters().has(currentPlayer.character_id);
     if (!localExists) {
+      if (currentPlayer.gear) void this.characterManager.setGear(currentPlayer.character_id, currentPlayer.gear);
       await this.characterManager.createPlayerCharacterFromModelPath(
         currentPlayer.character_id,
         currentPlayer.name,
@@ -951,6 +903,8 @@ export const WorldCharacterUIScene = {
           const modelPath = online.model_path || (this.state.currentPlayer.model_path as string);
           const appearance = isHumanModel(modelPath) ? await this.getAppearance(online.character_id) : undefined;
           if (!this.characterManager || !this.state?.currentPlayer) return;
+          // dressed as it is built (no flash of underwear before the clothes arrive)
+          if (online.gear) void this.characterManager.setGear(online.character_id, online.gear);
           await this.characterManager.createPlayerCharacterFromModelPath(
             online.character_id,
             online.character_name || 'Player',
@@ -1085,11 +1039,13 @@ export const WorldCharacterUIScene = {
       const k = Math.min(1, deltaSeconds * 6);
       const dir = { x: prevDir.x + (dirX - prevDir.x) * k, z: prevDir.z + (dirZ - prevDir.z) * k };
       this.remoteDirs.set(id, dir);
+      const m = this.remoteMotion.get(id) || 0;
       this.characterManager.updateCharacterMotionState(id, {
         isMoving: speed >= PACE.idleBelow,
         isRunning: true,
         isSprinting: speed > PACE.jogUpTo,
-        isJumping: false,
+        isCrouching: (m & 1) !== 0,
+        isJumping: (m & 2) !== 0,
         speed,
         dirX: dir.x,
         dirZ: dir.z
@@ -1136,16 +1092,6 @@ export const WorldCharacterUIScene = {
         this.audio.footstep(!movementState.isCrouching, surface);
       }
     }
-  },
-
-  // How long a thrown stone is in the air (same rule as launchProjectile), so the
-  // hit sound lands with it.
-  stoneFlightMs(this: any, casterId: string | null | undefined, targetId: string | null | undefined): number {
-    const chars = this.characterManager?.getAllCharacters();
-    const a = casterId ? chars?.get(casterId) : null;
-    const b = targetId ? chars?.get(targetId) : null;
-    if (!a || !b) return 350;
-    return Math.max(250, Math.min(600, a.mesh.position.distanceTo(b.mesh.position) * 25));
   },
 
   // Distance from the local player to another character, for quieter far-away sounds.
@@ -1570,11 +1516,11 @@ export const WorldCharacterUIScene = {
     const help = document.createElement('div');
     help.className = 'text-[11px] leading-5 text-slate-400 border-t border-slate-800 pt-2 mt-1 mb-3';
     help.innerHTML = [
-      '<b class="text-slate-300">Click</b> mouse-look on · <b class="text-slate-300">Ctrl</b> cursor back',
+      '<b class="text-slate-300">Click</b> mouse-look on · <b class="text-slate-300">Ctrl</b> cursor back / mouse-look on again',
       'Mouse-look on: <b class="text-slate-300">left / right button</b> swing your left / right hand (hold to keep swinging)',
-      'Cursor free: <b class="text-slate-300">hold right button</b> to steer · <b class="text-slate-300">right-click</b> a corpse to loot it',
+      'Cursor free: <b class="text-slate-300">hold right button</b> to steer · <b class="text-slate-300">right-click</b> a corpse to loot it, a merchant to trade',
       '<b class="text-slate-300">WASD</b> move · <b class="text-slate-300">Shift</b> sprint · <b class="text-slate-300">C</b> crouch · <b class="text-slate-300">Space</b> jump · <b class="text-slate-300">Wheel</b> zoom',
-      '<b class="text-slate-300">I</b> inventory · <b class="text-slate-300">G</b> loot nearest corpse · <b class="text-slate-300">Tab</b> next target · <b class="text-slate-300">1</b> throw stone',
+      '<b class="text-slate-300">I</b> inventory · <b class="text-slate-300">G</b> loot nearest corpse · <b class="text-slate-300">Tab</b> next target',
       '<b class="text-slate-300">Q E F Z X</b> special attacks (earned in the skill tree) · <b class="text-slate-300">Enter</b> chat · <b class="text-slate-300">Esc</b> this menu',
     ].join('<br>');
     panel.appendChild(help);
@@ -1729,6 +1675,20 @@ export const WorldCharacterUIScene = {
     }
   },
 
+  // Ctrl/Cmd+A outside a text field would select the whole page.
+  blockSelectAll(this: any, event: KeyboardEvent) {
+    if (!(event.ctrlKey || event.metaKey) || event.code !== 'KeyA') return;
+    const el = event.target as HTMLElement | null;
+    if (el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable)) return;
+    event.preventDefault();
+    this.clearSelection();
+  },
+
+  clearSelection(this: any) {
+    const sel = window.getSelection?.();
+    if (sel && sel.rangeCount && !sel.isCollapsed) sel.removeAllRanges();
+  },
+
   handleWorldKeyDown(this: any, event: KeyboardEvent) {
     if (this.state?.uiState !== 'world') return;
 
@@ -1758,12 +1718,6 @@ export const WorldCharacterUIScene = {
     if (event.key === 'Tab') {
       event.preventDefault();
       this.tabCycleTarget();
-      return;
-    }
-
-    // 1: cast Throw Stone
-    if (event.key === '1' && !this.isGameMenuOpen()) {
-      this.castSpell('throw_stone');
       return;
     }
 
@@ -2026,9 +1980,13 @@ export const WorldCharacterUIScene = {
 
     const now = performance.now();
     const prev = this.lastSentLocalPosition;
+    // What the body is doing, so everyone else sees it: 1 crouching, 2 airborne.
+    const ms = this.controller?.getMovementState?.();
+    const m = (ms?.isCrouching ? 1 : 0) | (ms && !ms.isGrounded ? 2 : 0);
 
     const moved =
       !prev ||
+      m !== prev.m ||
       Math.abs(x - prev.x) > 0.01 ||
       Math.abs(y - prev.y) > 0.01 ||
       Math.abs(z - prev.z) > 0.01 ||
@@ -2040,7 +1998,7 @@ export const WorldCharacterUIScene = {
     if (!force && !moved && !heartbeatDue) return;
 
     this.lastPositionPushMs = now;
-    this.lastSentLocalPosition = { x, y, z, heading };
+    this.lastSentLocalPosition = { x, y, z, heading, m };
     this._pushPending = true;
 
     // Watchdog: auto-reset after 5 s in case the promise never resolves
@@ -2059,7 +2017,7 @@ export const WorldCharacterUIScene = {
     };
 
     try {
-      const p = this.pushEvent('world_position_update', { x, y, z, heading });
+      const p = this.pushEvent('world_position_update', { x, y, z, heading, m });
       if (p && typeof p.then === 'function') {
         p.then(clearPending, clearPending);
       } else {
@@ -2272,6 +2230,13 @@ export const WorldCharacterUIScene = {
     }
     this.raycaster!.setFromCamera(this.pointer, this.camera);
 
+    // Villagers: a click targets one.
+    const npcId = this.pickNpc(this.raycaster);
+    if (npcId) {
+      this.setTarget(npcId);
+      return;
+    }
+
     // Creatures first: a click targets one; with the cursor free, clicking a corpse loots it.
     const mobId = this.pickMob(this.raycaster);
     if (mobId) {
@@ -2283,31 +2248,20 @@ export const WorldCharacterUIScene = {
       return;
     }
 
-    const allMeshes: THREE.Object3D[] = [];
-    this.characterManager?.getAllCharacters().forEach((ch: any, id: string) => {
-      if (id !== this.state?.currentPlayer?.character_id) {
-        allMeshes.push(ch.mesh);
-      }
-    });
-
-    const hits = this.raycaster!.intersectObjects(allMeshes, true);
-    if (hits.length > 0) {
-      let obj: THREE.Object3D | null = hits[0].object;
-      while (obj) {
-        const foundId = this.findCharacterIdForMesh(obj);
-        if (foundId) {
-          this.setTarget(foundId);
-          return;
-        }
-        obj = obj.parent;
-      }
+    // Players: a box around each (raycasting the skinned, morphing meshes themselves
+    // skins every vertex on the CPU, and froze the game on every swing at a player).
+    const playerId = this.pickPlayer(this.raycaster!);
+    if (playerId) {
+      this.setTarget(playerId);
+      return;
     }
 
     // A click on nothing keeps the target: with mouse-look on, clicks are swings.
   },
 
   // EverQuest's right-click: a quick right click (not a steering drag) on a corpse
-  // loots it, on a creature targets it. Only with the cursor free.
+  // loots it, on a creature targets it, on a merchant opens their wares. Only with the
+  // cursor free.
   handleRightButton(this: any, event: MouseEvent) {
     if (event.button !== 2 || this.state?.uiState !== 'world' || this.controller?.isPointerLocked()) return;
     if (event.type === 'mousedown') {
@@ -2322,6 +2276,13 @@ export const WorldCharacterUIScene = {
     this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
+    // a merchant: trade with them
+    const npcId = this.pickNpc(this.raycaster);
+    if (npcId) {
+      this.setTarget(npcId);
+      void this.openMerchant(npcId);
+      return;
+    }
     const mobId = this.pickMob(this.raycaster);
     if (!mobId) return;
     if (this.mobsView?.get(mobId)?.view.state === 'dead') void this.openLoot(mobId);
@@ -2367,6 +2328,32 @@ export const WorldCharacterUIScene = {
     if (panelId === 'creator') {
       this.showCharacterCreator();
     }
+  },
+
+  /** The other player whose standing box a ray hits first, or null. */
+  pickPlayer(this: any, raycaster: THREE.Raycaster): string | null {
+    const myId = this.state?.currentPlayer?.character_id;
+    const box = new THREE.Box3();
+    const at = new THREE.Vector3();
+    let best: string | null = null;
+    let bestD = Infinity;
+    this.characterManager?.getAllCharacters().forEach((ch: any, id: string) => {
+      if (id === myId || !ch.mesh) return;
+      const p = ch.mesh.position;
+      const human = !!this.characterManager.getHuman(id);
+      const h = human ? ch.mesh.scale.y * 1.8 : 2 * UNITS_PER_METRE;
+      const r = 0.42 * UNITS_PER_METRE;
+      box.min.set(p.x - r, p.y, p.z - r);
+      box.max.set(p.x + r, p.y + h, p.z + r);
+      if (raycaster.ray.intersectBox(box, at)) {
+        const d = at.distanceTo(raycaster.ray.origin);
+        if (d < bestD) {
+          bestD = d;
+          best = id;
+        }
+      }
+    });
+    return best;
   },
 
   findCharacterIdForMesh(this: any, mesh: THREE.Object3D): string | null {

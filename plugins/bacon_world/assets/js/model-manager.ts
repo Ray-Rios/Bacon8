@@ -13,6 +13,7 @@ import type {
 } from './types';
 import { CharacterAnimator } from './anim-driver';
 import { WeaponModels, gearOf, holdItem } from './items';
+import type { Gear } from './wardrobe';
 
 // Clip names (lower case) each lobby action prefers, best first. The Bacon8 humans
 // carry Quaternius Universal Animation Library clips (CC0) baked onto the B8
@@ -46,7 +47,7 @@ export class CharacterModelManager {
   // Bacon8 humans (and creatures on the same skeleton) are animated by an
   // anim-driver.ts animator: strafes, stances, swings with either hand.
   private animators: Map<string, CharacterAnimator> = new Map();
-  private gear: Map<string, { main: string | null; off: string | null }> = new Map();
+  private gear: Map<string, Gear> = new Map();
   readonly weapons = new WeaponModels();
   // A one-shot that just finished, so the next locomotion clip can fade out of it.
   private fadingFrom: Map<string, THREE.AnimationAction> = new Map();
@@ -76,21 +77,28 @@ export class CharacterModelManager {
     return this.animators.get(characterId);
   }
 
-  /** What a character holds (catalogue item ids): the models go in its hands, the animator takes the stance. */
-  async setGear(characterId: string, main: string | null, off: string | null): Promise<void> {
-    this.gear.set(characterId, { main, off });
+  /**
+   * What a character holds and wears (catalogue item ids by slot): the models go in its
+   * hands, the animator takes the stance, and a Bacon8 human is dressed in what it wears.
+   */
+  async setGear(characterId: string, gear: Gear): Promise<void> {
+    const g: Gear = { ...gear };
+    this.gear.set(characterId, g);
     const character = this.characters.get(characterId);
     if (!character) return;
+    const main = g.main ?? null;
+    const off = g.off ?? null;
     const twoHanded = gearOf(main)?.hands === 2;
     this.animators.get(characterId)?.setGear(gearOf(main), twoHanded ? null : gearOf(off));
+    this.humanInstances.get(characterId)?.setWorn(g);
     await Promise.all([
       holdItem(this.weapons, character.mesh, 'main', main),
       holdItem(this.weapons, character.mesh, 'off', twoHanded ? null : off),
     ]);
   }
 
-  getGear(characterId: string): { main: string | null; off: string | null } {
-    return this.gear.get(characterId) || { main: null, off: null };
+  getGear(characterId: string): Gear {
+    return this.gear.get(characterId) || {};
   }
 
   /** The built human for a character (bones for weapons, current appearance), if any. */
@@ -275,7 +283,7 @@ export class CharacterModelManager {
     if (this.humans && isHumanModel(modelPath)) {
       // Feet at the origin and scaled by height (UNITS_PER_METRE), so no normalising.
       const a = normalizeAppearance(appearance, bodyFromModelPath(modelPath));
-      human = await this.humans.create(a);
+      human = await this.humans.create(a, 'male', this.gear.get(id) || null);
       characterMesh = human.root;
       characterMesh.position.set(position.x, position.y, position.z);
       mixer = new THREE.AnimationMixer(characterMesh);
@@ -351,9 +359,9 @@ export class CharacterModelManager {
       void factory?.loadAnimPacks(human.body).then((clips) => {
         if (this.animators.get(id) === animator) animator.addClips(clips);
       });
-      // A rebuilt character (new body) keeps what it held.
+      // A rebuilt character (new body) keeps what it held and wore.
       const held = this.gear.get(id);
-      if (held) void this.setGear(id, held.main, held.off);
+      if (held) void this.setGear(id, held);
     }
 
     const sceneRef = this.activeScene || window.ThreeJSMMO?.scene?.scene || null;
@@ -507,7 +515,7 @@ export class CharacterModelManager {
   playOneShot(characterId: string, animationName: string): void {
     const animator = this.animators.get(characterId);
     if (animator) {
-      // 'attack' is the Throw Stone cast: an overhand throw on the upper body.
+      // 'attack' is an overhand throw on the upper body (for a thrown spell; none yet).
       animator.oneShot(animationName === 'attack' ? 'OverhandThrow' : animationName, { upperOnly: true });
       return;
     }
@@ -621,8 +629,11 @@ export class CharacterModelManager {
 
   updateAnimations(deltaSeconds: number): void {
     this.characters.forEach((character, id) => {
-      this.animators.get(id)?.update(deltaSeconds);
+      const animator = this.animators.get(id);
+      animator?.update(deltaSeconds);
       character.mixer?.update(deltaSeconds);
+      // after the clips: bones the morphs move, posture, relaxed empty hands
+      this.humanInstances.get(id)?.postAnimate(deltaSeconds, animator ? animator.freeHands() : undefined);
     });
 
     this.creatures.forEach((creature) => {

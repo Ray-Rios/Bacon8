@@ -8,16 +8,25 @@ defmodule BaconWorldWeb.GameEvents do
     * `"melee_attack"` `%{hand: "left" | "right", heading, heavy, target_id}` -
       a swing. Each hand has its own swing timer (the weapon's DLY; a two-hander
       shares one); the zone decides what it hits (`BaconWorld.Mobs`). Replies
-      `%{ok, hits, delay_ms}` and, after a kill, the new `progress`.
+      `%{ok, hits, delay_ms}` and, after a kill, the new `progress`. Everyone in
+      the zone sees the swing (`"zone_swing"`). Players in front of the swing are
+      hit too when both are flagged for PvP: `pvp_swing/3` rolls it and the
+      target's LiveView applies it (`"pvp_hit"` to everyone).
     * `"fetch_mobs"` - every creature and corpse, and the camps to dress.
     * `"loot_open"` `%{mob_id}`, `"loot_take"` `%{mob_id, index}`,
       `"loot_all"` `%{mob_id}`, `"loot_close"` `%{mob_id}` - EverQuest looting.
     * `"inventory_move"` `%{from, to}`, `"inventory_equip"` `%{slot}`,
-      `"inventory_unequip"` `%{slot}`, `"inventory_destroy"` `%{slot}`.
+      `"inventory_unequip"` `%{slot}`, `"inventory_destroy"` `%{slot}`. Equipping
+      clothes changes how the character looks: `"zone_gear"` tells everyone.
+    * `"merchant_open"` `%{id}`, `"merchant_buy"` `%{id, item_id}`,
+      `"merchant_sell"` `%{id, slot}` - trading with a merchant within reach
+      (`BaconWorld.Merchants`).
 
   Pushed to the client: `"mob_events"`, `"mob_motion"` (from the zone),
-  `"character_stats_update"` when a creature hits you, `"character_died"`,
-  `"character_progress"` and `"zone_gear"` (someone's weapons changed).
+  `"character_stats_update"` when a creature or a player hits you,
+  `"character_died"`, `"character_progress"`, `"zone_gear"` (someone's weapons
+  changed), `"zone_swing"` (someone else swung), `"pvp_hit"` and `"zone_hp"`
+  (someone's health changed, they died or came back).
 
   The character's own HP lives here: creatures broadcast their attacks and only
   the target's LiveView applies them, so the zone never writes characters.
@@ -27,7 +36,7 @@ defmodule BaconWorldWeb.GameEvents do
   import Phoenix.Component, only: [assign: 2]
   require Logger
 
-  alias BaconWorld.{Combat, Inventory, Items, Melee, Mobs, Progression}
+  alias BaconWorld.{Combat, Inventory, Items, Melee, Merchants, Mobs, Progression}
   alias BaconWorld.Mobs.{Brain, Spawns}
   alias Bacon8Web.Presence
   alias Phoenix.PubSub
@@ -76,7 +85,13 @@ defmodule BaconWorldWeb.GameEvents do
 
   def handle_event("fetch_mobs", _params, socket) do
     slug = socket.assigns[:mobs_zone] || "lobby"
-    {:reply, %{mobs: Mobs.snapshot(slug), camps: Spawns.camps_payload(Brain.u()), safe_radius: Spawns.safe_radius() * Brain.u()}, socket}
+    {:reply,
+     %{
+       mobs: Mobs.snapshot(slug),
+       camps: Spawns.camps_payload(Brain.u()),
+       safe_radius: Spawns.safe_radius() * Brain.u(),
+       merchants: Merchants.payload(slug)
+     }, socket}
   end
 
   def handle_event("melee_attack", params, socket) do
@@ -99,6 +114,10 @@ defmodule BaconWorldWeb.GameEvents do
       else
         socket = assign(socket, swing_at: Map.put(socket.assigns[:swing_at] || %{}, timer, now))
 
+        if topic = socket.assigns[:current_zone_topic] do
+          PubSub.broadcast(Bacon8.PubSub, topic, {:zone_swing, %{character_id: me.character_id, hand: hand, heavy: heavy, delay_ms: delay}})
+        end
+
         attack = %{
           id: me.character_id,
           level: socket.assigns[:level] || 1,
@@ -110,13 +129,15 @@ defmodule BaconWorldWeb.GameEvents do
           target: params["target_id"]
         }
 
+        pvp = pvp_swing(socket, me, attack)
+
         case Mobs.melee(socket.assigns[:mobs_zone] || "lobby", attack) do
           {:ok, hits} ->
             {socket, progress} = award_kills(socket, hits)
-            {:reply, %{ok: true, hits: hits, delay_ms: delay, progress: progress}, socket}
+            {:reply, %{ok: true, hits: hits, pvp: pvp, delay_ms: delay, progress: progress}, socket}
 
           {:error, _} ->
-            {:reply, %{ok: true, hits: [], delay_ms: delay, progress: nil}, socket}
+            {:reply, %{ok: true, hits: [], pvp: pvp, delay_ms: delay, progress: nil}, socket}
         end
       end
     else
@@ -187,7 +208,67 @@ defmodule BaconWorldWeb.GameEvents do
     inventory_change(socket, fn id -> Inventory.destroy(id, to_string(slot)) end)
   end
 
+  def handle_event("merchant_open", %{"id" => id}, socket) do
+    case trader(socket, id) do
+      {:ok, _me, m} ->
+        {:reply, %{ok: true, merchant: %{id: m.id, name: m.name, title: m.title}, stock: Merchants.stock(m)}, socket}
+
+      {:error, msg} ->
+        {:reply, %{ok: false, error: msg}, socket}
+    end
+  end
+
+  def handle_event("merchant_buy", %{"id" => id, "item_id" => item_id}, socket) do
+    with {:ok, me, m} <- trader(socket, id),
+         true <- item_id in m.sells || {:error, "They don't sell that."},
+         %{} = item <- Items.get(item_id) || {:error, "They don't sell that."},
+         price = Merchants.sell_price(item),
+         true <- Inventory.coins(me.character_id) >= price || {:error, "You can't afford that."},
+         {:ok, _slots} <- buy_add(me.character_id, item.id) do
+      coins = Inventory.add_coins(me.character_id, -price)
+      {:reply, %{ok: true, bought: item.id, price: price, coins: coins, inventory: Inventory.payload(me.character_id)}, socket}
+    else
+      {:error, msg} when is_binary(msg) -> {:reply, %{ok: false, error: msg}, socket}
+      _ -> {:reply, %{ok: false, error: "You can't buy that right now."}, socket}
+    end
+  end
+
+  def handle_event("merchant_sell", %{"id" => id, "slot" => slot}, socket) when is_binary(slot) do
+    with {:ok, me, _m} <- trader(socket, id),
+         %{} = row <- Enum.find(Inventory.list(me.character_id), &(&1.slot == slot)) || {:error, "There's nothing there."},
+         true <- String.starts_with?(slot, "bag") || {:error, "Take it off first."},
+         %{} = item <- Items.get(row.item_id),
+         price when price > 0 <- Merchants.buy_price(item) * row.quantity,
+         {:ok, _} <- Inventory.remove(me.character_id, slot) do
+      coins = Inventory.add_coins(me.character_id, price)
+      {:reply, %{ok: true, sold: item.id, quantity: row.quantity, price: price, coins: coins, inventory: Inventory.payload(me.character_id)}, socket}
+    else
+      0 -> {:reply, %{ok: false, error: "They aren't interested in that."}, socket}
+      {:error, msg} when is_binary(msg) -> {:reply, %{ok: false, error: msg}, socket}
+      _ -> {:reply, %{ok: false, error: "You can't sell that right now."}, socket}
+    end
+  end
+
   def handle_event(_event, _params, socket), do: {:reply, %{ok: false, error: "bad request"}, socket}
+
+  # The character, and the merchant if it is in this zone and within reach.
+  defp trader(socket, id) do
+    with %{} = me <- current(socket) || {:error, "You aren't in the world."},
+         true <- !socket.assigns[:is_dead?] || {:error, "You can't trade while dead."},
+         %{} = m <- Merchants.get(id) || {:error, "There's no one to trade with."},
+         true <- m.zone == (socket.assigns[:mobs_zone] || "lobby") || {:error, "There's no one to trade with."},
+         true <- Merchants.near?(m, {me.position.x, me.position.z}) || {:error, "You are too far away to trade with #{m.name}."} do
+      {:ok, me, m}
+    end
+  end
+
+  defp buy_add(character_id, item_id) do
+    case Inventory.add(character_id, item_id, 1) do
+      {:ok, slots} -> {:ok, slots}
+      {:error, :inventory_full} -> {:error, "Your inventory is full."}
+      _ -> {:error, "You can't buy that right now."}
+    end
+  end
 
   # ---------------------------------------------------------------------------
   # Messages from the zone
@@ -213,6 +294,79 @@ defmodule BaconWorldWeb.GameEvents do
     if id == character_id(socket), do: socket, else: push_event(socket, "zone_gear", payload)
   end
 
+  @doc "Someone else swung: their animation plays on every screen."
+  def zone_swing(%{character_id: id} = payload, socket) do
+    if id == character_id(socket), do: socket, else: push_event(socket, "zone_swing", payload)
+  end
+
+  @doc """
+  A PvP swing landed (or missed). The target's LiveView applies the damage, as it
+  does a creature's; everyone gets `"pvp_hit"` for the numbers and sounds.
+  """
+  def pvp_hit(%{target_id: tid} = h, socket) do
+    socket =
+      if tid == character_id(socket) and h.hit and h.damage > 0, do: take_hit(socket, h.damage), else: socket
+
+    push_event(socket, "pvp_hit", h)
+  end
+
+  @doc "Someone's health changed (`state` \"alive\", \"hurt\" or \"dead\")."
+  def zone_hp(payload, socket), do: push_event(socket, "zone_hp", payload)
+
+  @doc "Tells the zone this character's health (after a hit, a death or a respawn)."
+  def broadcast_hp(socket, character_id, hp, max_hp, state) do
+    if topic = socket.assigns[:current_zone_topic] do
+      PubSub.broadcast(Bacon8.PubSub, topic, {:zone_hp, %{character_id: character_id, hp: hp, max_hp: max_hp, state: state}})
+    end
+
+    socket
+  end
+
+  @doc """
+  The players a swing hits: flagged players (the swinger flagged too) inside the
+  weapon's reach and arc, the targeted one first, as many as the weapon sweeps.
+  Positions are the zone's presence (at most 100 ms old), so the reach has slack.
+  Broadcasts `{:pvp_hit, hit}` for each and returns the hits.
+  """
+  def pvp_swing(socket, me, attack) do
+    topic = socket.assigns[:current_zone_topic]
+    {max_targets, arc} = Melee.sweep(attack.item)
+    reach = Melee.pvp_reach(attack.item) * Brain.u()
+
+    victims =
+      (socket.assigns[:zone_online_characters] || [])
+      |> Enum.filter(fn p ->
+        p.character_id != me.character_id and not p.dead and
+          Melee.in_arc?({attack.x, attack.z}, attack.heading, {(p.x || 0.0) * 1.0, (p.z || 0.0) * 1.0}, reach, arc)
+      end)
+      |> Enum.sort_by(fn p -> {if(p.character_id == attack[:target], do: 0, else: 1), :math.pow(p.x - attack.x, 2) + :math.pow(p.z - attack.z, 2)} end)
+      |> Enum.take(max_targets)
+
+    if topic && victims != [] && Combat.pvp_flagged?(me.character_id) do
+      victims
+      |> Enum.filter(&Combat.pvp_flagged?(&1.character_id))
+      |> Enum.map(fn p ->
+        hit = :rand.uniform() < Melee.hit_chance(attack.level, p.level || 1)
+        {damage, crit} = if hit, do: Melee.roll_damage(attack.item, attack.level, attack.heavy), else: {0, false}
+
+        h = %{
+          attacker_id: me.character_id,
+          attacker_name: me.name,
+          target_id: p.character_id,
+          target_name: p.character_name,
+          hit: hit,
+          damage: damage,
+          crit: crit
+        }
+
+        PubSub.broadcast(Bacon8.PubSub, topic, {:pvp_hit, h})
+        h
+      end)
+    else
+      []
+    end
+  end
+
   @doc "Marks this character dead or alive in its presence meta (creatures stop chasing the dead)."
   def set_dead(socket, dead?) do
     update_presence(socket, %{dead: dead?})
@@ -230,7 +384,13 @@ defmodule BaconWorldWeb.GameEvents do
         {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}} ->
           new_hp = max(0, hp - damage)
           {:ok, _} = Combat.update_character_hp_mp(me.character_id, new_hp, mp)
-          socket = push_event(socket, "character_stats_update", %{hp: new_hp, max_hp: max_hp, mp: mp, max_mp: max_mp})
+
+          socket =
+            socket
+            |> update_runtime(%{hp: new_hp})
+            |> push_event("character_stats_update", %{hp: new_hp, max_hp: max_hp, mp: mp, max_mp: max_mp})
+            |> broadcast_hp(me.character_id, new_hp, max_hp, if(new_hp == 0, do: "dead", else: "hurt"))
+
           if new_hp == 0, do: die(socket, me), else: socket
 
         _ ->

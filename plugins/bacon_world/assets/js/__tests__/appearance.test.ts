@@ -44,7 +44,7 @@ test('normalise clamps, drops junk and falls back per field', () => {
   assert.equal(a.eyes, '#00FF00');
   assert.deepEqual(a.hair, { style: 'Lob', color: '#ABCDEF' });
   assert.equal(a.facial.style, 'none');
-  assert.deepEqual(a.outfit.top, { id: 'Top_Tee', main: '#123456', trim: '#1B5FBA' });
+  assert.equal((a as any).outfit, undefined, 'clothes are items now: an old outfit is dropped');
 });
 
 test('body fallbacks and model paths', () => {

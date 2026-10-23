@@ -2,10 +2,11 @@
 // HTML layer over the 3D stage (character-stage.ts). Plain DOM with its own scoped CSS,
 // so it doesn't depend on the site's Tailwind build.
 import {
-  Appearance, Body, BOTTOMS, CLOTH_COLORS, EYE_COLORS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SHOES, SKIN_TONES, TOPS,
+  Appearance, Body, EYE_COLORS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SKIN_TONES,
   defaultAppearance, normalizeAppearance, randomAppearance, shade,
 } from './appearance';
 import type { StyleEntry } from './human-factory';
+import { STARTER_GEAR, type Gear } from './wardrobe';
 
 export interface FrontCharacter {
   id: string;
@@ -16,6 +17,8 @@ export interface FrontCharacter {
   zone?: string | null;
   /** Experience level (no classes: everyone grows through one shared skill tree). */
   level?: number;
+  /** What it holds and wears (item ids by slot). */
+  gear?: Gear;
 }
 
 export interface FrontCallbacks {
@@ -24,7 +27,8 @@ export interface FrontCallbacks {
   remove(id: string): void;
   create(name: string, a: Appearance): Promise<{ ok: boolean; error?: string; character_id?: string }>;
   updateLook(id: string, a: Appearance): Promise<{ ok: boolean; error?: string }>;
-  preview(a: Appearance | null): void;
+  /** Shows a look on the stage, wearing `gear` (the creator: the starter underwear). */
+  preview(a: Appearance | null, gear?: Gear | null): void;
   framing(f: 'full' | 'upper' | 'face'): void;
   insets(left: number, right: number, top?: number, bottom?: number): void;
   styles(body: Body): { hair: StyleEntry[]; facial: StyleEntry[] };
@@ -32,7 +36,8 @@ export interface FrontCallbacks {
   back(): void;
 }
 
-type Tab = 'body' | 'face' | 'hair' | 'outfit';
+// No clothes tab: clothes are items, worn in the world (the creator shows the starter underwear).
+type Tab = 'body' | 'face' | 'hair';
 const MAX_CHARACTERS = 16;
 
 const CSS = `
@@ -285,7 +290,7 @@ export class FrontUI {
     for (const c of this.characters) {
       const a = this.appearanceOf(c);
       const card = h('button', { class: 'bwf-card' + (c.id === this.selectedId ? ' on' : ''), title: c.name },
-        h('div', { class: 'bwf-av', style: { background: a.skin } }, initials(c.name), h('i', { style: { background: a.outfit.top.main } })),
+        h('div', { class: 'bwf-av', style: { background: a.skin } }, initials(c.name), h('i', { style: { background: a.hair.color } })),
         h('div', { style: { minWidth: '0' } }, h('div', { class: 'bwf-cn' }, c.name), h('div', { class: 'bwf-cs' }, `Level ${c.level || 1} · ${a.body === 'female' ? 'Female' : 'Male'}`)));
       card.onclick = () => {
         if (this.selectedId === c.id) return;
@@ -305,7 +310,7 @@ export class FrontUI {
     );
 
     if (sel) {
-      this.cb.preview(this.appearanceOf(sel));
+      this.cb.preview(this.appearanceOf(sel), sel.gear || STARTER_GEAR);
       const shift = this.host.clientWidth > 760 ? 160 : 0;
       this.root.append(
         h('div', { class: 'bwf-shade' }),
@@ -360,7 +365,7 @@ export class FrontUI {
     const a: Appearance = JSON.parse(JSON.stringify(this.draft));
     mut(a);
     this.draft = normalizeAppearance(a, a.body);
-    this.cb.preview(this.draft);
+    this.cb.preview(this.draft, STARTER_GEAR);
     if (rerender) this.renderCreator();
   }
 
@@ -370,8 +375,8 @@ export class FrontUI {
     this.root.replaceChildren();
     this.loadingEl = null;
     this.reportInsets();
-    this.cb.framing(this.tab === 'face' || this.tab === 'hair' ? 'face' : this.tab === 'outfit' ? 'full' : 'full');
-    this.cb.preview(this.draft);
+    this.cb.framing(this.tab === 'face' || this.tab === 'hair' ? 'face' : 'full');
+    this.cb.preview(this.draft, STARTER_GEAR);
     const a = this.draft;
     const editing = !!this.editingId;
 
@@ -384,7 +389,7 @@ export class FrontUI {
       }, b === 'male' ? 'Male' : 'Female')));
 
     const tabs = h('div', { class: 'bwf-tabs' },
-      ...(['body', 'face', 'hair', 'outfit'] as Tab[]).map((t) => h('button', { class: this.tab === t ? 'on' : '', onclick: () => { this.tab = t; this.creatorScroll = 0; this.renderCreator(); } }, t)));
+      ...(['body', 'face', 'hair'] as Tab[]).map((t) => h('button', { class: this.tab === t ? 'on' : '', onclick: () => { this.tab = t; this.creatorScroll = 0; this.renderCreator(); } }, t)));
 
     const tb = h('div', { class: 'bwf-tb' }, ...this.tabContent());
 
@@ -411,9 +416,9 @@ export class FrontUI {
     if (!editing && !this.draftName) setTimeout(() => nameIn.focus({ preventScroll: true }), 0);
   }
 
-  /** Keeps colours and outfit when switching body type. */
+  /** Keeps colours when switching body type. */
   private carryOver(fresh: Appearance, old: Appearance): Appearance {
-    return normalizeAppearance({ ...fresh, skin: old.skin, eyes: old.eyes, outfit: old.outfit, hair: { ...fresh.hair, color: old.hair.color } }, fresh.body);
+    return normalizeAppearance({ ...fresh, skin: old.skin, eyes: old.eyes, hair: { ...fresh.hair, color: old.hair.color } }, fresh.body);
   }
 
   private canSubmit() {
@@ -503,21 +508,7 @@ export class FrontUI {
       }
       return out;
     }
-    const o = a.outfit;
-    return [
-      this.section('Top', this.choice(TOPS, o.top.id, (id) => this.change((x) => { x.outfit.top.id = id; })),
-        this.label('Colour'), this.swatches(CLOTH_COLORS, o.top.main, (c) => this.change((x) => { x.outfit.top.main = c; x.outfit.top.trim = shade(c, 0.78); })),
-        this.label('Trim'), this.swatches(CLOTH_COLORS, o.top.trim, (c) => this.change((x) => { x.outfit.top.trim = c; }))),
-      this.section('Bottoms', this.choice(BOTTOMS, o.bottom.id, (id) => this.change((x) => { x.outfit.bottom.id = id; })),
-        this.label('Colour'), this.swatches(CLOTH_COLORS, o.bottom.main, (c) => this.change((x) => { x.outfit.bottom.main = c; x.outfit.bottom.trim = shade(c, 0.8); }))),
-      this.section('Shoes', this.choice(SHOES, o.shoes.id, (id) => this.change((x) => {
-        x.outfit.shoes.id = id;
-        if (id === 'Shoes_Boots') Object.assign(x.outfit.shoes, { upper: '#6B4A2F', sole: '#2A2522', laces: '#3D2B1F' });
-        else Object.assign(x.outfit.shoes, { upper: '#3A3F47', sole: '#F4F4F4', laces: '#E8E8E8' });
-      })),
-        this.label('Colour'), this.swatches(CLOTH_COLORS, o.shoes.upper, (c) => this.change((x) => { x.outfit.shoes.upper = c; })),
-        this.label('Sole'), this.swatches(['#F4F4F4', '#E7F1FD', '#9AA3AD', '#3A3F47', '#2A2522', '#14100F', '#8A6A4A', '#C8352E'], o.shoes.sole, (c) => this.change((x) => { x.outfit.shoes.sole = c; }))),
-    ];
+    return [];
   }
 
   private section(title: string | Node, ...kids: Array<Node | null>): HTMLElement {

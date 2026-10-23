@@ -1,27 +1,26 @@
 defmodule BaconWorld.Appearance do
   @moduledoc """
-  A character's look: body, height, shape sliders, colours, hair, facial hair and
-  outfit. Stored in the character's `settings["appearance"]` and drawn by the
-  client's `human-factory.ts`; `assets/js/appearance.ts` builds the same map.
+  A character's look: body, height, shape sliders, colours, hair and facial hair.
+  Stored in the character's `settings["appearance"]` and drawn by the client's
+  `human-factory.ts`; `assets/js/appearance.ts` builds the same map.
+
+  Clothes aren't part of the look (since 2026-10-23): they are items the character
+  wears (`BaconWorld.Items`, `BaconWorld.Inventory`). An `"outfit"` saved in an older
+  look is dropped.
 
   `normalize/3` never trusts what a player sends. Unknown keys are dropped,
   numbers are clamped to their slider ranges and rounded, colours must be
   `#RRGGBB`, hair styles must be short word-character ids (and, when the style
   manifest is installed, one of its styles), and garments come from a fixed
-  list. A bad field falls back to its default; only a missing or unknown body
-  type (and a value that isn't a map) is an error.
+  A bad field falls back to its default; only a missing or unknown body type (and a
+  value that isn't a map) is an error.
 
       %{
         "v" => 1, "body" => "male" | "female", "height" => 0.92..1.08,
         "shape" => %{"weight" => -1..1, "muscle" => 0..1, ...},
         "skin" => "#C68E6E", "eyes" => "#5A3D26", "brows" => nil | "#RRGGBB",
         "hair" => %{"style" => "CrewCut" | "none", "color" => "#2B1E14"},
-        "facial" => %{"style" => "none", "color" => "#2B1E14"},
-        "outfit" => %{
-          "top" => %{"id" => "Top_Tee", "main" => ..., "trim" => ...},
-          "bottom" => %{"id" => "Bottom_Pants", "main" => ..., "trim" => ...},
-          "shoes" => %{"id" => "Shoes_Sneakers", "upper" => ..., "sole" => ..., "laces" => ...}
-        }
+        "facial" => %{"style" => "none", "color" => "#2B1E14"}
       }
   """
 
@@ -39,9 +38,6 @@ defmodule BaconWorld.Appearance do
     {"nose", 0.0, 1.0}
   ]
   @height {0.92, 1.08}
-  @tops ~w(Top_Tee Top_Tank Top_LongSleeve)
-  @bottoms ~w(Bottom_Pants Bottom_Shorts)
-  @shoes ~w(Shoes_Sneakers Shoes_Boots)
   @color ~r/\A#[0-9a-fA-F]{6}\z/
   @style ~r/\A[A-Za-z0-9_]{1,32}\z/
   @models %{"male" => "/models/Humans/Male.glb", "female" => "/models/Humans/Female.glb"}
@@ -70,12 +66,7 @@ defmodule BaconWorld.Appearance do
       "eyes" => "#5A3D26",
       "brows" => nil,
       "hair" => %{"style" => if(body == "male", do: "CrewCut", else: "Lob"), "color" => "#2B1E14"},
-      "facial" => %{"style" => "none", "color" => "#2B1E14"},
-      "outfit" => %{
-        "top" => %{"id" => "Top_Tee", "main" => "#247DF1", "trim" => "#1B5FBA"},
-        "bottom" => %{"id" => "Bottom_Pants", "main" => "#2B2F36", "trim" => "#1E2126"},
-        "shoes" => %{"id" => "Shoes_Sneakers", "upper" => "#3A3F47", "sole" => "#F4F4F4", "laces" => "#E8E8E8"}
-      }
+      "facial" => %{"style" => "none", "color" => "#2B1E14"}
     }
   end
 
@@ -131,13 +122,6 @@ defmodule BaconWorld.Appearance do
     shape = map(raw["shape"])
     hair = map(raw["hair"])
     facial = map(raw["facial"])
-    outfit = map(raw["outfit"])
-    top = map(outfit["top"])
-    bottom = map(outfit["bottom"])
-    shoes = map(outfit["shoes"])
-    dt = d["outfit"]["top"]
-    db = d["outfit"]["bottom"]
-    ds = d["outfit"]["shoes"]
 
     %{
       "v" => 1,
@@ -151,16 +135,6 @@ defmodule BaconWorld.Appearance do
       "facial" => %{
         "style" => if(body == "male", do: style(facial["style"], "none", styles, body, "facial"), else: "none"),
         "color" => color(facial["color"], d["facial"]["color"])
-      },
-      "outfit" => %{
-        "top" => %{"id" => one_of(top["id"], @tops, dt["id"]), "main" => color(top["main"], dt["main"]), "trim" => color(top["trim"], dt["trim"])},
-        "bottom" => %{"id" => one_of(bottom["id"], @bottoms, db["id"]), "main" => color(bottom["main"], db["main"]), "trim" => color(bottom["trim"], db["trim"])},
-        "shoes" => %{
-          "id" => one_of(shoes["id"], @shoes, ds["id"]),
-          "upper" => color(shoes["upper"], ds["upper"]),
-          "sole" => color(shoes["sole"], ds["sole"]),
-          "laces" => color(shoes["laces"], ds["laces"])
-        }
       }
     }
     |> fix_body()
@@ -196,8 +170,6 @@ defmodule BaconWorld.Appearance do
 
   defp color(v, default) when is_binary(v), do: if(Regex.match?(@color, v), do: String.upcase(v), else: default)
   defp color(_, default), do: default
-
-  defp one_of(v, allowed, default), do: if(v in allowed, do: v, else: default)
 
   defp style("none", _default, _styles, _body, _kind), do: "none"
 

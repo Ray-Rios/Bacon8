@@ -25,7 +25,8 @@ defmodule BaconWorld.AppearanceTest do
     assert a["eyes"] == "#00FF00"
     assert a["hair"] == %{"style" => "Lob", "color" => "#ABCDEF"}
     assert a["facial"]["style"] == "none"
-    assert a["outfit"]["top"] == %{"id" => "Top_Tee", "main" => "#123456", "trim" => "#1B5FBA"}
+    # clothes are items now: an outfit in an old look is dropped
+    refute Map.has_key?(a, "outfit")
   end
 
   test "male drops the bust slider; styles checked against a manifest" do

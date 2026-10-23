@@ -18,7 +18,7 @@ Related documents:
   deployment.
 - Facts dated. The owner's decisions are recorded, not re-argued.
 
-Last update: **2026-10-22**.
+Last update: **2026-10-23**.
 
 ---
 
@@ -26,7 +26,8 @@ Last update: **2026-10-22**.
 
 A small online RPG in the browser, written with three.js and Phoenix LiveView:
 
-- Make a character in a creator: body type, sliders, skin, eyes, hair and outfit.
+- Make a character in a creator: body type, sliders, skin, eyes and hair. Everyone starts in
+  plain cream underwear; clothes are cloth armour you buy, find and wear.
 - Walk a village with other players and chat with people nearby.
 - Fight skeletons outside town with either hand, loot their corpses EverQuest-style and level up.
 
@@ -42,7 +43,7 @@ It is also the template other Bacon8 games copy.
 All of it uses our own or CC0 art. Every 3D asset is built by scripts in the game repository,
 so it can be rebuilt and changed.
 
-## 2. State on 2026-10-22
+## 2. State on 2026-10-23
 
 **Deployed (through `1eb78e8`, 2026-10-21):**
 
@@ -59,10 +60,33 @@ so it can be rebuilt and changed.
 | `CLAUDE_CODE_PROMPT_2026-10-22b.md` | Skeletons now attack and can be hit (the BEAM's monotonic clock is usually negative; timers started at 0). A remote-desktop mouse filter (`mouse-filter.ts`) replaces the camera-smoothing option, which is gone. Effects, nature and music volume sliders. New grass footsteps. |
 | `CLAUDE_CODE_PROMPT_2026-10-22c.md` | The female rebuilt on MakeHuman (CC0), with 31 MakeHuman hair styles, MakeHuman clothes fitted to her, strand lashes and a brow card. Hair-style aliases (client and server). Garments hide the parts of garments under them. And these docs. |
 
+**Delivered 2026-10-23, uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23.md`):
+
+- **The female, v3** (pipeline stage F, `mhf_v3.py`): relaxed fingers on empty hands; the
+  shoulder slider no longer changes the hands' size (joint offsets); a rounder bust; skin
+  seam streaks gone; she stands straighter (pelvis tilted back 7 degrees after the animation);
+  new tank, shorts and trousers made from her own body so they don't clip; the forearm
+  "wringing" with daggers fixed (a pipeline bug in every authored weapon clip, repaired on
+  load).
+- **Underwear and clothes as items.** No clothes in the creator. Underwear tops and bottoms
+  are separate, removable items in their own slots (`under_top`, `under_bottom`) under
+  `chest`, `legs` and `feet`; everyone starts in the cream linen set and with 1 gold. Six
+  underwear sets and eight pieces of cloth armour (the old clothes meshes).
+- **The first merchant**: Tilda Threadwell, Clothier, in the village. She sells all 20
+  wearables and buys anything for a quarter of its value. **Coins are EverQuest's**:
+  platinum, gold, silver, copper (10 to the next).
+- **Multiplayer fixes** from the owner's testing: others now see you swing, crouch and jump;
+  PvP melee works (both flagged) and is applied by the target's own LiveView; picking a
+  player no longer raycasts their skinned meshes (that froze the game on every swing at a
+  player); Ctrl toggles mouse-look both ways; Ctrl+A no longer selects the whole page; and
+  **Throw Stone is gone** (it was the old web-lobby test).
+
 **On the models volume (gitignored; synced only when the owner says):**
 
 - `Humans/` holds:
-  - `Male.glb` (v2), and `Female.glb` (MakeHuman, 2026-10-22), each with its `.json`;
+  - `Male.glb` (v2), and `Female.glb` (MakeHuman v3, 2026-10-23), each with its `.json`;
+  - `Wardrobe/`: the female's 36 packed design textures (`.webp`) and `icons/` for the 20
+    wearable items;
   - `Anims/`: the four animation packs (core and combat for each body, 143 clips a body);
   - `Hair/`: 23 male hair and 6 facial hair styles, 31 female hair styles, icons, `hair_manifest.json`;
   - `README.txt` and `CREDITS.md`.
@@ -87,6 +111,11 @@ so it can be rebuilt and changed.
 | 2026-10-22 | **No camera-smoothing option.** Remote-desktop jumps are repaired by `mouse-filter.ts`; a local mouse is untouched. |
 | 2026-10-21 | **Assets are ours or CC0.** Epic's content stays Unreal-only, and no paid UAL Pro/Source files from mirrors. **No DAZ-derived meshes**: the owner's two DAZ-based female files must not be used, so the female is built on MakeHuman (owner's choice, 2026-10-21). |
 | 2026-10-21 | The female should be **stunning**. She is editable in Blender (`RaysSpaceSim/SourceAssets/Characters/B8Human/B8_Female_MPFB.blend`) so the owner can sculpt her later. |
+| 2026-10-23 | **No clothes in character creation.** New characters start in **cream bikini underwear**. |
+| 2026-10-23 | **Underwear is equipment**: a top and a bottom, separate items, layered under clothes and armour, and removable. They are ordinary 3D gear: no content warnings around them. |
+| 2026-10-23 | **At least five underwear sets for sale from an NPC merchant.** The old clothes meshes become **cloth armour**. |
+| 2026-10-23 | **EverQuest currency**: platinum, gold, silver and copper. |
+| 2026-10-23 | **Throw Stone is removed**: it was only a test from the old web-lobby game. |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 
 ## 4. How it fits together
@@ -102,7 +131,8 @@ so it can be rebuilt and changed.
 - `Progression`.
 - `Mobs`: `Spawns`, the pure `Brain`, a cluster-wide `Zone` process under `:global`, and a
   `Keeper` on every node.
-- `Combat`: spells.
+- `Combat`: HP/MP, PvP flags, respawning (spells come later; Throw Stone is retired).
+- `Merchants`: the NPC traders (Tilda the clothier), their stock, reach and prices.
 - `Models`: the model list, `human_assets/0` and the versioned URLs.
 - `BaconWorldWeb.PlayLive`: select, the creator, the world. `game_events.ex` holds its fighting,
   looting and inventory events.
@@ -121,7 +151,9 @@ Characters are the hub's `game_characters` (games DB):
 - `character-controller.ts`, `controls-math.ts` and `mouse-filter.ts`: controls.
 - `anim-driver.ts`: four body channels, strafes, stances, swings with either hand (mirrored).
 - `game-world.ts` and `game-ui.ts`: fights, loot, inventory, the EverQuest-style windows.
-- `mobs-view.ts`, `nameplates.ts`, `items.ts`, `world-dressing.ts` (the village and its colliders).
+- `mobs-view.ts`, `npcs-view.ts` (merchants), `nameplates.ts`, `items.ts`, `world-dressing.ts`
+  (the village and its colliders).
+- `wardrobe.ts`: gear slots, what each worn item puts on the body, and the bone corrections.
 - `lobby-audio.ts`: sound.
 
 **Humans on the client** (`human-factory.ts`):
@@ -140,7 +172,16 @@ Characters are the hub's `game_characters` (games DB):
   keep looks saved with retired styles working. A style's scalp decal (`decal` extras) gets a
   polygon offset, and alpha-tested cards get alpha-to-coverage.
 - **Morphs.** Every mesh with morph targets (body, garments, hair, lashes, brows) takes the
-  same 13 weights from the look's sliders.
+  same 13 weights from the look's sliders. A morph that moves joints (`Shoulders_Broad`)
+  moves the bones too (`joint_offsets` in the manifest).
+- **Wardrobe** (female v3). Worn items come from the gear (`under_top`, `under_bottom`,
+  `chest`, `legs`, `feet`), not the look. Each is a garment mesh plus a design: a packed
+  texture (shade, trim, accent, cut-out) tinted with the item's three colours. The male shows
+  his built-in shorts for underwear until he gets the same treatment.
+- **After the animation** (`postAnimate`): the posture correction and relaxed fingers on
+  empty hands. Each bone starts from what the animation left (a bone no clip keyed this frame
+  still holds last frame's output, which once compounded 7 degrees a frame until she stood on
+  her head). Clips load through `fixForearmTwist` (see §7).
 
 ## 5. The humans and other art
 
@@ -158,21 +199,16 @@ README has every script, source and run order.
   - brows: MakeHuman's `eyebrow001` card;
   - rig: the B8 skeleton, with MakeHuman's game-engine weights;
   - 13 morphs.
-- **Female clothes**: seven MakeHuman CC0 garments fitted by their proxies, in the existing
-  outfit slots:
-
-  | Slot | Garment |
-  |---|---|
-  | Tee | crude T-shirt |
-  | Tank | camisole |
-  | Long sleeve | fisherman sweater |
-  | Shorts | jeans shorts |
-  | Pants | wool pants |
-  | Sneakers | cloth flats |
-  | Boots | heroine boots |
-
-  Each is pushed out of the skin and layered. Boots go under trousers, and trousers under
-  shirts.
+- **Female v3** (2026-10-23, `mhf_v3.py`, the Pipeline README's stage F): the fixes above,
+  and the **wardrobe**. Underwear (two top shapes and one bottom) and the new tank, shorts and
+  trousers are shells made from her own body, with one shape key per morph. Designs are
+  packed textures: six tops, six bottoms, plus the cloth pieces.
+- **Female clothes as items** (cloth armour): the tunic (crude T-shirt), blue-dyed tunic,
+  tank, wool sweater (fisherman sweater), trousers, shorts, cloth shoes and tall leather
+  boots (thigh-high). The tee, sweater, flats and boots are the MakeHuman CC0 garments;
+  boots go under trousers, trousers under shirts.
+- **Underwear sets**: linen (cream, the starter), athletic, rose lace, coral, polka dot and
+  emerald.
 - **Female hair**: 31 styles from MakeHuman's system assets and the community Hair 01 pack,
   all CC0. Each has a soft scalp decal so the hairline isn't a hard edge, and the morphs.
 - **Credits**: `priv/static/models/Humans/CREDITS.md` (models volume) and the site's
@@ -182,12 +218,15 @@ README has every script, source and run order.
 (system assets), MakeHuman's community asset packs, Quaternius UAL1+2, and Blender Studio's
 human base meshes.
 
-**Checking how it looks.** The cloud session used a headless harness:
-- it bundles the plugin's client with esbuild against a static copy of the models;
-- Playwright with SwiftShader loads it and screenshots the creator and select screens.
+**Checking how it looks.** The cloud sessions use a headless harness, not in the repo (on
+the development PC it sits in `C:\Bacon8\tmp\b8work\harness`):
 
-It isn't in the repo. To rebuild it: serve a page that mounts `WorldCharacterUIScene` with
-`data-human-assets`, then drive `window.W.hook.stage` (`setAppearance`, `setFraming`, `yaw`).
+- `harness.ts` builds a human with the real client code (`HumanFactory`, the animator, the
+  wardrobe), poses it and renders one frame, driven by URL parameters (`gear`, `main`,
+  `off`, `clip`, `t`, `view`, `yaw`, `shape`). esbuild bundles it in a throwaway node
+  container; a `python:3.12-slim` container serves it beside the models.
+- Playwright (the Docker MCP browser, at `host.docker.internal`) loads it. Copy the canvas
+  into an `<img>` with `toDataURL` before screenshotting.
 
 ## 6. Working rules (from the owner)
 
@@ -233,11 +272,24 @@ one pipeline.
 
 **Game (from BACON8.md's debt list, moved here):**
 
-- The skill tree itself (Q E F Z X), armour, a merchant for junk, and groups with shared loot.
-- Remote players' crouch and airborne state aren't sent.
+- The skill tree itself (Q E F Z X), armour beyond cloth, more merchants, and groups with
+  shared loot.
+- **Rebuild the animation packs** (`build_anims.py`, `mhf_anims.py`, `deliver_female.py`) to
+  ship the fixed forearm twist; until then the client repairs the tracks on load.
+- The female's **hair** GLBs weren't re-fitted for the joint offsets (only `Shoulders_Broad`
+  moves joints, so hair is unaffected for now).
+- **The male**: underwear on him is interim (his built-in shorts, tinted; nothing for the
+  top). He needs the v3 wardrobe after the MakeHuman rebuild.
+- Existing characters lose their old creator outfit and get the linen set and 1 gold at their
+  next login.
+- Throw Stone's spell rows stay in the games DB (retired in code). A migration to delete them
+  needs the owner's OK.
+- PvP reach is checked against Presence positions (up to 100 ms old), with 0.8 m slack.
+- Ctrl+W still closes the tab: browsers don't let pages intercept it.
 - The village's colliders are client-side only (the server checks speed, not walls).
   Creatures don't collide with anything.
-- Creature hits write the player's HP to the games DB on every hit; batch them if fights get big.
+- Creature and PvP hits write the player's HP to the games DB on every hit; batch them if
+  fights get big.
 - `/models` serves `.glb.gz` only when present and newer than the `.glb`: make them whenever
   models change (`gzip -k -9`).
 - The client has a few pre-existing TypeScript errors under `npm run type-check` (implicit

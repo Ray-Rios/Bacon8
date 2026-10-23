@@ -1,16 +1,20 @@
 // Bacon World's in-game windows, EverQuest style: the player window (name, HP, mana,
 // experience), the target window (con colour), the hotbar (left and right hand on
-// the mouse buttons, Q E F Z X for the special attacks the skill tree will give,
-// 1 for Throw Stone), the inventory (I: two hands and 24 bag slots; click an item to
-// pick it up on the cursor, click a slot to put it down or swap; right-click to
-// equip or unequip) and the loot window. Plain DOM with its own scoped CSS (.bwg).
+// the mouse buttons, Q E F Z X for the special attacks the skill tree will give),
+// the inventory (I: two hands, what is worn and 24 bag slots; click
+// an item to pick it up on the cursor, click a slot to put it down or swap; right-click
+// to equip or unequip), the loot window and the merchant window (buy from the list;
+// put an item from your bags on the sell slot to see the offer). Plain DOM with its
+// own scoped CSS (.bwg).
 import { describe, iconUrl, item, money } from './items';
 
 export interface InvItem { slot: string; item_id: string; quantity: number }
 export interface Inventory { items: InvItem[]; coins: number; bag_slots: number }
 export interface LootItem { index: number; item_id: string; quantity: number }
 export interface PlayerInfo { name: string; level: number; hp: number; maxHp: number; mp: number; maxMp: number; xp: number; xpNext: number; pvp: boolean; sound: boolean }
-export interface TargetInfo { name: string; color: string; level?: number; hpPct: number; corpse?: boolean; kind: 'mob' | 'player' }
+export interface TargetInfo { name: string; color: string; level?: number; hpPct: number; corpse?: boolean; kind: 'mob' | 'player' | 'npc'; sub?: string }
+export interface MerchantInfo { id: string; name: string; title?: string }
+export interface StockItem { item_id: string; price: number }
 
 export interface GameUICallbacks {
   move(from: string, to: string): void;
@@ -20,6 +24,9 @@ export interface GameUICallbacks {
   lootTake(index: number): void;
   lootAll(): void;
   lootClose(): void;
+  buy(itemId: string): void;
+  sell(slot: string): void;
+  merchantClose(): void;
   cast(slug: string): void;
   pvp(): void;
   sound(): void;
@@ -59,9 +66,9 @@ const CSS = `
 .bwg .s.hov:hover,.bwg .s.drop:hover{box-shadow:inset 0 0 0 1px #c9a65e;cursor:pointer}
 .bwg .s .lb{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:8px;color:#7d6c4f;text-transform:uppercase;letter-spacing:.06em;pointer-events:none}
 .bwg .s.off{opacity:.45}
-.bwg .inv{right:16px;top:70px;width:604px;max-width:calc(100% - 24px);display:none}
+.bwg .inv{right:16px;top:70px;width:662px;max-width:calc(100% - 24px);display:none}
 .bwg .inv .body{display:flex;gap:12px;padding:10px}
-.bwg .eq{display:grid;grid-template-columns:repeat(2,52px);gap:6px;align-content:start}
+.bwg .eq{display:grid;grid-template-columns:repeat(3,52px);gap:6px;align-content:start}
 .bwg .eq .s{width:52px;height:52px}
 .bwg .stats{flex:1;min-width:120px;font-size:11px;color:#cdbf9f}
 .bwg .stats div{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(109,91,60,.25)}
@@ -71,6 +78,17 @@ const CSS = `
 .bwg .loot{left:50%;top:38%;transform:translate(-120%,-50%);display:none;width:262px}
 .bwg .loot .grid{display:grid;grid-template-columns:repeat(5,44px);gap:4px;padding:10px}
 .bwg .loot .foot{padding:0 10px 10px}
+.bwg .mer{left:16px;top:70px;width:330px;max-width:calc(100% - 24px);display:none}
+.bwg .mer .list{max-height:330px;overflow-y:auto;padding:6px 8px;display:flex;flex-direction:column;gap:3px}
+.bwg .mer .row{display:flex;align-items:center;gap:8px;padding:3px 4px;border:1px solid transparent;border-radius:3px;cursor:pointer}
+.bwg .mer .row:hover{border-color:#4b3f2b;background:rgba(201,166,94,.06)}
+.bwg .mer .row.sel{border-color:#c9a65e;background:rgba(201,166,94,.12)}
+.bwg .mer .row .s{width:36px;height:36px;flex:none}.bwg .mer .row .s img{width:32px;height:32px}
+.bwg .mer .row .nm{flex:1;font-size:12px}.bwg .mer .row .pr{color:#f0d77a;font-size:11px;white-space:nowrap}
+.bwg .mer .foot{align-items:center}
+.bwg .mer .sellbox{display:flex;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid #4b3f2b}
+.bwg .mer .sellbox .msg2{flex:1;font-size:11px;color:#bfae88}
+.bwg .mer .coins{color:#f0d77a;font-size:11px;padding:0 10px 6px}
 .bwg .tip{position:fixed;display:none;pointer-events:none;max-width:240px;padding:6px 8px;background:rgba(10,9,8,.96);border:1px solid #6d5b3c;border-radius:3px;font-size:11px;color:#d8ccb0;z-index:10;box-shadow:0 6px 14px rgba(0,0,0,.6)}
 .bwg .tip b{display:block;color:#f0d77a;font-size:12px;margin-bottom:2px}
 .bwg .cur{position:fixed;width:40px;height:40px;pointer-events:none;display:none;z-index:11;transform:translate(-50%,-50%)}
@@ -80,6 +98,12 @@ const CSS = `
 `;
 
 type Attrs = Record<string, any>;
+/** What a merchant pays for one of an item (BaconWorld.Merchants.buy_price/1: a quarter, at least a copper). */
+export function sellPrice(id: string): number {
+  const v = item(id)?.value || 0;
+  return v > 0 ? Math.max(1, Math.trunc(v * 0.25)) : 0;
+}
+
 function h(tag: string, attrs: Attrs = {}, ...kids: Array<Node | string | null | undefined | false>): HTMLElement {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -94,7 +118,9 @@ function h(tag: string, attrs: Attrs = {}, ...kids: Array<Node | string | null |
 }
 
 const HAND_SLOTS: Array<[string, string]> = [['main', 'Primary'], ['off', 'Secondary']];
-const FUTURE_SLOTS = ['Head', 'Chest', 'Arms', 'Hands', 'Legs', 'Feet'];
+const WORN_SLOTS: Array<[string, string]> = [['chest', 'Chest'], ['legs', 'Legs'], ['feet', 'Feet'], ['under_top', 'Undershirt'], ['under_bottom', 'Underwear']];
+const FUTURE_SLOTS = ['Head', 'Arms', 'Hands'];
+const EQUIP_SLOTS = new Set(['main', 'off', ...WORN_SLOTS.map(([s]) => s)]);
 const SPECIAL_KEYS = ['Q', 'E', 'F', 'Z', 'X'];
 
 export class GameUI {
@@ -106,6 +132,11 @@ export class GameUI {
   private hotbar: HTMLElement;
   private inv: HTMLElement;
   private loot: HTMLElement;
+  private mer: HTMLElement;
+  private merchant: MerchantInfo | null = null;
+  private stock: StockItem[] = [];
+  private stockSel: string | null = null;
+  private selling: InvItem | null = null;
   private tip: HTMLElement;
   private cursorEl: HTMLElement;
   private msgEl: HTMLElement;
@@ -127,10 +158,11 @@ export class GameUI {
     this.hotbar = h('div', { class: 'w hb' });
     this.inv = h('div', { class: 'w inv' });
     this.loot = h('div', { class: 'w loot' });
+    this.mer = h('div', { class: 'w mer' });
     this.tip = h('div', { class: 'tip' });
     this.cursorEl = h('div', { class: 'cur' });
     this.msgEl = h('div', { class: 'msg' });
-    this.root.append(this.player, this.target, this.hotbar, this.inv, this.loot, this.msgEl, this.tip, this.cursorEl);
+    this.root.append(this.player, this.target, this.hotbar, this.inv, this.loot, this.mer, this.msgEl, this.tip, this.cursorEl);
     host.appendChild(this.root);
     window.addEventListener('mousemove', this.onMouseMove);
     // Clicks on the game world while holding an item put it back (EverQuest
@@ -174,7 +206,8 @@ export class GameUI {
     this.target.replaceChildren(
       h('div', { class: 'nm', style: { color: t.color } }, t.corpse ? `${t.name}'s corpse` : t.name),
       h('div', { class: 'in' },
-        t.corpse ? null : h('div', { class: 'bar hp' }, h('i', { style: { width: `${Math.round(t.hpPct)}%` } }), h('span', {}, `${Math.round(t.hpPct)}%`)),
+        t.sub ? h('div', { style: { textAlign: 'center', fontSize: '10px', color: '#a8997a' } }, t.sub) : null,
+        t.corpse || t.kind === 'npc' ? null : h('div', { class: 'bar hp' }, h('i', { style: { width: `${Math.round(t.hpPct)}%` } }), h('span', {}, `${Math.round(t.hpPct)}%`)),
         t.level ? h('div', { style: { textAlign: 'center', fontSize: '10px', color: '#a8997a', marginTop: '2px' } }, `Level ${t.level}`) : null));
   }
 
@@ -201,20 +234,15 @@ export class GameUI {
       this.tipFor(el, () => ['Special attack', 'Earned through the skill tree as you level up.']);
       return el;
     });
-    const stone = h('div', { class: 's hov', 'data-hot': 'throw_stone', onclick: () => this.cb.cast('throw_stone') },
-      h('div', { style: { fontSize: '20px' } }, '🪨'), h('span', { class: 'k' }, '1'), h('div', { class: 'cd' }));
-    this.tipFor(stone, () => ['Throw Stone', 'Hurl a stone at your target (players who are both flagged for PvP).', 'Cost: 1 mana']);
     this.hotbar.replaceChildren(
       h('div', { class: 'slots' },
         hand('L', twoHanded ? hands.right : hands.left, 'left', twoHanded ? 'Left mouse: quick swing' : 'Left mouse: left hand'),
         hand('R', hands.right, 'right', twoHanded ? 'Right mouse: heavy swing' : 'Right mouse: right hand'),
         h('div', { class: 'sep' }),
-        ...specials,
-        h('div', { class: 'sep' }),
-        stone));
+        ...specials));
   }
 
-  /** Shows a swing or cast cooling down on its slot ('left', 'right', 'throw_stone'). */
+  /** Shows a swing or cast cooling down on its slot ('left', 'right', or a spell's slug). */
   cooldown(slot: string, ms: number) {
     const cd = this.hotbar.querySelector(`[data-hot="${slot}"] .cd`) as HTMLElement | null;
     if (!cd || ms <= 0) return;
@@ -238,7 +266,9 @@ export class GameUI {
     this.inventory = inv;
     // Whatever was on the cursor has been put somewhere by the server.
     this.setHeld(null);
+    if (this.selling && !inv.items.some((i) => i.slot === this.selling!.slot && i.item_id === this.selling!.item_id)) this.selling = null;
     if (this.inv.style.display === 'block') this.renderInventory();
+    if (this.isMerchantOpen()) this.renderMerchant();
   }
 
   isInventoryOpen(): boolean {
@@ -274,23 +304,23 @@ export class GameUI {
       el.oncontextmenu = (e) => {
         e.preventDefault();
         if (this.held || !it) return;
-        if (slot === 'main' || slot === 'off') this.cb.unequip(slot);
+        if (EQUIP_SLOTS.has(slot)) this.cb.unequip(slot);
         else if (item(it.item_id)?.slots.length) this.cb.equip(slot);
       };
-      if (it) this.tipFor(el, () => [item(it.item_id)?.name || it.item_id, ...describe(it.item_id), slot.startsWith('bag') && item(it.item_id)?.slots.length ? 'Right-click to equip' : slot.startsWith('bag') ? '' : 'Right-click to unequip']);
+      if (it) {
+        const sellNote = () => (this.isMerchantOpen() && slot.startsWith('bag') ? `Sells for ${money(sellPrice(it.item_id) * it.quantity)}` : '');
+        this.tipFor(el, () => [item(it.item_id)?.name || it.item_id, ...describe(it.item_id), slot.startsWith('bag') && item(it.item_id)?.slots.length ? 'Right-click to equip' : slot.startsWith('bag') ? '' : 'Right-click to unequip', sellNote()]);
+      }
       return el;
     };
     const eq = h('div', { class: 'eq' },
       ...HAND_SLOTS.map(([s, label]) => slotEl(s, label)),
-      ...FUTURE_SLOTS.map((label) => {
-        const el = h('div', { class: 's off' }, h('span', { class: 'lb' }, label));
-        this.tipFor(el, () => [label, 'Armour comes later.']);
-        return el;
-      }));
+      ...FUTURE_SLOTS.slice(0, 1).map((label) => this.futureSlot(label)),
+      ...WORN_SLOTS.map(([s, label]) => slotEl(s, label)),
+      ...FUTURE_SLOTS.slice(1).map((label) => this.futureSlot(label)));
     const bags = h('div', { class: 'bags' }, ...Array.from({ length: this.inventory.bag_slots || 24 }, (_, i) => slotEl(`bag${i}`)));
-    const main = item(slots.get('main')?.item_id);
-    const off = item(slots.get('off')?.item_id);
-    const ac = (off?.ac || 0) + (main?.ac || 0);
+    let ac = 0;
+    for (const sl of EQUIP_SLOTS) ac += item(slots.get(sl)?.item_id)?.ac || 0;
     const p = this.info;
     const stats = h('div', { class: 'stats' },
       h('div', {}, h('span', {}, 'Level'), h('span', {}, String(p?.level ?? 1))),
@@ -304,6 +334,12 @@ export class GameUI {
       h('div', { class: 't' }, h('b', {}, 'Inventory'), h('span', { class: 'x', onclick: () => this.toggleInventory(false) }, '✕')),
       h('div', { class: 'body' }, eq, stats, bags),
       h('div', { class: 'foot' }, destroy, h('span', { style: { fontSize: '10px', color: '#8d7d5e', alignSelf: 'center' } }, 'Click to pick up · right-click to equip'), h('button', { class: 'btn', onclick: () => this.toggleInventory(false) }, 'Done')));
+  }
+
+  private futureSlot(label: string): HTMLElement {
+    const el = h('div', { class: 's off' }, h('span', { class: 'lb' }, label));
+    this.tipFor(el, () => [label, 'Armour for this comes later.']);
+    return el;
   }
 
   private clickSlot(slot: string) {
@@ -392,6 +428,91 @@ export class GameUI {
         h('button', { class: 'btn', onclick: () => this.closeLoot() }, 'Done')));
   }
 
+  // ---------------------------------------------------------------- merchant
+
+  /** Opens a merchant's window (and the inventory beside it, to sell from). */
+  openMerchant(info: MerchantInfo, stock: StockItem[]) {
+    this.merchant = info;
+    this.stock = stock;
+    this.stockSel = null;
+    this.selling = null;
+    this.mer.style.display = 'block';
+    this.renderMerchant();
+    if (!this.isInventoryOpen()) this.toggleInventory(true);
+    this.cb.windows(true);
+  }
+
+  isMerchantOpen(): boolean {
+    return this.mer.style.display === 'block';
+  }
+
+  merchantId(): string | null {
+    return this.isMerchantOpen() ? this.merchant?.id || null : null;
+  }
+
+  closeMerchant(notify = true) {
+    if (!this.isMerchantOpen()) return;
+    this.mer.style.display = 'none';
+    this.merchant = null;
+    this.selling = null;
+    this.hideTip();
+    if (notify) this.cb.merchantClose();
+    this.cb.windows(this.anyOpen());
+  }
+
+  private renderMerchant() {
+    if (!this.merchant) return;
+    this.hideTip();
+    const m = this.merchant;
+    const rows = this.stock.map((s) => {
+      const it = item(s.item_id);
+      const icon = iconUrl(s.item_id);
+      const row = h('div', { class: 'row' + (this.stockSel === s.item_id ? ' sel' : '') },
+        h('div', { class: 's' }, icon ? h('img', { src: icon, alt: '' }) : null),
+        h('span', { class: 'nm' }, it?.name || s.item_id),
+        h('span', { class: 'pr' }, money(s.price)));
+      row.onclick = () => {
+        this.stockSel = s.item_id;
+        this.renderMerchant();
+      };
+      row.ondblclick = () => this.cb.buy(s.item_id);
+      this.tipFor(row, () => [it?.name || s.item_id, ...describe(s.item_id), `Price: ${money(s.price)}`, 'Double-click to buy']);
+      return row;
+    });
+    const sel = this.stockSel ? this.stock.find((x) => x.item_id === this.stockSel) : null;
+    const afford = !!sel && sel.price <= (this.inventory.coins || 0);
+    const buy = h('button', { class: 'btn', disabled: !afford, onclick: () => sel && this.cb.buy(sel.item_id) }, sel ? `Buy (${money(sel.price)})` : 'Buy') as HTMLButtonElement;
+    // the sell slot: drop an item from your bags on it to see what it fetches
+    const sIt = this.selling;
+    const sellSlot = h('div', { class: 's drop' }, sIt && iconUrl(sIt.item_id) ? h('img', { src: iconUrl(sIt.item_id)!, alt: '' }) : h('span', { class: 'lb' }, 'Sell'));
+    sellSlot.onclick = (e) => {
+      e.stopPropagation();
+      if (this.held) {
+        if (!this.held.slot.startsWith('bag')) {
+          this.announce('Take it off before you sell it.', 1800);
+        } else {
+          this.selling = this.held;
+          this.setHeld(null);
+        }
+        this.renderMerchant();
+      } else if (this.selling) {
+        this.selling = null;
+        this.renderMerchant();
+      }
+    };
+    const offer = sIt ? sellPrice(sIt.item_id) * sIt.quantity : 0;
+    const msg = sIt
+      ? offer > 0 ? `${m.name} offers ${money(offer)} for ${sIt.quantity > 1 ? `${sIt.quantity} ` : ''}${item(sIt.item_id)?.name || sIt.item_id}.` : `${m.name} isn't interested in that.`
+      : 'Pick up an item from your bags and drop it here to sell it.';
+    const sell = h('button', { class: 'btn', disabled: !sIt || offer <= 0, onclick: () => { if (sIt) this.cb.sell(sIt.slot); this.selling = null; } }, 'Sell') as HTMLButtonElement;
+    this.mer.replaceChildren(
+      h('div', { class: 't' }, h('b', {}, m.name), h('span', {}, m.title || 'Merchant'), h('span', { class: 'x', onclick: () => this.closeMerchant() }, '✕')),
+      h('div', { class: 'list' }, ...rows),
+      h('div', { class: 'coins' }, `Your money: ${money(this.inventory.coins)}`),
+      h('div', { class: 'sellbox' }, sellSlot, h('span', { class: 'msg2' }, msg), sell),
+      h('div', { class: 'foot' }, buy, h('button', { class: 'btn', onclick: () => this.closeMerchant() }, 'Done')));
+  }
+
   // ---------------------------------------------------------------- misc
 
   /** Closes the topmost window. False when none was open (Esc then opens the menu). */
@@ -404,6 +525,10 @@ export class GameUI {
       this.closeLoot();
       return true;
     }
+    if (this.isMerchantOpen()) {
+      this.closeMerchant();
+      return true;
+    }
     if (this.isInventoryOpen()) {
       this.toggleInventory(false);
       return true;
@@ -412,7 +537,7 @@ export class GameUI {
   }
 
   anyOpen(): boolean {
-    return this.isInventoryOpen() || this.isLootOpen();
+    return this.isInventoryOpen() || this.isLootOpen() || this.isMerchantOpen();
   }
 
   /** A big centred message for a moment ("You have gained a level!"). */

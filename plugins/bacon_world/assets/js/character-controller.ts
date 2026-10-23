@@ -11,7 +11,7 @@
 //                         The camera turns and the character keeps facing the
 //                         camera's direction: W runs, S backpedals (slower), A/D
 //                         strafe, diagonals turn the body 45 degrees.
-//   Ctrl                  free the cursor
+//   Ctrl                  free the cursor; again, mouse-look on again
 //   Esc                   free the cursor and ask the scene for its game menu
 //   WASD / arrows         move relative to the camera; Shift sprints, C crouches,
 //                         Space jumps; the wheel zooms
@@ -185,9 +185,18 @@ export class CharacterController {
     if (isEditable(event.target)) return;
 
     if (event.code === 'ControlLeft' || event.code === 'ControlRight') {
-      this.releasePointerLock();
+      // A toggle (held, the key repeats: only the first press counts).
+      if (event.repeat) return;
+      if (this.isPointerLocked()) this.releasePointerLock();
+      else {
+        window.getSelection?.()?.removeAllRanges();
+        this.requestPointerLock();
+      }
       return;
     }
+    // Ctrl/Cmd with a movement key is a browser shortcut (Ctrl+A selects the page,
+    // Ctrl+S and Ctrl+D open dialogs): keep it in the game.
+    if ((event.ctrlKey || event.metaKey) && MOVEMENT_CODES.has(event.code)) event.preventDefault();
     if (event.code === 'Escape') {
       this.releasePointerLock();
       this.options.onEscape?.('key');

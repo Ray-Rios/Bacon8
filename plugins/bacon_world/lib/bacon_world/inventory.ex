@@ -1,8 +1,10 @@
 defmodule BaconWorld.Inventory do
   @moduledoc """
-  What a character carries, EverQuest style: two equipment slots, `"main"` (right
-  hand) and `"off"` (left hand), and 24 bag slots `"bag0"`..`"bag23"`. One
-  `bacon_world_items` row per occupied slot; coins are `stats["coins"]` (copper).
+  What a character carries, EverQuest style: the hands, `"main"` (right) and `"off"`
+  (left); what it wears, `"under_top"`, `"under_bottom"`, `"chest"`, `"legs"` and
+  `"feet"`; and 24 bag slots `"bag0"`..`"bag23"`. One `bacon_world_items` row per
+  occupied slot; coins are `stats["coins"]` (copper: 10 copper make a silver, 10 silver
+  a gold, 10 gold a platinum).
 
   Moving an item onto an occupied slot swaps the two; the same stackable item
   merges instead. Equipping follows the item's `slots` and `hands`
@@ -19,7 +21,9 @@ defmodule BaconWorld.Inventory do
   alias BaconWorld.{InventoryItem, Items, World}
 
   @bag_slots 24
-  @equipment ~w(main off)
+  @hands ~w(main off)
+  @equipment ~w(main off under_top under_bottom chest legs feet)
+  @starter_purse 100
 
   def bag_slots, do: @bag_slots
   def equipment_slots, do: @equipment
@@ -38,17 +42,21 @@ defmodule BaconWorld.Inventory do
     |> Enum.sort_by(&slot_order/1)
   end
 
-  defp slot_order(%{slot: "main"}), do: -2
-  defp slot_order(%{slot: "off"}), do: -1
   defp slot_order(%{slot: "bag" <> n}), do: String.to_integer(n)
+  defp slot_order(%{slot: slot}) do
+    case Enum.find_index(@equipment, &(&1 == slot)) do
+      nil -> 1000
+      i -> i - length(@equipment)
+    end
+  end
 
-  @doc "The catalogue items in the hands: `%{\"main\" => item | nil, \"off\" => item | nil}`."
+  @doc "The catalogue items equipped, by slot (`\"main\"`, `\"off\"`, `\"chest\"`, ...; nil when empty)."
   def equipment(character_id) do
     rows = from(i in InventoryItem, where: i.character_id == ^character_id and i.slot in ^@equipment) |> GamesRepo.all()
     Map.new(@equipment, fn slot -> {slot, Enum.find_value(rows, &(&1.slot == slot && Items.get(&1.item_id)))} end)
   end
 
-  @doc "Item ids in the hands, for other players to draw: `%{\"main\" => id | nil, \"off\" => id | nil}`."
+  @doc "Item ids equipped, for other players to draw: `%{\"main\" => id | nil, \"chest\" => id | nil, ...}`."
   def gear_ids(equipment), do: Map.new(equipment, fn {slot, item} -> {slot, item && item.id} end)
 
   @doc "What the inventory window shows."
@@ -213,6 +221,10 @@ defmodule BaconWorld.Inventory do
   # May `item` sit in `slot`, given what else is equipped (`others`, by slot)?
   defp check_fit(_item, "bag" <> _, _others), do: :ok
 
+  defp check_fit(item, slot, _others) when slot not in @hands do
+    if Items.equippable?(item, slot), do: :ok, else: {:error, :cannot_equip_there}
+  end
+
   defp check_fit(item, slot, others) do
     main = others["main"] && Items.get(others["main"].item_id)
 
@@ -239,6 +251,10 @@ defmodule BaconWorld.Inventory do
       off_free = is_nil(by_slot["off"])
 
       cond do
+        Items.wearable?(item) ->
+          # worn things go to their own slot, swapping with what is there
+          move(character_id, from, hd(item.slots))
+
         Items.equippable?(item, "main") and Items.two_handed?(item) ->
           with {:ok, _} <- if(off_free, do: {:ok, rows}, else: move(character_id, "off", first_free(rows) || from)) do
             move(character_id, from, "main")
@@ -279,6 +295,23 @@ defmodule BaconWorld.Inventory do
 
   def unequip(_, _), do: {:error, :invalid_slot}
 
+  @doc """
+  Takes what is in a bag slot out of the inventory (selling it): `{:ok, %{item_id,
+  quantity}}`, or `{:error, :empty_slot}` / `{:error, :invalid_slot}` (only bag slots).
+  """
+  def remove(character_id, "bag" <> _ = slot) do
+    case GamesRepo.one(from(i in InventoryItem, where: i.character_id == ^character_id and i.slot == ^slot)) do
+      nil ->
+        {:error, :empty_slot}
+
+      row ->
+        GamesRepo.delete!(row)
+        {:ok, %{item_id: row.item_id, quantity: row.quantity}}
+    end
+  end
+
+  def remove(_character_id, _slot), do: {:error, :invalid_slot}
+
   @doc "Destroys what is in a slot (EverQuest's Destroy)."
   def destroy(character_id, slot) do
     {n, _} = from(i in InventoryItem, where: i.character_id == ^character_id and i.slot == ^slot) |> GamesRepo.delete_all()
@@ -305,6 +338,42 @@ defmodule BaconWorld.Inventory do
     else
       _ -> :already
     end
+  end
+
+  @doc """
+  Dresses a character in the starter underwear once (flag `stats["starter_wear"]`), and
+  gives it a starting purse once (`stats["starter_purse"]`, #{@starter_purse} copper).
+  Characters made before clothes were items get both at their next login.
+  """
+  def grant_starter_wear(character_id) do
+    with {:ok, c} <- World.fetch_character(character_id) do
+      unless World.stat(c, "starter_wear") do
+        World.merge_stats(World.by_id_query(c.id), %{"starter_wear" => true})
+        for {item_id, slot} <- Items.starter_wear(), do: place(c.id, item_id, slot)
+      end
+
+      unless World.stat(c, "starter_purse") do
+        World.merge_stats(World.by_id_query(c.id), %{"starter_purse" => true})
+        add_coins(c.id, @starter_purse)
+      end
+
+      :ok
+    end
+  end
+
+  @doc "What a character that hasn't logged in since clothes became items will be wearing."
+  def starter_gear, do: Map.new(Items.starter_wear(), fn {id, slot} -> {slot, id} end)
+
+  @doc "Equipped item ids for several characters at once: `%{character_id => gear}` (select screen)."
+  def gear_for(character_ids) when is_list(character_ids) do
+    rows =
+      from(i in InventoryItem, where: i.character_id in ^character_ids and i.slot in ^@equipment, select: {i.character_id, i.slot, i.item_id})
+      |> GamesRepo.all()
+
+    Map.new(character_ids, fn id ->
+      worn = for {^id, slot, item_id} <- rows, Items.get(item_id), into: %{}, do: {slot, item_id}
+      {id, Map.new(@equipment, &{&1, worn[&1]})}
+    end)
   end
 
   defp place(character_id, item_id, slot) do

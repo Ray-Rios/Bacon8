@@ -1,6 +1,11 @@
 // Builds Bacon8 humans from an Appearance: the body GLB (skeleton, body, garments, eyes,
 // brows, lashes, 20 clips), hair and facial hair GLBs bound to the same bones, morph
 // targets for the shape sliders, tinted materials, and body regions hidden under clothes.
+// What it wears comes from its gear (setWorn, wardrobe.ts), not from the look.
+//
+// On top of the animation (postAnimate, after the mixer): the bones some morphs move
+// (Shoulders_Broad moves the arms), a relaxed hand when a hand is empty, and the body's
+// posture correction (the manifest's "posture": the female's pelvis tilted back a little).
 //
 // Files (served from the models volume, see BaconWorld.Models.human_assets/0):
 //   /models/Humans/Male.glb, Female.glb            bodies (meshopt-compressed)
@@ -17,8 +22,49 @@ import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from '../../../../assets/js
 import { Appearance, Body, browColor, morphWeights, normalizeAppearance } from './appearance';
 import { UNITS_PER_METRE } from './controls-math';
 import { modelUrl } from './asset-url';
+import { item as catalogItem } from './items';
+import {
+  Gear, KEEP_TRANSLATION, WornGarment, approach, boneOffsets, designFiles, gearKey, hiddenFor, relaxedCurl, wornGarments,
+} from './wardrobe';
 
 export const HUMANS_BASE = '/models/Humans';
+
+/**
+ * The shipped animation packs' forearm twist bones are wrong in many clips (every
+ * authored weapon clip, a few library ones): the pipeline halved the hand's roll without
+ * wrapping it, so a hand turned -44 degrees put its twist bone at +158 and the forearm
+ * wrung like a towel (most visibly holding daggers). A twist bone holds about half the
+ * hand's roll, at most 90 degrees (the library clips' retarget gives it up to 117), so a
+ * track that goes past 120 is rebuilt from the hand's track as half its wrapped roll.
+ * Fixed in the pipeline too (b8_anim.twist_forearm); harmless once the packs are rebuilt.
+ */
+export function fixForearmTwist(clips: THREE.AnimationClip[]): THREE.AnimationClip[] {
+  const LIMIT = (120 * Math.PI) / 180;
+  const roll = (y: number, w: number) => {
+    const a = 2 * Math.atan2(y, w);
+    return a > Math.PI ? a - 2 * Math.PI : a < -Math.PI ? a + 2 * Math.PI : a;
+  };
+  for (const c of clips) {
+    for (const side of ['l', 'r']) {
+      const ti = c.tracks.findIndex((t) => t.name === `lowerarm_twist_01_${side}.quaternion`);
+      const hand = c.tracks.find((t) => t.name === `hand_${side}.quaternion`);
+      if (ti < 0 || !hand) continue;
+      const tv = c.tracks[ti].values;
+      let bad = false;
+      for (let i = 0; i < tv.length && !bad; i += 4) bad = Math.abs(roll(tv[i + 1], tv[i + 3])) > LIMIT;
+      if (!bad) continue;
+      const hv = hand.values;
+      const out = new Float32Array(hv.length);
+      for (let i = 0; i < hv.length; i += 4) {
+        const half = roll(hv[i + 1], hv[i + 3]) * 0.5;
+        out[i + 1] = Math.sin(half / 2);
+        out[i + 3] = Math.cos(half / 2);
+      }
+      c.tracks[ti] = new THREE.QuaternionKeyframeTrack(c.tracks[ti].name, Array.from(hand.times), Array.from(out));
+    }
+  }
+  return clips;
+}
 
 export interface StyleEntry {
   id: string;
@@ -45,6 +91,21 @@ interface BodyAsset {
 
 const TAG: Record<Body, 'Male' | 'Female'> = { male: 'Male', female: 'Female' };
 
+/**
+ * The clips key every bone's translation at its rest value. Only the root, the pelvis and the
+ * weapon grips really move; the rest are dropped, so the bones the morphs move (and the
+ * posture correction) aren't put back every frame.
+ */
+export function stripTranslations(clips: THREE.AnimationClip[]): THREE.AnimationClip[] {
+  for (const c of clips) {
+    c.tracks = c.tracks.filter((t) => {
+      const dot = t.name.lastIndexOf('.');
+      return t.name.slice(dot + 1) !== 'position' || KEEP_TRANSLATION.has(t.name.slice(0, dot));
+    });
+  }
+  return clips;
+}
+
 // Region ids hidden under each garment, used when the manifest isn't available.
 const DEFAULT_HIDES: Record<string, number[]> = {
   Top_Tee: [1, 2, 4], Top_Tank: [2], Top_LongSleeve: [1, 2, 4, 5, 6],
@@ -58,6 +119,7 @@ export class HumanFactory {
   private parts = new Map<string, Promise<THREE.Object3D | null>>();
   private packs = new Map<string, Promise<THREE.AnimationClip[]>>();
   private filtered = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
+  private textures = new Map<string, Promise<THREE.Texture | null>>();
   assets: HumanAssets;
 
   constructor(assets: HumanAssets = {}) {
@@ -99,7 +161,7 @@ export class HumanFactory {
         return {
           tag,
           scene,
-          clips: gltf.animations || [],
+          clips: fixForearmTwist(stripTranslations(gltf.animations || [])),
           manifest: this.assets.bodies?.[tag] || null,
           bodyGeo: bodyMesh ? (bodyMesh.geometry as THREE.BufferGeometry) : null,
         } as BodyAsset;
@@ -121,7 +183,7 @@ export class HumanFactory {
     if (!p) {
       const one = (pack: string) =>
         this.load(`${HUMANS_BASE}/Anims/B8_${tag}_Anims_${pack}.glb`)
-          .then((g: any) => (g.animations || []) as THREE.AnimationClip[])
+          .then((g: any) => fixForearmTwist(stripTranslations((g.animations || []) as THREE.AnimationClip[])))
           .catch((err) => {
             console.warn('[humans] animation pack failed to load', tag, pack, err);
             return [] as THREE.AnimationClip[];
@@ -141,6 +203,31 @@ export class HumanFactory {
         return null;
       });
       this.parts.set(file, p);
+    }
+    return p;
+  }
+
+  /** A wardrobe texture (packed data: no colour space, glTF's UV orientation), loaded once. */
+  texture(rel: string): Promise<THREE.Texture | null> {
+    let p = this.textures.get(rel);
+    if (!p) {
+      p = new Promise((resolve) => {
+        new THREE.TextureLoader().load(
+          modelUrl(`${HUMANS_BASE}/${rel}`),
+          (t) => {
+            t.flipY = false;
+            t.colorSpace = THREE.NoColorSpace;
+            t.anisotropy = 4;
+            resolve(t);
+          },
+          undefined,
+          () => {
+            console.warn('[humans] wardrobe texture failed to load', rel);
+            resolve(null);
+          }
+        );
+      });
+      this.textures.set(rel, p);
     }
     return p;
   }
@@ -204,22 +291,57 @@ export class HumanFactory {
     return geo;
   }
 
-  hiddenRegions(asset: BodyAsset, a: Appearance): number[] {
-    const hides: Record<string, number[]> = asset.manifest?.hides || DEFAULT_HIDES;
-    const o = a.outfit;
-    return [...(hides[o.top.id] || []), ...(hides[o.bottom.id] || []), ...(hides[o.shoes.id] || [])];
+  hiddenRegions(asset: BodyAsset, garments: string[]): number[] {
+    return hiddenFor(garments, asset.manifest?.hides || DEFAULT_HIDES);
   }
 
-  async create(appearance: Appearance | unknown, fallbackBody: Body = 'male'): Promise<HumanInstance> {
+  async create(appearance: Appearance | unknown, fallbackBody: Body = 'male', gear?: Gear | null): Promise<HumanInstance> {
     const a = normalizeAppearance(appearance, fallbackBody);
     const asset = await this.loadBody(a.body);
     const inst = new HumanInstance(this, asset, a);
+    if (gear) inst.setWorn(gear);
     await inst.apply(a, true);
     return inst;
   }
 }
 
-const GARMENTS = ['Top_Tee', 'Top_Tank', 'Top_LongSleeve', 'Bottom_Shorts', 'Bottom_Pants', 'Shoes_Sneakers', 'Shoes_Boots'];
+// Garments a body file may hold (the manifest's "garments" lists its own).
+const GARMENTS = ['Top_Tee', 'Top_Tank', 'Top_LongSleeve', 'Bottom_Shorts', 'Bottom_Pants', 'Shoes_Sneakers', 'Shoes_Boots',
+  'Under_Top_Contour', 'Under_Top_Band', 'Under_Bottom'];
+// Polygon offsets (factor, units) so layers that touch draw in order: underwear over skin,
+// trousers over underwear, tops over the trousers' waistband.
+const LAYER_OFFSET: Array<[string, number, number]> = [['Under_', -1, -1], ['Bottom_', -1, -2], ['Top_', -1.5, -3]];
+
+const PATCHED = 'b8wardrobe1';
+
+/** Makes a wardrobe material draw a packed design texture in the item's colours. */
+function wardrobeMaterial(m: THREE.MeshStandardMaterial) {
+  if ((m.userData as any).b8u) return (m.userData as any).b8u;
+  const u = {
+    b8Main: { value: new THREE.Color(1, 1, 1) },
+    b8Trim: { value: new THREE.Color(1, 1, 1) },
+    b8Accent: { value: new THREE.Color(1, 1, 1) },
+    b8Gain: { value: Number((m.userData as any)?.tint_gain) || 1.25 },
+  };
+  (m.userData as any).b8u = u;
+  m.color.set(0xffffff);
+  m.alphaTest = 0.5;
+  m.alphaToCoverage = true;
+  m.transparent = false;
+  m.side = THREE.DoubleSide;
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 b8Main;\nuniform vec3 b8Trim;\nuniform vec3 b8Accent;\nuniform float b8Gain;')
+      .replace('#include <map_fragment>', `#ifdef USE_MAP
+  vec4 b8t = texture2D( map, vMapUv );
+  diffuseColor.rgb *= mix( mix( b8Main, b8Accent, b8t.b ), b8Trim, b8t.g ) * ( b8t.r * b8Gain );
+  diffuseColor.a *= b8t.a;
+#endif`);
+  };
+  m.customProgramCacheKey = () => PATCHED;
+  return u;
+}
 
 export class HumanInstance {
   readonly root: THREE.Group;
@@ -237,6 +359,22 @@ export class HumanInstance {
   private facial: { file: string; obj: THREE.Object3D } | null = null;
   private applying: Promise<void> = Promise.resolve();
   private disposed = false;
+  /** What it wears (setWorn) and the garments that shows. */
+  private gear: Gear = {};
+  private worn: WornGarment[] = [];
+  private wornKey = '';
+  // rest pose, for the bones the morphs move and the corrections after the animation
+  private restPos = new Map<string, THREE.Vector3>();
+  private restQuat = new Map<string, THREE.Quaternion>();
+  private parentInv = new Map<string, THREE.Matrix3>();
+  private moved = new Map<string, THREE.Vector3>();
+  private posture: { q: THREE.Quaternion; qi: THREE.Quaternion; children: THREE.Bone[] } | null = null;
+  private fingers: Array<{ bone: THREE.Bone; side: 'l' | 'r'; relaxed: THREE.Quaternion }> = [];
+  private handW = { l: 1, r: 1 };
+  // What postAnimate last wrote to each bone, and what it found there: a bone no clip
+  // keyed this frame still holds our output, and must start again from what we found
+  // (or the correction compounds, 7 degrees a frame, until she stands on her head).
+  private applied = new Map<THREE.Object3D, { found: THREE.Quaternion; wrote: THREE.Quaternion }>();
 
   constructor(private factory: HumanFactory, private asset: BodyAsset, a: Appearance) {
     this.body = a.body;
@@ -258,18 +396,57 @@ export class HumanInstance {
         o.material = this.own(o.material);
       }
     });
-    for (const g of GARMENTS) {
+    const names = new Set([...GARMENTS, ...Object.keys(asset.manifest?.garments || {})]);
+    for (const g of names) {
       const n = this.model.getObjectByName(`${tag}_${g}`);
-      if (n) this.garments.set(g, n);
+      if (n) {
+        this.garments.set(g, n);
+        n.visible = false;
+      }
     }
-    // tops are drawn over the trousers' waistband where the two touch
     for (const [name, mats] of this.materials) {
-      if (!name.startsWith('Top_')) continue;
+      const lay = LAYER_OFFSET.find(([p]) => name.startsWith(p));
+      if (!lay) continue;
       for (const m of mats) {
         m.polygonOffset = true;
-        m.polygonOffsetFactor = -1.5;
-        m.polygonOffsetUnits = -3;
+        m.polygonOffsetFactor = lay[1];
+        m.polygonOffsetUnits = lay[2];
       }
+    }
+    this.captureRest();
+  }
+
+  // The skeleton as cloned is at rest: remember it.
+  private captureRest() {
+    this.model.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(this.model.matrixWorld).invert();
+    const m = new THREE.Matrix4();
+    for (const [name, b] of this.bones) {
+      this.restPos.set(name, b.position.clone());
+      this.restQuat.set(name, b.quaternion.clone());
+      if (b.parent) {
+        m.multiplyMatrices(inv, b.parent.matrixWorld);
+        this.parentInv.set(name, new THREE.Matrix3().setFromMatrix4(m).invert());
+      }
+    }
+    // relaxed fingers: rest x a curl about each joint's own X
+    const X = new THREE.Vector3(1, 0, 0);
+    for (const [name, b] of this.bones) {
+      const deg = relaxedCurl(name);
+      if (deg == null) continue;
+      const q = this.restQuat.get(name)!.clone().multiply(new THREE.Quaternion().setFromAxisAngle(X, THREE.MathUtils.degToRad(deg)));
+      this.fingers.push({ bone: b, side: name.endsWith('_l') ? 'l' : 'r', relaxed: q });
+    }
+    // posture: the pelvis turned back about her side-to-side axis; its spine and legs kept where they were
+    const tilt = Number(this.asset.manifest?.posture?.pelvis_tilt_deg) || 0;
+    const pelvis = this.bones.get('pelvis');
+    if (tilt && pelvis) {
+      m.multiplyMatrices(inv, pelvis.matrixWorld);
+      const wq = new THREE.Quaternion().setFromRotationMatrix(m);
+      const axis = new THREE.Vector3(1, 0, 0).applyQuaternion(wq.clone().invert()).normalize();
+      const q = new THREE.Quaternion().setFromAxisAngle(axis, -THREE.MathUtils.degToRad(tilt));
+      const children = ['spine_01', 'thigh_l', 'thigh_r'].map((n) => this.bones.get(n)).filter((b): b is THREE.Bone => !!b && b.parent === pelvis);
+      this.posture = { q, qi: q.clone().invert(), children };
     }
   }
 
@@ -309,40 +486,13 @@ export class HumanInstance {
     this.appearance = a;
     this.root.scale.setScalar(UNITS_PER_METRE * a.height);
 
-    // garments and the body regions under them
-    const o = a.outfit;
-    for (const [id, node] of this.garments) node.visible = id === o.top.id || id === o.bottom.id || id === o.shoes.id;
-    const hidden = this.factory.hiddenRegions(this.asset, a);
-    if (this.bodyMesh) {
-      const geo = this.factory.bodyGeometry(this.asset, hidden);
-      if (geo && this.bodyMesh.geometry !== geo) this.bodyMesh.geometry = geo;
-    }
-    // a garment worn under another loses the part the other covers
-    for (const node of this.garments.values()) {
-      if (!node.visible) continue;
-      node.traverse((m: any) => {
-        if (!m.isMesh) return;
-        let base = this.baseGeometry.get(m);
-        if (!base) {
-          base = m.geometry as THREE.BufferGeometry;
-          this.baseGeometry.set(m, base);
-        }
-        const geo = this.factory.filteredGeometry(base, hidden);
-        if (m.geometry !== geo) m.geometry = geo;
-      });
-    }
+    // clothes (from the gear) and the regions under them
+    this.dress();
 
     // colours
     this.tint('Skin', a.skin);
     this.tint('Iris', a.eyes);
     this.tint('Brows', browColor(a));
-    this.tint(`${o.top.id}_Main`, o.top.main);
-    this.tint(`${o.top.id}_Trim`, o.top.trim);
-    this.tint(`${o.bottom.id}_Main`, o.bottom.main);
-    this.tint(`${o.bottom.id}_Trim`, o.bottom.trim);
-    this.tint(`${o.shoes.id}_Upper`, o.shoes.upper);
-    this.tint(`${o.shoes.id}_Sole`, o.shoes.sole);
-    this.tint(`${o.shoes.id}_Laces`, o.shoes.laces);
 
     // hair and facial hair (swap only when the style changes)
     const styles = this.factory.styles(this.body);
@@ -367,6 +517,149 @@ export class HumanInstance {
         m.morphTargetInfluences[i] = w[name] || 0;
       }
     });
+    this.moveBones(w);
+  }
+
+  /**
+   * What it wears: item ids by slot (BaconWorld.Inventory's gear; hands are ignored here).
+   * Shows those garments, hides what they cover, and colours them.
+   */
+  setWorn(gear: Gear | null | undefined) {
+    this.gear = { ...(gear || {}) };
+    this.worn = wornGarments(this.body, this.gear, (id) => catalogItem(id) as any);
+    const key = this.worn.map((g) => `${g.garment}:${g.design}:${JSON.stringify(g.colors)}`).join('|');
+    if (key === this.wornKey) return;
+    this.wornKey = key;
+    this.dress();
+  }
+
+  /** The gear last given to setWorn. */
+  getWorn(): Gear {
+    return { ...this.gear };
+  }
+
+  private dress() {
+    if (this.disposed) return;
+    const shown = new Set(this.worn.map((g) => g.garment));
+    for (const [id, node] of this.garments) node.visible = shown.has(id);
+    const hidden = this.factory.hiddenRegions(this.asset, [...shown].filter((g) => this.garments.has(g)));
+    if (this.bodyMesh) {
+      const geo = this.factory.bodyGeometry(this.asset, hidden);
+      if (geo && this.bodyMesh.geometry !== geo) this.bodyMesh.geometry = geo;
+    }
+    // a garment worn under another loses the part the other covers
+    for (const node of this.garments.values()) {
+      if (!node.visible) continue;
+      node.traverse((m: any) => {
+        if (!m.isMesh) return;
+        let base = this.baseGeometry.get(m);
+        if (!base) {
+          base = m.geometry as THREE.BufferGeometry;
+          this.baseGeometry.set(m, base);
+        }
+        const geo = this.factory.filteredGeometry(base, hidden);
+        if (m.geometry !== geo) m.geometry = geo;
+      });
+    }
+    for (const g of this.worn) {
+      const c = g.colors;
+      if (g.design) {
+        void this.applyDesign(g);
+      } else if (g.garment.startsWith('Shoes_')) {
+        if (c.upper) this.tint(`${g.garment}_Upper`, c.upper);
+        if (c.sole) this.tint(`${g.garment}_Sole`, c.sole);
+        if (c.laces) this.tint(`${g.garment}_Laces`, c.laces);
+      } else {
+        if (c.main) this.tint(`${g.garment}_Main`, c.main);
+        this.tint(`${g.garment}_Trim`, c.trim || c.main || '#FFFFFF');
+      }
+    }
+  }
+
+  // A garment made from the body: its design texture, tinted with the item's colours.
+  private async applyDesign(g: WornGarment) {
+    const mats = this.materials.get(g.garment) || [];
+    if (!mats.length || !g.design) return;
+    const dir = this.asset.manifest?.wardrobe?.dir || 'Wardrobe';
+    const files = designFiles(dir, g.garment, g.design);
+    const [mask, normal] = await Promise.all([this.factory.texture(files.mask), this.factory.texture(files.normal)]);
+    if (this.disposed) return;
+    // a newer look may have replaced this design while the textures loaded
+    const now = this.worn.find((x) => x.garment === g.garment);
+    if (!now || now.design !== g.design || now.item !== g.item) return;
+    for (const m of mats) {
+      const u = wardrobeMaterial(m);
+      u.b8Main.value.set(g.colors.main || '#FFFFFF');
+      u.b8Trim.value.set(g.colors.trim || g.colors.main || '#FFFFFF');
+      u.b8Accent.value.set(g.colors.accent || g.colors.main || '#FFFFFF');
+      const changed = m.map !== mask || m.normalMap !== normal;
+      m.map = mask;
+      m.normalMap = normal;
+      if (changed) m.needsUpdate = true;
+    }
+  }
+
+  // The bones the morphs move (manifest "joint_offsets", model space): each bone's rest
+  // position plus its own move less its parent's, in the parent's frame.
+  private moveBones(w: Record<string, number>) {
+    const D = boneOffsets(this.asset.manifest?.joint_offsets, w);
+    const names = new Set([...Object.keys(D), ...this.moved.keys()]);
+    const v = new THREE.Vector3();
+    for (const name of names) {
+      const b = this.bones.get(name);
+      const rest = this.restPos.get(name);
+      if (!b || !rest) continue;
+      const d = D[name] || [0, 0, 0];
+      const pd = (b.parent && (D as any)[b.parent.name]) || [0, 0, 0];
+      v.set(d[0] - pd[0], d[1] - pd[1], d[2] - pd[2]);
+      const inv = this.parentInv.get(name);
+      if (inv) v.applyMatrix3(inv);
+      b.position.copy(rest).add(v);
+      if (v.lengthSq() > 0) this.moved.set(name, v.clone());
+      else this.moved.delete(name);
+    }
+  }
+
+  /**
+   * After the mixer each frame: the posture correction, and relaxed fingers on the hands
+   * that hold nothing (`free.l`, `free.r`; a punch closes them again).
+   */
+  postAnimate(dt: number, free: { l: boolean; r: boolean } = { l: true, r: true }) {
+    if (this.posture) {
+      const pelvis = this.bones.get('pelvis')!;
+      this.fromAnimated(pelvis);
+      pelvis.quaternion.multiply(this.posture.q);
+      this.wrote(pelvis);
+      for (const c of this.posture.children) {
+        this.fromAnimated(c);
+        c.quaternion.premultiply(this.posture.qi);
+        this.wrote(c);
+        const base = this.restPos.get(c.name)!.clone();
+        const mv = this.moved.get(c.name);
+        if (mv) base.add(mv);
+        c.position.copy(base.applyQuaternion(this.posture.qi));
+      }
+    }
+    this.handW.l = approach(this.handW.l, free.l ? 1 : 0, 6, dt);
+    this.handW.r = approach(this.handW.r, free.r ? 1 : 0, 6, dt);
+    for (const f of this.fingers) {
+      const w = f.side === 'l' ? this.handW.l : this.handW.r;
+      this.fromAnimated(f.bone);
+      if (w > 0.001) f.bone.quaternion.slerp(f.relaxed, w);
+      this.wrote(f.bone);
+    }
+  }
+
+  // Puts back what the animation left in a bone if nothing has keyed it since our last write.
+  private fromAnimated(bone: THREE.Object3D) {
+    const a = this.applied.get(bone);
+    if (a && bone.quaternion.equals(a.wrote)) bone.quaternion.copy(a.found);
+    if (a) a.found.copy(bone.quaternion);
+    else this.applied.set(bone, { found: bone.quaternion.clone(), wrote: new THREE.Quaternion() });
+  }
+
+  private wrote(bone: THREE.Object3D) {
+    this.applied.get(bone)!.wrote.copy(bone.quaternion);
   }
 
   private tintPart(part: { obj: THREE.Object3D } | null, hex: string) {

@@ -10,17 +10,26 @@ defmodule BaconWorld.Items do
   `Weapons/icons/W_<model>.png`) and animated with an animation set from the B8
   packs (`anims.json` "sets": `sword_1h`, `two_hand`, ...).
 
+  Clothes are items too: underwear (`"under_top"`, `"under_bottom"`) and cloth armour
+  (`"chest"`, `"legs"`, `"feet"`). A worn item is drawn on the character: `wear` says
+  which garment of each body model shows it and, for the garments made from the body,
+  which design (`Humans/Wardrobe/<garment>__<design>.webp`); `colors` tints it (`main`,
+  `trim`, `accent`; shoes use `upper`, `sole` and `laces`). Characters start in the
+  linen set; Tilda the clothier sells the rest (`BaconWorld.Merchants`).
+
   Fields:
 
     * `id`, `name`
-    * `kind` - `"weapon"`, `"shield"`, `"light"` or `"junk"`
-    * `slots` - where it can be equipped: `"main"` (right hand), `"off"` (left)
+    * `kind` - `"weapon"`, `"shield"`, `"light"`, `"armor"` or `"junk"`
+    * `slots` - where it can be equipped: `"main"` (right hand), `"off"` (left), or a
+      worn slot (`"under_top"`, `"under_bottom"`, `"chest"`, `"legs"`, `"feet"`)
     * `hands` - 2 for two-handed weapons, which need the off hand empty
     * `set` - the animation set it is held and swung with
     * `skill` - EverQuest's weapon skill line, shown on the item
     * `dmg`, `dly`, `reach` (metres, from the grip), `ac` (shields)
     * `stack` - how many fit in one slot; `value` - in copper
     * `model` - the weapon model, or nil (the icon then comes from `icon`)
+    * `wear`, `colors` - how a worn item is drawn (above)
   """
 
   @fist %{id: "fist", name: "Fist", kind: "weapon", slots: [], hands: 1, set: "unarmed", skill: "Hand to Hand", dmg: 3, dly: 9, reach: 0.75, ac: 0, stack: 1, value: 0, model: nil, icon: nil}
@@ -59,8 +68,61 @@ defmodule BaconWorld.Items do
     %{id: "skull_fragment", name: "Skull Fragment", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon: "Skull", value: 2}
   ]
 
-  @defaults %{ac: 0, stack: 1, icon: nil}
+  # What can be worn. Underwear: six sets (top and bottom are separate items), the
+  # linen one given to every character. The male body draws underwear bottoms with
+  # his shorts until he gets the made-from-the-body garments too.
+  @under [
+    {"linen_bikini", "Linen Bikini", {"classic", "classic"}, {"#EAE0C8", "#D2C3A3", "#D2C3A3"}, 20, {"Top", "Bottom"}},
+    {"athletic", "Athletic", {"sport", "boyshort"}, {"#2E3138", "#1F8A8A", "#E7F1FD"}, 60, {"Top", "Shorts"}},
+    {"rose_lace", "Rose Lace", {"lace", "lace"}, {"#E2AFA6", "#B9776E", "#F7DDD7"}, 90, {"Bralette", "Briefs"}},
+    {"coral", "Coral", {"bandeau", "highcut"}, {"#E0644E", "#FFFFFF", "#B8402F"}, 70, {"Bandeau", "High-Cut Bottom"}},
+    {"polka_dot", "Polka Dot", {"halter", "string"}, {"#1E2E5C", "#F4F4F4", "#F4F4F4"}, 80, {"Halter Top", "Tie-Side Bottom"}},
+    {"emerald", "Emerald", {"longline", "highwaist"}, {"#1F6B4A", "#D6A92B", "#D6A92B"}, 120, {"Longline Top", "High-Waist Bottom"}}
+  ]
+  @band_tops ~w(sport bandeau longline)
+
+  @underwear Enum.flat_map(@under, fn {id, name, {top, bottom}, {main, trim, accent}, value, {tn, bn}} ->
+               colors = %{"main" => main, "trim" => trim, "accent" => accent}
+               top_garment = if top in @band_tops, do: "Under_Top_Band", else: "Under_Top_Contour"
+
+               [
+                 %{id: "#{id}_top", name: "#{name} #{tn}", kind: "armor", slots: ["under_top"], value: value, colors: colors,
+                   wear: %{"female" => %{"garment" => top_garment, "design" => top}, "male" => nil}},
+                 %{id: "#{id}_bottom", name: "#{name} #{bn}", kind: "armor", slots: ["under_bottom"], value: value, colors: colors,
+                   wear: %{"female" => %{"garment" => "Under_Bottom", "design" => bottom}, "male" => %{"garment" => "Bottom_Shorts"}}}
+               ]
+             end)
+
+  # Cloth armour: the same garment ids on both bodies.
+  @cloth [
+    %{id: "cloth_tunic", name: "Cloth Tunic", slots: ["chest"], ac: 2, value: 40, garment: "Top_Tee", colors: %{"main" => "#8A6A4A", "trim" => "#5C4630"}},
+    %{id: "blue_dyed_tunic", name: "Blue Dyed Tunic", slots: ["chest"], ac: 2, value: 60, garment: "Top_Tee", colors: %{"main" => "#247DF1", "trim" => "#1B5FBA"}},
+    %{id: "cloth_tank", name: "Cloth Tank Top", slots: ["chest"], ac: 1, value: 30, garment: "Top_Tank", design: "tank", colors: %{"main" => "#E7F1FD", "trim" => "#9AA3AD", "accent" => "#C8D2DC"}},
+    %{id: "wool_sweater", name: "Wool Sweater", slots: ["chest"], ac: 3, value: 90, garment: "Top_LongSleeve", colors: %{"main" => "#6B7A35", "trim" => "#4F5A27"}},
+    %{id: "cloth_trousers", name: "Cloth Trousers", slots: ["legs"], ac: 2, value: 50, garment: "Bottom_Pants", design: "pants", colors: %{"main" => "#4A4F57", "trim" => "#2B2F36", "accent" => "#2B2F36"}},
+    %{id: "cloth_shorts", name: "Cloth Shorts", slots: ["legs"], ac: 1, value: 30, garment: "Bottom_Shorts", design: "shorts", colors: %{"main" => "#1E2E5C", "trim" => "#14203F", "accent" => "#14203F"}},
+    %{id: "cloth_shoes", name: "Cloth Shoes", slots: ["feet"], ac: 1, value: 25, garment: "Shoes_Sneakers", colors: %{"upper" => "#3A3F47", "sole" => "#F4F4F4", "laces" => "#E8E8E8"}},
+    %{id: "leather_boots", name: "Tall Leather Boots", slots: ["feet"], ac: 3, value: 150, garment: "Shoes_Boots", colors: %{"upper" => "#6B4A2F", "sole" => "#2A2522", "laces" => "#3D2B1F"}}
+  ]
+
+  @wearables @underwear ++
+               Enum.map(@cloth, fn c ->
+                 female = %{"garment" => c.garment} |> then(&if(c[:design], do: Map.put(&1, "design", c.design), else: &1))
+
+                 c
+                 |> Map.drop([:garment, :design])
+                 |> Map.merge(%{kind: "armor", wear: %{"female" => female, "male" => %{"garment" => c.garment}}})
+               end)
+
+  @wear_slots ~w(under_top under_bottom chest legs feet)
+
+  @armor_defaults %{hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, ac: 0, stack: 1, model: nil, icon: nil}
+
+  @defaults %{ac: 0, stack: 1, icon: nil, wear: nil, colors: nil}
   @by_id Map.new(@items, fn i -> {i.id, Map.merge(@defaults, i)} end)
+         |> Map.merge(Map.new(@wearables, fn i -> {i.id, @defaults |> Map.merge(@armor_defaults) |> Map.merge(i)} end))
+
+  @starter_wear [{"linen_bikini_top", "under_top"}, {"linen_bikini_bottom", "under_bottom"}]
 
   @starter_kit [
     {"worn_short_sword", "main"},
@@ -85,7 +147,17 @@ defmodule BaconWorld.Items do
   @doc "The starter kit, as `{item_id, slot or nil (first free bag slot)}`."
   def starter_kit, do: @starter_kit
 
-  @doc "True when `item` may go in equipment slot `slot` (\"main\" or \"off\")."
+  @doc "What every character starts out wearing, as `{item_id, slot}`."
+  def starter_wear, do: @starter_wear
+
+  @doc "The slots worn items go in (besides the hands)."
+  def wear_slots, do: @wear_slots
+
+  @doc "True for an item that is worn (underwear, cloth armour)."
+  def wearable?(%{kind: "armor"}), do: true
+  def wearable?(_), do: false
+
+  @doc "True when `item` may go in equipment slot `slot` (a hand or a worn slot)."
   def equippable?(%{slots: slots}, slot), do: slot in slots
   def equippable?(_, _), do: false
 
@@ -110,8 +182,17 @@ defmodule BaconWorld.Items do
          stack: i.stack,
          value: i.value,
          model: i.model,
-         icon: i.model || i.icon
+         icon: i.model || i.icon,
+         icon_path: icon_path(i),
+         wear: i.wear,
+         colors: i.colors
        }}
     end)
   end
+
+  # Where the inventory icon is, under /models.
+  defp icon_path(%{kind: "armor", id: id}), do: "Humans/Wardrobe/icons/#{id}.png"
+  defp icon_path(%{model: m}) when is_binary(m), do: "Weapons/icons/W_#{m}.png"
+  defp icon_path(%{icon: i}) when is_binary(i), do: "Weapons/icons/W_#{i}.png"
+  defp icon_path(_), do: nil
 end

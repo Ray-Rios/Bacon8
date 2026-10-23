@@ -21,9 +21,10 @@ renamed its tables, its game row and its `plugin_states` row.
 |---|---|
 | `lib/bacon_world/plugin.ex` | The plugin: name, version, its game card, its routes |
 | `lib/bacon_world/world.ex` | Characters, zones, positions |
-| `lib/bacon_world/combat.ex` | Spells, HP/MP, respawn (server-authoritative) |
-| `lib/bacon_world/items.ex` | The item catalogue: weapons with EverQuest-style DMG/DLY, shields, a torch, junk |
-| `lib/bacon_world/inventory.ex`, `inventory_item.ex` | What a character carries: two hands, 24 bag slots, coins |
+| `lib/bacon_world/combat.ex` | HP/MP, PvP flags, respawn (server-authoritative); spells later (Throw Stone is retired) |
+| `lib/bacon_world/items.ex` | The item catalogue: weapons with EverQuest-style DMG/DLY, shields, a torch, junk, underwear and cloth armour |
+| `lib/bacon_world/inventory.ex`, `inventory_item.ex` | What a character carries: two hands, five worn slots, 24 bag slots, coins |
+| `lib/bacon_world/merchants.ex` | NPC traders: Tilda the clothier, her stock, reach and prices |
 | `lib/bacon_world/progression.ex` | Levels, experience, con colours, skill points banked for the tree |
 | `lib/bacon_world/melee.ex` | Swing numbers: reach and arc, hit chance, damage, delay |
 | `lib/bacon_world/mobs.ex`, `mobs/` | Creatures: spawns and kinds, the rules (`Brain`, pure), the zone process, its keeper |
@@ -44,6 +45,8 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/anim-driver.ts` | The animator: four body channels, strafes, stances, swings with either hand (mirrored) |
 | `assets/js/game-world.ts`, `game-ui.ts` | Fighting, looting, the inventory; the EverQuest-style windows and hotbar |
 | `assets/js/mobs-view.ts` | Creatures on the client: models, weapons, smoothing, corpses |
+| `assets/js/npcs-view.ts` | Merchants on the client: built as humans, picked by proxy cylinders, face you while trading |
+| `assets/js/wardrobe.ts` | Gear slots, what each worn item puts on the body and hides, and the bone corrections (joint offsets, relaxed fingers) |
 | `assets/js/items.ts`, `nameplates.ts`, `asset-url.ts` | Weapon models and icons; names over heads; versioned model URLs |
 | `assets/js/lobby-audio.ts` | Sound: recorded effects, nature beds, ambient music |
 | `assets/js/__tests__/` | JS unit tests: `sh __tests__/run.sh` in a node container (esbuild + `node --test`) |
@@ -117,14 +120,15 @@ A character's look lives in its `settings["appearance"]`. It holds:
 - body type and height;
 - seven body and three face sliders (the humans' 13 morph targets);
 - skin, eyes and brows;
-- a hair style (23 male, 31 female) and, for the male, one of 6 facial hair;
-- outfit pieces with their colours.
+- a hair style (23 male, 31 female) and, for the male, one of 6 facial hair.
+
+Clothes are not part of the look (since 2026-10-23): they are items (below).
 
 `BaconWorld.Appearance` normalises every look the client sends:
 
 - unknown keys are dropped and sliders clamped;
 - colours must be `#RRGGBB`;
-- garments come from a fixed list;
+- an old look's `outfit` is dropped;
 - hair styles come from the installed manifest. A retired style id (one that the manifest's
   `aliases` map) becomes the style that replaced it.
 
@@ -141,9 +145,19 @@ Events: `three_ui_create_character` (replies `%{ok, character_id}` or `%{ok: fal
 
 - The geometry is shared, and tints are per character. A grey texture's material carries a
   `tint_gain` in its glTF extras: 1.25 for skin and clothes, 2.0 for hair.
-- Each outfit gets cached index buffers that hide the skin under its clothes, and the parts of
-  a garment worn under another, such as trousers under a shirt's hem or boots under trousers.
-  These come from the `_region` vertex attribute and the manifest's `hides`.
+- What is worn comes from the gear (`create(look, body, gear)`, `setWorn`). Each combination
+  gets cached index buffers that hide the skin under its clothes, and the parts of a garment
+  worn under another, such as trousers under a shirt's hem or boots under trousers. These
+  come from the `_region` vertex attribute and the manifest's `hides`; underwear hides
+  nothing.
+- A wardrobe garment (the female's v3 underwear and cloth) takes a design: a packed texture
+  (R shade, G trim, B accent, A cut-out, from `Humans/Wardrobe/`) tinted with the item's
+  main, trim and accent colours by a patched `MeshStandardMaterial`, alpha-tested.
+- After the animation each frame (`postAnimate`): joint offsets for morphs that move bones,
+  the posture correction (the female's pelvis tilted back 7 degrees) and relaxed fingers on
+  empty hands. Each starts from what the animation left in the bone, so nothing compounds
+  on a bone no clip keys. Clips load through `fixForearmTwist`, which repairs the packs'
+  forearm twist tracks (a pipeline bug that wrung the forearms in weapon clips).
 - Hair and facial hair are bound to the body's bones and take the same morphs. A hair style's
   scalp decal is drawn with a polygon offset.
 
@@ -166,13 +180,12 @@ Desert's mouse buttons with mouse-look on (`character-controller.ts`; numbers in
 | Click the game | mouse-look on: free look, the character turns to face where it moves |
 | Left / right button (mouse-look on) | swing the left / right hand; held, keep swinging as the weapon's delay allows. A two-hander: left quick, right heavy. The character turns to face where you look |
 | Hold right button (cursor free) | steer: the character faces the camera; W runs, S backpedals (slower), A/D strafe, diagonals turn the body 45° |
-| Right-click (cursor free) | a corpse: loot it; a creature: target it |
+| Right-click (cursor free) | a corpse: loot it; a creature: target it; a merchant: trade |
 | Q E F Z X | special attacks, earned in the skill tree (locked for now) |
-| 1 | Throw Stone (PvP) |
 | I / G / Tab | inventory / loot the nearest corpse / next target (creatures first) |
 | WASD / arrows | move relative to the camera; Shift sprints, C crouches, Space jumps |
 | Wheel | zoom (1.5 to 9 m) |
-| Ctrl | free the cursor |
+| Ctrl | free the cursor; press again for mouse-look (Ctrl with a movement key never reaches the browser, so no Ctrl+A select-all) |
 | Esc | close a window, or the game menu (mouse, sound, effects / nature / music volume, resolution, log out) |
 | Enter / `/` | chat / a slash command |
 
@@ -206,6 +219,34 @@ two-handers. Each hand has its own swing timer (the weapon's DLY); damage and hi
 are EverQuest-shaped (`BaconWorld.Melee`). A creature's attack on you is applied by your
 own LiveView, which owns your HP. Kills give experience by con (grey gives none), a level
 gives full HP/MP and banks a skill point for the tree.
+
+PvP is melee too: when you and another player are both flagged (`toggle_pvp`), your swing
+hits them if they stand in its reach and arc (`GameEvents.pvp_swing/3`, against the zone's
+Presence positions, so the reach has 0.8 m of slack). The hit is broadcast as `:pvp_hit`
+and applied by the target's own LiveView, as a creature's is; any change to a player's
+health (a hit, regeneration, a death, a respawn) goes to the zone as `:zone_hp`, so target
+windows follow it and others see the death and the respawn. Throw Stone, the old
+web-lobby test spell, is retired (`Combat` no longer grants or lists it; its rows stay
+in the database until a cleanup migration is OK'd).
+
+Picking a player with the mouse tests a box around each one, never their meshes: three's
+raycast against a skinned, morphing mesh skins every vertex on the CPU, which froze the
+game on every swing at a player.
+
+**Clothes and underwear are items.** Five worn slots sit beside the hands: `under_top`,
+`under_bottom`, `chest`, `legs`, `feet`. Underwear is layered under the rest and comes off
+like anything else. New characters, and older ones at their next login, get the cream linen
+set and a purse of 100 copper (1 gold) once (`stats` flags `starter_wear`, `starter_purse`).
+Six underwear sets (linen, athletic, rose lace, coral, polka dot, emerald; 20 to 120 copper
+a piece) and eight pieces of cloth armour (tunic, blue-dyed tunic, tank, wool sweater,
+trousers, shorts, cloth shoes, tall leather boots). Coins are EverQuest's: 10 copper make a
+silver, 10 silver a gold, 10 gold a platinum (`items.ts` `money`).
+
+**Merchants** (`BaconWorld.Merchants`). Tilda Threadwell, Clothier, stands in the village
+(15.5, -6.7 m) and sells all 20 wearables at their value; she buys anything for a quarter of
+its value (at least 1 copper). Trading needs you within 6 m and alive: right-click her with
+the cursor free (`merchant_open`, `merchant_buy`, `merchant_sell`); walking away closes the
+window. `fetch_mobs` lists the zone's merchants.
 
 Corpses: the top damage dealer may loot alone for a minute, then anyone; one looter at a
 time; coins go straight to the looter; a corpse decays after four minutes, or seconds
@@ -255,6 +296,10 @@ after the first click or key press.
 
 All on the hub's PubSub and Presence, topics prefixed `bacon_world:`. Moves are
 checked on the server for speed, height and collisions; chat reaches players
-within 64 units; one character per account can be in the world at a time. Names over
+within 64 units; one character per account can be in the world at a time. Each position
+packet carries `m`, the body's motion flags (1 crouching, 2 airborne), sent at once when
+they change, so others see you crouch and jump; every accepted swing is broadcast as
+`:zone_swing` (hand, heavy, delay) and plays on the swinger's animator on every other
+screen. Names over
 heads are sprites placed in the frame they're drawn (no box, coloured by con for
 creatures; `nameplates.ts`).

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../../../../../assets/js/vendor/three';
-import { HumanFactory } from '../human-factory';
+import { HumanFactory, fixForearmTwist } from '../human-factory';
 
 const list = [
   { id: 'Ponytail', label: 'Ponytail', file: 'Hair_Female_Ponytail.glb' },
@@ -55,4 +55,23 @@ test('material groups keep their own triangles after hiding', () => {
   const a = new HumanFactory({}).filteredGeometry(g, [4]);
   assert.deepEqual(Array.from(a.getIndex()!.array), [3, 4, 5, 3, 4, 5]);
   assert.deepEqual(a.groups.map((x) => [x.start, x.count, x.materialIndex]), [[0, 3, 0], [3, 3, 1]]);
+});
+
+test('a forearm twist bone wound past 120 degrees is rebuilt as half the hand roll; sane ones stay', () => {
+  const yq = (deg: number) => [0, Math.sin((deg * Math.PI) / 360), 0, Math.cos((deg * Math.PI) / 360)];
+  const deg = (v: ArrayLike<number>, i: number) => Math.round((2 * Math.atan2(v[i + 1], v[i + 3]) * 180) / Math.PI);
+  // the dagger guard as shipped: hand -44 degrees (stored as the negative quaternion), twist bone +158
+  const hand = yq(-44).map((x) => -x);
+  const bad = new THREE.AnimationClip('Dagger_Idle_Loop', 1, [
+    new THREE.QuaternionKeyframeTrack('hand_r.quaternion', [0, 1], [...hand, ...hand]),
+    new THREE.QuaternionKeyframeTrack('lowerarm_twist_01_r.quaternion', [0], yq(158)),
+    new THREE.QuaternionKeyframeTrack('hand_l.quaternion', [0], yq(30)),
+    new THREE.QuaternionKeyframeTrack('lowerarm_twist_01_l.quaternion', [0], yq(18)),
+  ]);
+  fixForearmTwist([bad]);
+  const r = bad.tracks.find((t) => t.name === 'lowerarm_twist_01_r.quaternion')!;
+  assert.equal(r.times.length, 2);
+  assert.equal(deg(r.values, 0), -22);
+  const l = bad.tracks.find((t) => t.name === 'lowerarm_twist_01_l.quaternion')!;
+  assert.equal(deg(l.values, 0), 18);
 });

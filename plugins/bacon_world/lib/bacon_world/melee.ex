@@ -37,6 +37,12 @@ defmodule BaconWorld.Melee do
     if rand.() < @crit_chance, do: {round(dmg * @crit_mult), true}, else: {dmg, false}
   end
 
+  @doc """
+  How far (metres, centre to centre) a swing reaches another player: the weapon's
+  reach, both bodies, and slack for positions up to 100 ms old.
+  """
+  def pvp_reach(item), do: item.reach + 2 * 0.35 + 0.8
+
   @doc "How many creatures one swing can hit, and the arc (degrees) it covers."
   def sweep(item) do
     if item.hands == 2, do: {3, 150}, else: {1, 110}

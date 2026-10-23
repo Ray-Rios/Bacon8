@@ -99,7 +99,7 @@ defmodule BaconWorld.Models do
     bodies =
       Enum.reduce([{"Male", "Humans/Male.json"}, {"Female", "Humans/Female.json"}], %{}, fn {key, rel}, acc ->
         case read_json(rel) do
-          %{} = manifest -> Map.put(acc, key, Map.take(manifest, ~w(regions hides slots colors morphs materials)))
+          %{} = manifest -> Map.put(acc, key, Map.take(manifest, ~w(regions hides colors morphs materials garments wardrobe joint_offsets posture)))
           _ -> acc
         end
       end)

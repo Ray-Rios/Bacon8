@@ -1,17 +1,12 @@
-// A character's look: body, shape sliders, colours, hair and outfit. Stored by the
-// server in the character's settings["appearance"] (BaconWorld.Appearance validates it
-// the same way normalizeAppearance does here) and applied by human-factory.ts.
+// A character's look: body, shape sliders, colours and hair. Stored by the server in the
+// character's settings["appearance"] (BaconWorld.Appearance validates it the same way
+// normalizeAppearance does here) and applied by human-factory.ts. Clothes aren't part of
+// the look: they are items the character wears (wardrobe.ts).
 //
 // Shape sliders map onto the Bacon8 humans' morph targets (blend shapes). Bipolar
 // sliders drive a pair: weight -1..1 -> Weight_Thin / Weight_Heavy.
 
 export type Body = 'male' | 'female';
-
-export interface Outfit {
-  top: { id: string; main: string; trim: string };
-  bottom: { id: string; main: string; trim: string };
-  shoes: { id: string; upper: string; sole: string; laces: string };
-}
 
 export interface Appearance {
   v: 1;
@@ -23,7 +18,6 @@ export interface Appearance {
   brows: string | null; // null: follows the hair colour
   hair: { style: string; color: string };
   facial: { style: string; color: string }; // male only ("none" for female)
-  outfit: Outfit;
 }
 
 export type ShapeKey = 'weight' | 'muscle' | 'chest' | 'glutes' | 'belly' | 'hips' | 'shoulders' | 'face' | 'jaw' | 'nose';
@@ -56,20 +50,6 @@ export const SHAPES: ShapeSpec[] = [
 
 export const HEIGHT_RANGE: [number, number] = [0.92, 1.08];
 
-export const TOPS = [
-  { id: 'Top_Tee', label: 'T-shirt' },
-  { id: 'Top_Tank', label: 'Tank top' },
-  { id: 'Top_LongSleeve', label: 'Long sleeve' },
-];
-export const BOTTOMS = [
-  { id: 'Bottom_Pants', label: 'Trousers' },
-  { id: 'Bottom_Shorts', label: 'Shorts' },
-];
-export const SHOES = [
-  { id: 'Shoes_Sneakers', label: 'Sneakers' },
-  { id: 'Shoes_Boots', label: 'Boots' },
-];
-
 // Palettes (sRGB hex). The colour pickers also accept any custom colour.
 export const SKIN_TONES = [
   '#F6D7C3', '#EFC3A4', '#E5B08C', '#D9A07A', '#C68E6E', '#B57A55',
@@ -80,11 +60,6 @@ export const HAIR_COLORS = [
   '#0E0B0A', '#2B1E14', '#4A3020', '#6E4A2E', '#8E5A35', '#7A2E1C',
   '#B5552B', '#C98A50', '#D8B26E', '#EAD6A8', '#8C8C8C', '#E8E4DC',
   '#2E5BD8', '#E05A9E', '#7A4BD1', '#2FA36B',
-];
-export const CLOTH_COLORS = [
-  '#247DF1', '#E7F1FD', '#14100F', '#F4F4F4', '#9AA3AD', '#3A3F47',
-  '#C8352E', '#6E1F2A', '#E07B2A', '#D6A92B', '#6B7A35', '#2F6B45',
-  '#1F8A8A', '#1E2E5C', '#6A3FA0', '#E07AA6', '#8A6A4A', '#2B2F36',
 ];
 
 export const BODY_MODEL: Record<Body, string> = { male: '/models/Humans/Male.glb', female: '/models/Humans/Female.glb' };
@@ -113,11 +88,6 @@ export function defaultAppearance(body: Body = 'male'): Appearance {
     brows: null,
     hair: { style: body === 'male' ? 'CrewCut' : 'Lob', color: '#2B1E14' },
     facial: { style: 'none', color: '#2B1E14' },
-    outfit: {
-      top: { id: 'Top_Tee', main: '#247DF1', trim: '#1B5FBA' },
-      bottom: { id: 'Bottom_Pants', main: '#2B2F36', trim: '#1E2126' },
-      shoes: { id: 'Shoes_Sneakers', upper: '#3A3F47', sole: '#F4F4F4', laces: '#E8E8E8' },
-    },
   };
 }
 
@@ -125,7 +95,6 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
 const color = (v: unknown, d: string) => (typeof v === 'string' && HEX.test(v) ? v.toUpperCase() : d);
 const style = (v: unknown, d: string) => (typeof v === 'string' && (v === 'none' || STYLE.test(v)) ? v : d);
-const pick = (v: unknown, allowed: { id: string }[], d: string) => (typeof v === 'string' && allowed.some((a) => a.id === v) ? v : d);
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
 /** Anything (server JSON, old characters, user input) -> a complete, valid Appearance. */
@@ -136,7 +105,6 @@ export function normalizeAppearance(raw: unknown, fallbackBody: Body = 'male'): 
   const shape = {} as Record<ShapeKey, number>;
   for (const s of SHAPES) shape[s.key] = round3(clamp(num(r.shape?.[s.key], 0), s.min, s.max));
   if (body === 'male') shape.chest = 0;
-  const o = r.outfit || {};
   return {
     v: 1,
     body,
@@ -147,16 +115,6 @@ export function normalizeAppearance(raw: unknown, fallbackBody: Body = 'male'): 
     brows: r.brows == null ? null : color(r.brows, d.hair.color),
     hair: { style: style(r.hair?.style, d.hair.style), color: color(r.hair?.color, d.hair.color) },
     facial: body === 'female' ? { style: 'none', color: color(r.facial?.color, d.facial.color) } : { style: style(r.facial?.style, 'none'), color: color(r.facial?.color, d.facial.color) },
-    outfit: {
-      top: { id: pick(o.top?.id, TOPS, d.outfit.top.id), main: color(o.top?.main, d.outfit.top.main), trim: color(o.top?.trim, d.outfit.top.trim) },
-      bottom: { id: pick(o.bottom?.id, BOTTOMS, d.outfit.bottom.id), main: color(o.bottom?.main, d.outfit.bottom.main), trim: color(o.bottom?.trim, d.outfit.bottom.trim) },
-      shoes: {
-        id: pick(o.shoes?.id, SHOES, d.outfit.shoes.id),
-        upper: color(o.shoes?.upper, d.outfit.shoes.upper),
-        sole: color(o.shoes?.sole, d.outfit.shoes.sole),
-        laces: color(o.shoes?.laces, d.outfit.shoes.laces),
-      },
-    },
   };
 }
 
@@ -216,14 +174,5 @@ export function randomAppearance(body: Body, hairStyles: string[], facialStyles:
   const natural = HAIR_COLORS.slice(0, 12);
   a.hair = { style: hairStyles.length ? any(hairStyles) : a.hair.style, color: r() < 0.12 ? any(HAIR_COLORS.slice(12)) : any(natural) };
   a.facial = { style: body === 'male' && facialStyles.length && r() < 0.45 ? any(facialStyles) : 'none', color: a.hair.color };
-  const main = any(CLOTH_COLORS);
-  const bottom = any(['#2B2F36', '#1E2E5C', '#3A3F47', '#8A6A4A', '#6B7A35', '#14100F', '#9AA3AD']);
-  a.outfit = {
-    top: { id: any(TOPS).id, main, trim: shade(main, 0.78) },
-    bottom: { id: r() < 0.25 ? 'Bottom_Shorts' : 'Bottom_Pants', main: bottom, trim: shade(bottom, 0.8) },
-    shoes: r() < 0.5
-      ? { id: 'Shoes_Sneakers', upper: any(['#3A3F47', '#F4F4F4', '#C8352E', '#247DF1', '#14100F']), sole: '#F4F4F4', laces: '#E8E8E8' }
-      : { id: 'Shoes_Boots', upper: any(['#6B4A2F', '#3A2A1E', '#14100F', '#8A6A4A']), sole: '#2A2522', laces: '#3D2B1F' },
-  };
   return a;
 }

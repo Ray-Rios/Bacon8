@@ -335,6 +335,21 @@ export class CharacterAnimator {
     return this.dead;
   }
 
+  /**
+   * Which hands are empty and not punching: those relax their fingers (human-factory's
+   * postAnimate); the clips' own fingers (fists, grips) show otherwise.
+   */
+  freeHands(): { l: boolean; r: boolean } {
+    let l = !this.off && this.main?.hands !== 2;
+    let r = !this.main;
+    for (const o of this.overrides) {
+      if (!o.swing) continue;
+      if (o.channels.has('armL')) l = false;
+      if (o.channels.has('armR')) r = false;
+    }
+    return { l, r };
+  }
+
   /** What the hands hold (null: empty). A two-handed main weapon empties the off hand. */
   setGear(main: Gear | null, off: Gear | null) {
     this.main = main;

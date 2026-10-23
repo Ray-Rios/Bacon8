@@ -28,7 +28,8 @@ defmodule BaconWorldWeb.PlayLive do
 
   # Fighting, looting and the inventory (BaconWorldWeb.GameEvents).
   @game_events ~w(fetch_mobs melee_attack loot_open loot_take loot_all loot_close
-                  inventory_fetch inventory_move inventory_equip inventory_unequip inventory_destroy)
+                  inventory_fetch inventory_move inventory_equip inventory_unequip inventory_destroy
+                  merchant_open merchant_buy merchant_sell)
 
   on_mount {Bacon8Web.UserAuth, :require_authenticated_user}
 
@@ -363,6 +364,7 @@ defmodule BaconWorldWeb.PlayLive do
          {:ok, y} <- to_float(raw_y),
          {:ok, z} <- to_float(raw_z),
          {:ok, heading} <- to_float(raw_heading),
+         motion = motion_flags(params),
          %{} = current_character <- current_character(socket),
          :ok <- validate_ground_bounds(y),
          :ok <- validate_move_speed(socket, current_character.position, x, y, z),
@@ -392,6 +394,7 @@ defmodule BaconWorldWeb.PlayLive do
           y: y,
           z: z,
           heading: heading,
+          m: motion,
           hp: Map.get(current_character, :hp, 10),
           max_hp: Map.get(current_character, :max_hp, 10)
         }})
@@ -459,55 +462,9 @@ defmodule BaconWorldWeb.PlayLive do
     end
   end
 
-  def handle_event("cast_spell", %{"spell" => spell_slug, "target_id" => target_id} = params, socket) do
-    current = current_character(socket)
-
-    cond do
-      is_nil(current) ->
-        {:noreply, socket}
-
-      is_nil(socket.assigns.current_zone_topic) ->
-        {:noreply, socket}
-
-      true ->
-        caster_pos = %{
-          x: parse_float(Map.get(params, "caster_x", current.position.x)),
-          z: parse_float(Map.get(params, "caster_z", current.position.z))
-        }
-        target_pos = %{
-          x: parse_float(Map.get(params, "target_x", 0)),
-          z: parse_float(Map.get(params, "target_z", 0))
-        }
-
-        case spell_slug do
-          "throw_stone" ->
-            case Combat.cast_throw_stone(current.character_id, target_id, caster_pos, target_pos) do
-              {:ok, result} ->
-                PubSub.broadcast(
-                  Bacon8.PubSub,
-                  socket.assigns.current_zone_topic,
-                  {:zone_spell_result, result}
-                )
-                {:noreply, socket}
-
-              {:error, :insufficient_mp} ->
-                {:noreply, push_event(socket, "spell_error", %{reason: "insufficient_mp"})}
-
-              {:error, :out_of_range} ->
-                {:noreply, push_event(socket, "spell_error", %{reason: "out_of_range"})}
-
-              {:error, :pvp_not_flagged} ->
-                {:noreply, push_event(socket, "spell_error", %{reason: "pvp_not_flagged"})}
-
-              {:error, reason} ->
-                {:noreply, push_event(socket, "spell_error", %{reason: inspect(reason)})}
-            end
-
-          _ ->
-            {:noreply, socket}
-        end
-    end
-  end
+  # No spells yet (Throw Stone, the old web-lobby test, is retired): melee first.
+  def handle_event("cast_spell", _params, socket),
+    do: {:noreply, push_event(socket, "spell_error", %{reason: "unknown_spell"})}
 
   def handle_event("toggle_pvp", _params, socket) do
     with %{} = current <- current_character(socket),
@@ -554,6 +511,7 @@ defmodule BaconWorldWeb.PlayLive do
          last_world_update_ms: System.monotonic_time(:millisecond)
        )
        |> GameEvents.set_dead(false)
+       |> GameEvents.broadcast_hp(current.character_id, current.max_hp, current.max_hp, "alive")
        |> push_event("character_respawned", %{
             spawn_coords: spawn_coords,
             hp: current.max_hp,
@@ -567,43 +525,6 @@ defmodule BaconWorldWeb.PlayLive do
   end
 
   @impl true
-  def handle_info({:zone_spell_result, result}, socket) do
-    current = current_character(socket)
-
-    socket =
-      if result.target_died && current && result.target_id == current.character_id do
-        # Only process death if not already in death state (prevent double-death while waiting for respawn)
-        if socket.assigns[:is_dead?] do
-          socket
-        else
-          coords = result.spawn_coords || %{x: 0.0, y: 0.0, z: 0.0, heading: 0.0}
-
-          # Cancel any existing pending respawn timer before scheduling a new one.
-          if existing = socket.assigns[:pending_respawn_timer] do
-            Process.cancel_timer(existing)
-          end
-
-          timer_ref = Process.send_after(self(), {:auto_respawn, current.character_id}, 30_000)
-
-          socket
-          |> assign(pending_respawn_timer: timer_ref, pending_spawn_coords: coords, is_dead?: true)
-          |> GameEvents.set_dead(true)
-          |> push_event("character_died", %{
-               spawn_coords: coords,
-               hp: current.max_hp,
-               max_hp: current.max_hp,
-               mp: current.max_mp,
-               max_mp: current.max_mp,
-               respawn_in_ms: 30_000
-             })
-        end
-      else
-        socket
-      end
-
-    {:noreply, push_event(socket, "zone_spell_result", result)}
-  end
-
   def handle_info({:auto_respawn, character_id}, socket) do
     current = current_character(socket)
 
@@ -636,6 +557,7 @@ defmodule BaconWorldWeb.PlayLive do
          last_world_update_ms: System.monotonic_time(:millisecond)
        )
        |> GameEvents.set_dead(false)
+       |> GameEvents.broadcast_hp(current.character_id, current.max_hp, current.max_hp, "alive")
        |> push_event("character_respawned", %{
             spawn_coords: spawn_coords,
             hp: current.max_hp,
@@ -660,9 +582,10 @@ defmodule BaconWorldWeb.PlayLive do
           new_hp = min(hp + max(1, div(max_hp, 12)), max_hp)
           new_mp = min(mp + max(1, div(max_mp, 12)), max_mp)
           {:ok, _} = Combat.update_character_hp_mp(character_id, new_hp, new_mp)
-          socket = push_event(socket, "character_stats_update", %{
-            hp: new_hp, max_hp: max_hp, mp: new_mp, max_mp: max_mp
-          })
+          socket =
+            socket
+            |> push_event("character_stats_update", %{hp: new_hp, max_hp: max_hp, mp: new_mp, max_mp: max_mp})
+            |> then(fn s -> if new_hp != hp, do: GameEvents.broadcast_hp(s, character_id, new_hp, max_hp, "hurt"), else: s end)
           Process.send_after(self(), {:regen_tick, character_id}, 4_000)
           {:noreply, socket}
 
@@ -721,6 +644,9 @@ defmodule BaconWorldWeb.PlayLive do
   def handle_info({:mob_events, events}, socket), do: {:noreply, GameEvents.mob_events(events, socket)}
   def handle_info({:mob_motion, list}, socket), do: {:noreply, GameEvents.mob_motion(list, socket)}
   def handle_info({:zone_gear, payload}, socket), do: {:noreply, GameEvents.zone_gear(payload, socket)}
+  def handle_info({:zone_swing, payload}, socket), do: {:noreply, GameEvents.zone_swing(payload, socket)}
+  def handle_info({:pvp_hit, hit}, socket), do: {:noreply, GameEvents.pvp_hit(hit, socket)}
+  def handle_info({:zone_hp, payload}, socket), do: {:noreply, GameEvents.zone_hp(payload, socket)}
 
   def handle_info(:characters_updated, socket) do
     characters = World.list_user_characters(socket.assigns.current_user.id)
@@ -1016,6 +942,14 @@ defmodule BaconWorldWeb.PlayLive do
     socket.assigns.current_character_runtime || socket.assigns.current_character_payload
   end
 
+  # What the body is doing, for everyone else's animation: bit 1 crouching, bit 2 airborne.
+  defp motion_flags(params) do
+    case params["m"] || params[:m] do
+      m when is_integer(m) and m >= 0 and m <= 3 -> m
+      _ -> 0
+    end
+  end
+
   defp to_float(value) when is_float(value), do: {:ok, value}
   defp to_float(value) when is_integer(value), do: {:ok, value * 1.0}
 
@@ -1028,17 +962,9 @@ defmodule BaconWorldWeb.PlayLive do
 
   defp to_float(_value), do: {:error, :invalid_move}
 
-  defp parse_float(v) when is_float(v), do: v
-  defp parse_float(v) when is_integer(v), do: v * 1.0
-  defp parse_float(v) when is_binary(v) do
-    case Float.parse(v) do
-      {f, _} -> f
-      :error  -> 0.0
-    end
-  end
-  defp parse_float(_), do: 0.0
-
   defp to_scene_characters(characters) do
+    gear = World.gear_for(characters)
+
     Enum.map(characters, fn character ->
       %{
         id: character.id,
@@ -1046,7 +972,8 @@ defmodule BaconWorldWeb.PlayLive do
         character_type: character.character_type,
         model_path: character.model_path,
         appearance: character.appearance,
-        level: character.level
+        level: character.level,
+        gear: gear[character.id] || %{}
       }
     end)
   end

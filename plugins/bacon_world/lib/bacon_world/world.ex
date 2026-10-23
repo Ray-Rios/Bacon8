@@ -8,7 +8,8 @@ defmodule BaconWorld.World do
 
     * `stats`    - `"hp"`, `"max_hp"`, `"mp"`, `"max_mp"`, `"pvp_flagged"`,
                    `"level"`, `"xp"`, `"skill_points"` (`BaconWorld.Progression`),
-                   `"coins"` (copper) and `"starter_kit"` (`BaconWorld.Inventory`)
+                   `"coins"` (copper) and the once-only gifts `"starter_kit"`,
+                   `"starter_wear"` and `"starter_purse"` (`BaconWorld.Inventory`)
     * `settings` - `"character_type"`, `"model_path"`, `"zone_slug"`,
                    `"position" => %{"x", "y", "z", "heading"}`,
                    `"appearance"` (the look of a Bacon8 human; `BaconWorld.Appearance`)
@@ -37,7 +38,9 @@ defmodule BaconWorld.World do
     "xp" => 0,
     "skill_points" => 0,
     "coins" => 0,
-    "starter_kit" => false
+    "starter_kit" => false,
+    "starter_wear" => false,
+    "starter_purse" => false
   }
 
   def max_characters_per_user, do: @max_characters_per_user
@@ -66,6 +69,21 @@ defmodule BaconWorld.World do
     from(c in GameCharacter, where: c.game_id == ^game_id and c.user_id == ^user_id, order_by: [asc: c.inserted_at])
     |> GamesRepo.all()
     |> Enum.map(&view/1)
+  end
+
+  @doc """
+  What each of these characters wears and holds, for the select screen:
+  `%{character_id => gear}` (`BaconWorld.Inventory.gear_for/1`). A character that hasn't
+  logged in since clothes became items shows the starter underwear it will be given.
+  """
+  def gear_for(characters) when is_list(characters) do
+    gear = Inventory.gear_for(Enum.map(characters, & &1.id))
+
+    Map.new(characters, fn c ->
+      g = gear[c.id] || %{}
+      g = if c[:starter_wear] == false, do: Map.merge(g, Inventory.starter_gear()), else: g
+      {c.id, g}
+    end)
   end
 
   @doc "One of the user's characters as a `view/1` map, or nil."
@@ -112,6 +130,7 @@ defmodule BaconWorld.World do
         case Games.create_character(attrs) do
           {:ok, character} ->
             :ok = Combat.grant_starter_spells(character.id)
+            :ok = Inventory.grant_starter_wear(character.id)
             view(character)
 
           {:error, changeset} ->
@@ -224,6 +243,7 @@ defmodule BaconWorld.World do
         # Older characters: bring HP/MP up to their level, and hand out the starter kit once.
         {:ok, _} = Progression.normalize_stats(character.id)
         Inventory.grant_starter_kit(character.id)
+        Inventory.grant_starter_wear(character.id)
         character = GamesRepo.one(by_id_query(character.id)) || character
         c = view(character)
         zone = zone_for(c.zone_slug)
@@ -342,6 +362,7 @@ defmodule BaconWorld.World do
       max_mp: stat(c, "max_mp"),
       pvp_flagged: stat(c, "pvp_flagged"),
       level: stat(c, "level"),
+      starter_wear: stat(c, "starter_wear"),
       position: %{
         x: num(pos["x"]),
         y: num(pos["y"]),

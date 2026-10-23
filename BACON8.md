@@ -16,13 +16,17 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-22**. Docs refreshed for a new session.
+Last substantive update: **2026-10-23**.
 
-- Bacon World now has its own notebook, **`BACON_WORLD.md`** (state, the owner's decisions,
-  next steps); §9 here keeps only the plugin-level summary.
-- The female human was rebuilt on MakeHuman's CC0 assets.
+- Bacon World: underwear and clothes became items (cloth armour), the first NPC merchant,
+  EverQuest coins, the female v3, PvP melee and multiplayer animation fixes; Throw Stone is
+  gone. Details in **`BACON_WORLD.md`** §2.
 
 Before that:
+
+- **2026-10-22**: Bacon World got its own notebook, **`BACON_WORLD.md`** (state, the owner's
+  decisions, next steps); §9 here keeps only the plugin-level summary. The female human was
+  rebuilt on MakeHuman's CC0 assets.
 
 - **2026-10-21**: the store became the **Bacon Store** plugin (ADR 0001 phases 2 and 3; §8,
   §9), and Web Lobby was renamed **Bacon World** (phase 1).
@@ -843,7 +847,7 @@ matters at the hub level:
   - `settings` holds the model, zone, last position and `appearance`.
 
   Single-key writes merge in SQL (`jsonb ||`), so a position save can't overwrite HP that
-  another player's spell just changed. Its own tables are `bacon_world_zones`,
+  another player's hit just changed. Its own tables are `bacon_world_zones`,
   `bacon_world_spells`, `bacon_world_character_spells` and `bacon_world_items` (games DB).
 
   The pre-plugin Lobby tables in the site DB were dropped without migrating (decisions log).
@@ -851,7 +855,7 @@ matters at the hub level:
   (`BaconWorld.Mobs.Zone`, `:global`), and a `Keeper` on every node.
 - **Topics.** PubSub and Presence topics are prefixed `bacon_world:`.
 - **Models.** These are the Bacon8 humans (`Humans/Male.glb`, `Female.glb` with
-  manifests), animation packs, hair, weapons, the skeleton creature and the village kit.
+  manifests, and `Humans/Wardrobe/` design textures and item icons), animation packs, hair, weapons, the skeleton creature and the village kit.
 
   They live on the models volume, not in git, and are built in the game repository
   (`SourceAssets/Pipeline`). The humans' manifests are `.json`, which `/models` refuses
