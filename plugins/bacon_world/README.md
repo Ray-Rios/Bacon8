@@ -41,6 +41,7 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/appearance.ts`, `human-factory.ts` | The look model, and building a human from a look |
 | `assets/js/character-controller.ts`, `controls-math.ts`, `mouse-filter.ts` | Third-person controls (below); `mouse-filter.ts` repairs remote-desktop mouse-look |
 | `assets/js/world-dressing.ts` | The lobby village and its colliders |
+| `assets/js/surface-textures.ts` | CC0 surface textures on the untextured models, by material name (triplanar, no UVs) |
 | `assets/js/model-manager.ts` | Characters in the scene: loading, their animators, what they hold |
 | `assets/js/anim-driver.ts` | The animator: four body channels, strafes, stances, swings with either hand (mirrored) |
 | `assets/js/game-world.ts`, `game-ui.ts` | Fighting, looting, the inventory; the EverQuest-style windows and hotbar |
@@ -173,6 +174,14 @@ merged per material (about 210k triangles in ~45 draw calls). It keeps the local
 of its circle and box colliders (the controller's `collide` option), and its fog, fill light
 and lamps follow the day/night cycle.
 
+`surface-textures.ts` gives those pieces, the ground, the weapons and the skeleton real
+surfaces: each material name (`M_Stone`, `M_RoofTile`, `W_Leather`, ...) maps to a CC0 texture
+set in `/models/World/Textures/` (credits beside them), projected triplanar in the mesh's own
+space, so the models need no UVs. The material keeps its colour and gains the texture's
+pattern, normals, roughness and occlusion. Pieces are merged per family and material (the kit
+and the props share names but not textures). The Esc menu's Textures button turns it off
+(after a reload).
+
 ## Controls
 
 RaysSpaceSim's on-foot movement, EverQuest's mouse with the cursor free, and Black
@@ -278,7 +287,7 @@ These are gitignored, and the owner syncs them to the models volume with
 | `Humans/Anims/` | the four animation packs |
 | `Weapons/` | `B8_Weapons.glb` (43 weapons, shields and tools in bone space) and `icons/` |
 | `Mobs/` | `B8_Skeleton.glb`, the skeleton creature, rigid on the B8 male armature |
-| `World/` | `B8_Props.glb` and `B8_BuildKit.glb` |
+| `World/` | `B8_Props.glb` and `B8_BuildKit.glb`; `Textures/`: surface texture sets (`<set>_c/_n/_r.webp`) and `CREDITS.md` |
 
 Without them, the site falls back to whatever is on the volume.
 

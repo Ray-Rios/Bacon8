@@ -10,6 +10,7 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from '../../../../assets/js/vendor/three-loaders';
 import { modelUrl } from './asset-url';
+import { applySurfaces } from './surface-textures';
 import { CharacterAnimator } from './anim-driver';
 import { UNITS_PER_METRE } from './controls-math';
 import type { HumanFactory } from './human-factory';
@@ -295,7 +296,10 @@ export class MobsView {
       p = new Promise((resolve) => {
         this.loader.load(
           modelUrl(`${MOBS_BASE}/${file}`),
-          (g: any) => resolve(g.scene),
+          (g: any) => {
+            applySurfaces(g.scene, 'mobs');
+            resolve(g.scene);
+          },
           undefined,
           (err: unknown) => {
             console.warn('[mobs] model failed to load', file, err);

@@ -6,6 +6,7 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { GLTFLoader, MeshoptDecoder } from '../../../../assets/js/vendor/three-loaders';
 import { modelUrl } from './asset-url';
+import { applySurfaces } from './surface-textures';
 import type { Gear, GearSet } from './anim-driver';
 
 export const WEAPONS_GLB = '/models/Weapons/B8_Weapons.glb';
@@ -146,6 +147,7 @@ export class WeaponModels {
                 o.receiveShadow = false;
               }
             });
+            applySurfaces(g.scene, 'weapons');
             resolve(g.scene);
           },
           undefined,

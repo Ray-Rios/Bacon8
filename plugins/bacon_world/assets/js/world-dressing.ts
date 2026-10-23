@@ -12,6 +12,7 @@ import * as THREE from '../../../../assets/js/vendor/three';
 import { GLTFLoader, MeshoptDecoder, RoomEnvironment } from '../../../../assets/js/vendor/three-loaders';
 import { UNITS_PER_METRE } from './controls-math';
 import { modelUrl } from './asset-url';
+import { Family, Surface, applySurface, surfaceFor, surfacesEnabled } from './surface-textures';
 
 export const WORLD_BASE = '/models/World';
 
@@ -76,9 +77,11 @@ export class WorldDressing {
     this.scene.add(this.hemi);
     this.group.add(this.ground());
     const [props, kit] = await Promise.all([this.load(`${WORLD_BASE}/B8_Props.glb`), this.load(`${WORLD_BASE}/B8_BuildKit.glb`)]);
-    for (const root of [props, kit]) {
-      root?.traverse((o) => {
+    for (const [root, family] of [[props, 'props'], [kit, 'kit']] as Array<[THREE.Object3D | null, Family]>) {
+      root?.traverse((o: any) => {
         if (/^[PK]_/.test(o.name) && !this.templates.has(o.name)) this.templates.set(o.name, o);
+        // which texture table the merged material uses (props and kit share names)
+        if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.userData.b8family = family;
       });
     }
     if (!this.templates.size) return;
@@ -355,8 +358,7 @@ export class WorldDressing {
   }
 
   private patch(cx: number, cz: number, radius: number, color: string, seed: number) {
-    const mat = new THREE.MeshStandardMaterial({ map: noiseTexture(color, shadeHex(color, -0.18), shadeHex(color, 0.12), seed), roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    mat.map!.repeat.set(radius / 2, radius / 2);
+    const mat = groundMaterial(color, seed, radius / 2, { set: 'earth', scale: 3, antiTile: true }, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const m = new THREE.Mesh(new THREE.CircleGeometry(radius, 40), mat);
     m.rotation.x = -Math.PI / 2;
     m.position.set(cx, 0.012, cz);
@@ -454,8 +456,7 @@ export class WorldDressing {
     // the mound, behind the camp (away from town), its door facing the camp
     const away = toTown + Math.PI;
     const mx = cx + Math.sin(away) * (R + 3), mz = cz + Math.cos(away) * (R + 3);
-    const grass = new THREE.MeshStandardMaterial({ map: noiseTexture('#4F6A35', '#3E5629', '#5E7A40', 43), roughness: 1 });
-    grass.map!.repeat.set(6, 6);
+    const grass = groundMaterial('#4F6A35', 43, 6, { set: 'grass', scale: 2.5, strength: 0.75, antiTile: true }, { roughness: 1 });
     const mound = new THREE.Mesh(new THREE.SphereGeometry(6, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), grass);
     mound.scale.set(1, 0.42, 1);
     mound.position.set(mx, -0.05, mz);
@@ -520,7 +521,7 @@ export class WorldDressing {
         const groups = Array.isArray(o.material) && geo.groups.length ? geo.groups : [{ start: 0, count: geo.index ? geo.index.count : geo.attributes.position.count, materialIndex: 0 }];
         for (const g of groups) {
           const mat = mats[g.materialIndex ?? 0];
-          const key = mat.name || mat.uuid;
+          const key = `${mat.userData.b8family || ''}:${mat.name || mat.uuid}`;
           let b = buckets.get(key);
           if (!b) buckets.set(key, (b = { mat, parts: [], verts: 0, idx: 0 }));
           const sub = groups.length > 1 ? subGeometry(geo, g.start, g.count) : geo;
@@ -564,12 +565,14 @@ export class WorldDressing {
       g.setIndex(new THREE.BufferAttribute(index, 1));
       g.computeBoundingSphere();
       const mat = (b.mat as THREE.MeshStandardMaterial).clone();
+      const surface = surfaceFor(mat.userData.b8family || 'props', mat.name || '');
+      if (surface) void applySurface(mat, surface);
       if ((mat as any).emissive && (mat.emissive.r + mat.emissive.g + mat.emissive.b) > 0.01) {
         mat.userData.base = mat.emissiveIntensity || 1;
         this.glow.push(mat);
       }
       const mesh = new THREE.Mesh(g, mat);
-      mesh.name = `World_${name}`;
+      mesh.name = `World_${name.replace(':', '_')}`;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.group.add(mesh);
@@ -583,14 +586,12 @@ export class WorldDressing {
   private ground(): THREE.Object3D {
     const g = new THREE.Group();
     g.name = 'Ground';
-    const grass = new THREE.Mesh(new THREE.CircleGeometry(150, 96), new THREE.MeshStandardMaterial({ map: noiseTexture('#5E7F3F', '#4C6A33', '#6E8F48', 7), roughness: 0.95 }));
-    (grass.material as THREE.MeshStandardMaterial).map!.repeat.set(60, 60);
+    const grass = new THREE.Mesh(new THREE.CircleGeometry(150, 96), groundMaterial('#5E7F3F', 7, 60, { set: 'grass', scale: 3, strength: 0.75, antiTile: true }, { roughness: 0.95 }));
     grass.rotation.x = -Math.PI / 2;
     grass.receiveShadow = true;
     g.add(grass);
     // dirt paths out of the plaza
-    const dirt = new THREE.MeshStandardMaterial({ map: noiseTexture('#8A7152', '#77603F', '#9A815F', 11), roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    dirt.map!.repeat.set(2, 12);
+    const dirt = groundMaterial('#8A7152', 11, [2, 12], { set: 'forest_ground', scale: 2.5, antiTile: true }, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     for (const a of [0, 90, 180, 270, 45, -45]) {
       const len = a % 90 === 0 ? 40 : 24;
       const p = new THREE.Mesh(new THREE.PlaneGeometry(3.2, len), dirt);
@@ -602,14 +603,23 @@ export class WorldDressing {
       g.add(p);
     }
     // cobbled plaza
-    const cob = new THREE.MeshStandardMaterial({ map: cobbleTexture(), roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    cob.map!.repeat.set(14, 14);
+    const cobParams = { roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
+    let cob: THREE.MeshStandardMaterial;
+    if (surfacesEnabled()) {
+      cob = new THREE.MeshStandardMaterial({ color: '#B4AEA5', ...cobParams });
+      void applySurface(cob, { set: 'plaza', scale: 3 });
+    } else {
+      cob = new THREE.MeshStandardMaterial({ map: cobbleTexture(), ...cobParams });
+      cob.map!.repeat.set(14, 14);
+    }
     const plaza = new THREE.Mesh(new THREE.CircleGeometry(14, 64), cob);
     plaza.rotation.x = -Math.PI / 2;
     plaza.position.y = 0.02;
     plaza.receiveShadow = true;
     g.add(plaza);
-    const rim = new THREE.Mesh(new THREE.RingGeometry(13.6, 14.3, 64), new THREE.MeshStandardMaterial({ color: '#6E6A62', roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    const rimMat = new THREE.MeshStandardMaterial({ color: '#6E6A62', roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    void applySurface(rimMat, { set: 'stone_blocks', scale: 1.2 });
+    const rim = new THREE.Mesh(new THREE.RingGeometry(13.6, 14.3, 64), rimMat);
     rim.rotation.x = -Math.PI / 2;
     rim.position.y = 0.03;
     g.add(rim);
@@ -627,6 +637,20 @@ function subGeometry(geo: THREE.BufferGeometry, start: number, count: number): T
     g.setIndex(new THREE.BufferAttribute(arr, 1));
   }
   return g;
+}
+
+/** A ground material: colour `color` with a real texture set on it (detail mode), or the
+ *  old canvas noise (repeated `repeat` times) when surface textures are off. */
+function groundMaterial(color: string, seed: number, repeat: number | [number, number], surface: Surface, params: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial {
+  if (surfacesEnabled()) {
+    const mat = new THREE.MeshStandardMaterial({ color, ...params });
+    void applySurface(mat, surface);
+    return mat;
+  }
+  const mat = new THREE.MeshStandardMaterial({ map: noiseTexture(color, shadeHex(color, -0.18), shadeHex(color, 0.12), seed), ...params });
+  const [u, v] = Array.isArray(repeat) ? repeat : [repeat, repeat];
+  mat.map!.repeat.set(u, v);
+  return mat;
 }
 
 function noiseTexture(base: string, dark: string, light: string, seed: number): THREE.CanvasTexture {

@@ -63,7 +63,24 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-23 (second), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23b.md`):
+**Delivered 2026-10-23 (third), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23c.md`):
+
+- **Real surface textures on the untextured models.** None of the village props, building
+  kit, weapons or the skeleton has UVs; their materials are plain colours named for what they
+  are. `surface-textures.ts` maps each material name to a CC0 texture set (ambientCG and Poly
+  Haven, from the shared library) and projects it triplanar in the mesh's own space (metres),
+  with normal, roughness and ambient-occlusion maps, so no model was re-exported. Most
+  materials keep their colour and gain the texture's pattern around it ("detail"); the kit's
+  brick uses the texture's own colours. Stone walls, roof tiles, slate, thatch, planks, beams,
+  rock, bark, straw, rope, canvas, cloth, leather, metals and bone are covered; glass, gems,
+  potions, fire and paint stay plain.
+- **The ground**: grass, dirt paths, the plaza (fan-laid paving), the plaza rim, the camp
+  patches and the barrow mound use real textures, with large-scale variation to hide tiling.
+- **24 texture sets** in `models/World/Textures/` (1K/512 WebP, 9.4 MB; `CREDITS.md` beside them).
+- A **Textures** on/off button in the Esc menu (applies after a reload; off restores the old
+  look with canvas noise).
+
+The second 2026-10-23 delivery, committed, deployed and synced (`handoff/CLAUDE_CODE_PROMPT_2026-10-23b.md`):
 
 - **The female's body sliders, Black Desert style**: the chest gets size, height, spacing and
   shape (round to perky); the glutes size and lift; new waist, arms, thighs and calves
@@ -116,7 +133,8 @@ The first 2026-10-23 delivery:
   - `README.txt` and `CREDITS.md`.
 - `Weapons/B8_Weapons.glb` (43 weapons, shields and tools).
 - `Mobs/B8_Skeleton.glb`.
-- `World/B8_Props.glb` (90 props) and `B8_BuildKit.glb` (36 building pieces).
+- `World/B8_Props.glb` (90 props) and `B8_BuildKit.glb` (36 building pieces); `World/Textures/`:
+  24 surface texture sets (`<set>_c/_n/_r.webp`) and `CREDITS.md`.
 - Every `.glb` has a `.glb.gz`. The local copies in `C:\Bacon8\priv\static\models` are current.
   Production gets them only with `sync-models-to-k8s.sh`, run by the owner.
 
@@ -243,9 +261,11 @@ README has every script, source and run order.
   `/pages/credits`.
 
 **The shared library** (2026-10-23, `C:\Bacon8\library`, gitignored, see its README):
-- `textures/`: 85 CC0 PBR texture sets at 2K (62 from ambientCG, 23 from Poly Haven): fabrics,
-  leathers, woods, bricks, roof tiles, rock, ground, grass, metal, plaster, paving and more,
-  each with `meta.json`; `textures/LICENSES.md` lists them. Credit both sites when used.
+- `textures/`: 120 CC0 PBR texture sets at 2K (ambientCG and Poly Haven): fabrics, leathers,
+  woods, bricks, roof tiles, slate, thatch, rock, ground, grass, paving, cobbles, metal,
+  plaster and more, each with `meta.json`; `textures/LICENSES.md` lists them. Credit both
+  sites when used. The game's runtime sets are packed from here by the pipeline step in
+  `tmp/b8work/tex/pack.py` (to move into the pipeline; see section 7).
 - `substance/`: 17 Substance materials whose licence is known (Allegorithmic, Adobe, TextureCan).
   The other 247 had no recorded source and were deleted on the owner's instruction, with 5
   restricted military camo patterns and 4 duplicates. `library/substance/LICENSES.md` is the licence table;
@@ -265,6 +285,10 @@ the development PC it sits in `C:\Bacon8\tmp\b8work\harness`):
   container; a `python:3.12-slim` container serves it beside the models.
 - Playwright (the Docker MCP browser, at `host.docker.internal`) loads it. Copy the canvas
   into an `<img>` with `toDataURL` before screenshotting.
+- `village.ts`/`village.html` render the village (`mode=village`, `cam=` and `at=` in
+  metres), the weapons (`mode=weapons&list=`) or the skeleton, with `surf=off` for the old
+  look. Software WebGL is slow: it renders once, waits (`wait=`, ms) for the textures, and
+  renders again.
 
 ## 6. Working rules (from the owner)
 
@@ -335,6 +359,17 @@ one pipeline.
   models change (`gzip -k -9`).
 - The client has a few pre-existing TypeScript errors under `npm run type-check` (implicit
   `any`s); it bundles fine.
+
+**Surface textures (next):**
+
+- The cloth armour and the underwear have design textures already; the leather and plate
+  armour still to come should use the library's leathers and metals the same way.
+- Move `pack.py` (library set to runtime WebP, with the means `SETS` needs) into
+  `RaysSpaceSim/SourceAssets/Pipeline/` and generate `SETS` from it.
+- Triplanar costs about ten texture reads per pixel on textured surfaces. Fine on desktop;
+  if low-end machines struggle, the Esc menu's Textures switch turns it off. A cheaper path
+  is baking UVs and textures into the GLBs in Blender (the Substance bake can do the same).
+- Trees' leaves, food, paint and gems are untextured on purpose (they read as stylised).
 
 **Assets still wanted:** weapon animations per weapon type, finished and polished (see
 `RaysSpaceSim/SourceAssets/Characters/ANIMATION_ROADMAP.md`), and a building system for the 36

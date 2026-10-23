@@ -29,6 +29,7 @@ import { HumanFactory, HumanAssets } from './human-factory';
 import { CharacterStage } from './character-stage';
 import { FrontUI } from './front-ui';
 import { WorldDressing, Collider } from './world-dressing';
+import { SURFACES_KEY } from './surface-textures';
 import { BODY_MODEL, isHumanModel, randomAppearance } from './appearance';
 import { Nameplates, PLAYER_COLOR, plateHeight } from './nameplates';
 import { setAssetVersions } from './asset-url';
@@ -1390,6 +1391,8 @@ export const WorldCharacterUIScene = {
     const quality = menu.querySelector('[data-menu-quality]') as HTMLButtonElement | null;
     const q = readSetting(QUALITY_KEY) || 'auto';
     if (quality) quality.textContent = `Resolution: ${q === 'auto' ? 'Auto' : q === 'full' ? 'Full' : 'Low'}`;
+    const surfaces = menu.querySelector('[data-menu-surfaces]') as HTMLButtonElement | null;
+    if (surfaces) surfaces.textContent = `Textures: ${readSetting(SURFACES_KEY) === 'off' ? 'Off' : 'On'} (after reload)`;
   },
 
   buildGameMenu(this: any): HTMLDivElement {
@@ -1520,6 +1523,14 @@ export const WorldCharacterUIScene = {
     });
     quality.setAttribute('data-menu-quality', 'true');
     panel.appendChild(quality);
+    // Surface textures (surface-textures.ts): read once at start, so a change shows
+    // after a reload.
+    const surfaces = button('Textures', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => {
+      writeSetting(SURFACES_KEY, readSetting(SURFACES_KEY) === 'off' ? 'on' : 'off');
+      this.syncGameMenu();
+    });
+    surfaces.setAttribute('data-menu-surfaces', 'true');
+    panel.appendChild(surfaces);
     const fps = document.createElement('div');
     fps.className = 'text-[11px] text-slate-500 mb-2';
     fps.setAttribute('data-menu-fps', 'true');
