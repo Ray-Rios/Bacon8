@@ -47,7 +47,7 @@ practical: each subsystem says what it is and roughly what removing it costs.
 | **Notifications & email** | Swoosh + SMTP, HTML templates, delivery logging | `lib/bacon8/email`, `notifications` |
 | **Moderation & audit** | Audit log, moderation queue, admin LiveViews | `lib/bacon8/moderation`, `audit.ex` |
 | **Games platform** | Games, characters, the game-server registry, single-session claims, client releases and launcher downloads. Game-specific features come from plugins. **Its own database.** | `lib/bacon8/games` |
-| **Plugins** | WordPress-style: a game or feature is a folder under `plugins/`, compiled in and switched on or off from `/admin/plugins` without a redeploy. **Bacon World** (an in-browser 3D game, formerly Web Lobby) ships as the example | `lib/bacon8/plugin.ex`, `plugins`, `plugins/bacon_world` |
+| **Plugins** | WordPress-style: a game or feature is a folder under `plugins/`, compiled in and switched on or off from `/admin/plugins` without a redeploy. Two ship as examples: **Bacon World**, a 3D multiplayer RPG in the browser (three.js; formerly Web Lobby; its notebook is [`BACON_WORLD.md`](BACON_WORLD.md)), and **Bacon Store** | `lib/bacon8/plugin.ex`, `plugins/` |
 
 The **games platform** is the least generic and the most actively developed part.
 If you are here for a web app, it is the first thing to delete — it is cleanly
@@ -297,13 +297,19 @@ in `assets/` directly, but keep `node_modules` and the build output out of commi
 
 ## Testing and linting
 
+Tests need only Postgres. The maintainers run them in throwaway Docker containers
+(the commands are in [`BACON8.md`](BACON8.md) §14):
+
 ```bash
 mix test          # creates and migrates the test databases first
-mix lint          # format check, eslint, tsc, credo --strict, sobelow, dialyzer
 ```
 
 `warnings_as_errors` is on in `:dev` and `:test` and off in `:prod`, so a
-warning fails your build but never blocks a release.
+warning fails your build but never blocks a release. (`mix lint` and the `assets.*`
+aliases still point at a script that was removed when asset builds moved into the
+image; see BACON8.md §13.)
+
+Bacon World's JavaScript has its own unit tests: `plugins/bacon_world/assets/js/__tests__/run.sh`.
 
 ---
 
@@ -383,7 +389,7 @@ An honest map of what it costs to remove each piece, largest win first:
 | Remove | Effort | Notes |
 |---|---|---|
 | Games platform | **Low** | Own repo, own router scope, own migrations. Delete `lib/bacon8/games`, `games_repo.ex`, `priv/games_repo`, the `/api/games` scope, and drop `Bacon8.GamesRepo` from `ecto_repos` |
-| Store & Gems | Low–medium | `Store`, `Wallet`, `Payments` and their tables are self-contained; storage tiers and channel passes read entitlements the store grants |
+| Store & Gems | **Low** | A plugin: delete `plugins/bacon_store` and the hub builds and runs without a store (entitlements stay in core) |
 | Forum / social | Low–medium | Shares presence and notifications with chat |
 | Desktop UI | Medium | It is rendered from the app layout on every authenticated page, so removal is a layout edit plus the component tree |
 | CMS | Medium | The `cms_*` tables are independent of `posts`; you can drop one and keep the other |
@@ -393,14 +399,24 @@ The pieces most likely to be useful on their own: the **security stack** (device
 fingerprints, identifier lists, lockout, rate limiting), the **Gem ledger and
 webhook inbox**, and the **plugin system**.
 
-**Where this is going (2026-10-20):**
-[`docs/adr/0001-core-and-plugins.md`](docs/adr/0001-core-and-plugins.md) moves the
-store (with Gems and payments) and later the games platform into plugins. A new site
-then starts as the core plus the plugins it wants, rather than by deleting
+**Where this is going:**
+[`docs/adr/0001-core-and-plugins.md`](docs/adr/0001-core-and-plugins.md). The store (with
+Gems and payments) became a plugin on 2026-10-21, and the games platform is next. A new
+site will then start as the core plus the plugins it wants, rather than by deleting
 subsystems.
 
 Shipped media is our own or CC0. The site's Credits page (`/pages/credits`, a CMS
-page) lists the sources.
+page) lists the sources; the 3D models' credits sit beside them on the models volume
+(`Humans/CREDITS.md`), and the sounds' in `priv/static/audio/world/CREDITS.md`.
+
+**Documentation map:**
+
+- `README.md`: this front door.
+- [`BACON8.md`](BACON8.md): engineering context, decisions, invariants and workflow. Read it
+  before changing the hub.
+- [`BACON_WORLD.md`](BACON_WORLD.md): the game's state, decisions and next steps.
+- `plugins/*/README.md`: each plugin's reference.
+- `docs/adr/`: architecture decisions.
 
 ---
 

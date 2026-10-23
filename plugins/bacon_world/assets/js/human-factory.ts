@@ -32,7 +32,7 @@ export interface StyleEntry {
 
 export interface HumanAssets {
   bodies?: Partial<Record<'Male' | 'Female', any>>; // B8_<Body>.json manifests
-  hair?: { Male?: { hair: StyleEntry[]; facial?: StyleEntry[] }; Female?: { hair: StyleEntry[]; facial?: StyleEntry[] } };
+  hair?: Partial<Record<'Male' | 'Female', { hair: StyleEntry[]; facial?: StyleEntry[]; aliases?: Record<string, string> }>>;
 }
 
 interface BodyAsset {
@@ -41,7 +41,6 @@ interface BodyAsset {
   clips: THREE.AnimationClip[];
   manifest: any;
   bodyGeo: THREE.BufferGeometry | null;
-  geoByHidden: Map<string, THREE.BufferGeometry>;
 }
 
 const TAG: Record<Body, 'Male' | 'Female'> = { male: 'Male', female: 'Female' };
@@ -58,6 +57,7 @@ export class HumanFactory {
   private bodies = new Map<Body, Promise<BodyAsset>>();
   private parts = new Map<string, Promise<THREE.Object3D | null>>();
   private packs = new Map<string, Promise<THREE.AnimationClip[]>>();
+  private filtered = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
   assets: HumanAssets;
 
   constructor(assets: HumanAssets = {}) {
@@ -70,9 +70,15 @@ export class HumanFactory {
     if (assets) this.assets = assets;
   }
 
-  styles(body: Body): { hair: StyleEntry[]; facial: StyleEntry[] } {
+  styles(body: Body): { hair: StyleEntry[]; facial: StyleEntry[]; aliases: Record<string, string> } {
     const s = this.assets.hair?.[TAG[body]];
-    return { hair: s?.hair || [], facial: body === 'male' ? s?.facial || [] : [] };
+    return { hair: s?.hair || [], facial: body === 'male' ? s?.facial || [] : [], aliases: s?.aliases || {} };
+  }
+
+  /** A style by id, or by an id it replaced (looks saved before the style set changed). */
+  findStyle(list: StyleEntry[], id: string, aliases: Record<string, string> = {}): StyleEntry | null {
+    if (id === 'none') return null;
+    return list.find((s) => s.id === id) || (aliases[id] ? list.find((s) => s.id === aliases[id]) : undefined) || null;
   }
 
   iconUrl(entry: StyleEntry): string | null {
@@ -96,7 +102,6 @@ export class HumanFactory {
           clips: gltf.animations || [],
           manifest: this.assets.bodies?.[tag] || null,
           bodyGeo: bodyMesh ? (bodyMesh.geometry as THREE.BufferGeometry) : null,
-          geoByHidden: new Map(),
         } as BodyAsset;
       });
       this.bodies.set(body, p);
@@ -142,10 +147,22 @@ export class HumanFactory {
 
   /** The body geometry with the triangles under `hidden` regions removed (cached). */
   bodyGeometry(asset: BodyAsset, hidden: number[]): THREE.BufferGeometry | null {
-    const tpl = asset.bodyGeo;
-    if (!tpl) return null;
+    return asset.bodyGeo ? this.filteredGeometry(asset.bodyGeo, hidden) : null;
+  }
+
+  /**
+   * A mesh's geometry without the triangles whose three corners are all in `hidden` regions
+   * (vertex attribute `_region`): the skin under clothes, and the parts of a garment under
+   * another (trousers under a shirt's hem or a boot). Cached per template and hidden set.
+   */
+  filteredGeometry(tpl: THREE.BufferGeometry, hidden: number[]): THREE.BufferGeometry {
+    let cache = this.filtered.get(tpl);
+    if (!cache) {
+      cache = new Map();
+      this.filtered.set(tpl, cache);
+    }
     const key = [...new Set(hidden)].sort((a, b) => a - b).join(',');
-    const hit = asset.geoByHidden.get(key);
+    const hit = cache.get(key);
     if (hit) return hit;
     const region = tpl.getAttribute('_region') as THREE.BufferAttribute | undefined;
     const index = tpl.getIndex();
@@ -156,22 +173,34 @@ export class HumanFactory {
       const hide = new Set(hidden);
       const src = index.array as ArrayLike<number>;
       const keep: number[] = [];
-      for (let i = 0; i < src.length; i += 3) {
-        const a = src[i], b = src[i + 1], c = src[i + 2];
-        if (hide.has(Math.round(region.getX(a))) && hide.has(Math.round(region.getX(b))) && hide.has(Math.round(region.getX(c)))) continue;
-        keep.push(a, b, c);
+      const groups: { start: number; count: number; materialIndex?: number }[] = [];
+      const ranges = tpl.groups.length ? tpl.groups : [{ start: 0, count: src.length, materialIndex: undefined }];
+      for (const r of ranges) {
+        const start = keep.length;
+        const end = Math.min(src.length, r.start + r.count);
+        for (let i = r.start; i + 2 < end; i += 3) {
+          const a = src[i], b = src[i + 1], c = src[i + 2];
+          if (hide.has(Math.round(region.getX(a))) && hide.has(Math.round(region.getX(b))) && hide.has(Math.round(region.getX(c)))) continue;
+          keep.push(a, b, c);
+        }
+        groups.push({ start, count: keep.length - start, materialIndex: r.materialIndex });
       }
-      geo = new THREE.BufferGeometry();
-      for (const name of Object.keys(tpl.attributes)) geo.setAttribute(name, tpl.attributes[name]);
-      geo.morphAttributes = tpl.morphAttributes;
-      geo.morphTargetsRelative = tpl.morphTargetsRelative;
-      const Arr = (index.array as any).constructor;
-      geo.setIndex(new THREE.BufferAttribute(new Arr(keep), 1));
-      if (tpl.boundingBox) geo.boundingBox = tpl.boundingBox.clone();
-      if (tpl.boundingSphere) geo.boundingSphere = tpl.boundingSphere.clone();
-      geo.name = `${tpl.name || 'Body'}#${key}`;
+      if (keep.length === src.length) {
+        geo = tpl;
+      } else {
+        geo = new THREE.BufferGeometry();
+        for (const name of Object.keys(tpl.attributes)) geo.setAttribute(name, tpl.attributes[name]);
+        geo.morphAttributes = tpl.morphAttributes;
+        geo.morphTargetsRelative = tpl.morphTargetsRelative;
+        const Arr = (index.array as any).constructor;
+        geo.setIndex(new THREE.BufferAttribute(new Arr(keep), 1));
+        if (tpl.groups.length) for (const g of groups) geo.addGroup(g.start, g.count, g.materialIndex);
+        if (tpl.boundingBox) geo.boundingBox = tpl.boundingBox.clone();
+        if (tpl.boundingSphere) geo.boundingSphere = tpl.boundingSphere.clone();
+        geo.name = `${tpl.name || 'Mesh'}#${key}`;
+      }
     }
-    asset.geoByHidden.set(key, geo);
+    cache.set(key, geo);
     return geo;
   }
 
@@ -202,6 +231,7 @@ export class HumanInstance {
   private armature: THREE.Object3D;
   private bodyMesh: THREE.SkinnedMesh | null;
   private garments = new Map<string, THREE.Object3D>();
+  private baseGeometry = new Map<THREE.Mesh, THREE.BufferGeometry>();
   private materials = new Map<string, THREE.MeshStandardMaterial[]>();
   private hair: { file: string; obj: THREE.Object3D } | null = null;
   private facial: { file: string; obj: THREE.Object3D } | null = null;
@@ -253,8 +283,17 @@ export class HumanInstance {
     return c;
   }
 
+  /**
+   * Sets a role's colour. Textured roles multiply their texture by it: the skin's texture is
+   * neutral grey on average, so its material carries a gain (glTF extras "tint_gain") that
+   * makes texture x colour come out at the chosen tone.
+   */
   private tint(name: string, hex: string) {
-    for (const m of this.materials.get(name) || []) m.color.set(hex);
+    for (const m of this.materials.get(name) || []) {
+      m.color.set(hex);
+      const gain = Number((m.userData as any)?.tint_gain) || 1;
+      if (gain !== 1) m.color.multiplyScalar(gain);
+    }
   }
 
   /** Applies a look. A different body needs a new instance (see HumanFactory.create). */
@@ -273,9 +312,24 @@ export class HumanInstance {
     // garments and the body regions under them
     const o = a.outfit;
     for (const [id, node] of this.garments) node.visible = id === o.top.id || id === o.bottom.id || id === o.shoes.id;
+    const hidden = this.factory.hiddenRegions(this.asset, a);
     if (this.bodyMesh) {
-      const geo = this.factory.bodyGeometry(this.asset, this.factory.hiddenRegions(this.asset, a));
+      const geo = this.factory.bodyGeometry(this.asset, hidden);
       if (geo && this.bodyMesh.geometry !== geo) this.bodyMesh.geometry = geo;
+    }
+    // a garment worn under another loses the part the other covers
+    for (const node of this.garments.values()) {
+      if (!node.visible) continue;
+      node.traverse((m: any) => {
+        if (!m.isMesh) return;
+        let base = this.baseGeometry.get(m);
+        if (!base) {
+          base = m.geometry as THREE.BufferGeometry;
+          this.baseGeometry.set(m, base);
+        }
+        const geo = this.factory.filteredGeometry(base, hidden);
+        if (m.geometry !== geo) m.geometry = geo;
+      });
     }
 
     // colours
@@ -292,7 +346,7 @@ export class HumanInstance {
 
     // hair and facial hair (swap only when the style changes)
     const styles = this.factory.styles(this.body);
-    const want = (list: StyleEntry[], id: string) => (id === 'none' ? null : list.find((s) => s.id === id) || null);
+    const want = (list: StyleEntry[], id: string) => this.factory.findStyle(list, id, styles.aliases);
     const hairEntry = want(styles.hair, a.hair.style);
     const facialEntry = this.body === 'male' ? want(styles.facial, a.facial.style) : null;
     if (first || !prev || prev.hair.style !== a.hair.style || !this.hair !== !hairEntry) {
@@ -319,7 +373,13 @@ export class HumanInstance {
     if (!part) return;
     part.obj.traverse((m: any) => {
       if (!m.isMesh) return;
-      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat.color?.set(hex);
+      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+        if (!mat.color) continue;
+        mat.color.set(hex);
+        // painted hair textures are grey around a set mean: the gain brings texture x colour to the colour
+        const gain = Number(mat.userData?.tint_gain) || 1;
+        if (gain !== 1) mat.color.multiplyScalar(gain);
+      }
     });
   }
 
@@ -347,6 +407,14 @@ export class HumanInstance {
       }
       const opacity = entry.opacity;
       for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        // hair cards are alpha-tested: with MSAA, alpha to coverage softens their edges
+        if ((m as any).alphaTest > 0) (m as any).alphaToCoverage = true;
+        // the scalp decal under a style lies just off the skin: keep it in front of the skin
+        if ((m as any).userData?.decal) {
+          (m as any).polygonOffset = true;
+          (m as any).polygonOffsetFactor = -1;
+          (m as any).polygonOffsetUnits = -4;
+        }
         if (opacity != null && opacity < 1) {
           (m as any).transparent = true;
           (m as any).opacity = opacity;

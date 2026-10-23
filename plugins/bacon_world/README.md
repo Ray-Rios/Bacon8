@@ -8,6 +8,9 @@ everyone starts the same and will grow through one shared skill tree.
 It is also Bacon8's **reference plugin**. Copy this folder to start your own
 (see `plugins/README.md` and BACON8.md §9).
 
+**Where it stands, the owner's decisions and what's next: [`BACON_WORLD.md`](../../BACON_WORLD.md)**
+at the repository root. This file is the module-by-module reference.
+
 It was called **Web Lobby** (slug `web_lobby`) until 2026-10-21. Old links
 (`/games/web_lobby/...`) answer 301 to `/games/bacon_world/...`, and the migrations below
 renamed its tables, its game row and its `plugin_states` row.
@@ -35,7 +38,7 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/world-character-ui-scene.ts` | The hook (`WorldCharacterUIScene`): front end, world, multiplayer |
 | `assets/js/front-ui.ts`, `character-stage.ts` | Character select and creator (HTML) over a lit 3D stage |
 | `assets/js/appearance.ts`, `human-factory.ts` | The look model, and building a human from a look |
-| `assets/js/character-controller.ts`, `controls-math.ts` | Third-person controls (below) |
+| `assets/js/character-controller.ts`, `controls-math.ts`, `mouse-filter.ts` | Third-person controls (below); `mouse-filter.ts` repairs remote-desktop mouse-look |
 | `assets/js/world-dressing.ts` | The lobby village and its colliders |
 | `assets/js/model-manager.ts` | Characters in the scene: loading, their animators, what they hold |
 | `assets/js/anim-driver.ts` | The animator: four body channels, strafes, stances, swings with either hand (mirrored) |
@@ -65,12 +68,16 @@ set `ENABLE_BUILTIN_MODELS=true` to offer three simple built-in ones.
 folder (one relative path per line) limits it to those files. A character whose
 model has been removed wears the first model still offered.
 
-The shipped models are the **Bacon8 humans**, `Humans/Male.glb` and
-`Humans/Female.glb`. They are CC0 base bodies (Blender Studio) on the B8 skeleton,
-with 20 CC0 clips from Quaternius' Universal Animation Library and a Bacon8 outfit.
-The game repository builds them (`SourceAssets/Characters/B8Human/build_humans.py`,
-the `*_web.glb` outputs), along with the full 89-clip versions, the Unreal assets and
-test weapons with a shared grip (`weapon_r` / `weapon_l` bones).
+The shipped models are the **Bacon8 humans**, `Humans/Male.glb` and `Humans/Female.glb`.
+They share the B8 skeleton and 20 CC0 clips from Quaternius' Universal Animation Library.
+
+- The male is built on Blender Studio's CC0 base mesh (v2).
+- The female is built on MakeHuman's CC0 body (2026-10-22). Her clothes, hair, lashes and
+  brows are MakeHuman CC0 assets, fitted to her.
+
+The game repository builds them all with the scripts in `SourceAssets/Pipeline` (see its
+README), along with the animation packs, the weapons (shared grip on the `weapon_r` /
+`weapon_l` bones), the skeleton creature and the village kit.
 
 Any rigged glTF/GLB (or FBX) works. Clips are found by name (`model-manager.ts`).
 `PREFERRED_CLIPS` lists the exact names each action prefers first:
@@ -105,13 +112,24 @@ checked against a baked mirror, worst error 0.004).
 
 ## Looks and the creator
 
-A character's look lives in its `settings["appearance"]`: body type, height, seven body and
-three face sliders (morph targets on the v2 humans), skin, eyes and brows, one of 45 hair
-styles, one of 6 facial hair, and outfit pieces with their colours. `BaconWorld.Appearance`
-normalises every look the client sends: unknown keys are dropped, sliders clamped, colours
-must be `#RRGGBB`, garments come from a fixed list and hair styles from the installed
-manifest. The body type picks the model and can't change after creation. Characters made
-before looks existed get the default look for their model.
+A character's look lives in its `settings["appearance"]`. It holds:
+
+- body type and height;
+- seven body and three face sliders (the humans' 13 morph targets);
+- skin, eyes and brows;
+- a hair style (23 male, 31 female) and, for the male, one of 6 facial hair;
+- outfit pieces with their colours.
+
+`BaconWorld.Appearance` normalises every look the client sends:
+
+- unknown keys are dropped and sliders clamped;
+- colours must be `#RRGGBB`;
+- garments come from a fixed list;
+- hair styles come from the installed manifest. A retired style id (one that the manifest's
+  `aliases` map) becomes the style that replaced it.
+
+The body type picks the model and can't change after creation. Characters made before looks
+existed get the default look for their model.
 
 Events: `three_ui_create_character` (replies `%{ok, character_id}` or `%{ok: false, error}`),
 `three_ui_update_appearance` (refused while that character is in the world) and
@@ -119,9 +137,15 @@ Events: `three_ui_create_character` (replies `%{ok, character_id}` or `%{ok: fal
 (BACON8.md invariant 17), so the LiveView passes the humans' manifests in
 `data-human-assets`.
 
-`human-factory.ts` builds each human from its look: the geometry is shared, each outfit gets
-one cached index buffer that hides the skin under its clothes, hair and facial hair are bound
-to the body's bones, and tints are per character.
+`human-factory.ts` builds each human from its look:
+
+- The geometry is shared, and tints are per character. A grey texture's material carries a
+  `tint_gain` in its glTF extras: 1.25 for skin and clothes, 2.0 for hair.
+- Each outfit gets cached index buffers that hide the skin under its clothes, and the parts of
+  a garment worn under another, such as trousers under a shirt's hem or boots under trousers.
+  These come from the `_region` vertex attribute and the manifest's `hides`.
+- Hair and facial hair are bound to the body's bones and take the same morphs. A hair style's
+  scalp decal is drawn with a polygon offset.
 
 ## The village
 
@@ -149,13 +173,19 @@ Desert's mouse buttons with mouse-look on (`character-controller.ts`; numbers in
 | WASD / arrows | move relative to the camera; Shift sprints, C crouches, Space jumps |
 | Wheel | zoom (1.5 to 9 m) |
 | Ctrl | free the cursor |
-| Esc | close a window, or the game menu (mouse, sound, music, resolution, camera smoothing, log out) |
+| Esc | close a window, or the game menu (mouse, sound, effects / nature / music volume, resolution, log out) |
 | Enter / `/` | chat / a slash command |
 
 A slow frame moves the character its full distance (in 50 ms steps), so a machine or
-remote desktop session that renders slowly doesn't play in slow motion. Resolution
-"Auto" lowers the rendering resolution while the game runs under ~38 fps; "Smooth
-camera" eases bursty mouse input (remote desktop). The menu shows the frame rate.
+remote-desktop session that renders slowly doesn't play in slow motion. Resolution
+"Auto" lowers the rendering resolution while the game runs under ~38 fps. The menu shows
+the frame rate.
+
+**Remote desktop.** Over RDP, Chrome re-centres a locked pointer and the remote end hears
+about it a round trip later. Until then, every report is a jump of a third of the page.
+`mouse-filter.ts` tracks both cursors and recovers the hand's real movement. A local mouse
+passes through untouched. While it is repairing jumps, the menu's FPS line says
+"remote-desktop mouse (N fixed)". There is no camera-smoothing option any more.
 
 ## Fighting, creatures and loot
 
@@ -187,12 +217,19 @@ and torch in the bags, one of each stance.
 
 ## Models on the volume
 
-Gitignored; synced to the models volume with `sync-models-to-k8s.sh`: `Humans/Male.glb`
-and `Female.glb` (v2, meshopt-compressed) with `Male.json` / `Female.json`, `Humans/Hair/`
-(45 hair and 6 facial-hair GLBs, `icons/`, `hair_manifest.json`), `Humans/Anims/` (the
-four animation packs), `Weapons/` (`B8_Weapons.glb`, 43 weapons, shields and tools in bone
-space, and `icons/`), `Mobs/B8_Skeleton.glb` (the skeleton creature, rigid on the B8 male
-armature) and `World/`. Without them the site falls back to whatever is on the volume.
+These are gitignored, and the owner syncs them to the models volume with
+`sync-models-to-k8s.sh`:
+
+| Folder | What it holds |
+|---|---|
+| `Humans/` | `Male.glb` and `Female.glb` (meshopt-compressed), `Male.json` and `Female.json`, `README.txt`, `CREDITS.md` |
+| `Humans/Hair/` | 23 male hair, 6 facial hair and 31 female hair GLBs, `icons/`, `hair_manifest.json` (with `aliases`) |
+| `Humans/Anims/` | the four animation packs |
+| `Weapons/` | `B8_Weapons.glb` (43 weapons, shields and tools in bone space) and `icons/` |
+| `Mobs/` | `B8_Skeleton.glb`, the skeleton creature, rigid on the B8 male armature |
+| `World/` | `B8_Props.glb` and `B8_BuildKit.glb` |
+
+Without them, the site falls back to whatever is on the volume.
 
 Every model URL carries a version (`?vsn=<hash of size and mtime>`, from
 `BaconWorld.Models.asset_versions/0` in `data-human-assets`), so an updated file is a new
@@ -208,8 +245,11 @@ landings, footsteps by surface (cobbles on the plaza, gravel on the paths, grass
 swings, hits on bone and on flesh, bones breaking, coins, chimes. Each kind has several
 takes and a little pitch variety. Under it: birds and wind by day, crickets by night, the
 campfire when you're near it, and a quiet ambient music bed (`music_ambient.mp3`, made by
-the game repository's `build_audio.py`). Sound and music each have a switch in the game
-menu, remembered per browser. Browsers allow sound only after the first click or key press.
+the game repository's `SourceAssets/Pipeline/build_audio.py`).
+
+The game menu has a Sound switch (the master) and Effects, Nature and Music volume sliders.
+They are remembered per browser (`bacon_world:volume_*`, 0–100). Browsers allow sound only
+after the first click or key press.
 
 ## Multiplayer
 

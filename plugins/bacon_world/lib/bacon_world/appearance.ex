@@ -206,10 +206,21 @@ defmodule BaconWorld.Appearance do
 
     cond do
       not Regex.match?(@style, v) -> default
-      is_list(known) and known != [] and v not in known -> default
+      is_list(known) and known != [] and v not in known -> replacement(v, styles, body, known) || default
       true -> v
     end
   end
 
   defp style(_, default, _styles, _body, _kind), do: default
+
+  # A retired style id saved in an older look maps to the style that replaced it.
+  defp replacement(v, styles, body, known) do
+    with %{} = aliases <- get_in(styles, [body, "aliases"]),
+         to when is_binary(to) <- aliases[v],
+         true <- to in known do
+      to
+    else
+      _ -> nil
+    end
+  end
 end

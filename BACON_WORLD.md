@@ -1,0 +1,257 @@
+# BACON_WORLD.md: Bacon World, where it stands and where it's going
+
+**What this file is.** This is the working notebook for **Bacon World**, the 3D multiplayer game
+that runs in the browser. It is Bacon8's reference game plugin (`plugins/bacon_world`, at
+`/games/bacon_world`).
+
+**Read it first** when you pick the game up in a new session.
+
+Related documents:
+
+- `BACON8.md` covers the hub (plugin contract §9, invariants §6, workflow §14).
+- `plugins/bacon_world/README.md` is the module-by-module reference.
+- The game repository (`RaysSpaceSim/`, its own git) builds the art. See `SourceAssets/Pipeline/README.md`.
+
+**Rules for editing this file.** They are the same as BACON8.md's:
+
+- Public-safe. No hostnames, IPs, credentials, cluster names or anything specific to one
+  deployment.
+- Facts dated. The owner's decisions are recorded, not re-argued.
+
+Last update: **2026-10-22**.
+
+---
+
+## 1. What Bacon World is
+
+A small online RPG in the browser, written with three.js and Phoenix LiveView:
+
+- Make a character in a creator: body type, sliders, skin, eyes, hair and outfit.
+- Walk a village with other players and chat with people nearby.
+- Fight skeletons outside town with either hand, loot their corpses EverQuest-style and level up.
+
+It is also the template other Bacon8 games copy.
+
+**Direction.** It should feel like a classic MMO, with:
+
+- EverQuest's windows, looting and con colours;
+- RaysSpaceSim's on-foot controls (minus flight);
+- Black Desert's mouse-button attacks;
+- Path of Exile's single shared skill tree.
+
+All of it uses our own or CC0 art. Every 3D asset is built by scripts in the game repository,
+so it can be rebuilt and changed.
+
+## 2. State on 2026-10-22
+
+**Deployed (through `1eb78e8`, 2026-10-21):**
+
+- fighting, skeleton creatures, EverQuest looting, inventory, levels;
+- real recorded sounds;
+- character select and the creator with looks;
+- the lobby village;
+- RaysSpaceSim-style controls and EverQuest-style mouse handling.
+
+**Committed 2026-10-22, not yet deployed (models not yet synced):**
+
+| Handoff prompt (`handoff/`) | What it brought |
+|---|---|
+| `CLAUDE_CODE_PROMPT_2026-10-22b.md` | Skeletons now attack and can be hit (the BEAM's monotonic clock is usually negative; timers started at 0). A remote-desktop mouse filter (`mouse-filter.ts`) replaces the camera-smoothing option, which is gone. Effects, nature and music volume sliders. New grass footsteps. |
+| `CLAUDE_CODE_PROMPT_2026-10-22c.md` | The female rebuilt on MakeHuman (CC0), with 31 MakeHuman hair styles, MakeHuman clothes fitted to her, strand lashes and a brow card. Hair-style aliases (client and server). Garments hide the parts of garments under them. And these docs. |
+
+**On the models volume (gitignored; synced only when the owner says):**
+
+- `Humans/` holds:
+  - `Male.glb` (v2), and `Female.glb` (MakeHuman, 2026-10-22), each with its `.json`;
+  - `Anims/`: the four animation packs (core and combat for each body, 143 clips a body);
+  - `Hair/`: 23 male hair and 6 facial hair styles, 31 female hair styles, icons, `hair_manifest.json`;
+  - `README.txt` and `CREDITS.md`.
+- `Weapons/B8_Weapons.glb` (43 weapons, shields and tools).
+- `Mobs/B8_Skeleton.glb`.
+- `World/B8_Props.glb` (90 props) and `B8_BuildKit.glb` (36 building pieces).
+- Every `.glb` has a `.glb.gz`. The local copies in `C:\Bacon8\priv\static\models` are current.
+  Production gets them only with `sync-models-to-k8s.sh`, run by the owner.
+
+## 3. The owner's decisions (settled; don't re-litigate)
+
+| Date | Decision |
+|---|---|
+| 2026-10-21 | **No classes.** Everyone starts the same and grows through **one shared skill tree, Path of Exile style, with a single central start**. Each level banks a skill point (`BaconWorld.Progression`). `character_type` is always "Adventurer". |
+| 2026-10-21 | **Hands on the mouse buttons, Black Desert style**, with mouse-look on (pointer locked): left button = left hand, right = right hand; held = keep swinging. A two-hander: left quick, right heavy. **Q E F Z X** are reserved for the tree's special attacks. |
+| 2026-10-21 | **Right-button steering stays** with the cursor free (EverQuest): the character faces the camera; W runs, S backpedals, A/D strafe. *Never remove it.* |
+| 2026-10-21 | **RaysSpaceSim's on-foot controls, minus flight**: camera-relative WASD, the character turns to face its movement, the same speeds and acceleration (`controls-math.ts`). |
+| 2026-10-21 | **EverQuest feel**: names over heads with no box, con colours, a target window, an inventory window (click to carry, click to drop or swap, right-click to equip), corpses looted killer-first, one looter at a time, combat text in the chat log. |
+| 2026-10-21 | **Skeleton creatures** live in camps outside the village; the village is safe. |
+| 2026-10-21 | **Real recorded sounds** for grunts, landings, hits and swings (CC0 recordings), **not synthesized**. |
+| 2026-10-22 | **Volume sliders**, not on/off switches, for effects, nature and music. |
+| 2026-10-22 | **No camera-smoothing option.** Remote-desktop jumps are repaired by `mouse-filter.ts`; a local mouse is untouched. |
+| 2026-10-21 | **Assets are ours or CC0.** Epic's content stays Unreal-only, and no paid UAL Pro/Source files from mirrors. **No DAZ-derived meshes**: the owner's two DAZ-based female files must not be used, so the female is built on MakeHuman (owner's choice, 2026-10-21). |
+| 2026-10-21 | The female should be **stunning**. She is editable in Blender (`RaysSpaceSim/SourceAssets/Characters/B8Human/B8_Female_MPFB.blend`) so the owner can sculpt her later. |
+| 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
+
+## 4. How it fits together
+
+**Server** (`plugins/bacon_world/lib`):
+
+- `BaconWorld.World`: characters, zones, positions.
+- `Appearance`: normalises looks and never trusts the client. It maps retired hair ids
+  through the manifest's aliases.
+- `Items`: the catalogue, with EverQuest DMG/DLY.
+- `Inventory`: the `bacon_world_items` table.
+- `Melee`.
+- `Progression`.
+- `Mobs`: `Spawns`, the pure `Brain`, a cluster-wide `Zone` process under `:global`, and a
+  `Keeper` on every node.
+- `Combat`: spells.
+- `Models`: the model list, `human_assets/0` and the versioned URLs.
+- `BaconWorldWeb.PlayLive`: select, the creator, the world. `game_events.ex` holds its fighting,
+  looting and inventory events.
+
+Characters are the hub's `game_characters` (games DB):
+
+- `stats`: HP, MP, level, XP, skill points, coins;
+- `settings`: model, zone, position, `appearance`.
+
+**Client** (`plugins/bacon_world/assets/js`, a LiveView hook `WorldCharacterUIScene`):
+
+- `front-ui.ts` and `character-stage.ts`: character select and the creator, in HTML over a lit
+  3D stage.
+- `appearance.ts`: the look model and morph weights.
+- `human-factory.ts`: builds a human from a look (below).
+- `character-controller.ts`, `controls-math.ts` and `mouse-filter.ts`: controls.
+- `anim-driver.ts`: four body channels, strafes, stances, swings with either hand (mirrored).
+- `game-world.ts` and `game-ui.ts`: fights, loot, inventory, the EverQuest-style windows.
+- `mobs-view.ts`, `nameplates.ts`, `items.ts`, `world-dressing.ts` (the village and its colliders).
+- `lobby-audio.ts`: sound.
+
+**Humans on the client** (`human-factory.ts`):
+
+- Bodies, packs and hair GLBs load once. Instances share geometry and own their materials.
+- **Tints.** A material named by role (`Skin`, `Iris`, `Brows`, `<Garment>_Main`, `_Trim`,
+  `Shoes_*_Upper`, `_Sole`, and hair) takes the look's colour. A grey texture comes with a glTF
+  extras **`tint_gain`**, and colour × gain gives the chosen colour on average:
+  - skin and clothes: 1.25;
+  - hair: 2.0.
+- **Hiding.** Each vertex carries a `_region`. `Female.json`/`Male.json` `hides` maps a garment
+  to the regions it removes. Hiding applies to the body (skin under clothes) and, since
+  2026-10-22, to garments: trousers under a shirt's hem, boots under trousers. The filtered
+  index buffers are cached per template and per hidden set (`filteredGeometry`).
+- **Hair.** `Hair/hair_manifest.json` lists the styles per body. Its `aliases` (old id → new id)
+  keep looks saved with retired styles working. A style's scalp decal (`decal` extras) gets a
+  polygon offset, and alpha-tested cards get alpha-to-coverage.
+- **Morphs.** Every mesh with morph targets (body, garments, hair, lashes, brows) takes the
+  same 13 weights from the look's sliders.
+
+## 5. The humans and other art
+
+**Built by** `RaysSpaceSim/SourceAssets/Pipeline` (Blender's Python module, headless). Its
+README has every script, source and run order.
+
+- **Male**: v2 (`build_humans2.py`) on Blender Studio's CC0 base mesh, with procedural hair
+  (`build_hair.py`). *He is next for the MakeHuman treatment.*
+- **Female** (2026-10-22), built by `mhf_core.py`, `mhf_finish.py`, `mhf_anims.py` and
+  `mhf_syshair.py`:
+  - body: MakeHuman's `hm08` CC0 body and targets, look `v2`;
+  - skin: a neutral grey texture with makeup;
+  - procedural eyes;
+  - lashes: Mindfront strand-mesh lashes;
+  - brows: MakeHuman's `eyebrow001` card;
+  - rig: the B8 skeleton, with MakeHuman's game-engine weights;
+  - 13 morphs.
+- **Female clothes**: seven MakeHuman CC0 garments fitted by their proxies, in the existing
+  outfit slots:
+
+  | Slot | Garment |
+  |---|---|
+  | Tee | crude T-shirt |
+  | Tank | camisole |
+  | Long sleeve | fisherman sweater |
+  | Shorts | jeans shorts |
+  | Pants | wool pants |
+  | Sneakers | cloth flats |
+  | Boots | heroine boots |
+
+  Each is pushed out of the skin and layered. Boots go under trousers, and trousers under
+  shirts.
+- **Female hair**: 31 styles from MakeHuman's system assets and the community Hair 01 pack,
+  all CC0. Each has a soft scalp decal so the hairline isn't a hard edge, and the morphs.
+- **Credits**: `priv/static/models/Humans/CREDITS.md` (models volume) and the site's
+  `/pages/credits`.
+
+**Sources** (none in git): the MPFB2 repository, the Ubuntu `makehuman-data` 1.1.1 package
+(system assets), MakeHuman's community asset packs, Quaternius UAL1+2, and Blender Studio's
+human base meshes.
+
+**Checking how it looks.** The cloud session used a headless harness:
+- it bundles the plugin's client with esbuild against a static copy of the models;
+- Playwright with SwiftShader loads it and screenshots the creator and select screens.
+
+It isn't in the repo. To rebuild it: serve a page that mounts `WorldCharacterUIScene` with
+`data-human-assets`, then drive `window.W.hook.stage` (`setAppearance`, `setFraming`, `yaw`).
+
+## 6. Working rules (from the owner)
+
+- **Claude (cloud) builds and delivers. Claude Code verifies, tests and commits.**
+  - Deliveries land uncommitted in `C:\Bacon8`, with a prompt in `C:\Bacon8\handoff\`
+    (`CLAUDE_CODE_PROMPT_<date>.md`).
+  - Don't run two Claude Code sessions on `plugins/bacon_world` at once.
+- **Nothing is built on the development PC.** Compile and test only in throwaway Docker
+  containers (BACON8.md §14). Models, audio and asset scripts run in the cloud session.
+- **Secrets.** Never paste or print a secret: Stripe keys live only in gitignored
+  `secrets.yaml` / `.env.stripe`, and Claude Code must not open `.env.stripe`. The plugin's
+  `k3s/*secrets.yaml` is never committed.
+- **Production** reads and irreversible deletions need the owner's OK. **Deploy only when the
+  owner says. Don't run `sync-models-to-k8s.sh` until told.**
+- **Line endings.** The `C:\Bacon8` working tree is CRLF (autocrlf). The `RaysSpaceSim`
+  repository stores and checks out LF.
+- **Handoff and hub files go in `C:\Bacon8`**, never `C:\PhxLive` (the old name).
+
+## 7. Known issues and next steps
+
+In rough priority order.
+
+**The female (keep polishing; the owner wants her stunning):**
+
+- Hairlines are better with the scalp decals, but some styles (ponytail, long) still read as
+  painted at the temple.
+- Some hair shells are low-poly (long01). LongWavy is 15.5k vertices; consider an LOD.
+- The Mindfront lashes are about 19.8k vertices per character: hide or swap them for cards
+  beyond a few metres.
+- Face polish candidates:
+  - slightly larger eyes, eye-scale ~0.12 in `LOOKS["v2"]`;
+  - brow options (Mindfront brows look best but are ~10-20k vertices);
+  - skin sheen or subsurface in three.js;
+  - eye catchlights.
+- The tee's trim band is tiny (a low-poly garment). The camisole's trim is large (lace edges).
+- More outfits: skirts (Skirts 01) and dresses (Dress 01) are CC0 and fit her. Adding a dress
+  needs a slot rule (a dress replaces top and bottom) in `appearance.ts`/`.ex` and
+  `human-factory.ts`.
+
+**The male:** rebuild on MakeHuman the same way: body, MakeHuman male hair (short01-04,
+afro01, culturalibre_hair_02/05), and male clothes from the same packs. Then both bodies share
+one pipeline.
+
+**Game (from BACON8.md's debt list, moved here):**
+
+- The skill tree itself (Q E F Z X), armour, a merchant for junk, and groups with shared loot.
+- Remote players' crouch and airborne state aren't sent.
+- The village's colliders are client-side only (the server checks speed, not walls).
+  Creatures don't collide with anything.
+- Creature hits write the player's HP to the games DB on every hit; batch them if fights get big.
+- `/models` serves `.glb.gz` only when present and newer than the `.glb`: make them whenever
+  models change (`gzip -k -9`).
+- The client has a few pre-existing TypeScript errors under `npm run type-check` (implicit
+  `any`s); it bundles fine.
+
+**Assets still wanted:** weapon animations per weapon type, finished and polished (see
+`RaysSpaceSim/SourceAssets/Characters/ANIMATION_ROADMAP.md`), and a building system for the 36
+kit pieces.
+
+## 8. Picking up the torch
+
+1. Read this file, then `plugins/bacon_world/README.md`, then BACON8.md §6 and §9.
+2. `git status` in `C:\Bacon8`. Anything uncommitted belongs to the newest prompt in
+   `handoff/`. Has Claude Code run it? Its commit message says so.
+3. For art work, start from `RaysSpaceSim/SourceAssets/Pipeline/README.md`. Fetch the sources
+   it lists, then rebuild in the cloud session and deliver with a new handoff prompt.
+4. Record new owner decisions in §3 and update §2 and §7 before you stop.

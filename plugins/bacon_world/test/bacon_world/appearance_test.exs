@@ -37,6 +37,15 @@ defmodule BaconWorld.AppearanceTest do
     assert {:ok, %{"hair" => %{"style" => "none"}}} = A.normalize(%{"body" => "male", "hair" => %{"style" => "none"}}, nil, styles)
   end
 
+  test "a retired style id maps to the style that replaced it" do
+    styles = %{"female" => %{"hair" => ["Ponytail", "Lob"], "facial" => [], "aliases" => %{"HighPonytail" => "Ponytail", "Gone" => "Missing"}}}
+    assert {:ok, a} = A.normalize(%{"body" => "female", "hair" => %{"style" => "HighPonytail"}}, nil, styles)
+    assert a["hair"]["style"] == "Ponytail"
+    # an alias to a style that isn't in the list falls back to the default
+    assert {:ok, b} = A.normalize(%{"body" => "female", "hair" => %{"style" => "Gone"}}, nil, styles)
+    assert b["hair"]["style"] == "Lob"
+  end
+
   test "errors and body fallback" do
     assert {:error, :invalid_appearance} = A.normalize(%{"body" => "robot"})
     assert {:error, :invalid_appearance} = A.normalize("male")

@@ -143,14 +143,24 @@ defmodule BaconWorld.Models do
     end
   end
 
-  @doc "Hair and facial hair style ids per body type (`male`/`female`), from the hair manifest."
+  @doc """
+  Hair and facial hair style ids per body type (`male`/`female`), from the hair manifest,
+  with the manifest's `"aliases"` (retired style id => the style that replaced it).
+  """
   def human_style_ids(assets \\ nil) do
     hair = (assets || human_assets())["hair"] || %{}
 
     for {key, body} <- [{"Male", "male"}, {"Female", "female"}], into: %{} do
       entry = hair[key] || %{}
       ids = fn kind -> for(%{"id" => id} <- List.wrap(entry[kind]), is_binary(id), do: id) end
-      {body, %{"hair" => ids.("hair"), "facial" => ids.("facial")}}
+
+      aliases =
+        case entry["aliases"] do
+          %{} = m -> for {from, to} <- m, is_binary(from) and is_binary(to), into: %{}, do: {from, to}
+          _ -> %{}
+        end
+
+      {body, %{"hair" => ids.("hair"), "facial" => ids.("facial"), "aliases" => aliases}}
     end
   end
 

@@ -18,7 +18,7 @@ defmodule BaconWorld.HumansTest do
         "version" => 1,
         "styles" => %{
           "Male" => %{"hair" => [%{"id" => "Buzz", "file" => "Hair_Male_Buzz.glb"}], "facial" => [%{"id" => "Goatee", "file" => "Facial_Male_Goatee.glb"}]},
-          "Female" => %{"hair" => [%{"id" => "Bob", "file" => "Hair_Female_Bob.glb"}]}
+          "Female" => %{"hair" => [%{"id" => "Bob", "file" => "Hair_Female_Bob.glb"}], "aliases" => %{"BobBangs" => "Bob", "Bad" => 7}}
         }
       })
     )
@@ -42,6 +42,9 @@ defmodule BaconWorld.HumansTest do
     assert %{"Male" => %{"hides" => %{"Top_Tee" => [1, 2]}}} = assets["bodies"]
     refute Map.has_key?(assets["bodies"]["Male"], "clips")
     assert %{"male" => %{"hair" => ["Buzz"], "facial" => ["Goatee"]}, "female" => %{"hair" => ["Bob"], "facial" => []}} = Models.human_style_ids(assets)
+    # retired ids and what replaced them (malformed entries dropped)
+    assert Models.human_style_ids(assets)["female"]["aliases"] == %{"BobBangs" => "Bob"}
+    assert Models.human_style_ids(assets)["male"]["aliases"] == %{}
   end
 
   test "a look picks the model from its body and is stored normalised", %{user_id: user_id} do

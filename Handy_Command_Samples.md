@@ -114,7 +114,7 @@ Get-Content "$env:TEMP\diskpart_out.txt", "$env:TEMP\diskpart_err.txt"
 ./deploy-dev.sh                     # rebuilds image, applies k3s/overlays/dev, waits, streams logs
 ./deploy-prod.sh                    # backs up db/redis/certs, preserves PVCs, redeploys bacon8
 ./deploy-prod.sh --fresh            # wipes db PVC and restores from most recent backup
-./deploy-game.sh                    # build+rollout the RaysSpaceSim dedicated server image (see below)
+plugins/rays_space_sim/deploy-game.sh   # RaysSpaceSim: server image + client, rollout, launcher publish (see below)
 ./new-prod-migrations.sh            # rebuild image (no-cache), run k3s/jobs/run-migrations.yaml, restart web
 
 kubectl apply -k k3s/overlays/dev
@@ -186,20 +186,30 @@ kubectl delete namespace bacon8 --ignore-not-found=true && ./deploy-prod.sh --fr
 ## 🎮 RaysSpaceSim game server (`deploy-game.sh`)
 
 Separate pipeline from the Bacon8 app on purpose — see the big comment block at
-the top of `deploy-game.sh`. Tags are the game repo's git SHA (`-dirty-<UTC
+the top of `plugins/rays_space_sim/deploy-game.sh` (it moved into the game's private
+plugin on 2026-10-16). Tags are the game repo's git SHA (`-dirty-<UTC
 timestamp>` if uncommitted), never `latest`. Deployed via the `HOLOSIM_IMAGE`
 value in `k3s/overlays/prod/configmap.yaml`.
 
 ```bash
-./deploy-game.sh                 # build the current commit and roll it out
-./deploy-game.sh --build-only    # build and tag; do not touch the cluster
+cd plugins/rays_space_sim
+./deploy-game.sh                 # server + client for the current commit, roll out, publish to the launcher
+./deploy-game.sh --build-only    # build server + client and tag; publish nothing
+./deploy-game.sh --server-only   # build + smoke-test the server image; ship nothing
+./deploy-game.sh --finish <tag>  # finish a run whose server image built but whose client did not
+./deploy-game.sh --client-only   # build + publish a client for the LIVE server tag
+./deploy-game.sh --publish-only  # re-publish the last staged client (no cook)
 ./deploy-game.sh --list          # show built tags and which one is live
-./deploy-game.sh --smoke [tag]   # boot the image locally for ~25s, assert boot markers in logs
+./deploy-game.sh --smoke [tag]   # boot the image locally and show its log
 ./deploy-game.sh --set <tag>     # roll out a tag that is already built
+./deploy-game.sh --codemap       # regenerate the code map only (no cook)
 ./deploy-game.sh --disable       # revert to the manual launch path
 ```
 
-Build engine target directly (see `/memories/repo/rayspacesim.md` for more):
+The day-to-day loop doesn't use it: compile, run the editor as a dev shard and PIE
+(`RaysSpaceSim/RAYSSPACESIM.md` §2).
+
+Build the editor target directly (or `RaysSpaceSim/Scripts/compile_editor.sh`):
 
 ```bash
 "/c/UnrealEngine/Engine/Build/BatchFiles/Build.bat" RSSEditor Win64 Development \

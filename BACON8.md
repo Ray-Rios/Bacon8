@@ -16,13 +16,17 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-21**: the store became the **Bacon Store** plugin, with
-site routes, plugin requirements and hooks (ADR 0001 phases 2 and 3; §8, §9); Web Lobby
-renamed to **Bacon World** (`bacon_world`, ADR 0001 phase 1; §9); third-party content replaced with our own and
-CC0 work; the Bacon8 humans in the lobby; placeholder legal pages; and the direction
-for a reusable core with games and commerce as plugins (ADR 0001: Bacon World, Bacon
-Store, a site kit). Before that, **2026-10-20**: the move to Bacon8 is finished; unused
-API side doors removed (invariant 16); brand assets generated from `brand/`.
+Last substantive update: **2026-10-22**. Docs refreshed for a new session.
+
+- Bacon World now has its own notebook, **`BACON_WORLD.md`** (state, the owner's decisions,
+  next steps); §9 here keeps only the plugin-level summary.
+- The female human was rebuilt on MakeHuman's CC0 assets.
+
+Before that:
+
+- **2026-10-21**: the store became the **Bacon Store** plugin (ADR 0001 phases 2 and 3; §8,
+  §9), and Web Lobby was renamed **Bacon World** (phase 1).
+- **2026-10-20**: the move to Bacon8 finished; brand assets now come from `brand/`.
 
 ---
 
@@ -105,7 +109,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-15 | **Plugin slug and game slug are separate.** The plugin slug is the folder name (underscores, maps to the module name); the game slug defaults to it but a plugin may keep an existing one (RaysSpaceSim stays `rays-space-sim`, which its clients use). Game slugs may now contain underscores. | Needed for `web_lobby`, and so existing game clients don't break. |
 | 2026-10-16 | **RaysSpaceSim becomes a private plugin**: a new private repository cloned into `plugins/rays_space_sim`. The hub ignores every plugin folder it doesn't ship. The Unreal project stays its own repository at `/RaysSpaceSim/`. | Owner's decision. The hub sees it exactly as it sees Web Lobby. |
 | 2026-10-16 | **The hub's game tables use game-neutral names:** `holo_sim_id` → `instance_id`, `holo_sim_location` → `instance_location` (columns, schemas, API JSON), and `PUT .../characters/:id/holo_location` → `.../instance_location`, **renamed now** with the game client updated in step. Old servers' `holo_sim_id` input and the old route are still accepted during the changeover. | Owner's decision ("rename now"). Accepting the old input keeps a running instance from re-registering as a world server mid-deploy. |
-| 2026-10-16 | **`BACON8_ACTIVE_PLUGINS`** (comma-separated) sets which plugins are active until an admin toggles them. Production names `web_lobby,rays_space_sim`. | Owner's decision. A private plugin is on from the first boot without the hub's config naming it. |
+| 2026-10-16 | **`BACON8_ACTIVE_PLUGINS`** (comma-separated) sets which plugins are active until an admin toggles them. Production lists its plugins there. | Owner's decision. A private plugin is on from the first boot without the hub's config naming it. |
 | 2026-10-16 | **Migrations squashed to one baseline per database** (`20250101000001_site_baseline`, `20260809100000_games_baseline`, and one per plugin), generated from production's schema. Production already records those versions, so it runs none of them. | A fresh install now builds the real schema instead of replaying a year of drift (the `cms_options` and `subscriptions` mismatches came from that). |
 | 2026-10-16 | **The currency is Gems: 100 Gems = US$1.** No bundle bonuses; bonuses are for promotional events. | Owner's decision. |
 | 2026-10-16 | **No refunds, ever**, for Gems, items or subscriptions. Cancelling a subscription stops the next renewal; the current period runs out. | Owner's decision. Chargebacks still happen (the bank decides those), so the ledger keeps the claw-back path. |
@@ -151,12 +155,15 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
                  └───────────────────────────────┬─────────────────────────────────────┘
                                                  │
                  ┌──────────────────────────── Bacon8 (contexts) ──────────────────────┐
-                 │ Accounts  Security  Content  Forum  Store    Files  Scheduler       │
-                 │ Notifications  Email  Moderation/Audit  Desktop  Settings           │
+                 │ Accounts  Security  Content  Forum  Files  Scheduler  Settings      │
+                 │ Notifications  Email  Moderation/Audit  Desktop                     │
                  │ Games (platform core)   Drive   Entitlements   Plugins              │
                  └──────────┬──────────────────────────────────────┬───────────────────┘
                             │                                      │
                   Bacon8.Repo (site DB)               Bacon8.GamesRepo (games DB)
+
+ plugins/: Bacon Store (/store: products, Gems, payments), Bacon World (/games/bacon_world),
+           and any private plugin; each reaches core only through its public contexts.
 ```
 
 ### Two databases
@@ -190,12 +197,10 @@ records *scoped to that user id*. A forged or borrowed id returns 404 from the h
 ```
 lib/
   bacon8/                 contexts (business logic, Ecto schemas)
-    games/                 games platform: core + (for now) game-specific modules, see §9
+    games/                 games platform core (game code lives in plugins, see §9)
     plugin.ex, plugins/    plugin behaviour, discovery, active state, runtime (§9)
     drive.ex, drive/       user storage (§7)
-    files.ex, files/       user files (Arc-based, being replaced, see §7)
-    store.ex, wallet.ex,   the store, the Gem ledger and payment providers (§8)
-    payments.ex
+    files.ex, files/       legacy user files (Arc-based; dead code, see §13)
     safe_path.ex           path confinement, used for every client-supplied path
   bacon8_web/
     endpoint.ex            plug order matters, see §6
@@ -466,10 +471,10 @@ the gitignored `k3s/overlays/prod/secrets.yaml`, and the webhook endpoint
 events above. Keys never go in the repository. The plugin reads `STRIPE_SECRET_KEY`,
 `STRIPE_WEBHOOK_SECRET` and `PAYMENTS_PROVIDER` itself, at runtime (not `runtime.exs`).
 
-**Production (2026-10-21):** the endpoint is `https://bacon8.net/api/store/webhooks/stripe`
-in test mode, with the six events in the Stripe row above. The pre-plugin URL
-`/api/webhooks/payments/:provider` was never registered with Stripe, so it was removed
-rather than kept as a `fixed` route.
+**Production (2026-10-21):** Stripe is set up in **test mode**: the webhook endpoint is the
+site's `/api/store/webhooks/stripe` with the six events in the Stripe row above. The
+pre-plugin URL `/api/webhooks/payments/:provider` was never registered with Stripe, so it was
+removed rather than kept as a `fixed` route.
 
 **Milestone 4c:** digital products.
 
@@ -585,12 +590,12 @@ cancellation lets it lapse (no refund for the rest of the period); a lost charge
 provider plan id per provider (`stripe_price_id`, `paypal_plan_id`). Provider webhooks
 move our state; we never poll for it.
 
-**Providers, in order:** Stripe (test mode first, then live), then PayPal. There is no
-Stripe account yet, so the provider interface is built and tested against
-`Payments.Fake`, which the test suite and local development use.
+**Providers, in order:** Stripe (test mode now, live after the legal pages are published),
+then PayPal. The test suite and local development use `Payments.Fake`.
 
 **Not decided yet:** tax handling (Stripe Tax vs manual), the exact no-refund wording in
-the terms, whether Gems can be gifted between users, which Gem packs to sell.
+the terms, and whether Gems can be gifted between users. (The launch Gem packs are in the
+decisions log.)
 
 ---
 
@@ -813,7 +818,8 @@ development and tests: it names an atom, so core still compiles without the plug
 creates it on demand for plugins active by default that were never toggled (plugins call it to
 get their game id, and `Plugins.Runtime` calls it at boot).
 
-**Status:** framework, admin page and Web Lobby done (2026-10-15). Tests: the fixture plugin
+**Status:** framework and admin page done 2026-10-15; site plugins, requirements and hooks
+2026-10-21. Bacon World and Bacon Store are the two shipped plugins. Tests: the fixture plugin
 (`test/support/fixture_plugin.ex`) and Bacon World's own `plugins/bacon_world/test`. Each plugin
 test folder needs a `test_helper.exs` (mix requires one per test path; it can be empty).
 
@@ -823,78 +829,36 @@ activating it.
 
 ### Bacon World (the template plugin)
 
-**Renamed 2026-10-21** from Web Lobby (`web_lobby`; ADR 0001, phase 1). Its migrations
-renamed the tables, the game row and the `plugin_states` row; `/games/web_lobby/...` answers
-301 to `/games/bacon_world/...` (`previous_slugs/0`). Its first migration keeps the old name
-(invariant 14).
+The game's own notebook is **`BACON_WORLD.md`**: its state, the owner's decisions (no
+classes, mouse-button hands, EverQuest looting, CC0-only art), how the humans are built and
+drawn, and what's next. Its module reference is `plugins/bacon_world/README.md`. What
+matters at the hub level:
 
-Moved 2026-10-15. Lobby used to be `Bacon8.Game` (zones, characters, spells, combat) plus
-`GamesLive` (three.js client, presence, chat, movement validation, PvP, respawn) on the site
-DB:
+- **Renamed 2026-10-21** from Web Lobby (`web_lobby`; ADR 0001, phase 1). Its migrations
+  renamed the tables, the game row and the `plugin_states` row. `/games/web_lobby/...`
+  answers 301 to `/games/bacon_world/...` (`previous_slugs/0`). Its first migration keeps
+  the old name (invariant 14).
+- **Data.** Characters are platform `game_characters` of game `bacon_world`:
+  - `stats` holds HP, MP, PvP, level, experience, skill points and coins;
+  - `settings` holds the model, zone, last position and `appearance`.
 
-| Was | Now |
-|---|---|
-| `characters` (site DB) | `game_characters` of game `bacon_world`: HP, MP, PvP in `stats`; type, model, zone and last position in `settings`. Single-key writes merge in SQL (`jsonb \|\|`) so a position save can't overwrite HP another player's spell just changed |
-| `zones`, `spells`, `character_spells` (site DB) | `bacon_world_zones`, `bacon_world_spells`, `bacon_world_character_spells` (games DB), seeded by the plugin's migrations |
-| `Bacon8.Game` | `BaconWorld.World` (characters, zones, positions), `BaconWorld.Combat` (spells, damage, respawn), `BaconWorld.Models` (model list) |
-| `GamesLive` | core `GamesLive` = a games index built from active plugins' `game/0`; the game itself = `BaconWorldWeb.PlayLive` at `/games/bacon_world` |
-| three.js hooks in `assets/js/threejs` | `plugins/bacon_world/assets/js` (the four unused files there were deleted; core keeps the background scenes and camera controllers) |
-| PubSub / Presence topics `presence:zone:*`, `presence:account:*`, `user:*:characters` | `bacon_world:zone:*`, `bacon_world:account:*`, `bacon_world:user:*:characters` |
+  Single-key writes merge in SQL (`jsonb ||`), so a position save can't overwrite HP that
+  another player's spell just changed. Its own tables are `bacon_world_zones`,
+  `bacon_world_spells`, `bacon_world_character_spells` and `bacon_world_items` (games DB).
 
-Existing Lobby characters were not migrated (decisions log): the old site-DB tables
-(`zones`, `characters`, `spells`, `character_spells`, and the never-used `items`,
-`character_inventory`, `character_equipment`) were dropped in production and are absent
-from the site baseline.
-Combat now also checks that the target is a Bacon World character, which the old code didn't.
+  The pre-plugin Lobby tables in the site DB were dropped without migrating (decisions log).
+- **Processes.** Its first `children/0`: one creature zone process for the cluster
+  (`BaconWorld.Mobs.Zone`, `:global`), and a `Keeper` on every node.
+- **Topics.** PubSub and Presence topics are prefixed `bacon_world:`.
+- **Models.** These are the Bacon8 humans (`Humans/Male.glb`, `Female.glb` with
+  manifests), animation packs, hair, weapons, the skeleton creature and the village kit.
 
-**Characters (2026-10-20).** Players pick `Humans/Male.glb` or `Humans/Female.glb` from
-`priv/static/models`, which is synced to the models volume. These are CC0 bodies on the B8
-skeleton with 20 CC0 clips. `PREFERRED_CLIPS` in `model-manager.ts` maps the lobby's
-actions to clip names (idle → `Idle_Loop`, run → `Jog_Fwd_Loop`, attack → `OverhandThrow`, …),
-and pattern matching covers other models. The sources, all 89 clips, the Unreal assets and
-the test weapons live in the game repository (`SourceAssets/`). The rename to
-**Bacon World** was phase 1 of ADR 0001 (done 2026-10-21, above).
+  They live on the models volume, not in git, and are built in the game repository
+  (`SourceAssets/Pipeline`). The humans' manifests are `.json`, which `/models` refuses
+  (invariant 17), so the LiveView passes them in `data-human-assets`.
 
-**Looks, the creator and the village (2026-10-21).** Character select and the creator are
-HTML (`front-ui.ts`) over a lit 3D stage (`character-stage.ts`), replacing the floating 3D
-panels. A look (body type, height, body and face sliders driving the v2 humans' morph
-targets, skin, eyes, 45 hair styles, 6 facial hair, outfit pieces and colours) is stored in
-the character's `settings["appearance"]` and normalised by `BaconWorld.Appearance`, which
-trusts nothing from the client. `human-factory.ts` builds each human from its look (shared
-geometry, per-outfit index buffers that hide covered skin, hair bound to the body's bones).
-Events: `three_ui_create_character` (now replies), `three_ui_update_appearance` (not while
-in the world), `fetch_appearances`. The humans' slider and hair manifests are `.json`, which
-`/models` refuses (invariant 17), so the LiveView passes them in `data-human-assets`. The
-lobby is a village from the B8 props and building kit (`world-dressing.ts`), merged per
-material, with client-side colliders the controller applies, and fog and lamps that follow
-the day/night cycle. The v2 humans, hair and village GLBs are on the models volume
-(`sync-models-to-k8s.sh`), not in git; without them looks change nothing.
-
-**Controls (2026-10-21).** RaysSpaceSim's on-foot movement (camera-relative WASD, the
-character turning to face its movement, its speeds and acceleration in `controls-math.ts`)
-with EverQuest-style mouse handling: click to lock the pointer, hold the right button to
-steer (the character faces the camera), Ctrl frees the cursor, Esc opens the game menu.
-
-**Fighting, creatures, loot and levels (2026-10-22).** No classes: every character starts
-the same and will grow through one shared skill tree (Path of Exile style, with a single
-central start); each level already banks a skill point (`BaconWorld.Progression`). With
-mouse-look on, the mouse buttons swing the left and right hands (Black Desert style; a
-two-hander: quick and heavy); with the cursor free, right-button steering stays. Q E F Z
-X are reserved for the tree's special attacks. Skeletons live in three camps outside the
-village, holding the weapons they drop; one zone process runs them for the cluster
-(`BaconWorld.Mobs.Zone`, `:global`, a `Keeper` child on every node — the plugin's first
-`children/0`). Swings are resolved there (`melee_attack`); a creature's hit on a player is
-applied by that player's LiveView, which owns its HP. Corpses are looted EverQuest style
-(killer first, one looter at a time). Items are a catalogue in code (`BaconWorld.Items`,
-EverQuest DMG/DLY) and what a character carries is a new games-DB table,
-`bacon_world_items` (migration `20261022000000`); coins, level, experience and skill
-points are in `stats`. Characters start with 40 HP (older ones are raised at their next
-login) and get a starter kit once. Animation: `anim-driver.ts` plays the B8 packs on four
-body channels, with strafes, weapon stances and mirrored left-hand swings. Names over
-heads are sprites (no lag, no box). Sound is real CC0 recordings (`/audio/world/`, credits
-beside them) plus nature beds and an ambient music bed. Model URLs carry a version
-(`?vsn=`, from size and mtime) so updated models reach browsers without a hard refresh, and
-`/models` serves `.glb.gz` copies when present (`gzip: true`).
+  Model URLs carry a version (`?vsn=`, from size and mtime), and `/models` serves
+  `.glb.gz` copies when present (`gzip: true`).
 
 ## 10. Desktop shell and start menu
 
@@ -965,7 +929,7 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 | # | Milestone | Done when |
 |---|---|---|
 | 1 | **Storage service + file explorer** (§7) | One storage system; explorer and profile uploads show the same files; quotas enforced transactionally; all user files served through the authorising controller; old data migrated. |
-| 2 | **Plugin API + Web Lobby on it** (§9, §10) | Lobby works with zero Lobby references in core; a plugin can add routes, admin nav, desktop apps, migrations. |
+| 2 | **Plugin API + the first game on it** (§9, §10) | The game (then Web Lobby, now Bacon World) works with zero references in core; a plugin can add routes, admin nav, desktop apps, migrations. *Done 2026-10-15.* |
 | 3 | **Extract game-specific code** (§9) | Nothing game-specific in this repo; the game's plugin boots against an unmodified hub. *Code moved 2026-10-16; done once the private repo exists, the suite is green with and without it, and the game client is rebuilt.* |
 | 4 | **Commerce** (§8, §11) | Ledger + entitlements; Stripe then PayPal; currency packs, items, subscriptions; storage tiers and VIP channels driven by entitlements; webhook inbox idempotent. |
 | 5 | **Start menu redesign** (§10) | Every app maps to a real feature; apps are registered data. |
@@ -1038,19 +1002,8 @@ Ordered roughly by how much it hurts.
 - `POST /api/webhooks/scheduler/:secret` carries its secret in the URL, so the request
   line in the app and ingress logs still shows it (parameter filtering only covers the
   parameters). Move it to a header.
-- Bacon World follow-ups (2026-10-22):
-  - Remote players' crouch and airborne state aren't sent, so they never show those clips.
-  - `/models` serves `.glb.gz` copies (`gzip: true`), but only if they exist: make them
-    when syncing the models volume (`gzip -k -9` on every `.glb`). A `.gz` older than
-    its `.glb` is ignored (`ModelsGuard` drops `accept-encoding` for that request).
-  - The village's colliders are client-side only; the server checks speed, not walls.
-    Creatures don't collide with anything (they walk straight).
-  - The skill tree itself (Q E F Z X), armour, a merchant for junk, and groups with
-    shared loot rights are still to come.
-  - Creature attacks hit the player's stored HP in the games DB on every hit (a few writes
-    a second in a busy fight). Fine at this scale; batch it if fights get big.
-- Bacon World's three.js client has seven pre-existing TypeScript errors under
-  `npm run type-check` (implicit `any`s, one loop-style enum); it bundles fine.
+- Bacon World's own follow-ups (creature collisions, server-side walls, remote crouch, the
+  skill tree, `.glb.gz` upkeep, TypeScript errors) are tracked in `BACON_WORLD.md` §7.
 - `Files` has a `:timer.sleep(10000)` in an upload path (goes with the legacy file system above).
 - The admin files page links to `/uploads/user_files/...`, which is not where files are
   stored.

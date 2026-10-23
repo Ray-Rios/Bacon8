@@ -8,7 +8,7 @@ script, commit what it writes.
 |---|---|---|
 | `bacon8-mark.png` | 1024x1024 PNG, square, transparent corners allowed | favicon.ico, app icons, web manifest icons |
 | `bacon8-mark.svg` | square SVG, no external fonts (outlines only) | browser tab icon (modern browsers), desktop Start button |
-| `og-image.png` | 1200x630 PNG | preview card when a bacon8.net link is shared |
+| `og-image.png` | 1200x630 PNG | preview card when a link to the site is shared |
 | `brand.json` | | site name, one-line description, colours |
 | `../RaysSpaceSim/Brand/game-icon.png` | 1024x1024 PNG | game exe icon, launcher icon (in the game repository) |
 | `../RaysSpaceSim/Brand/splash.png` | 720x370 PNG (keep the bottom 70 px plain) | game startup splash, editor splash |
