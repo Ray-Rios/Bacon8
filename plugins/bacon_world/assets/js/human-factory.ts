@@ -446,9 +446,10 @@ export class HumanInstance {
       this.fingers.push({ bone: b, side: name.endsWith('_l') ? 'l' : 'r', relaxed: q });
     }
     // posture: the pelvis turned about her side-to-side axis (positive tucks it under) with
-    // the legs kept where they were. With `spine_deg` [lumbar, mid, chest] the spine turns
-    // back by those amounts (same sense), so the lower back follows the pelvis and the chest
-    // comes upright higher up: that flattens the curve. Without it the whole spine is kept.
+    // the legs kept where they were. With `spine_deg` [lumbar, mid, chest] each spine bone
+    // also turns by its amount, same sense (positive leans its top back). The female's
+    // [-24, -9, 9] with a 24-degree tuck keeps the lumbar where it was and flattens the joint
+    // above the pelvis (no S-curve or crease). Without spine_deg the whole spine is kept.
     const posture = this.asset.manifest?.posture || {};
     const tilt = Number(posture.pelvis_tilt_deg) || 0;
     const spineDeg: number[] | null = Array.isArray(posture.spine_deg) ? posture.spine_deg.map(Number) : null;

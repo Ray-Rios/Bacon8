@@ -63,7 +63,24 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-23 (third), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23c.md`):
+**Delivered 2026-10-23 (fourth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23d.md`), from the
+owner's testing of the two-handed weapons:
+
+- **Weapon grips refitted on the female** (`b8_clips.py`, new `b8_gripfit.py`): the spear's left
+  hand no longer reaches behind her back (right hand rear at the hip, left hand forward, the
+  shaft sliding through it in thrusts); the **quarterstaff is held two-handed** across the body
+  in its idle (it used the one-handed magic-staff rest, the left hand held in the air, and
+  grabbed the staff mid-swing) with a new two-handed heavy, `QStaff_Sweep`; the two-handed sword
+  in a middle guard (her arms had been locked straight); **dual daggers ready at the sides** like
+  the one-handed sword. Wrists under 10 degrees in every guard. Her packs were rebuilt.
+- **Idle hands**: the relaxed curl roughly halved, the thumb opened.
+- **Posture**: pelvis tucked 24 degrees with spine_01 turned back by the same, `spine_deg`
+  [-24, -9, 9]: the lower back flattens without the S-curve and the crease above the pelvis
+  (the earlier [6, -11, -13] arched the lumbar again).
+- **Credits page**: a migration adds "Surface textures: ambientCG and Poly Haven, CC0 1.0" to
+  `/pages/credits` if it isn't there (owner's request).
+
+**Delivered 2026-10-23 (third)** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23c.md`):
 
 - **Real surface textures on the untextured models.** None of the village props, building
   kit, weapons or the skeleton has UVs; their materials are plain colours named for what they
@@ -336,6 +353,9 @@ one pipeline.
 
 - The skill tree itself (Q E F Z X), armour beyond cloth, more merchants, and groups with
   shared loot.
+- **The male's weapon clips** are the old ones (two-handed, spear, quarterstaff idle and dagger
+  guards out of proportion; no `QStaff_Sweep`, which falls back to a sword swing). His rebuild
+  should rerun `b8_gripfit.py` on his rig.
 - **The male's animation packs** still carry the bad forearm-twist tracks (the client repairs
   them on load) and the old dagger guard: his source blend (`b8_humans2.blend`) isn't on the
   development PC. Rebuild them with the male's MakeHuman rebuild.

@@ -111,13 +111,14 @@ export function boneOffsets(offsets: Record<string, Record<string, number[]>> | 
 // knuckle's local Z (the rest pose spreads them like a claw). Degrees: curl at the three
 // joints, then the knuckle's spread (mirrored on the left). The thumb's curl also brings
 // it in alongside the index. The library clips hold fists; an empty hand that isn't
-// punching takes this instead. Tuned in the harness, 2026-10-23.
+// punching takes this instead. Tuned in the harness, 2026-10-23; the curl roughly halved
+// and the thumb opened the same day (the owner: "curled in too much", not an idle hand).
 const RELAXED: Record<string, [number, number, number, number]> = {
-  index: [30, 25, 9, 7],
-  middle: [34, 29, 11, 1],
-  ring: [38, 33, 13, -5],
-  pinky: [42, 35, 15, -10],
-  thumb: [32, 18, 9, 0],
+  index: [15, 14, 6, 6],
+  middle: [18, 17, 7, 1],
+  ring: [21, 20, 8, -4],
+  pinky: [24, 22, 9, -8],
+  thumb: [12, 6, 3, 0],
 };
 
 const FINGER = /^(thumb|index|middle|ring|pinky)_0([123])_([lr])$/;

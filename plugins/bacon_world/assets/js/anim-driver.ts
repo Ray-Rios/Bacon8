@@ -104,6 +104,7 @@ const FALLBACK: Record<string, string[]> = {
   TwoHand_Slash_A: ['Sword_Regular_A'], TwoHand_Slash_B: ['Sword_Regular_A'], TwoHand_Overhead: ['Sword_Regular_A'],
   Spear_Thrust_A: ['Sword_Regular_A'], Spear_Thrust_B: ['Sword_Regular_A'], Spear_Sweep: ['Sword_Regular_A'],
   Staff_Bonk: ['Sword_Regular_A'], Staff_Slam: ['Sword_Regular_A'], Shield_Dash: ['Punch_Jab'],
+  Staff_Guard_Loop: ['Sword_Idle'], QStaff_Sweep: ['Sword_Regular_A'],
   Hit_Head: ['Hit_Chest'], Jump_Land: [],
 };
 
@@ -129,7 +130,9 @@ export const STANCES: Record<GearSet, StanceDef> = {
   dagger: { idle: 'Dagger_Idle_Loop', light: [{ clip: 'Dagger_Stab', hit: 0.2 }, { clip: 'Dagger_Slash', hit: 0.18 }], heavy: { clip: 'Sword_Attack', hit: 0.87 } },
   two_hand: { idle: 'TwoHand_Idle_Loop', light: [{ clip: 'TwoHand_Slash_A', hit: 0.37 }, { clip: 'TwoHand_Slash_B', hit: 0.33 }], heavy: { clip: 'TwoHand_Overhead', hit: 0.65 } },
   polearm: { idle: 'Spear_Idle_Loop', light: [{ clip: 'Spear_Thrust_B', hit: 0.34 }, { clip: 'Spear_Thrust_A', hit: 0.59 }], heavy: { clip: 'Spear_Sweep', hit: 0.37 } },
-  staff: { idle: 'Staff_Idle_Loop', light: [{ clip: 'Staff_Bonk', hit: 0.44 }], heavy: { clip: 'Staff_Slam', hit: 0.61 } },
+  // The quarterstaff (the only "staff" item) is two-handed: its guard and a two-handed sweep.
+  // (Staff_Idle_Loop and Staff_Slam are the one-handed magic staff's, for when one exists.)
+  staff: { idle: 'Staff_Guard_Loop', light: [{ clip: 'Staff_Bonk', hit: 0.44 }], heavy: { clip: 'QStaff_Sweep', hit: 0.5 } },
   // Off-hand items. Left-hand clips: the shield bash and the jab are authored for the
   // left; anything else held left swings the right-hand clips mirrored.
   shield: { idle: 'Idle_Shield_Loop', light: [{ clip: 'Shield_Dash', hit: 0.22 }] },
