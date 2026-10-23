@@ -134,6 +134,8 @@ The first 2026-10-23 delivery:
 | 2026-10-22 | **Volume sliders**, not on/off switches, for effects, nature and music. |
 | 2026-10-22 | **No camera-smoothing option.** Remote-desktop jumps are repaired by `mouse-filter.ts`; a local mouse is untouched. |
 | 2026-10-21 | **Assets are ours or CC0.** Epic's content stays Unreal-only, and no paid UAL Pro/Source files from mirrors. **No DAZ-derived meshes**: the owner's two DAZ-based female files must not be used, so the female is built on MakeHuman (owner's choice, 2026-10-21). |
+| 2026-10-23 | **Asset rule widened on purpose: ours, CC0, or licensed for commercial use, credited, with the source files never redistributed.** Licensed sources (Substance .sbsar and the like) live in the gitignored shared library `C:\Bacon8\library\` with a licence table; only what we bake from them ships, and it goes on the credits page. The DAZ and Epic exclusions above still stand. |
+| 2026-10-23 | **Substance materials are baked in Blender** with Adobe's Substance 3D add-on (`b8_substance.py`). The library's unverified files aren't used until their source is recorded; files that can't be used legally are deleted. |
 | 2026-10-21 | The female should be **stunning**. She is editable in Blender (`RaysSpaceSim/SourceAssets/Characters/B8Human/B8_Female_MPFB.blend`) so the owner can sculpt her later. |
 | 2026-10-23 | **No clothes in character creation.** New characters start in **cream bikini underwear**. |
 | 2026-10-23 | **Underwear is equipment**: a top and a bottom, separate items, layered under clothes and armour, and removable. They are ordinary 3D gear: no content warnings around them. |
@@ -239,6 +241,16 @@ README has every script, source and run order.
   all CC0. Each has a soft scalp decal so the hairline isn't a hard edge, and the morphs.
 - **Credits**: `priv/static/models/Humans/CREDITS.md` (models volume) and the site's
   `/pages/credits`.
+
+**The shared library** (2026-10-23, `C:\Bacon8\library`, gitignored, see its README):
+- `textures/`: 85 CC0 PBR texture sets at 2K (62 from ambientCG, 23 from Poly Haven): fabrics,
+  leathers, woods, bricks, roof tiles, rock, ground, grass, metal, plaster, paving and more,
+  each with `meta.json`; `textures/LICENSES.md` lists them. Credit both sites when used.
+- `substance/`: 17 Substance materials whose licence is known (Allegorithmic, Adobe, TextureCan).
+  The other 247 had no recorded source and were deleted on the owner's instruction, with 5
+  restricted military camo patterns and 4 duplicates. `library/substance/LICENSES.md` is the licence table;
+  `RaysSpaceSim/SourceAssets/Pipeline/b8_substance.py` bakes `verified/` to WebP texture sets
+  (base colour, normal, ORM) with `meta.json` for the credits. None is in the game yet.
 
 **Sources** (none in git): the MPFB2 repository, the Ubuntu `makehuman-data` 1.1.1 package
 (system assets), MakeHuman's community asset packs, Quaternius UAL1+2, and Blender Studio's

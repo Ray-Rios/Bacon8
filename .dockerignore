@@ -74,3 +74,6 @@ plugins/*/*.sh
 .claude
 # Brand masters: the build uses the files generated from them, not the masters.
 /brand
+
+# Shared licensed source-asset library (gitignored; never committed or deployed)
+/library

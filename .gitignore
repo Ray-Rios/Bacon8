@@ -99,3 +99,6 @@ uploads/
 # Windows, it would also match any same-named directory deeper in the tree.
 /RaysSpaceSim/
 
+# Shared source-asset library (Substance .sbsar and the like): licensed files we may use
+# but never redistribute. Lives here for every game; only baked outputs ship. See library/README.md.
+/library/
