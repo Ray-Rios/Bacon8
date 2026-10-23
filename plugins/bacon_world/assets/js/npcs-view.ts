@@ -129,6 +129,20 @@ export class NpcsView {
     return this.npcs.get(id)?.view;
   }
 
+  /** The nearest person within `range` world units of a point, or null. */
+  nearest(x: number, z: number, range: number): string | null {
+    let best: string | null = null;
+    let bd = range;
+    for (const [id, e] of this.npcs) {
+      const d = Math.hypot(e.view.x - x, e.view.z - z);
+      if (d <= bd) {
+        bd = d;
+        best = id;
+      }
+    }
+    return best;
+  }
+
   /** The person under a ray, or null. */
   pick(raycaster: THREE.Raycaster): string | null {
     const hit = raycaster.intersectObjects([...this.npcs.values()].map((e) => e.proxy), false)[0];

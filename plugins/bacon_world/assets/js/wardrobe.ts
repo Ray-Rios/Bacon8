@@ -106,22 +106,34 @@ export function boneOffsets(offsets: Record<string, Record<string, number[]>> | 
 // Hands at rest
 // ---------------------------------------------------------------------------
 
-// A relaxed hand: each finger curled a little more than the one before, about its local X
-// (the B8 skeleton's curl axis), degrees per joint. The library clips hold fists; an empty
-// hand that isn't punching takes this instead.
-const RELAXED: Record<string, [number, number, number]> = {
-  index: [10, 16, 9],
-  middle: [13, 19, 10],
-  ring: [16, 21, 12],
-  pinky: [20, 22, 13],
-  thumb: [4, 10, 8],
+// A relaxed hand: each joint curled about its local X (the B8 skeleton's curl axis), more
+// toward the little finger, and each finger drawn in toward the middle one about the
+// knuckle's local Z (the rest pose spreads them like a claw). Degrees: curl at the three
+// joints, then the knuckle's spread (mirrored on the left). The thumb's curl also brings
+// it in alongside the index. The library clips hold fists; an empty hand that isn't
+// punching takes this instead. Tuned in the harness, 2026-10-23.
+const RELAXED: Record<string, [number, number, number, number]> = {
+  index: [30, 25, 9, 7],
+  middle: [34, 29, 11, 1],
+  ring: [38, 33, 13, -5],
+  pinky: [42, 35, 15, -10],
+  thumb: [32, 18, 9, 0],
 };
+
+const FINGER = /^(thumb|index|middle|ring|pinky)_0([123])_([lr])$/;
 
 /** Degrees of curl for a finger bone (thumb_02_l, index_03_r, ...) in the relaxed hand, or null. */
 export function relaxedCurl(bone: string): number | null {
-  const m = /^(thumb|index|middle|ring|pinky)_0([123])_[lr]$/.exec(bone);
+  const m = FINGER.exec(bone);
   if (!m) return null;
   return RELAXED[m[1]][Number(m[2]) - 1];
+}
+
+/** Degrees a knuckle (`*_01_*`) turns about its local Z toward the middle finger (0 for other joints). */
+export function relaxedSpread(bone: string): number {
+  const m = FINGER.exec(bone);
+  if (!m || m[2] !== '1') return 0;
+  return RELAXED[m[1]][3] * (m[3] === 'l' ? -1 : 1);
 }
 
 /** Moves `cur` toward `target` at `rate` per second (both 0..1). */

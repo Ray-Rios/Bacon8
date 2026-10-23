@@ -458,6 +458,32 @@ export const GameWorld = {
     return this.npcsView?.pick(raycaster) ?? null;
   },
 
+  /**
+   * R: interact. The targeted person if they're in reach, else the nearest one; a merchant
+   * opens their wares. (Doors and other things you use will hang off this key too.)
+   */
+  interact(this: any) {
+    const me = this.localCharacter();
+    if (!me || this.isDead) return;
+    const p = me.mesh.position;
+    let id: string | null = this.targetId && this.npcsView?.get(this.targetId) ? this.targetId : null;
+    if (id) {
+      const n = this.npcsView.get(id);
+      if (Math.hypot(p.x - n.x, p.z - n.z) > TRADE_RANGE) id = null;
+    }
+    id = id || this.npcsView?.nearest(p.x, p.z, TRADE_RANGE) || null;
+    if (!id) {
+      this.combatLog('There is no one close enough to talk to.', '#B8B8B8');
+      return;
+    }
+    if (this.tradingWith === id) {
+      this.gameUI?.closeMerchant();
+      return;
+    }
+    this.setTarget(id);
+    void this.openMerchant(id);
+  },
+
   // ---------------------------------------------------------------- merchants
 
   /** Opens a merchant (EverQuest: right-click them). */

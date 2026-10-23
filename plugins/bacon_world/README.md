@@ -118,7 +118,10 @@ checked against a baked mirror, worst error 0.004).
 A character's look lives in its `settings["appearance"]`. It holds:
 
 - body type and height;
-- seven body and three face sliders (the humans' 13 morph targets);
+- body and face sliders (`appearance.ts` `SHAPES`): build, muscle, shoulders, belly, hips,
+  glutes and three face sliders for both bodies; for the female also Black Desert-style
+  chest (size, height, spacing, shape), glute lift, waist, arms, thighs and calves. The
+  creator shows them in sections (Body, Chest, Glutes, Arms and legs);
 - skin, eyes and brows;
 - a hair style (23 male, 31 female) and, for the male, one of 6 facial hair.
 
@@ -154,7 +157,8 @@ Events: `three_ui_create_character` (replies `%{ok, character_id}` or `%{ok: fal
   (R shade, G trim, B accent, A cut-out, from `Humans/Wardrobe/`) tinted with the item's
   main, trim and accent colours by a patched `MeshStandardMaterial`, alpha-tested.
 - After the animation each frame (`postAnimate`): joint offsets for morphs that move bones,
-  the posture correction (the female's pelvis tilted back 7 degrees) and relaxed fingers on
+  the posture correction (the female's pelvis tucked 20 degrees, the lumbar following and the
+  chest brought upright: manifest `posture` `pelvis_tilt_deg`, `spine_deg`) and relaxed fingers on
   empty hands. Each starts from what the animation left in the bone, so nothing compounds
   on a bone no clip keys. Clips load through `fixForearmTwist`, which repairs the packs'
   forearm twist tracks (a pipeline bug that wrung the forearms in weapon clips).
@@ -183,6 +187,7 @@ Desert's mouse buttons with mouse-look on (`character-controller.ts`; numbers in
 | Right-click (cursor free) | a corpse: loot it; a creature: target it; a merchant: trade |
 | Q E F Z X | special attacks, earned in the skill tree (locked for now) |
 | I / G / Tab | inventory / loot the nearest corpse / next target (creatures first) |
+| R | interact: the targeted or nearest person in reach (a merchant opens her wares). Reserved for interactions (doors and the like later) |
 | WASD / arrows | move relative to the camera; Shift sprints, C crouches, Space jumps |
 | Wheel | zoom (1.5 to 9 m) |
 | Ctrl | free the cursor; press again for mouse-look (Ctrl with a movement key never reaches the browser, so no Ctrl+A select-all) |
@@ -242,10 +247,15 @@ a piece) and eight pieces of cloth armour (tunic, blue-dyed tunic, tank, wool sw
 trousers, shorts, cloth shoes, tall leather boots). Coins are EverQuest's: 10 copper make a
 silver, 10 silver a gold, 10 gold a platinum (`items.ts` `money`).
 
+Health rides in each player's presence meta (`hp`, `max_hp`), so target windows and the
+player list keep it across presence syncs (without it a hit player's bar read full again
+within a tenth of a second). Regeneration (a twelfth of the pool every 4 s, not while dead)
+runs on one timer per LiveView: each login starts a new chain and orphans the old.
+
 **Merchants** (`BaconWorld.Merchants`). Tilda Threadwell, Clothier, stands in the village
 (15.5, -6.7 m) and sells all 20 wearables at their value; she buys anything for a quarter of
-its value (at least 1 copper). Trading needs you within 6 m and alive: right-click her with
-the cursor free (`merchant_open`, `merchant_buy`, `merchant_sell`); walking away closes the
+its value (at least 1 copper). Trading needs you within 6 m and alive: R (the targeted or
+nearest person in reach), or right-click her with the cursor free (`merchant_open`, `merchant_buy`, `merchant_sell`); walking away closes the
 window. `fetch_mobs` lists the zone's merchants.
 
 Corpses: the top damage dealer may loot alone for a minute, then anyone; one looter at a

@@ -20,7 +20,8 @@ Last substantive update: **2026-10-23**.
 
 - Bacon World: underwear and clothes became items (cloth armour), the first NPC merchant,
   EverQuest coins, the female v3, PvP melee and multiplayer animation fixes; Throw Stone is
-  gone. Details in **`BACON_WORLD.md`** §2.
+  gone. Then Black Desert-style body sliders, posture, hands and dagger grips, R to interact.
+  Details in **`BACON_WORLD.md`** §2.
 
 Before that:
 

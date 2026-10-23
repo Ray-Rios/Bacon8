@@ -2,7 +2,7 @@
 // HTML layer over the 3D stage (character-stage.ts). Plain DOM with its own scoped CSS,
 // so it doesn't depend on the site's Tailwind build.
 import {
-  Appearance, Body, EYE_COLORS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SKIN_TONES,
+  Appearance, Body, EYE_COLORS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SKIN_TONES, type ShapeGroup,
   defaultAppearance, normalizeAppearance, randomAppearance, shade,
 } from './appearance';
 import type { StyleEntry } from './human-factory';
@@ -473,14 +473,26 @@ export class FrontUI {
 
   // ---------------------------------------------------------------- creator controls
 
+  private shapesIn(group: ShapeGroup) {
+    const a = this.draft;
+    return SHAPES.filter((s) => s.tab === 'body' && s.group === group && (!s.bodies || s.bodies.includes(a.body)));
+  }
+
+  private shapeSliders(group: ShapeGroup): HTMLElement[] {
+    const a = this.draft;
+    return this.shapesIn(group).map((s) => this.slider(s.label, a.shape[s.key], s.min, s.max, (v) => this.change((x) => { x.shape[s.key] = v; }, false), undefined, s.ends));
+  }
+
   private tabContent(): Node[] {
     const a = this.draft;
     if (this.tab === 'body') {
       return [
         this.section('Body', this.slider('Height', a.height, HEIGHT_RANGE[0], HEIGHT_RANGE[1], (v) => this.change((x) => { x.height = v; }, false),
           (v) => `${Math.round((a.body === 'female' ? 170 : 180) * v)} cm`, ['Short', 'Tall']),
-          ...SHAPES.filter((s) => s.tab === 'body' && (!s.bodies || s.bodies.includes(a.body)))
-          .map((s) => this.slider(s.label, a.shape[s.key], s.min, s.max, (v) => this.change((x) => { x.shape[s.key] = v; }, false), undefined, s.ends))),
+          ...this.shapeSliders('Body')),
+        ...(['Chest', 'Glutes', 'Arms and legs'] as ShapeGroup[])
+          .filter((g) => this.shapesIn(g).length)
+          .map((g) => this.section(g, ...this.shapeSliders(g))),
         this.section('Skin', this.swatches(SKIN_TONES, a.skin, (c) => this.change((x) => { x.skin = c; }))),
       ];
     }

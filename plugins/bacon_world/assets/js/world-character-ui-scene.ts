@@ -37,6 +37,7 @@ import type { GameUI } from './game-ui';
 import type { MobsView } from './mobs-view';
 import type { NpcsView } from './npcs-view';
 import { STARTER_GEAR, type Gear } from './wardrobe';
+import { setCatalog } from './items';
 
 // One stylesheet: the game's DOM isn't selectable text, its inputs are.
 function ensureNoSelectStyle() {
@@ -213,6 +214,13 @@ export const WorldCharacterUIScene = {
 
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
+    // The item catalogue first: the select screen and the creator dress characters from
+    // it (without it, worn items resolve to nothing and a new character stood there bare).
+    try {
+      setCatalog(JSON.parse(this.el.dataset.itemCatalog || '{}'));
+    } catch {
+      setCatalog({});
+    }
     this.humanFactory = new HumanFactory(this.readHumanAssets());
     this.characterManager = new CharacterModelManager();
     this.characterManager.setActiveScene(this.scene);
@@ -246,7 +254,12 @@ export const WorldCharacterUIScene = {
 
     this.handleEvent('zone_presence_state', (payload: any) => {
       if (payload?.online_characters && this.state) {
-        this.state.onlineCharacters = payload.online_characters;
+        // Health rides in the presence meta; keep what we knew if an entry has none.
+        const before = new Map<string, any>((this.state.onlineCharacters || []).map((c: any) => [c.character_id, c]));
+        this.state.onlineCharacters = payload.online_characters.map((c: any) => {
+          const old = before.get(c.character_id);
+          return c.hp == null && old?.hp != null ? { ...c, hp: old.hp, max_hp: old.max_hp } : c;
+        });
       } else {
         this.readState();
       }
@@ -1520,7 +1533,7 @@ export const WorldCharacterUIScene = {
       'Mouse-look on: <b class="text-slate-300">left / right button</b> swing your left / right hand (hold to keep swinging)',
       'Cursor free: <b class="text-slate-300">hold right button</b> to steer · <b class="text-slate-300">right-click</b> a corpse to loot it, a merchant to trade',
       '<b class="text-slate-300">WASD</b> move · <b class="text-slate-300">Shift</b> sprint · <b class="text-slate-300">C</b> crouch · <b class="text-slate-300">Space</b> jump · <b class="text-slate-300">Wheel</b> zoom',
-      '<b class="text-slate-300">I</b> inventory · <b class="text-slate-300">G</b> loot nearest corpse · <b class="text-slate-300">Tab</b> next target',
+      '<b class="text-slate-300">I</b> inventory · <b class="text-slate-300">G</b> loot nearest corpse · <b class="text-slate-300">R</b> interact (trade) · <b class="text-slate-300">Tab</b> next target',
       '<b class="text-slate-300">Q E F Z X</b> special attacks (earned in the skill tree) · <b class="text-slate-300">Enter</b> chat · <b class="text-slate-300">Esc</b> this menu',
     ].join('<br>');
     panel.appendChild(help);
@@ -1728,6 +1741,11 @@ export const WorldCharacterUIScene = {
     }
     if ((event.key === 'g' || event.key === 'G') && !this.isGameMenuOpen() && !this.isDead) {
       this.lootNearest();
+      return;
+    }
+    // R: interact (merchants now; doors and the like later). Reserved for interactions.
+    if ((event.key === 'r' || event.key === 'R') && !event.ctrlKey && !event.metaKey && !this.isGameMenuOpen() && !this.isDead) {
+      this.interact();
       return;
     }
 

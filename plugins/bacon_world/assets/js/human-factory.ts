@@ -24,7 +24,7 @@ import { UNITS_PER_METRE } from './controls-math';
 import { modelUrl } from './asset-url';
 import { item as catalogItem } from './items';
 import {
-  Gear, KEEP_TRANSLATION, WornGarment, approach, boneOffsets, designFiles, gearKey, hiddenFor, relaxedCurl, wornGarments,
+  Gear, KEEP_TRANSLATION, WornGarment, approach, boneOffsets, designFiles, gearKey, hiddenFor, relaxedCurl, relaxedSpread, wornGarments,
 } from './wardrobe';
 
 export const HUMANS_BASE = '/models/Humans';
@@ -368,7 +368,12 @@ export class HumanInstance {
   private restQuat = new Map<string, THREE.Quaternion>();
   private parentInv = new Map<string, THREE.Matrix3>();
   private moved = new Map<string, THREE.Vector3>();
-  private posture: { q: THREE.Quaternion; qi: THREE.Quaternion; children: THREE.Bone[] } | null = null;
+  private posture: {
+    q: THREE.Quaternion;
+    qi: THREE.Quaternion;
+    children: THREE.Bone[];
+    spine: Array<{ bone: THREE.Bone; q: THREE.Quaternion }>;
+  } | null = null;
   private fingers: Array<{ bone: THREE.Bone; side: 'l' | 'r'; relaxed: THREE.Quaternion }> = [];
   private handW = { l: 1, r: 1 };
   // What postAnimate last wrote to each bone, and what it found there: a bone no clip
@@ -429,24 +434,41 @@ export class HumanInstance {
         this.parentInv.set(name, new THREE.Matrix3().setFromMatrix4(m).invert());
       }
     }
-    // relaxed fingers: rest x a curl about each joint's own X
+    // relaxed fingers: rest x the knuckle drawn in (local Z) x a curl about each joint's own X
     const X = new THREE.Vector3(1, 0, 0);
+    const Z = new THREE.Vector3(0, 0, 1);
     for (const [name, b] of this.bones) {
       const deg = relaxedCurl(name);
       if (deg == null) continue;
-      const q = this.restQuat.get(name)!.clone().multiply(new THREE.Quaternion().setFromAxisAngle(X, THREE.MathUtils.degToRad(deg)));
+      const q = this.restQuat.get(name)!.clone()
+        .multiply(new THREE.Quaternion().setFromAxisAngle(Z, THREE.MathUtils.degToRad(relaxedSpread(name))))
+        .multiply(new THREE.Quaternion().setFromAxisAngle(X, THREE.MathUtils.degToRad(deg)));
       this.fingers.push({ bone: b, side: name.endsWith('_l') ? 'l' : 'r', relaxed: q });
     }
-    // posture: the pelvis turned back about her side-to-side axis; its spine and legs kept where they were
-    const tilt = Number(this.asset.manifest?.posture?.pelvis_tilt_deg) || 0;
+    // posture: the pelvis turned about her side-to-side axis (positive tucks it under) with
+    // the legs kept where they were. With `spine_deg` [lumbar, mid, chest] the spine turns
+    // back by those amounts (same sense), so the lower back follows the pelvis and the chest
+    // comes upright higher up: that flattens the curve. Without it the whole spine is kept.
+    const posture = this.asset.manifest?.posture || {};
+    const tilt = Number(posture.pelvis_tilt_deg) || 0;
+    const spineDeg: number[] | null = Array.isArray(posture.spine_deg) ? posture.spine_deg.map(Number) : null;
     const pelvis = this.bones.get('pelvis');
-    if (tilt && pelvis) {
-      m.multiplyMatrices(inv, pelvis.matrixWorld);
+    const sideAxis = (b: THREE.Object3D) => {
+      m.multiplyMatrices(inv, b.matrixWorld);
       const wq = new THREE.Quaternion().setFromRotationMatrix(m);
-      const axis = new THREE.Vector3(1, 0, 0).applyQuaternion(wq.clone().invert()).normalize();
-      const q = new THREE.Quaternion().setFromAxisAngle(axis, -THREE.MathUtils.degToRad(tilt));
-      const children = ['spine_01', 'thigh_l', 'thigh_r'].map((n) => this.bones.get(n)).filter((b): b is THREE.Bone => !!b && b.parent === pelvis);
-      this.posture = { q, qi: q.clone().invert(), children };
+      return new THREE.Vector3(1, 0, 0).applyQuaternion(wq.invert()).normalize();
+    };
+    if ((tilt || spineDeg) && pelvis) {
+      const q = new THREE.Quaternion().setFromAxisAngle(sideAxis(pelvis), -THREE.MathUtils.degToRad(tilt));
+      const keep = spineDeg ? ['thigh_l', 'thigh_r'] : ['spine_01', 'thigh_l', 'thigh_r'];
+      const children = keep.map((n) => this.bones.get(n)).filter((b): b is THREE.Bone => !!b && b.parent === pelvis);
+      const spine = spineDeg
+        ? ['spine_01', 'spine_02', 'spine_03']
+            .map((n, i) => ({ bone: this.bones.get(n), deg: spineDeg[i] || 0 }))
+            .filter((s): s is { bone: THREE.Bone; deg: number } => !!s.bone && s.deg !== 0)
+            .map((s) => ({ bone: s.bone, q: new THREE.Quaternion().setFromAxisAngle(sideAxis(s.bone), -THREE.MathUtils.degToRad(s.deg)) }))
+        : [];
+      this.posture = { q, qi: q.clone().invert(), children, spine };
     }
   }
 
@@ -638,6 +660,11 @@ export class HumanInstance {
         const mv = this.moved.get(c.name);
         if (mv) base.add(mv);
         c.position.copy(base.applyQuaternion(this.posture.qi));
+      }
+      for (const s of this.posture.spine) {
+        this.fromAnimated(s.bone);
+        s.bone.quaternion.multiply(s.q);
+        this.wrote(s.bone);
       }
     }
     this.handW.l = approach(this.handW.l, free.l ? 1 : 0, 6, dt);

@@ -38,6 +38,14 @@ defmodule BaconWorld.AppearanceTest do
     assert {:ok, %{"hair" => %{"style" => "none"}}} = A.normalize(%{"body" => "male", "hair" => %{"style" => "none"}}, nil, styles)
   end
 
+  test "the female's chest, glute and limb sliders: kept and clamped for her, zero for him" do
+    shape = %{"chest_height" => 0.5, "chest_spacing" => -2, "chest_shape" => 0.25, "glute_lift" => -1, "arms" => 0.3, "thighs" => 1, "calves" => -0.2, "waist" => -0.6}
+    assert {:ok, f} = A.normalize(%{"body" => "female", "shape" => shape}, nil)
+    assert %{"chest_height" => 0.5, "chest_spacing" => -1.0, "chest_shape" => 0.25, "glute_lift" => +0.0, "arms" => 0.3, "thighs" => 1.0, "calves" => -0.2, "waist" => -0.6} = f["shape"]
+    assert {:ok, m} = A.normalize(%{"body" => "male", "shape" => shape}, nil)
+    assert Enum.all?(~w(chest_height chest_spacing chest_shape glute_lift arms thighs calves waist), &(m["shape"][&1] == 0.0))
+  end
+
   test "a retired style id maps to the style that replaced it" do
     styles = %{"female" => %{"hair" => ["Ponytail", "Lob"], "facial" => [], "aliases" => %{"HighPonytail" => "Ponytail", "Gone" => "Missing"}}}
     assert {:ok, a} = A.normalize(%{"body" => "female", "hair" => %{"style" => "HighPonytail"}}, nil, styles)

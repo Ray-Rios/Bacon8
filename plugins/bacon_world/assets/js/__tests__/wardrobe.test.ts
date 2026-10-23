@@ -2,7 +2,7 @@
 // morphs move, the relaxed hand. Run with __tests__/run.sh.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { STARTER_GEAR, approach, boneOffsets, designFiles, gearKey, hiddenFor, relaxedCurl, wornGarments } from '../wardrobe';
+import { STARTER_GEAR, approach, boneOffsets, designFiles, gearKey, hiddenFor, relaxedCurl, relaxedSpread, wornGarments } from '../wardrobe';
 
 const CATALOG: Record<string, any> = {
   linen_bikini_top: { slots: ['under_top'], wear: { female: { garment: 'Under_Top_Contour', design: 'classic' }, male: null }, colors: { main: '#EAE0C8' } },
@@ -58,6 +58,11 @@ test('a relaxed hand curls more toward the little finger; approach is rate-limit
   assert.equal(relaxedCurl('index_04_l'), null);
   assert.ok(relaxedCurl('pinky_01_r')! > relaxedCurl('index_01_r')!);
   assert.ok(relaxedCurl('middle_02_l')! > 0);
+  // knuckles draw in toward the middle finger, mirrored left to right; other joints don't
+  assert.equal(relaxedSpread('index_01_r'), -relaxedSpread('index_01_l'));
+  assert.ok(relaxedSpread('index_01_r') > 0 && relaxedSpread('pinky_01_r') < 0);
+  assert.equal(relaxedSpread('index_02_r'), 0);
+  assert.equal(relaxedSpread('hand_r'), 0);
   assert.ok(Math.abs(approach(0, 1, 6, 0.1) - 0.6) < 1e-9);
   assert.equal(approach(0.9, 1, 6, 0.1), 1);
   assert.equal(approach(0.5, 0, 6, 1), 0);

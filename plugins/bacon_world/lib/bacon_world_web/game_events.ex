@@ -76,7 +76,7 @@ defmodule BaconWorldWeb.GameEvents do
 
   @doc "The extra presence meta other players and the creatures read."
   def presence_meta(payload) do
-    %{level: payload[:level] || 1, dead: false, gear: payload[:gear] || %{}}
+    %{level: payload[:level] || 1, dead: false, gear: payload[:gear] || %{}, hp: payload[:hp], max_hp: payload[:max_hp]}
   end
 
   # ---------------------------------------------------------------------------
@@ -313,13 +313,18 @@ defmodule BaconWorldWeb.GameEvents do
   @doc "Someone's health changed (`state` \"alive\", \"hurt\" or \"dead\")."
   def zone_hp(payload, socket), do: push_event(socket, "zone_hp", payload)
 
-  @doc "Tells the zone this character's health (after a hit, a death or a respawn)."
+  @doc """
+  Tells the zone this character's health (after a hit, regeneration, a death or a
+  respawn), and keeps it in the presence meta: every presence sync replaces the
+  clients' player list, and without `hp` there a target's bar read full again
+  within a tenth of a second (the "instant heal" seen in PvP).
+  """
   def broadcast_hp(socket, character_id, hp, max_hp, state) do
     if topic = socket.assigns[:current_zone_topic] do
       PubSub.broadcast(Bacon8.PubSub, topic, {:zone_hp, %{character_id: character_id, hp: hp, max_hp: max_hp, state: state}})
     end
 
-    socket
+    update_presence(socket, %{hp: hp, max_hp: max_hp})
   end
 
   @doc """

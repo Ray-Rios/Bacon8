@@ -51,6 +51,10 @@ test('body fallbacks and model paths', () => {
   assert.equal(normalizeAppearance(null, 'female').body, 'female');
   assert.equal(normalizeAppearance({ body: 'robot' }).body, 'male');
   assert.equal(normalizeAppearance({ body: 'male', shape: { chest: 1 } }).shape.chest, 0);
+  // the female-only sliders (chest, glutes, limbs) stay 0 on the male and are kept on her
+  assert.equal(normalizeAppearance({ body: 'male', shape: { arms: 1, chest_shape: -1 } }).shape.arms, 0);
+  assert.equal(normalizeAppearance({ body: 'female', shape: { arms: 0.4, chest_shape: -3 } }).shape.chest_shape, -1);
+  assert.equal(morphWeights(normalizeAppearance({ body: 'female', shape: { chest_shape: -0.5 } })).Chest_Round, 0.5);
   assert.equal(bodyFromModelPath('/models/Humans/Female.glb'), 'female');
   assert.equal(bodyFromModelPath('/models/Humans/Male.glb'), 'male');
   assert.ok(isHumanModel('/models/Humans/Male.glb'));

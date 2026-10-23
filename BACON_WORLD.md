@@ -60,7 +60,31 @@ so it can be rebuilt and changed.
 | `CLAUDE_CODE_PROMPT_2026-10-22b.md` | Skeletons now attack and can be hit (the BEAM's monotonic clock is usually negative; timers started at 0). A remote-desktop mouse filter (`mouse-filter.ts`) replaces the camera-smoothing option, which is gone. Effects, nature and music volume sliders. New grass footsteps. |
 | `CLAUDE_CODE_PROMPT_2026-10-22c.md` | The female rebuilt on MakeHuman (CC0), with 31 MakeHuman hair styles, MakeHuman clothes fitted to her, strand lashes and a brow card. Hair-style aliases (client and server). Garments hide the parts of garments under them. And these docs. |
 
-**Delivered 2026-10-23, uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23.md`):
+**Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
+The owner's testing of it led to the next delivery.
+
+**Delivered 2026-10-23 (second), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23b.md`):
+
+- **The female's body sliders, Black Desert style**: the chest gets size, height, spacing and
+  shape (round to perky); the glutes size and lift; new waist, arms, thighs and calves
+  (pipeline stage G, `mhf_morphs.py`; 15 new shape keys, every garment follows). "Bust" is
+  now "Chest" and "Seat" "Glutes". The creator's body tab is in sections: Body, Chest,
+  Glutes, Arms and legs.
+- **Posture**: she stands straight (pelvis tucked 20 degrees, the lumbar following, the
+  chest brought upright higher up), instead of the arched lower back and forward belly.
+- **Relaxed hands**: fingers drawn together and curled at the knuckles, thumb alongside.
+- **Daggers**: both hands up at elbow height, blades forward and up, wrists straight (the
+  right hand was at the thigh with the wrist bent 88 degrees). Her animation packs were
+  rebuilt, which also ships the forearm-twist fix in the data.
+- **PvP "instant heal"**: target bars read full again on every presence sync (health wasn't
+  in the presence); now it is, and regeneration runs on one timer per LiveView.
+- **R interacts** (the targeted or nearest person in reach: a merchant opens her wares).
+- **New characters wear their underwear** in the creator and on the select screen (the item
+  catalogue now loads before any character is dressed).
+- The blends open in the rest pose (every clip was an unmuted NLA track playing at once).
+
+The first 2026-10-23 delivery:
+
 
 - **The female, v3** (pipeline stage F, `mhf_v3.py`): relaxed fingers on empty hands; the
   shoulder slider no longer changes the hands' size (joint offsets); a rounder bust; skin
@@ -116,6 +140,8 @@ so it can be rebuilt and changed.
 | 2026-10-23 | **At least five underwear sets for sale from an NPC merchant.** The old clothes meshes become **cloth armour**. |
 | 2026-10-23 | **EverQuest currency**: platinum, gold, silver and copper. |
 | 2026-10-23 | **Throw Stone is removed**: it was only a test from the old web-lobby game. |
+| 2026-10-23 | **R is reserved for interactions** (NPCs now; doors and the like later). Right-clicking a merchant with the cursor free still works too. |
+| 2026-10-23 | **Body sliders take their cues from Black Desert Online**: more control over the chest (call it "chest", not "bust"), glutes ("glutes", not "seat"), waist and limbs. |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 
 ## 4. How it fits together
@@ -172,7 +198,7 @@ Characters are the hub's `game_characters` (games DB):
   keep looks saved with retired styles working. A style's scalp decal (`decal` extras) gets a
   polygon offset, and alpha-tested cards get alpha-to-coverage.
 - **Morphs.** Every mesh with morph targets (body, garments, hair, lashes, brows) takes the
-  same 13 weights from the look's sliders. A morph that moves joints (`Shoulders_Broad`)
+  same weights from the look's sliders (13 on the male; 28 on the female since stage G). A morph that moves joints (`Shoulders_Broad`)
   moves the bones too (`joint_offsets` in the manifest).
 - **Wardrobe** (female v3). Worn items come from the gear (`under_top`, `under_bottom`,
   `chest`, `legs`, `feet`), not the look. Each is a garment mesh plus a design: a packed
@@ -198,7 +224,7 @@ README has every script, source and run order.
   - lashes: Mindfront strand-mesh lashes;
   - brows: MakeHuman's `eyebrow001` card;
   - rig: the B8 skeleton, with MakeHuman's game-engine weights;
-  - 13 morphs.
+  - 13 morphs, plus 15 from stage G (chest, waist, limbs, glute lift).
 - **Female v3** (2026-10-23, `mhf_v3.py`, the Pipeline README's stage F): the fixes above,
   and the **wardrobe**. Underwear (two top shapes and one bottom) and the new tank, shorts and
   trousers are shells made from her own body, with one shape key per morph. Designs are
@@ -274,8 +300,11 @@ one pipeline.
 
 - The skill tree itself (Q E F Z X), armour beyond cloth, more merchants, and groups with
   shared loot.
-- **Rebuild the animation packs** (`build_anims.py`, `mhf_anims.py`, `deliver_female.py`) to
-  ship the fixed forearm twist; until then the client repairs the tracks on load.
+- **The male's animation packs** still carry the bad forearm-twist tracks (the client repairs
+  them on load) and the old dagger guard: his source blend (`b8_humans2.blend`) isn't on the
+  development PC. Rebuild them with the male's MakeHuman rebuild.
+- **The male has none of the new body sliders** (female-only in `appearance.ts` and
+  `Appearance`); he gets them with the same treatment.
 - The female's **hair** GLBs weren't re-fitted for the joint offsets (only `Shoulders_Broad`
   moves joints, so hair is unaffected for now).
 - **The male**: underwear on him is interim (his built-in shorts, tinted; nothing for the

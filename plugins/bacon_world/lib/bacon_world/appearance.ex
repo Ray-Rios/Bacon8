@@ -33,6 +33,15 @@ defmodule BaconWorld.Appearance do
     {"belly", 0.0, 1.0},
     {"hips", 0.0, 1.0},
     {"glutes", -1.0, 1.0},
+    # the female's Black Desert-style sliders (2026-10-23)
+    {"waist", -1.0, 1.0},
+    {"chest_height", -1.0, 1.0},
+    {"chest_spacing", -1.0, 1.0},
+    {"chest_shape", -1.0, 1.0},
+    {"glute_lift", 0.0, 1.0},
+    {"arms", -1.0, 1.0},
+    {"thighs", -1.0, 1.0},
+    {"calves", -1.0, 1.0},
     {"face", 0.0, 1.0},
     {"jaw", 0.0, 1.0},
     {"nose", 0.0, 1.0}
@@ -140,8 +149,13 @@ defmodule BaconWorld.Appearance do
     |> fix_body()
   end
 
-  # The bust slider is for the female body; facial hair for the male.
-  defp fix_body(%{"body" => "male"} = look), do: put_in(look, ["shape", "chest"], 0.0)
+  # Sliders the male body has no morphs for yet (the chest and the stage-G ones).
+  @female_only ~w(chest waist chest_height chest_spacing chest_shape glute_lift arms thighs calves)
+
+  # The chest sliders are for the female body; facial hair for the male.
+  defp fix_body(%{"body" => "male"} = look),
+    do: update_in(look, ["shape"], &Map.merge(&1, Map.new(@female_only, fn k -> {k, 0.0} end)))
+
   defp fix_body(%{"body" => "female"} = look), do: put_in(look, ["facial", "style"], "none")
 
   defp map(m) when is_map(m), do: stringify(m)

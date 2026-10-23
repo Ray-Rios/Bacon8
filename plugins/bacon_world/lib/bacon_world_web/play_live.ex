@@ -57,7 +57,7 @@ defmodule BaconWorldWeb.PlayLive do
              )
              |> push_event("zone_presence_state", %{online_characters: socket.assigns.zone_online_characters})
              |> push_event("character_login_ready", payload)
-             |> tap(fn _ -> Process.send_after(self(), {:regen_tick, payload.character_id}, 4_000) end)}
+             |> schedule_regen(payload.character_id)}
           end
 
         _ ->
@@ -570,34 +570,9 @@ defmodule BaconWorldWeb.PlayLive do
     end
   end
 
-  def handle_info({:regen_tick, character_id}, socket) do
-    current = current_character(socket)
-
-    # Only regen if still logged in as this character
-    if socket.assigns.world_mode? && current && current.character_id == character_id do
-      case Combat.get_character_stats(character_id) do
-        {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}}
-            when hp < max_hp or mp < max_mp ->
-          # About a twelfth of the pool every 4 s (EverQuest-slow, but not 10 HP slow).
-          new_hp = min(hp + max(1, div(max_hp, 12)), max_hp)
-          new_mp = min(mp + max(1, div(max_mp, 12)), max_mp)
-          {:ok, _} = Combat.update_character_hp_mp(character_id, new_hp, new_mp)
-          socket =
-            socket
-            |> push_event("character_stats_update", %{hp: new_hp, max_hp: max_hp, mp: new_mp, max_mp: max_mp})
-            |> then(fn s -> if new_hp != hp, do: GameEvents.broadcast_hp(s, character_id, new_hp, max_hp, "hurt"), else: s end)
-          Process.send_after(self(), {:regen_tick, character_id}, 4_000)
-          {:noreply, socket}
-
-        _ ->
-          # Already full — skip DB write, still reschedule
-          Process.send_after(self(), {:regen_tick, character_id}, 4_000)
-          {:noreply, socket}
-      end
-    else
-      # Left world — stop ticking
-      {:noreply, socket}
-    end
+  # One regeneration timer per LiveView: a tick from an older chain (an earlier login) is dropped.
+  def handle_info({:regen_tick, character_id, token}, socket) do
+    if token == socket.assigns[:regen_token], do: regen(socket, character_id), else: {:noreply, socket}
   end
 
   def handle_info(%{event: "presence_diff"}, socket) do
@@ -841,6 +816,8 @@ defmodule BaconWorldWeb.PlayLive do
         z: meta[:z] || 0.0,
         heading: meta[:heading] || 0.0,
         level: meta[:level] || 1,
+        hp: meta[:hp],
+        max_hp: meta[:max_hp],
         gear: meta[:gear] || %{},
         dead: meta[:dead] == true
       }
@@ -940,6 +917,43 @@ defmodule BaconWorldWeb.PlayLive do
 
   defp current_character(socket) do
     socket.assigns.current_character_runtime || socket.assigns.current_character_payload
+  end
+
+  defp regen(socket, character_id) do
+    current = current_character(socket)
+
+    # Only regen if still logged in as this character, and alive
+    if socket.assigns.world_mode? && current && current.character_id == character_id && !socket.assigns[:is_dead?] do
+      case Combat.get_character_stats(character_id) do
+        {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}}
+            when hp < max_hp or mp < max_mp ->
+          # About a twelfth of the pool every 4 s (EverQuest-slow, but not 10 HP slow).
+          new_hp = min(hp + max(1, div(max_hp, 12)), max_hp)
+          new_mp = min(mp + max(1, div(max_mp, 12)), max_mp)
+          {:ok, _} = Combat.update_character_hp_mp(character_id, new_hp, new_mp)
+          socket =
+            socket
+            |> push_event("character_stats_update", %{hp: new_hp, max_hp: max_hp, mp: new_mp, max_mp: max_mp})
+            |> then(fn s -> if new_hp != hp, do: GameEvents.broadcast_hp(s, character_id, new_hp, max_hp, "hurt"), else: s end)
+          {:noreply, schedule_regen(socket, character_id)}
+
+        _ ->
+          # Already full — skip DB write, still reschedule
+          {:noreply, schedule_regen(socket, character_id)}
+      end
+    else
+      # Left the world: stop. Dead: keep the chain going (respawn heals anyway).
+      if socket.assigns.world_mode? && current && current.character_id == character_id,
+        do: {:noreply, schedule_regen(socket, character_id)},
+        else: {:noreply, socket}
+    end
+  end
+
+  # (Re)starts the 4 s regeneration tick; a new token orphans any older chain.
+  defp schedule_regen(socket, character_id) do
+    token = make_ref()
+    Process.send_after(self(), {:regen_tick, character_id, token}, 4_000)
+    assign(socket, regen_token: token)
   end
 
   # What the body is doing, for everyone else's animation: bit 1 crouching, bit 2 airborne.
