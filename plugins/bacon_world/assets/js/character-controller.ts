@@ -15,6 +15,8 @@
 //   Esc                   free the cursor and ask the scene for its game menu
 //   WASD / arrows         move relative to the camera; Shift sprints, C crouches,
 //                         Space jumps; the wheel zooms
+//
+// Mouse-look over remote desktop: see mouse-filter.ts.
 import * as THREE from '../../../../assets/js/vendor/three';
 import {
   CAMERA,
@@ -32,6 +34,7 @@ import {
   zoomDistance,
   type Vec2,
 } from './controls-math';
+import { MouseFilter, jumpLimit, type Move } from './mouse-filter';
 
 export interface ControllerOptions {
   /** The renderer's canvas: mouse look, zoom and pointer lock happen here. */
@@ -81,10 +84,12 @@ const MOVEMENT_CODES = new Set([
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC',
 ]);
 
-// Browsers can report one huge movementX/Y as pointer lock starts or ends; those
-// events are skipped. Remote desktop delivers mouse movement in bursts, so other
-// big moves are clamped rather than dropped (dropping lost whole turns).
-const MAX_MOUSE_DELTA = 220;
+// The page as Chrome sees it, for the mouse filter.
+const page = () => ({
+  width: window.innerWidth || 1,
+  height: window.innerHeight || 1,
+  dpr: window.devicePixelRatio || 1,
+});
 
 function isEditable(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -108,13 +113,10 @@ export class CharacterController {
   private isSprinting = false;
   private speed = 0;
 
-  // Camera: yaw psi = 0 looks along +Z; look pitch < 0 looks down. The mouse sets
-  // the target; with smoothing on, the camera eases toward it.
+  // Camera: yaw psi = 0 looks along +Z; look pitch < 0 looks down. The mouse turns it
+  // directly, with no easing.
   private yaw = 0;
   private lookPitch = -15 * (Math.PI / 180);
-  private targetYaw = 0;
-  private targetPitch = -15 * (Math.PI / 180);
-  private smoothing = 0; // seconds (time constant); 0 = off
   private distance: number = CAMERA.distance;
   private pivotY: number | null = null;
 
@@ -130,6 +132,9 @@ export class CharacterController {
   private faceCameraUntil = 0; // ms (performance.now): after a swing the character faces the camera
   private skipNextMouseMove = false;
   private releasingLock = false; // we asked for the lock to go (Ctrl, chat, menu, death)
+  // Mouse-look with the pointer locked goes through the remote-desktop filter.
+  private mouseFilter = new MouseFilter(page);
+  private cursor: Move | null = null; // the free cursor's last position, from the page's middle
 
   // Bound once, so dispose() removes the same functions it added.
   private readonly handleKeyDown = (e: KeyboardEvent) => this.onKeyDown(e);
@@ -138,7 +143,7 @@ export class CharacterController {
   private readonly handleVisibility = () => { if (document.hidden) this.clearInput(); };
   private readonly handleMouseDown = (e: MouseEvent) => this.onMouseDown(e);
   private readonly handleWindowMouseUp = (e: MouseEvent) => this.onMouseUp(e);
-  private readonly handleMouseMove = (e: MouseEvent) => this.onMouseMove(e);
+  private readonly handlePointerMove = (e: PointerEvent) => this.onPointerMove(e);
   private readonly handleWheel = (e: WheelEvent) => this.onWheel(e);
   private readonly handleClick = (e: MouseEvent) => this.onClick(e);
   private readonly handleContextMenu = (e: MouseEvent) => e.preventDefault();
@@ -154,7 +159,6 @@ export class CharacterController {
     this.options = options;
     // Start behind the character, looking where it faces.
     this.yaw = character.rotation.y;
-    this.targetYaw = this.yaw;
 
     document.addEventListener('keydown', this.handleKeyDown);
     document.addEventListener('keyup', this.handleKeyUp);
@@ -167,7 +171,7 @@ export class CharacterController {
     // a release anywhere ends it.
     this.canvas.addEventListener('mousedown', this.handleMouseDown);
     window.addEventListener('mouseup', this.handleWindowMouseUp);
-    window.addEventListener('mousemove', this.handleMouseMove);
+    window.addEventListener('pointermove', this.handlePointerMove);
     this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
     this.canvas.addEventListener('click', this.handleClick);
     this.canvas.addEventListener('contextmenu', this.handleContextMenu);
@@ -215,6 +219,7 @@ export class CharacterController {
       this.steering = true;
       this.skipNextMouseMove = true;
     }
+    this.cursor = { x: event.clientX - window.innerWidth / 2, y: event.clientY - window.innerHeight / 2 };
   }
 
   private onMouseUp(event: MouseEvent): void {
@@ -242,34 +247,62 @@ export class CharacterController {
     return this.yaw;
   }
 
-  /** Camera easing for bursty mouse input (remote desktop): 0 = off, else seconds. */
-  setSmoothing(seconds: number): void {
-    this.smoothing = Math.max(0, Math.min(0.2, seconds));
+  /** Mouse-look statistics for the game menu: moves seen, and remote-desktop jumps repaired. */
+  mouseStats(): { moves: number; repaired: number; remoteDesktop: boolean } {
+    const f = this.mouseFilter;
+    return { moves: f.moves, repaired: f.repaired, remoteDesktop: f.remoteDesktop };
   }
 
-  private onMouseMove(event: MouseEvent): void {
+  private onPointerMove(event: PointerEvent): void {
+    const locked = this.isPointerLocked();
+    if (!locked) this.cursor = { x: event.clientX - window.innerWidth / 2, y: event.clientY - window.innerHeight / 2 };
     if (!this.inputEnabled) return;
-    if (!this.isPointerLocked() && !this.steering) return;
+    if (!locked && !this.steering) return;
     // A missed mouseup (released outside the window) must not leave us steering.
-    if (this.steering && !this.isPointerLocked() && (event.buttons & 2) === 0) {
+    if (this.steering && !locked && (event.buttons & 2) === 0) {
       this.steering = false;
       return;
     }
-    if (this.skipNextMouseMove) {
-      this.skipNextMouseMove = false;
-      return;
+    for (const move of this.movesIn(event)) {
+      if (this.skipNextMouseMove) {
+        // The first move after the lock starts or ends, or steering starts, can be a jump.
+        this.skipNextMouseMove = false;
+        continue;
+      }
+      let dx = move.movementX || 0;
+      let dy = move.movementY || 0;
+      if (locked) {
+        // Chrome moves a locked cursor back to the middle near the edges: over remote
+        // desktop that comes out as jumps, which the filter turns back into the hand's moves.
+        const m = this.mouseFilter.filter(dx, dy);
+        dx = m.x;
+        dy = m.y;
+      } else {
+        // A free cursor is never moved for us: its moves are real. Skip the odd glitch.
+        const lim = jumpLimit(window.innerWidth, window.innerHeight);
+        if (Math.abs(dx) > lim.x || Math.abs(dy) > lim.y) continue;
+      }
+      const look = applyMouseLook(this.yaw, this.lookPitch, dx, dy, this.sensitivity, this.invertY);
+      this.yaw = look.yaw;
+      this.lookPitch = look.lookPitch;
     }
-    const clamp = (v: number) => Math.max(-MAX_MOUSE_DELTA, Math.min(MAX_MOUSE_DELTA, v));
-    const dx = clamp(event.movementX || 0);
-    const dy = clamp(event.movementY || 0);
+  }
 
-    const look = applyMouseLook(this.targetYaw, this.targetPitch, dx, dy, this.sensitivity, this.invertY);
-    this.targetYaw = look.yaw;
-    this.targetPitch = look.lookPitch;
-    if (this.smoothing <= 0) {
-      this.yaw = this.targetYaw;
-      this.lookPitch = this.targetPitch;
+  // Each mouse report in a pointer event: browsers deliver several at once, merged, once
+  // a frame; the separate reports let the filter see each one. If a browser's separate
+  // reports don't add up to the merged one, the merged one is used.
+  private movesIn(event: PointerEvent): Array<{ movementX: number; movementY: number }> {
+    const parts = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [];
+    if (parts.length > 1) {
+      let x = 0;
+      let y = 0;
+      for (const p of parts) {
+        x += p.movementX || 0;
+        y += p.movementY || 0;
+      }
+      if (Math.abs(x - (event.movementX || 0)) <= 1 && Math.abs(y - (event.movementY || 0)) <= 1) return parts;
     }
+    return [event];
   }
 
   private onWheel(event: WheelEvent): void {
@@ -287,6 +320,8 @@ export class CharacterController {
     const locked = this.isPointerLocked();
     // The first move after the lock starts or ends can be a jump across the screen.
     this.skipNextMouseMove = true;
+    // The locked cursor starts where the free one was.
+    this.mouseFilter.reset(locked ? this.cursor : null);
     if (!locked && !this.releasingLock) {
       // We didn't let go: the browser did, on Esc (it keeps that key to itself
       // while locked). Treat it as Esc.
@@ -354,11 +389,6 @@ export class CharacterController {
     // A slow frame (remote desktop, a busy machine) still moves the character its
     // full distance, in steps of at most 50 ms; only a stalled tab (over 0.25 s) is cut short.
     const dt = Math.min(deltaTime, 0.25);
-    if (this.smoothing > 0) {
-      const k = 1 - Math.exp(-dt / this.smoothing);
-      this.yaw += (this.targetYaw - this.yaw) * k;
-      this.lookPitch += (this.targetPitch - this.lookPitch) * k;
-    }
     const p = this.character.position;
     const before = { x: p.x, y: p.y, z: p.z, heading: this.character.rotation.y };
 
@@ -498,7 +528,6 @@ export class CharacterController {
     this.verticalSpeed = 0;
     this.speed = 0;
     this.yaw = heading;
-    this.targetYaw = heading;
     this.pivotY = null;
     this.updateCamera(0);
   }
@@ -560,7 +589,7 @@ export class CharacterController {
     window.removeEventListener('blur', this.handleBlur);
     this.canvas.removeEventListener('mousedown', this.handleMouseDown);
     window.removeEventListener('mouseup', this.handleWindowMouseUp);
-    window.removeEventListener('mousemove', this.handleMouseMove);
+    window.removeEventListener('pointermove', this.handlePointerMove);
     this.canvas.removeEventListener('wheel', this.handleWheel);
     this.canvas.removeEventListener('click', this.handleClick);
     this.canvas.removeEventListener('contextmenu', this.handleContextMenu);

@@ -2,8 +2,10 @@
 
 All effects are CC0 (public domain) recordings. Most cuts come from the GodotFall project's
 assets/audio (https://github.com/bonesvt/GodotFall), which trims and levels the original packs;
-the female voice is taken straight from its pack. build_audio.py converts them to MP3 with small
-gain changes. CC0 needs no credit, but here are the people who recorded them.
+the female voice is taken straight from its pack, and the grass steps are mixed here from the
+original takes (Fantozzi's grass/sand steps over a soft heel thump from Kenney's Impact Sounds).
+build_audio.py converts them to MP3 with small gain changes. CC0 needs no credit, but here are
+the people who recorded them.
 
 | Pack | By | Used for |
 |---|---|---|
@@ -12,8 +14,8 @@ gain changes. CC0 needs no credit, but here are the people who recorded them.
 | [Male Grunt/Yelling sounds](https://opengameart.org/content/male-gruntyelling-sounds) | HaelDB | voice_m_jump_*, voice_m_attack_* |
 | [grunts of male death and pain](https://opengameart.org/content/grunts-male-death-and-pain) | thebardofblasphemy | voice_m_death_* |
 | [Fantasy Weapons and Apparel SFX Library](https://opengameart.org/content/fantasy-weapons-and-apparel-sfx-library) | Vehicle | land_*, draw |
-| [Impact Sounds](https://kenney.nl/assets/impact-sounds) | Kenney | step_grass_*, land_2 |
-| [Fantozzi's Footsteps (Grass/Sand & Stone)](https://opengameart.org/content/fantozzis-footsteps-grasssand-stone) | qubodup | step_stone_* |
+| [Fantozzi's Footsteps (Grass/Sand & Stone)](https://opengameart.org/content/fantozzis-footsteps-grasssand-stone) | Fantozzi (submitted by qubodup) | step_grass_*, step_stone_* |
+| [Impact Sounds](https://kenney.nl/assets/impact-sounds) | Kenney | the heel under step_grass_*, land_2 |
 | [42 Snow and Gravel Footsteps](https://opengameart.org/content/42-snow-and-gravel-footsteps) | qubodup | step_gravel_* |
 | [Swish - bamboo stick weapon swhoshes](https://opengameart.org/content/swish-bamboo-stick-weapon-swhoshes) | qubodup | swing_1 |
 | [Swishes Sound Pack](https://opengameart.org/content/swishes-sound-pack) | artisticdude | swing_2, swing_3 |

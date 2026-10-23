@@ -59,6 +59,14 @@ defmodule BaconWorld.MobsTest do
       assert :math.sqrt(:math.pow(m.x - players["p1"].x, 2) + :math.pow(m.z - players["p1"].z, 2)) < 2.0 * @u
     end
 
+    test "creatures swing on the BEAM's clock, which is often negative" do
+      # System.monotonic_time/1 usually starts far below zero; nothing may treat 0 as "long ago".
+      t0 = -576_460_752_303
+      m = point() |> Brain.spawn(t0) |> Map.merge(%{level: 1, hp: 30, max_hp: 30, h: 0.0})
+      {_m, evs} = run(m, %{"p1" => player_at(2)}, t0, 6_000)
+      assert Enum.any?(evs, &match?({:attack, "test:0", "p1", _, _}, &1))
+    end
+
     test "nobody is chased into the village, and the dead are left alone" do
       {m, evs} = run(mob(), %{"p1" => player_at(30.0)}, 0, 2_000)
       refute Enum.any?(evs, &match?({:aggro, _, _}, &1))

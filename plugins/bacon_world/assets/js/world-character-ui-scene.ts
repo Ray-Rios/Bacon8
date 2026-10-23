@@ -7,7 +7,6 @@ import { PACE, SENSITIVITY, UNITS_PER_METRE } from './controls-math';
 const MOUSE_SENS_KEY = 'bacon_world:mouse_sensitivity';
 const INVERT_Y_KEY = 'bacon_world:invert_mouse_y';
 const QUALITY_KEY = 'bacon_world:quality'; // auto | full | low
-const SMOOTH_KEY = 'bacon_world:smooth_camera'; // on | off
 
 function readSetting(key: string): string | null {
   try {
@@ -886,7 +885,6 @@ export const WorldCharacterUIScene = {
         Number(readSetting(MOUSE_SENS_KEY)) || SENSITIVITY.default,
         readSetting(INVERT_Y_KEY) === 'on'
       );
-      this.controller.setSmoothing(readSetting(SMOOTH_KEY) === 'on' ? 0.07 : 0);
       this.updateLookHint(false);
       this.controller.setPositionCallback((x: number, y: number, z: number, rotation: number) => {
         this.sendLocalPosition(x, y, z, rotation);
@@ -1423,13 +1421,16 @@ export const WorldCharacterUIScene = {
     if (sensValue) sensValue.textContent = `${value.toFixed(2)}×`;
     if (invert) invert.checked = readSetting(INVERT_Y_KEY) === 'on';
     if (sound) sound.textContent = this.audio?.enabled ? 'Sound: ON' : 'Sound: OFF';
-    const music = menu.querySelector('[data-menu-music]') as HTMLButtonElement | null;
-    if (music) music.textContent = this.audio?.musicOn ? 'Music: ON' : 'Music: OFF';
+    for (const kind of ['effects', 'ambience', 'music'] as const) {
+      const v = this.audio?.getVolume(kind) ?? 0;
+      const slider = menu.querySelector(`[data-menu-volume="${kind}"]`) as HTMLInputElement | null;
+      const readout = menu.querySelector(`[data-menu-volume-value="${kind}"]`) as HTMLElement | null;
+      if (slider) slider.value = String(Math.round(v * 100));
+      if (readout) readout.textContent = `${Math.round(v * 100)}%`;
+    }
     const quality = menu.querySelector('[data-menu-quality]') as HTMLButtonElement | null;
     const q = readSetting(QUALITY_KEY) || 'auto';
     if (quality) quality.textContent = `Resolution: ${q === 'auto' ? 'Auto' : q === 'full' ? 'Full' : 'Low'}`;
-    const smooth = menu.querySelector('[data-menu-smooth]') as HTMLButtonElement | null;
-    if (smooth) smooth.textContent = `Smooth camera (remote desktop): ${readSetting(SMOOTH_KEY) === 'on' ? 'ON' : 'OFF'}`;
   },
 
   buildGameMenu(this: any): HTMLDivElement {
@@ -1438,7 +1439,7 @@ export const WorldCharacterUIScene = {
     backdrop.setAttribute('data-game-menu', 'true');
 
     const panel = document.createElement('div');
-    panel.className = 'w-[320px] max-w-[92%] rounded-lg border border-cyan-900/70 bg-slate-950/95 p-4 text-cyan-50 shadow-[0_0_40px_rgba(34,211,238,0.15)]';
+    panel.className = 'w-[320px] max-w-[92%] max-h-[94vh] overflow-y-auto rounded-lg border border-cyan-900/70 bg-slate-950/95 p-4 text-cyan-50 shadow-[0_0_40px_rgba(34,211,238,0.15)]';
     backdrop.appendChild(panel);
 
     const title = document.createElement('div');
@@ -1506,7 +1507,8 @@ export const WorldCharacterUIScene = {
     invertRow.appendChild(invertText);
     panel.appendChild(invertRow);
 
-    // Sound (the same setting as the player window's button), and the music on its own
+    // Sound: all of it on or off (the same switch as the player window's button), and a
+    // volume for each part.
     const sound = button('Sound', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => {
       this.audio?.toggle();
       this.syncGameMenu();
@@ -1514,15 +1516,39 @@ export const WorldCharacterUIScene = {
     });
     sound.setAttribute('data-menu-sound', 'true');
     panel.appendChild(sound);
-    const music = button('Music', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => {
-      this.audio?.toggleMusic();
-      this.syncGameMenu();
-    });
-    music.setAttribute('data-menu-music', 'true');
-    panel.appendChild(music);
+    const volumes: Array<['effects' | 'ambience' | 'music', string]> = [
+      ['effects', 'Effects volume'],
+      ['ambience', 'Nature volume'],
+      ['music', 'Music volume'],
+    ];
+    for (const [kind, label] of volumes) {
+      const row = document.createElement('label');
+      row.className = 'block text-xs text-slate-300 mb-1';
+      const text = document.createElement('div');
+      text.className = 'flex justify-between';
+      const name = document.createElement('span');
+      name.textContent = label;
+      const readout = document.createElement('span');
+      readout.setAttribute('data-menu-volume-value', kind);
+      text.appendChild(name);
+      text.appendChild(readout);
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = '100';
+      slider.step = '1';
+      slider.className = 'w-full accent-cyan-500';
+      slider.setAttribute('data-menu-volume', kind);
+      slider.addEventListener('input', () => {
+        this.audio?.setVolume(kind, Number(slider.value) / 100);
+        readout.textContent = `${slider.value}%`;
+      });
+      row.appendChild(text);
+      row.appendChild(slider);
+      panel.appendChild(row);
+    }
 
-    // Graphics: resolution (auto lowers it when frames are slow), and camera smoothing
-    // for remote desktop, which delivers mouse movement in bursts.
+    // Graphics: resolution (auto lowers it when frames are slow).
     const quality = button('Resolution', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => {
       const order = ['auto', 'full', 'low'];
       const cur = readSetting(QUALITY_KEY) || 'auto';
@@ -1535,14 +1561,6 @@ export const WorldCharacterUIScene = {
     });
     quality.setAttribute('data-menu-quality', 'true');
     panel.appendChild(quality);
-    const smooth = button('Smooth camera', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => {
-      const on = readSetting(SMOOTH_KEY) !== 'on';
-      writeSetting(SMOOTH_KEY, on ? 'on' : 'off');
-      this.controller?.setSmoothing(on ? 0.07 : 0);
-      this.syncGameMenu();
-    });
-    smooth.setAttribute('data-menu-smooth', 'true');
-    panel.appendChild(smooth);
     const fps = document.createElement('div');
     fps.className = 'text-[11px] text-slate-500 mb-2';
     fps.setAttribute('data-menu-fps', 'true');
@@ -1974,7 +1992,12 @@ export const WorldCharacterUIScene = {
     perf.t = 0;
     perf.fps = 1 / perf.ema;
     const fpsEl = this.gameMenuEl?.querySelector('[data-menu-fps]') as HTMLElement | null;
-    if (fpsEl) fpsEl.textContent = `${Math.round(perf.fps)} fps · ${Math.round(this.qualityScale() * 100)}% resolution`;
+    if (fpsEl) {
+      // Over remote desktop, say so: the mouse filter is mending the jumps it sends.
+      const mouse = this.controller?.mouseStats();
+      const remote = mouse?.remoteDesktop ? ` · remote-desktop mouse (${mouse.repaired} fixed)` : '';
+      fpsEl.textContent = `${Math.round(perf.fps)} fps · ${Math.round(this.qualityScale() * 100)}% resolution${remote}`;
+    }
     if ((readSetting(QUALITY_KEY) || 'auto') !== 'auto' || this.state?.uiState !== 'world') return;
     let next = perf.scale;
     if (perf.fps < 38 && perf.scale > 0.5) next = Math.max(0.5, perf.scale - 0.15);

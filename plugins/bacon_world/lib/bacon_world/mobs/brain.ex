@@ -67,7 +67,9 @@ defmodule BaconWorld.Mobs.Brain do
       target: nil,
       goal: nil,
       next_think: now + Enum.random(1_000..6_000),
-      next_attack: 0,
+      # Times are the zone's clock, which can be negative (the BEAM's monotonic time
+      # often is), so nothing here may use 0 to mean "long ago".
+      next_attack: now,
       weapon: weapon,
       offhand: offhand,
       damage_by: %{},
@@ -294,7 +296,7 @@ defmodule BaconWorld.Mobs.Brain do
       free_at: now + Spawns.loot_lock_ms(),
       despawn_at: now + Spawns.corpse_ms(),
       looter: nil,
-      looter_since: 0
+      looter_since: now
     }
 
     {%{mob | state: :dead, hp: 0, target: nil, goal: nil, vx: 0.0, vz: 0.0, corpse: corpse}, [{:died, mob.id, killer}]}

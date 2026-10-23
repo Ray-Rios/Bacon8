@@ -7,6 +7,9 @@
 // Effects and nature play through Web Audio (low latency, gapless loops); the music
 // is a looping <audio> element. Browsers only allow sound after the player has
 // clicked or pressed a key, so nothing plays before that.
+//
+// Three volumes (effects, nature, music; sliders in the game menu) and one switch
+// for all sound (the player window's Sound button), remembered in this browser.
 
 const BASE = '/audio/world';
 
@@ -21,7 +24,7 @@ const GROUPS: Record<string, number> = {
   voice_f_hurt: 3,
   voice_f_death: 2,
   land: 2,
-  step_grass: 5,
+  step_grass: 6,
   step_stone: 6,
   step_gravel: 5,
   swing: 3,
@@ -40,7 +43,18 @@ const BEDS = ['amb_day', 'amb_birds', 'amb_wind', 'amb_night', 'amb_campfire'];
 const MUSIC_URL = `${BASE}/music_ambient.mp3`;
 
 const PREF_KEY = 'bacon_world:sound';
+// Before the volume sliders (2026-10-22), music had an on/off switch of its own.
 const MUSIC_KEY = 'bacon_world:music';
+export type VolumeKind = 'effects' | 'ambience' | 'music';
+const VOLUME_KEYS: Record<VolumeKind, string> = {
+  effects: 'bacon_world:volume_effects',
+  ambience: 'bacon_world:volume_ambience',
+  music: 'bacon_world:volume_music',
+};
+const DEFAULT_VOLUME: Record<VolumeKind, number> = { effects: 0.8, ambience: 0.8, music: 0.5 };
+// Each slider's full-up level. A slider sets level * v², which sounds even across its travel;
+// at the defaults these give the levels the game had before the sliders.
+const FULL_LEVEL: Record<VolumeKind, number> = { effects: 1.1, ambience: 0.6, music: 0.64 };
 // The key before the plugin was renamed from Web Lobby (2026-10-21).
 const OLD_PREF_KEY = 'web_lobby:sound';
 const HEARING_RANGE = 40; // world units
@@ -72,9 +86,29 @@ function writePref(key: string, on: boolean): void {
   }
 }
 
+function readVolume(kind: VolumeKind): number {
+  try {
+    const raw = window.localStorage.getItem(VOLUME_KEYS[kind]);
+    if (raw !== null && raw !== '' && Number.isFinite(Number(raw))) return Math.max(0, Math.min(1, Number(raw) / 100));
+    if (kind === 'music' && window.localStorage.getItem(MUSIC_KEY) === 'off') return 0;
+  } catch {
+    // blocked storage: the default
+  }
+  return DEFAULT_VOLUME[kind];
+}
+
+function writeVolume(kind: VolumeKind, v: number): void {
+  try {
+    window.localStorage.setItem(VOLUME_KEYS[kind], String(Math.round(v * 100)));
+  } catch {
+    // the slider still works for this visit
+  }
+}
+
+const level = (kind: VolumeKind, v: number) => FULL_LEVEL[kind] * v * v;
+
 export class LobbyAudio {
   enabled: boolean;
-  musicOn: boolean;
   /** Whose voice grunts and cries: the local character's body ('m' or 'f'). */
   voice: Voice = 'm';
   private ctx: AudioContext | null = null;
@@ -91,10 +125,17 @@ export class LobbyAudio {
   private last = new Map<string, number>();
   private daylight = 1;
   private campfire = 0;
+  private volumes: Record<VolumeKind, number> = {
+    effects: readVolume('effects'),
+    ambience: readVolume('ambience'),
+    music: readVolume('music'),
+  };
+  private lastMusic = DEFAULT_VOLUME.music; // where Music goes back to when switched on again
+  private lastPreview = 0;
 
-  constructor(private volume = 0.7, private musicVolume = 0.16) {
+  constructor() {
     this.enabled = readPref(PREF_KEY, OLD_PREF_KEY);
-    this.musicOn = readPref(MUSIC_KEY);
+    if (this.volumes.music > 0) this.lastMusic = this.volumes.music;
     this.unlock = this.unlock.bind(this);
     window.addEventListener('pointerdown', this.unlock);
     window.addEventListener('keydown', this.unlock);
@@ -110,6 +151,40 @@ export class LobbyAudio {
     if (this.enabled && this.wantAmbience) this.startBeds();
   }
 
+  /** Music plays (its slider is above zero). */
+  get musicOn(): boolean {
+    return this.volumes.music > 0;
+  }
+
+  /** A slider's position, 0..1. */
+  getVolume(kind: VolumeKind): number {
+    return this.volumes[kind];
+  }
+
+  /** Move a slider (0..1): takes effect at once and is remembered in this browser. */
+  setVolume(kind: VolumeKind, v: number): void {
+    const value = Math.max(0, Math.min(1, v));
+    this.volumes[kind] = value;
+    writeVolume(kind, value);
+    if (kind === 'music') {
+      if (value > 0) this.lastMusic = value;
+      if (this.music) this.music.volume = Math.min(1, level('music', value));
+      if (value > 0 && this.wantMusic && this.enabled && this.unlocked) this.startMusic();
+      else if (value <= 0) this.stopMusic();
+      return;
+    }
+    const node = kind === 'effects' ? this.fx : this.amb;
+    if (node && this.ctx) node.gain.setTargetAtTime(level(kind, value), this.ctx.currentTime, 0.03);
+    // A sample at the new level while the effects slider moves (a few a second at most).
+    if (kind === 'effects') {
+      const now = performance.now();
+      if (now - this.lastPreview > 180) {
+        this.lastPreview = now;
+        this.play('coins', 0.6);
+      }
+    }
+  }
+
   private context(): AudioContext | null {
     if (this.ctx) {
       if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
@@ -119,12 +194,12 @@ export class LobbyAudio {
     if (!Ctor) return null;
     this.ctx = new Ctor() as AudioContext;
     this.master = this.ctx.createGain();
-    this.master.gain.value = this.volume;
     this.master.connect(this.ctx.destination);
     this.fx = this.ctx.createGain();
+    this.fx.gain.value = level('effects', this.volumes.effects);
     this.fx.connect(this.master);
     this.amb = this.ctx.createGain();
-    this.amb.gain.value = 0.55;
+    this.amb.gain.value = level('ambience', this.volumes.ambience);
     this.amb.connect(this.master);
     return this.ctx;
   }
@@ -288,7 +363,7 @@ export class LobbyAudio {
       this.music.loop = true;
       this.music.preload = 'auto';
     }
-    this.music.volume = this.musicVolume;
+    this.music.volume = Math.min(1, level('music', this.volumes.music));
     void this.music.play().catch(() => {});
   }
 
@@ -310,12 +385,9 @@ export class LobbyAudio {
     return this.enabled;
   }
 
-  /** Music on/off for this browser (nature sounds stay); returns the new state. */
+  /** Music off, or back to where its slider was; returns whether it plays. */
   toggleMusic(): boolean {
-    this.musicOn = !this.musicOn;
-    writePref(MUSIC_KEY, this.musicOn);
-    if (this.musicOn && this.wantMusic && this.enabled && this.unlocked) this.startMusic();
-    else this.stopMusic();
+    this.setVolume('music', this.musicOn ? 0 : this.lastMusic || DEFAULT_VOLUME.music);
     return this.musicOn;
   }
 

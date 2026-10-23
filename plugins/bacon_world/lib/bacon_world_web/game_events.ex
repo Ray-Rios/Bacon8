@@ -91,9 +91,10 @@ defmodule BaconWorldWeb.GameEvents do
       timer = if two, do: "both", else: hand
       delay = Melee.delay_ms(item, heavy)
       now = System.monotonic_time(:millisecond)
-      last = Map.get(socket.assigns[:swing_at] || %{}, timer, 0)
+      # nil until the first swing: monotonic time can be negative, so 0 is no "long ago".
+      last = Map.get(socket.assigns[:swing_at] || %{}, timer)
 
-      if now - last < delay * 0.8 do
+      if last && now - last < delay * 0.8 do
         {:reply, %{ok: false, reason: "cooldown", ready_in: delay - (now - last)}, socket}
       else
         socket = assign(socket, swing_at: Map.put(socket.assigns[:swing_at] || %{}, timer, now))
