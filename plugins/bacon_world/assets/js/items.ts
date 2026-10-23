@@ -125,6 +125,22 @@ export function describe(id: string): string[] {
   return lines;
 }
 
+/**
+ * How a model sits in the hand, where the file's own origin isn't right (metres and
+ * degrees, in the weapon's frame: +Y along the handle, +Z the striking side).
+ *  - `y`: slides the model along its handle, so the hand holds it this far from the origin
+ *    toward the butt. The long-hafted two-handers are held near the end of the haft, not
+ *    at their middle (2026-10-23: the battle axe's haft hung between her legs).
+ *  - `roll`: turns it about the handle. The curved one-handers face their edge the way the
+ *    library's sword swings lead (2026-10-23: the scimitar cut with its back).
+ */
+export const HOLD: Record<string, { y?: number; roll?: number }> = {
+  BattleAxe: { y: 0.35 },
+  Maul: { y: 0.35 },
+  Scimitar: { roll: 180 },
+  Cutlass: { roll: 180 },
+};
+
 /** Loads the weapons file once and hands out clones of its nodes. */
 export class WeaponModels {
   private loader: GLTFLoader;
@@ -167,8 +183,9 @@ export class WeaponModels {
     const tpl = scene?.getObjectByName(`W_${model}`);
     if (!tpl) return null;
     const copy = tpl.clone(true);
-    copy.position.set(0, 0, 0);
-    copy.quaternion.identity();
+    const hold = HOLD[model] || {};
+    copy.position.set(0, hold.y || 0, 0);
+    copy.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(hold.roll || 0));
     copy.userData.b8Weapon = model;
     return copy;
   }

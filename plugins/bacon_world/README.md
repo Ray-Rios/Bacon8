@@ -229,7 +229,8 @@ five times a second, the positions of moving creatures on `bacon_world:mobs:<zon
 
 A swing (`melee_attack`) hits what is in front of you within the weapon's reach: one
 creature for one-handers and fists (your target if it's in the arc), up to three for
-two-handers. Each hand has its own swing timer (the weapon's DLY); damage and hit chance
+two-handers. The arc is 90 degrees for one-handers and 110 for two-handers, aimed where the
+camera looks; right against you it widens to 160, and nothing behind you is ever hit. Each hand has its own swing timer (the weapon's DLY); damage and hit chance
 are EverQuest-shaped (`BaconWorld.Melee`). A creature's attack on you is applied by your
 own LiveView, which owns your HP. Kills give experience by con (grey gives none), a level
 gives full HP/MP and banks a skill point for the tree.
@@ -265,7 +266,9 @@ runs on one timer per LiveView: each login starts a new chain and orphans the ol
 (15.5, -6.7 m) and sells all 20 wearables at their value; she buys anything for a quarter of
 its value (at least 1 copper). Trading needs you within 6 m and alive: R (the targeted or
 nearest person in reach), or right-click her with the cursor free (`merchant_open`, `merchant_buy`, `merchant_sell`); walking away closes the
-window. `fetch_mobs` lists the zone's merchants.
+window. In her window, right-click a row to buy it (or select it and press Buy); with her
+window open, right-click a stack in your bags to sell it (the tooltip shows the offer).
+`fetch_mobs` lists the zone's merchants.
 
 Corpses: the top damage dealer may loot alone for a minute, then anyone; one looter at a
 time; coins go straight to the looter; a corpse decays after four minutes, or seconds

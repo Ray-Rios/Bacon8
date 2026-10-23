@@ -43,14 +43,24 @@ defmodule BaconWorld.Melee do
   """
   def pvp_reach(item), do: item.reach + 2 * 0.35 + 0.8
 
-  @doc "How many creatures one swing can hit, and the arc (degrees) it covers."
+  @doc """
+  How many creatures one swing can hit, and the arc (degrees) it covers. Narrow
+  enough that you have to face what you hit (2026-10-23: two-handers swept 150
+  degrees and hit players nearly beside them).
+  """
   def sweep(item) do
-    if item.hands == 2, do: {3, 150}, else: {1, 110}
+    if item.hands == 2, do: {3, 110}, else: {1, 90}
   end
+
+  # Up close (inside this share of the reach) the arc widens to this half-angle, so
+  # something pressed against your side still counts, but never anything behind you.
+  @close_share 0.2
+  @close_half_arc 80
 
   @doc """
   True when `{tx, tz}` is within `reach` of `{ax, az}` and inside an arc of
-  `arc_deg` around `heading`. Something right on top of the attacker always counts.
+  `arc_deg` around `heading`. Right next to the attacker the arc widens to
+  #{2 * @close_half_arc} degrees; nothing behind the attacker ever counts.
   """
   def in_arc?({ax, az}, heading, {tx, tz}, reach, arc_deg) do
     dx = tx - ax
@@ -59,8 +69,10 @@ defmodule BaconWorld.Melee do
 
     cond do
       dist > reach -> false
-      dist < 0.35 * reach -> true
-      true -> angle_between({:math.sin(heading), :math.cos(heading)}, {dx / dist, dz / dist}) <= arc_deg / 2
+      dist < 1.0e-6 -> true
+      true ->
+        half = if dist < @close_share * reach, do: max(arc_deg / 2, @close_half_arc), else: arc_deg / 2
+        angle_between({:math.sin(heading), :math.cos(heading)}, {dx / dist, dz / dist}) <= half
     end
   end
 

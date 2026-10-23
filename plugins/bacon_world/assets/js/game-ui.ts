@@ -3,8 +3,8 @@
 // the mouse buttons, Q E F Z X for the special attacks the skill tree will give),
 // the inventory (I: two hands, what is worn and 24 bag slots; click
 // an item to pick it up on the cursor, click a slot to put it down or swap; right-click
-// to equip or unequip), the loot window and the merchant window (buy from the list;
-// put an item from your bags on the sell slot to see the offer). Plain DOM with its
+// to equip or unequip), the loot window and the merchant window (right-click a row to
+// buy it; with the merchant open, right-click an item in your bags to sell it). Plain DOM with its
 // own scoped CSS (.bwg).
 import { describe, iconUrl, item, money } from './items';
 
@@ -136,7 +136,6 @@ export class GameUI {
   private merchant: MerchantInfo | null = null;
   private stock: StockItem[] = [];
   private stockSel: string | null = null;
-  private selling: InvItem | null = null;
   private tip: HTMLElement;
   private cursorEl: HTMLElement;
   private msgEl: HTMLElement;
@@ -266,7 +265,6 @@ export class GameUI {
     this.inventory = inv;
     // Whatever was on the cursor has been put somewhere by the server.
     this.setHeld(null);
-    if (this.selling && !inv.items.some((i) => i.slot === this.selling!.slot && i.item_id === this.selling!.item_id)) this.selling = null;
     if (this.inv.style.display === 'block') this.renderInventory();
     if (this.isMerchantOpen()) this.renderMerchant();
   }
@@ -305,11 +303,19 @@ export class GameUI {
         e.preventDefault();
         if (this.held || !it) return;
         if (EQUIP_SLOTS.has(slot)) this.cb.unequip(slot);
+        else if (this.isMerchantOpen()) this.sellFromBag(it);
         else if (item(it.item_id)?.slots.length) this.cb.equip(slot);
       };
       if (it) {
-        const sellNote = () => (this.isMerchantOpen() && slot.startsWith('bag') ? `Sells for ${money(sellPrice(it.item_id) * it.quantity)}` : '');
-        this.tipFor(el, () => [item(it.item_id)?.name || it.item_id, ...describe(it.item_id), slot.startsWith('bag') && item(it.item_id)?.slots.length ? 'Right-click to equip' : slot.startsWith('bag') ? '' : 'Right-click to unequip', sellNote()]);
+        const hint = () => {
+          if (!slot.startsWith('bag')) return 'Right-click to unequip';
+          if (this.isMerchantOpen()) {
+            const offer = sellPrice(it.item_id) * it.quantity;
+            return offer > 0 ? `Right-click to sell for ${money(offer)}` : `${this.merchant?.name || 'The merchant'} won't buy this`;
+          }
+          return item(it.item_id)?.slots.length ? 'Right-click to equip' : '';
+        };
+        this.tipFor(el, () => [item(it.item_id)?.name || it.item_id, ...describe(it.item_id), hint()]);
       }
       return el;
     };
@@ -435,7 +441,6 @@ export class GameUI {
     this.merchant = info;
     this.stock = stock;
     this.stockSel = null;
-    this.selling = null;
     this.mer.style.display = 'block';
     this.renderMerchant();
     if (!this.isInventoryOpen()) this.toggleInventory(true);
@@ -454,16 +459,27 @@ export class GameUI {
     if (!this.isMerchantOpen()) return;
     this.mer.style.display = 'none';
     this.merchant = null;
-    this.selling = null;
     this.hideTip();
     if (notify) this.cb.merchantClose();
     this.cb.windows(this.anyOpen());
+  }
+
+  /** Sells a stack from the bags (right-click with the merchant open). */
+  private sellFromBag(it: InvItem) {
+    if (sellPrice(it.item_id) * it.quantity <= 0) {
+      this.announce(`${this.merchant?.name || 'The merchant'} isn't interested in that.`, 1800);
+      return;
+    }
+    this.hideTip();
+    this.cb.sell(it.slot);
   }
 
   private renderMerchant() {
     if (!this.merchant) return;
     this.hideTip();
     const m = this.merchant;
+    // Re-rendering replaces the list: keep its scroll position (a click used to jump it to the top).
+    const scroll = (this.mer.querySelector('.list') as HTMLElement | null)?.scrollTop || 0;
     const rows = this.stock.map((s) => {
       const it = item(s.item_id);
       const icon = iconUrl(s.item_id);
@@ -472,46 +488,31 @@ export class GameUI {
         h('span', { class: 'nm' }, it?.name || s.item_id),
         h('span', { class: 'pr' }, money(s.price)));
       row.onclick = () => {
+        if (this.stockSel === s.item_id) return;
         this.stockSel = s.item_id;
         this.renderMerchant();
       };
-      row.ondblclick = () => this.cb.buy(s.item_id);
-      this.tipFor(row, () => [it?.name || s.item_id, ...describe(s.item_id), `Price: ${money(s.price)}`, 'Double-click to buy']);
+      row.oncontextmenu = (e) => {
+        e.preventDefault();
+        this.stockSel = s.item_id;
+        this.cb.buy(s.item_id);
+      };
+      this.tipFor(row, () => [it?.name || s.item_id, ...describe(s.item_id), `Price: ${money(s.price)}`, 'Right-click to buy']);
       return row;
     });
     const sel = this.stockSel ? this.stock.find((x) => x.item_id === this.stockSel) : null;
     const afford = !!sel && sel.price <= (this.inventory.coins || 0);
     const buy = h('button', { class: 'btn', disabled: !afford, onclick: () => sel && this.cb.buy(sel.item_id) }, sel ? `Buy (${money(sel.price)})` : 'Buy') as HTMLButtonElement;
-    // the sell slot: drop an item from your bags on it to see what it fetches
-    const sIt = this.selling;
-    const sellSlot = h('div', { class: 's drop' }, sIt && iconUrl(sIt.item_id) ? h('img', { src: iconUrl(sIt.item_id)!, alt: '' }) : h('span', { class: 'lb' }, 'Sell'));
-    sellSlot.onclick = (e) => {
-      e.stopPropagation();
-      if (this.held) {
-        if (!this.held.slot.startsWith('bag')) {
-          this.announce('Take it off before you sell it.', 1800);
-        } else {
-          this.selling = this.held;
-          this.setHeld(null);
-        }
-        this.renderMerchant();
-      } else if (this.selling) {
-        this.selling = null;
-        this.renderMerchant();
-      }
-    };
-    const offer = sIt ? sellPrice(sIt.item_id) * sIt.quantity : 0;
-    const msg = sIt
-      ? offer > 0 ? `${m.name} offers ${money(offer)} for ${sIt.quantity > 1 ? `${sIt.quantity} ` : ''}${item(sIt.item_id)?.name || sIt.item_id}.` : `${m.name} isn't interested in that.`
-      : 'Pick up an item from your bags and drop it here to sell it.';
-    const sell = h('button', { class: 'btn', disabled: !sIt || offer <= 0, onclick: () => { if (sIt) this.cb.sell(sIt.slot); this.selling = null; } }, 'Sell') as HTMLButtonElement;
+    const list = h('div', { class: 'list' }, ...rows);
     this.mer.replaceChildren(
       h('div', { class: 't' }, h('b', {}, m.name), h('span', {}, m.title || 'Merchant'), h('span', { class: 'x', onclick: () => this.closeMerchant() }, '✕')),
-      h('div', { class: 'list' }, ...rows),
+      list,
       h('div', { class: 'coins' }, `Your money: ${money(this.inventory.coins)}`),
-      h('div', { class: 'sellbox' }, sellSlot, h('span', { class: 'msg2' }, msg), sell),
+      h('div', { class: 'sellbox' }, h('span', { class: 'msg2' }, 'Right-click to buy. To sell, right-click an item in your bags.')),
       h('div', { class: 'foot' }, buy, h('button', { class: 'btn', onclick: () => this.closeMerchant() }, 'Done')));
+    list.scrollTop = scroll;
   }
+
 
   // ---------------------------------------------------------------- misc
 

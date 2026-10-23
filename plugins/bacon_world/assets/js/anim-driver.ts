@@ -127,7 +127,9 @@ export const STANCES: Record<GearSet, StanceDef> = {
   sword_1h: SWORD,
   axe_1h: SWORD,
   blunt_1h: SWORD,
-  dagger: { idle: 'Dagger_Idle_Loop', light: [{ clip: 'Dagger_Stab', hit: 0.2 }, { clip: 'Dagger_Slash', hit: 0.18 }], heavy: { clip: 'Sword_Attack', hit: 0.87 } },
+  // Daggers stand in the one-handed sword's idle (both arms breathe the same; the authored
+  // Dagger_Idle_Loop held the dagger arm still while an off-hand item's arm moved).
+  dagger: { idle: 'Sword_Idle', light: [{ clip: 'Dagger_Stab', hit: 0.2 }, { clip: 'Dagger_Slash', hit: 0.18 }], heavy: { clip: 'Sword_Attack', hit: 0.87 } },
   two_hand: { idle: 'TwoHand_Idle_Loop', light: [{ clip: 'TwoHand_Slash_A', hit: 0.37 }, { clip: 'TwoHand_Slash_B', hit: 0.33 }], heavy: { clip: 'TwoHand_Overhead', hit: 0.65 } },
   polearm: { idle: 'Spear_Idle_Loop', light: [{ clip: 'Spear_Thrust_B', hit: 0.34 }, { clip: 'Spear_Thrust_A', hit: 0.59 }], heavy: { clip: 'Spear_Sweep', hit: 0.37 } },
   // The quarterstaff (the only "staff" item) is two-handed: its guard and a two-handed sweep.

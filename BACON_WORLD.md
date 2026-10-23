@@ -63,7 +63,24 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-23 (fourth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23d.md`), from the
+**Delivered 2026-10-23 (fifth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23e.md`), from the
+owner's play-testing:
+
+- **Melee arcs**: 90 degrees for one-handers, 110 for two-handers (was 150), and nothing behind
+  you is hit however close (anything within 35% of the reach used to count).
+- **Daggers stand in the one-handed sword's idle** (both arms breathe alike; the authored
+  dagger idle held the dagger arm still and the elbows out), and the stab and slash start
+  and end in it.
+- **Two-handers**: the battle axe and maul are held near the end of the haft (client `HOLD`,
+  the haft no longer hangs between her legs); the swings were refitted with the striking side
+  leading the cut (the axe hit with its flat); and grips now turn the shortest way between
+  keys (`b8_anim.lerp_grip`; the weapon twirled near the end of the heavy).
+- **The scimitar and cutlass** are turned 180 degrees about the handle (they cut with their
+  back).
+- **Merchant window**: right-click to buy, right-click a bag item to sell (the sell slot is
+  gone), and the list keeps its scroll position.
+
+**Delivered 2026-10-23 (fourth)** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23d.md`), from the
 owner's testing of the two-handed weapons:
 
 - **Weapon grips refitted on the female** (`b8_clips.py`, new `b8_gripfit.py`): the spear's left

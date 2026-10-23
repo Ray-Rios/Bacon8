@@ -176,7 +176,9 @@ defmodule BaconWorld.MobsTest do
       assert Melee.in_arc?({0.0, 0.0}, 0.0, {0.0, 1.0}, 2.0, 90)
       refute Melee.in_arc?({0.0, 0.0}, 0.0, {0.0, -1.0}, 2.0, 90)
       refute Melee.in_arc?({0.0, 0.0}, 0.0, {0.0, 3.0}, 2.0, 90)
-      assert Melee.in_arc?({0.0, 0.0}, :math.pi(), {0.0, 0.1}, 2.0, 90), "right on top always counts"
+      refute Melee.in_arc?({0.0, 0.0}, :math.pi(), {0.0, 0.1}, 2.0, 90), "nothing behind you, however close"
+      assert Melee.in_arc?({0.0, 0.0}, 0.0, {0.3, 0.1}, 2.0, 90), "pressed against your side counts"
+      refute Melee.in_arc?({0.0, 0.0}, 0.0, {1.5, 0.3}, 2.0, 110), "off to the side at reach doesn't"
     end
 
     test "levels, con and experience" do
