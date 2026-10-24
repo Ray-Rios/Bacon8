@@ -30,12 +30,19 @@ export function conColor(levelDiff: number, yourLevel: number): string {
   return '#4F86FF';
 }
 
-export const PLAYER_COLOR = '#DCE8FF';
+/** Players' names: Bacon8's blue, and red while PvP is on. */
+export const PLAYER_COLOR = '#247DF1';
+export const PVP_COLOR = '#E62929';
+
+export function playerColor(pvp: boolean): string {
+  return pvp ? PVP_COLOR : PLAYER_COLOR;
+}
 
 const NAME_PX = 46;
 const SUB_PX = 32;
 const PAD = 10;
-const FONT = '"Trebuchet MS", "Segoe UI", Arial, sans-serif';
+// Old-school EverQuest's names: a plain, bold Arial-style sans with a dark outline.
+const FONT = 'Arial, "Liberation Sans", Helvetica, sans-serif';
 // World height of one name line near the camera; further away a plate grows to
 // stay readable, up to FAR_GROW times, and past MAX_DISTANCE it is hidden.
 const LINE_M = 0.15;
@@ -79,8 +86,8 @@ class Plate {
     this.key = key;
     this.target = target;
     const ctx = this.canvas.getContext('2d')!;
-    const nameFont = `${target ? 700 : 600} ${NAME_PX}px ${FONT}`;
-    const subFont = `500 ${SUB_PX}px ${FONT}`;
+    const nameFont = `700 ${NAME_PX}px ${FONT}`;
+    const subFont = `400 ${SUB_PX}px ${FONT}`;
     ctx.font = nameFont;
     let w = ctx.measureText(info.name).width;
     if (info.sub) {

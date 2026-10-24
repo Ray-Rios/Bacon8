@@ -181,4 +181,9 @@ defmodule BaconWorld.WorldTest do
     # a corpse doesn't block, nor do you yourself
     assert BaconWorldWeb.PlayLive.free_spawn(spawn, [%{blocker | dead: true}, %{blocker | character_id: "me"}], "me") == spawn
   end
+
+  test "the presence carries the PvP flag (others' names turn red)" do
+    assert %{pvp: true} = GameEvents.presence_meta(%{pvp_flagged: true})
+    assert %{pvp: false} = GameEvents.presence_meta(%{})
+  end
 end

@@ -43,6 +43,11 @@ export interface ControllerOptions {
   canvas: HTMLCanvasElement;
   /** Asked before requesting pointer lock (false while dead or in the menu). */
   canLock?: () => boolean;
+  /**
+   * Asked before a left click with the cursor free grabs the mouse: false keeps the
+   * cursor (the click opens a window that needs it, such as looting a corpse).
+   */
+  lockOnClick?: (event: MouseEvent) => boolean;
   /** Told when pointer lock starts or ends, to show the hint or the centre dot. */
   onPointerLockChange?: (locked: boolean) => void;
   /** The browser refused the lock (Chrome waits ~1 s after Esc): ask for another click. */
@@ -139,6 +144,7 @@ export class CharacterController {
   private faceCameraUntil = 0; // ms (performance.now): after a swing the character faces the camera
   private skipNextMouseMove = false;
   private releasingLock = false; // we asked for the lock to go (Ctrl, chat, menu, death)
+  private wasLocked = false; // the lock state the last pointerlockchange saw
   // Mouse-look with the pointer locked goes through the remote-desktop filter.
   private mouseFilter = new MouseFilter(page);
   private cursor: Move | null = null; // the free cursor's last position, from the page's middle
@@ -357,11 +363,17 @@ export class CharacterController {
     // The end of a camera drag isn't a click.
     if (this.wasDrag()) return;
     if (event.target !== this.canvas) return;
+    if (this.options.lockOnClick && !this.options.lockOnClick(event)) return;
     this.requestPointerLock();
   }
 
   private onPointerLockChange(): void {
     const locked = this.isPointerLocked();
+    // A lock taken and released at once (a click that opened a window) can deliver both
+    // events after the release: each then reads "unlocked". Only a real change counts,
+    // or the second one looks like the browser taking the lock (Esc) and opens the menu.
+    if (locked === this.wasLocked) return;
+    this.wasLocked = locked;
     // The first move after the lock starts or ends can be a jump across the screen.
     this.skipNextMouseMove = true;
     // The locked cursor starts where the free one was.

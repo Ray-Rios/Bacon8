@@ -14,7 +14,7 @@ import { UNITS_PER_METRE } from './controls-math';
 import { GameUI } from './game-ui';
 import { item, money, moneyWords, setCatalog } from './items';
 import { MobsView, type MobEntry, type MobEvent } from './mobs-view';
-import { conColor, PLAYER_COLOR } from './nameplates';
+import { conColor, playerColor } from './nameplates';
 import { NpcsView, NPC_COLOR } from './npcs-view';
 import { gearKey, type Gear } from './wardrobe';
 import { WorldDressing } from './world-dressing';
@@ -425,7 +425,7 @@ export const GameWorld = {
     this.gameUI.setTarget({
       kind: 'player',
       name: p.character_name || 'Player',
-      color: PLAYER_COLOR,
+      color: playerColor(p.pvp === true),
       level: p.level,
       hpPct: p.max_hp ? (p.hp / p.max_hp) * 100 : 100,
     });

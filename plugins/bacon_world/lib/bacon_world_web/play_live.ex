@@ -469,6 +469,11 @@ defmodule BaconWorldWeb.PlayLive do
   def handle_event("toggle_pvp", _params, socket) do
     with %{} = current <- current_character(socket),
          {:ok, flag} <- World.toggle_pvp(socket.assigns.current_user.id, current.character_id) do
+      # Everyone in the zone sees it: the name over your head turns red (nameplates.ts).
+      if topic = socket.assigns.current_zone_topic do
+        Presence.update(self(), topic, current.character_id, &Map.put(&1, :pvp, flag))
+      end
+
       {:noreply, push_event(socket, "pvp_flag_changed", %{pvp_flagged: flag})}
     else
       _ -> {:noreply, socket}
@@ -749,7 +754,8 @@ defmodule BaconWorldWeb.PlayLive do
         hp: meta[:hp],
         max_hp: meta[:max_hp],
         gear: meta[:gear] || %{},
-        dead: meta[:dead] == true
+        dead: meta[:dead] == true,
+        pvp: meta[:pvp] == true
       }
     end)
   end

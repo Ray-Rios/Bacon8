@@ -63,14 +63,25 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-24, uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24a.md`): **the male
+**Delivered 2026-10-24 (second), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24b.md`):
+
+- **Loot click bug**: left-clicking the corpse you were already looting opened the game menu.
+  The click grabbed the mouse and the loot window let it go at once; both pointer-lock events
+  then arrived reading "unlocked", and the second looked like the browser's Esc. The
+  controller now only acts on a real lock change, a left click on a corpse no longer grabs
+  the mouse (`lockOnClick`), and clicking the corpse you're looting does nothing.
+- **Player names**: Bacon8's blue (`#247DF1`), red (`#E62929`) with PvP on, black outline kept,
+  for you and for others (the PvP flag now rides in the zone presence). The target window
+  uses the same colour. The font is a plain bold Arial-style sans, like old EverQuest's.
+
+**Committed 2026-10-24** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24a.md`): **the male
 rebuilt on MakeHuman**, like her (section 5): body and skin (the legs' red calmed), wardrobe
 shells and MakeHuman garments, the stage-G body sliders except the chest shaping, 18 MakeHuman
 hair styles (his old style ids alias to them), his six facial hair styles refit to the new
 head, and his animation packs rebuilt on his rig (no fanned fingers). The skeleton creatures
 keep the old male packs (`Mobs/Anims`), since they're built on the old skeleton. The site's
-Credits page names MakeHuman (a migration). Models are staged, not synced: they ship together
-with the code.
+Credits page names MakeHuman (a migration). Models are staged; they ship together with the
+code. The owner's check found the skeletons work as before.
 
 **Delivered 2026-10-23 (eighth), committed** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23h.md`):
 the sun and moon now sit in the sky (far along their direction from the camera, not 55 units
@@ -386,6 +397,24 @@ the development PC it sits in `C:\Bacon8\tmp\b8work\harness`):
 
 In rough priority order.
 
+**Next session, first: the male's lower back** (owner, 2026-10-24). He shows the same
+"S" curve from the pelvis to the upper back, with a crease above the pelvis, that the female
+had. Hers was fixed by a **posture correction** applied after the animation, not in the mesh:
+
+- `Female.json` has `"posture": {"pelvis_tilt_deg": 24.0, "spine_deg": [-24.0, -9.0, 9.0]}`,
+  written by `mhf_v3.py` (line ~374). `Male.json` has none: `mhm_build.py` pops it
+  (`man.pop("posture", None)`, line ~170).
+- `human-factory.ts` reads it (around lines 453-477, applied in `postAnimate`, ~656): the
+  pelvis turned about its side-to-side axis (positive tucks it under), its children turned
+  back so the legs stay put, and spine_01..03 turned by `spine_deg`.
+- The harness takes `?tilt=` and `?spine=a,b,c` to try values live, on either body
+  (`&body=male`; rebuild it with `hbuild.cmd` first). Render side
+  views (`view=side`) of idle, walk and the stances, with the glute sliders at max and min.
+- Then write his values into `mhm_build.py`'s manifest (instead of popping it), rebuild
+  (`mbuild.cmd` → `mmorph.cmd`, which also re-exports `B8_Male.json`), and stage `Male.json`.
+  `mhf_v3.py`'s comment there explains her values ([6, -11, -13] had arched the lumbar
+  again). Start from hers; his pelvis and spine rest angles differ, so expect other numbers.
+
 **The female (keep polishing; the owner wants her stunning):**
 
 - Hairlines are better with the scalp decals, but some styles (ponytail, long) still read as
@@ -482,3 +511,32 @@ kit pieces.
 3. For art work, start from `library/pipeline/scripts/README.md`. Fetch the sources
    it lists, then rebuild in the cloud session and deliver with a new handoff prompt.
 4. Record new owner decisions in §3 and update §2 and §7 before you stop.
+
+**Working from a cloud session** (how the 2026-10-2x sessions ran; the tools are those of a
+Claude session linked to the development PC through the desktop app):
+
+- **Files**: the linked computer's shell (`device_bash`, a Linux VM) sees `C:\Bacon8` as
+  `$HOME/mnt/Bacon8` (read, write, Python with Pillow). Hub files are CRLF: edit them with a
+  short Python read-modify-write that keeps `\r\n`. Deleting needs the owner's permission
+  prompt (`device_request_delete_permission`).
+- **Windows commands** (Blender 5.1, Docker): the VM can't run them. The Unreal editor's MCP
+  (`run_python`) runs Python on Windows, so `subprocess.run(["cmd", "/c", r"C:\...\x.cmd"])`
+  runs a `.cmd`; long jobs go in a `threading.Thread` and are polled from the VM by a log or a
+  `.done` file. Blender always runs `-b --factory-startup` (an installed Substance add-on
+  errors otherwise) through `tmp/b8work/jobs/run_pipe.py`, which puts SciPy and Pillow
+  (`B8_PYLIB`) on the path. `tmp/b8work/mhenv.cmd` sets the MakeHuman paths.
+- **Ready-made jobs** in `tmp/b8work/`: `mcore.cmd`, `mbuild.cmd`, `mmorph.cmd` (the male's
+  stages A, C+F, G; `mfull.cmd` runs all three then meshopt), `meshopt_m.cmd`,
+  `anims_chain_m.cmd` (his packs), `mhair_chain.cmd` / `mfac.cmd` (hair, facial hair),
+  `hbuild.cmd` / `vbuild.cmd` (harness bundles), `jstest.cmd` (JS tests, bundle, type-check)
+  and `mixtest.cmd` (Elixir compile and tests, with a throwaway Postgres).
+- **Seeing it**: the Docker MCP browser opens the harness at
+  `http://host.docker.internal:8765/harness/grid.html?u=<params>&l=<label>&u=...` (several
+  views side by side; navigation times out at once, then wait about a minute and
+  screenshot). Parameters: `body`, `clip`, `t`, `view` (full, upper, side, hand), `yaw`,
+  `focus=<bone>&dist=&az=`, `hair`, `facial`, `shape=key:v,...`, `gear=slot:item,...` (slots
+  `under_top`, `under_bottom`, `chest`, `legs`, `feet`), `main`, `off`, `tilt`, `spine`.
+- **Staging models**: copy into `priv/static/models/...`, make the `.glb.gz` (`gzip -9 -k -f`),
+  back up what's replaced under `tmp/b8work/backup_models/`.
+- **Deliver**: a `handoff/CLAUDE_CODE_PROMPT_<date><letter>.md` for Claude Code, and update
+  §2/§7 here and the project's copies of this file and BACON8.md.

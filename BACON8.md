@@ -16,7 +16,12 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-23**.
+Last substantive update: **2026-10-24**.
+
+- Bacon World: the male rebuilt on MakeHuman like the female (body, wardrobe, sliders, hair,
+  animation packs); player names blue, red with PvP on. Details in **`BACON_WORLD.md`** §2.
+
+On 2026-10-23:
 
 - Bacon World: underwear and clothes became items (cloth armour), the first NPC merchant,
   EverQuest coins, the female v3, PvP melee and multiplayer animation fixes; Throw Stone is

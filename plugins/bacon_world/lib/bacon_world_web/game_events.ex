@@ -76,7 +76,8 @@ defmodule BaconWorldWeb.GameEvents do
 
   @doc "The extra presence meta other players and the creatures read."
   def presence_meta(payload) do
-    %{level: payload[:level] || 1, dead: false, gear: payload[:gear] || %{}, hp: payload[:hp], max_hp: payload[:max_hp]}
+    %{level: payload[:level] || 1, dead: false, gear: payload[:gear] || %{}, hp: payload[:hp], max_hp: payload[:max_hp],
+      pvp: payload[:pvp_flagged] == true}
   end
 
   # ---------------------------------------------------------------------------

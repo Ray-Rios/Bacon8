@@ -32,7 +32,7 @@ import { WorldDressing, Collider } from './world-dressing';
 import { SURFACES_KEY } from './surface-textures';
 import { makeMovable, resetWindows } from './window-drag';
 import { BODY_MODEL, isHumanModel, randomAppearance } from './appearance';
-import { Nameplates, PLAYER_COLOR, plateHeight } from './nameplates';
+import { Nameplates, playerColor, plateHeight } from './nameplates';
 import { setAssetVersions } from './asset-url';
 import { GameWorld } from './game-world';
 import type { GameUI } from './game-ui';
@@ -839,6 +839,8 @@ export const WorldCharacterUIScene = {
         // No pointer lock while dead or in the menu (they need the cursor). A click
         // that closes chat locks too: the chat's pointerdown handler blurs it first.
         canLock: () => !this.isDead && !this.isGameMenuOpen(),
+        // A click on a corpse loots it: keep the cursor for the loot window.
+        lockOnClick: (event: MouseEvent) => !this.corpseUnderCursor(event),
         onPointerLockChange: (locked: boolean) => this.updateLookHint(locked),
         onPointerLockError: () => this.flashLookHint('Click again to look around'),
         onEscape: (reason: 'key' | 'lock-lost') => this.handleGameEscape(reason),
@@ -1791,6 +1793,10 @@ export const WorldCharacterUIScene = {
   updateNameplates(this: any) {
     if (!this.camera || !this.characterManager || !this.nameplates) return;
     const keep = new Set<string>();
+    // PvP on: the name is red (yours from the server's reply, others' from the presence).
+    const pvp = new Map<string, boolean>((this.state?.onlineCharacters || []).map((c: any) => [c.character_id, c.pvp === true]));
+    const me = this.state?.currentPlayer;
+    if (me?.character_id) pvp.set(me.character_id, me.pvp_flagged === true);
     this.characterManager.getAllCharacters().forEach((character: any, id: string) => {
       keep.add(id);
       const human = !!this.characterManager.getHuman(id);
@@ -1798,7 +1804,7 @@ export const WorldCharacterUIScene = {
       this.nameplates.set(
         id,
         character.mesh,
-        { name: character.name, color: PLAYER_COLOR },
+        { name: character.name, color: playerColor(pvp.get(id) === true) },
         {
           // Measured once (bounds are costly); humans follow their height.
           height: human || !known ? plateHeight(character.mesh, human) : undefined,
@@ -2278,11 +2284,12 @@ export const WorldCharacterUIScene = {
       return;
     }
 
-    // Creatures first: a click targets one; with the cursor free, clicking a corpse loots it.
+    // Creatures first: a click targets one; with the cursor free, clicking a corpse loots it
+    // (once: clicking the corpse you're already looting leaves the window as it is).
     const mobId = this.pickMob(this.raycaster);
     if (mobId) {
       const mob = this.mobsView?.get(mobId);
-      if (mob?.view.state === 'dead' && grabbing) {
+      if (mob?.view.state === 'dead' && grabbing && this.lootingId !== mobId) {
         void this.openLoot(mobId);
       }
       this.setTarget(mobId);
@@ -2298,6 +2305,16 @@ export const WorldCharacterUIScene = {
     }
 
     // A click on nothing keeps the target: with mouse-look on, clicks are swings.
+  },
+
+  /** The corpse under the free cursor, if any (a left click on it loots, not grabs the mouse). */
+  corpseUnderCursor(this: any, event: MouseEvent): string | null {
+    if (this.state?.uiState !== 'world' || !this.camera || !this.renderer || !this.raycaster) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const p = new THREE.Vector2(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(p, this.camera);
+    const id = this.pickMob(this.raycaster);
+    return id && this.mobsView?.get(id)?.view.state === 'dead' ? id : null;
   },
 
   // EverQuest's right-click: a quick right click (not a steering drag) on a corpse
