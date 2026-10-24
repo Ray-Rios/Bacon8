@@ -63,7 +63,16 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-23 (sixth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23f.md`):
+**Delivered 2026-10-23 (eighth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23h.md`):
+the sun and moon now sit in the sky (far along their direction from the camera, not 55 units
+from the plaza); the site's navbar/taskbar toggle works (state on `<html>`, which LiveView
+doesn't patch); moved windows come back where they were after logging in again (they were
+placed while the game's layer was still 0 x 0).
+
+The seventh (`handoff/CLAUDE_CODE_PROMPT_2026-10-23g.md`) moved the asset pipeline to
+`library/pipeline` and deleted the v1 humans (done).
+
+**Delivered 2026-10-23 (sixth)** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23f.md`):
 
 - **Respawn bugs**: the zone's presence now gets your spawn position the moment you respawn
   (creatures kept attacking the spot where you died until you moved, and you kept dying), and

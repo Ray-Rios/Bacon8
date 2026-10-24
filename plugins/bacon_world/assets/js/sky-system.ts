@@ -82,17 +82,22 @@ export class SkySystem {
   moonLight: THREE.DirectionalLight;
   ambient: THREE.AmbientLight;
 
-  private readonly ORBIT_RADIUS = 55;
+  // The sun and moon sit far out along their direction from the camera, just inside its far
+  // plane, so they look like they are in the sky rather than over the next field (2026-10-23:
+  // they circled 55 units from the plaza, inside the village). Angular sizes in degrees.
+  private readonly SUN_DEG = 3.2;
+  private readonly MOON_DEG = 2.4;
+  private readonly TILT = -0.25; // the arc leans a little to the south (-z)
 
   constructor(scene: THREE.Scene, ambient: THREE.AmbientLight) {
     this.scene  = scene;
     this.ambient = ambient;
 
     // Sun
-    const sunGeo = new THREE.SphereGeometry(1.8, 12, 12);
+    const sunGeo = new THREE.SphereGeometry(1, 16, 12);
     // fog: false - the village's scene fog (world-dressing.ts) would tint a far-off
     // sun toward the sky colour, which made it look green against the blue.
-    const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffde7, fog: false });
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffde7, fog: false, depthWrite: false });
     this.sunMesh = new THREE.Mesh(sunGeo, sunMat);
     scene.add(this.sunMesh);
 
@@ -101,8 +106,8 @@ export class SkySystem {
     scene.add(this.sunLight);
 
     // Moon
-    const moonGeo = new THREE.SphereGeometry(1.2, 12, 12);
-    const moonMat = new THREE.MeshBasicMaterial({ color: 0xd0d8e8, fog: false });
+    const moonGeo = new THREE.SphereGeometry(1, 16, 12);
+    const moonMat = new THREE.MeshBasicMaterial({ color: 0xd0d8e8, fog: false, depthWrite: false });
     this.moonMesh = new THREE.Mesh(moonGeo, moonMat);
     scene.add(this.moonMesh);
 
@@ -110,8 +115,8 @@ export class SkySystem {
     scene.add(this.moonLight);
   }
 
-  /** Call every frame from the animate loop. */
-  tick() {
+  /** Call every frame from the animate loop (with the camera, so the sun stays in the sky). */
+  tick(camera?: THREE.PerspectiveCamera) {
     const t = (Date.now() % CYCLE_MS) / CYCLE_MS; // 0→1 over the cycle
 
     // ── Sky colour ────────────────────────────────────────────────────────────
@@ -128,11 +133,10 @@ export class SkySystem {
     // ── Sun position ──────────────────────────────────────────────────────────
     // sunAngle: 0→sunrise at +x horizon, PI/2→zenith, PI→sunset at -x horizon
     const sunAngle = (t - 0.25) * 2 * Math.PI;
-    const R = this.ORBIT_RADIUS;
-    const sx = Math.cos(sunAngle) * R;
-    const sy = Math.sin(sunAngle) * R;
-    this.sunMesh.position.set(sx, sy, -10);
-    this.sunLight.position.copy(this.sunMesh.position);
+    const sunDir = new THREE.Vector3(Math.cos(sunAngle), Math.sin(sunAngle), this.TILT).normalize();
+    this.place(this.sunMesh, sunDir, this.SUN_DEG, camera);
+    this.sunLight.position.copy(sunDir).multiplyScalar(100);
+    const sy = sunDir.y;
 
     // Sun visible above horizon
     const sunAbove = sy > 0;
@@ -141,14 +145,22 @@ export class SkySystem {
 
     // ── Moon position (opposite arc) ──────────────────────────────────────────
     const moonAngle = sunAngle + Math.PI;
-    const mx = Math.cos(moonAngle) * R;
-    const my = Math.sin(moonAngle) * R;
-    this.moonMesh.position.set(mx, my, -10);
-    this.moonLight.position.copy(this.moonMesh.position);
+    const moonDir = new THREE.Vector3(Math.cos(moonAngle), Math.sin(moonAngle), this.TILT).normalize();
+    this.place(this.moonMesh, moonDir, this.MOON_DEG, camera);
+    this.moonLight.position.copy(moonDir).multiplyScalar(100);
+    const my = moonDir.y;
 
     const moonAbove = my > 0;
     this.moonMesh.visible = moonAbove;
     this.moonLight.intensity = moonAbove ? 0.14 : 0;
+  }
+
+  // Far along `dir` from the camera (90% of its far plane), scaled to `deg` across.
+  private place(mesh: THREE.Mesh, dir: THREE.Vector3, deg: number, camera?: THREE.PerspectiveCamera) {
+    const dist = camera ? camera.far * 0.9 : 500;
+    const origin = camera ? camera.position : new THREE.Vector3();
+    mesh.position.copy(origin).addScaledVector(dir, dist);
+    mesh.scale.setScalar(dist * Math.tan(THREE.MathUtils.degToRad(deg / 2)));
   }
 
   dispose() {

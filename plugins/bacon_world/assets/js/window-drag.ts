@@ -46,8 +46,14 @@ const movables: Movable[] = [];
 export function makeMovable(el: HTMLElement, key: string, handle?: HTMLElement): () => void {
   const defaults = { left: el.style.left, top: el.style.top, right: el.style.right, bottom: el.style.bottom, transform: el.style.transform };
   const host = () => (el.offsetParent as HTMLElement | null) || el.parentElement || document.body;
-  const place = (p: Pos) => {
+  const place = (p: Pos, tries = 0) => {
     const hb = host().getBoundingClientRect();
+    // Not laid out yet (the game's layer is still hidden while the world loads): placing now
+    // would clamp everything into a 0 x 0 view, i.e. the top-left corner. Try again shortly.
+    if (hb.width < 1 || hb.height < 1) {
+      if (tries < 900) requestAnimationFrame(() => place(p, tries + 1));
+      return;
+    }
     const c = clampPos(p, el.offsetWidth, el.offsetHeight, hb.width, hb.height);
     el.style.left = `${c.x}px`;
     el.style.top = `${c.y}px`;

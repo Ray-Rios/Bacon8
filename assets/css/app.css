@@ -180,6 +180,17 @@ html, body {
   padding-top: 0;
 }
 
+/* The top-right button hides the navbar and taskbar (navigation.ex toggleNavbar). The state is a
+   class on <html>, which LiveView never patches: inline styles on the bars were reset by every
+   LiveView update, so the navbar snapped back while the taskbar stayed hidden. */
+.fullscreen-shell { top: 30px; bottom: 35px; transition: top .3s, bottom .3s; }
+html.chrome-hidden .fullscreen-shell { top: 0; bottom: 0; }
+html.chrome-hidden #main-navbar { transform: translateY(-100%); }
+html.chrome-hidden #taskbar { transform: translateY(100%); }
+html.chrome-hidden #nav-toggle-icon { transform: rotate(180deg); }
+html.chrome-hidden .page-content { padding-top: 0; }
+html.chrome-hidden [data-responsive-content] { top: 0 !important; bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+
 /* Home page centering wrapper */
 .home-centered-wrapper {
   width: 100%;

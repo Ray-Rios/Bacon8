@@ -606,17 +606,11 @@ const FullscreenContainer = {
     document.documentElement.classList.add('no-scroll');
     document.body.classList.add('no-scroll');
     
-    // Ensure proper positioning based on navbar/taskbar state
-    const navbar = document.getElementById('main-navbar');
-    const isHidden = navbar?.style.transform === 'translateY(-100%)';
-    
-    if (isHidden) {
-      this.el.style.top = '0';
-      this.el.style.bottom = '0';
-    } else {
-      this.el.style.top = '30px';
-      this.el.style.bottom = '35px';
-    }
+    // Between the navbar and the taskbar, or the whole window while they are hidden: CSS
+    // (.fullscreen-shell, html.chrome-hidden in app.css) follows the toggle.
+    this.el.classList.add('fullscreen-shell');
+    this.el.style.top = '';
+    this.el.style.bottom = '';
   },
   destroyed() {
     document.documentElement.classList.remove('no-scroll');

@@ -104,61 +104,21 @@ defmodule Bacon8Web.Components.Navigation do
     </nav>
 
     <script>
+      // Hide or show the navbar and taskbar. The state is a class on <html> (see app.css,
+      // html.chrome-hidden), remembered for the visit: LiveView patches would undo inline
+      // styles on the bars.
       function toggleNavbar() {
-        const navbar = document.getElementById('main-navbar');
-        const taskbar = document.getElementById('taskbar');
-        const icon = document.getElementById('nav-toggle-icon');
-        const pageContent = document.querySelector('.page-content');
-        // Find any content containers that should be responsive to navbar/taskbar state
-        const responsiveContainers = document.querySelectorAll('[data-responsive-content]');
-        
-        if (navbar.style.transform === 'translateY(-100%)') {
-          // Show navbar and taskbar
-          navbar.style.transform = 'translateY(0)';
-          if (taskbar) taskbar.style.transform = 'translateY(0)';
-          icon.style.transform = 'rotate(0deg)';
-          if (pageContent) pageContent.classList.remove('navbar-hidden');
-          
-          // Reset padding/positioning for all responsive containers
-          responsiveContainers.forEach(container => {
-            const isFixed = window.getComputedStyle(container).position === 'fixed';
-            if (isFixed) {
-              container.style.top = '30px';
-              container.style.bottom = '35px';
-              container.style.paddingTop = '';
-              container.style.paddingBottom = '';
-            } else {
-              container.style.paddingTop = '30px';
-              container.style.paddingBottom = '48px';
-              container.style.top = '';
-              container.style.bottom = '';
-            }
-          });
-        } else {
-          // Hide navbar and taskbar
-          navbar.style.transform = 'translateY(-100%)';
-          if (taskbar) taskbar.style.transform = 'translateY(100%)';
-          icon.style.transform = 'rotate(180deg)';
-          if (pageContent) pageContent.classList.add('navbar-hidden');
-          
-          // Remove padding/positioning when hidden
-          responsiveContainers.forEach(container => {
-            const isFixed = window.getComputedStyle(container).position === 'fixed';
-            if (isFixed) {
-              container.style.top = '0';
-              container.style.bottom = '0';
-              container.style.paddingTop = '';
-              container.style.paddingBottom = '';
-            } else {
-              container.style.paddingTop = '0';
-              container.style.paddingBottom = '0';
-              container.style.top = '';
-              container.style.bottom = '';
-            }
-          });
-        }
+        const root = document.documentElement;
+        const hidden = !root.classList.contains('chrome-hidden');
+        root.classList.toggle('chrome-hidden', hidden);
+        try { sessionStorage.setItem('bacon8:chrome-hidden', hidden ? '1' : '0'); } catch (e) {}
+        // full-window pages (the 3D games) re-measure
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 320);
       }
-      
+      try {
+        if (sessionStorage.getItem('bacon8:chrome-hidden') === '1') document.documentElement.classList.add('chrome-hidden');
+      } catch (e) {}
+
       // Initialize navbar state
       document.addEventListener('DOMContentLoaded', function() {
         // Ensure content has proper spacing for navbar

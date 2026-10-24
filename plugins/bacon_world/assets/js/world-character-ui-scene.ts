@@ -2204,7 +2204,7 @@ export const WorldCharacterUIScene = {
 
     // Day/night sky tick (only in world mode, SkySystem controls ambient+sky)
     if (this.worldInitialized && this.skySystem) {
-      this.skySystem.tick();
+      this.skySystem.tick(this.camera);
       if (this.dressing && this.ambientLight) this.dressing.tick((this.ambientLight.intensity - 0.04) / 0.81);
     }
 
