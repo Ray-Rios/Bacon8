@@ -131,14 +131,26 @@ export function describe(id: string): string[] {
  *  - `y`: slides the model along its handle, so the hand holds it this far from the origin
  *    toward the butt. The long-hafted two-handers are held near the end of the haft, not
  *    at their middle (2026-10-23: the battle axe's haft hung between her legs).
- *  - `roll`: turns it about the handle. The curved one-handers face their edge the way the
- *    library's sword swings lead (2026-10-23: the scimitar cut with its back).
+ *  - `roll`: turns it about the handle. The one-handed swings (STANCES' sword_1h, axe_1h
+ *    and blunt_1h all use the library's sword clips) lead with the weapon bone's -Z, while
+ *    the weapons file puts the striking side on +Z (build_weapons2.py), so **every
+ *    one-handed weapon with a single striking side needs roll 180**: an edge on one side, an
+ *    axe bit, a hammer face (2026-10-23: the scimitar cut with its back; 2026-10-24: the hand
+ *    axe's bit faced backward). Double-edged and round heads (swords, mace, morning star,
+ *    club) look the same either way. The two-handed swings were refitted to +Z, so the
+ *    two-handers need none. Add any new one-hander here when it joins the catalogue.
  */
 export const HOLD: Record<string, { y?: number; roll?: number }> = {
   BattleAxe: { y: 0.35 },
   Maul: { y: 0.35 },
   Scimitar: { roll: 180 },
   Cutlass: { roll: 180 },
+  Axe: { roll: 180 },
+  WarHammer: { roll: 180 },
+  // in the weapons file, not yet items
+  Hatchet: { roll: 180 },
+  Machete: { roll: 180 },
+  BuilderHammer: { roll: 180 },
 };
 
 /** Loads the weapons file once and hands out clones of its nodes. */

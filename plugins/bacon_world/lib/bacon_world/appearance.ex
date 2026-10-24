@@ -28,7 +28,8 @@ defmodule BaconWorld.Appearance do
   @shapes [
     {"weight", -1.0, 1.0},
     {"muscle", 0.0, 1.0},
-    {"shoulders", 0.0, 1.0},
+    # -1 (narrower than his look, Shoulders_Narrow) is the male's only; the female's stays 0..1
+    {"shoulders", -1.0, 1.0},
     {"chest", -1.0, 1.0},
     {"belly", 0.0, 1.0},
     {"hips", 0.0, 1.0},
@@ -157,7 +158,11 @@ defmodule BaconWorld.Appearance do
   defp fix_body(%{"body" => "male"} = look),
     do: update_in(look, ["shape"], &Map.merge(&1, Map.new(@female_only, fn k -> {k, 0.0} end)))
 
-  defp fix_body(%{"body" => "female"} = look), do: put_in(look, ["facial", "style"], "none")
+  defp fix_body(%{"body" => "female"} = look) do
+    look
+    |> put_in(["facial", "style"], "none")
+    |> update_in(["shape", "shoulders"], &max(&1, 0.0))
+  end
 
   defp map(m) when is_map(m), do: stringify(m)
   defp map(_), do: %{}

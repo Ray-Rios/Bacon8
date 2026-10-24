@@ -40,6 +40,8 @@ export interface ShapeSpec {
   tab: 'body' | 'face';
   group: ShapeGroup;
   bodies?: Body[];
+  /** A lower end for some bodies only (the male's shoulders go narrower than his look). */
+  minFor?: Partial<Record<Body, number>>;
   ends?: [string, string];
   /** How far a random look may push it (default 0.8 of the range). */
   rand?: number;
@@ -52,7 +54,7 @@ const F: Body[] = ['female'];
 export const SHAPES: ShapeSpec[] = [
   { key: 'weight', label: 'Build', min: -1, max: 1, neg: 'Weight_Thin', pos: 'Weight_Heavy', tab: 'body', group: 'Body', ends: ['Slim', 'Heavy'] },
   { key: 'muscle', label: 'Muscle', min: 0, max: 1, pos: 'Muscle', tab: 'body', group: 'Body', ends: ['Soft', 'Toned'] },
-  { key: 'shoulders', label: 'Shoulders', min: 0, max: 1, pos: 'Shoulders_Broad', tab: 'body', group: 'Body', ends: ['Narrow', 'Broad'] },
+  { key: 'shoulders', label: 'Shoulders', min: 0, max: 1, neg: 'Shoulders_Narrow', pos: 'Shoulders_Broad', minFor: { male: -1 }, tab: 'body', group: 'Body', ends: ['Narrow', 'Broad'] },
   { key: 'waist', label: 'Waist', min: -1, max: 1, neg: 'Waist_Narrow', pos: 'Waist_Wide', tab: 'body', group: 'Body', ends: ['Narrow', 'Wide'], rand: 0.4 },
   { key: 'belly', label: 'Belly', min: 0, max: 1, pos: 'Belly', tab: 'body', group: 'Body', ends: ['Flat', 'Round'] },
   { key: 'hips', label: 'Hips', min: 0, max: 1, pos: 'Hips_Wide', tab: 'body', group: 'Body', ends: ['Narrow', 'Wide'] },
@@ -114,6 +116,11 @@ export function defaultAppearance(body: Body = 'male'): Appearance {
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** A slider's lower end for a body. */
+export function shapeMin(s: ShapeSpec, body: Body): number {
+  return s.minFor?.[body] ?? s.min;
+}
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
 const color = (v: unknown, d: string) => (typeof v === 'string' && HEX.test(v) ? v.toUpperCase() : d);
 const style = (v: unknown, d: string) => (typeof v === 'string' && (v === 'none' || STYLE.test(v)) ? v : d);
@@ -125,7 +132,7 @@ export function normalizeAppearance(raw: unknown, fallbackBody: Body = 'male'): 
   const body: Body = r.body === 'female' || r.body === 'male' ? r.body : fallbackBody;
   const d = defaultAppearance(body);
   const shape = {} as Record<ShapeKey, number>;
-  for (const s of SHAPES) shape[s.key] = round3(clamp(num(r.shape?.[s.key], 0), s.min, s.max));
+  for (const s of SHAPES) shape[s.key] = round3(clamp(num(r.shape?.[s.key], 0), shapeMin(s, body), s.max));
   // sliders for the other body stay at 0 (the male has no chest or stage-G morphs yet)
   for (const s of SHAPES) if (s.bodies && !s.bodies.includes(body)) shape[s.key] = 0;
   return {
@@ -190,7 +197,7 @@ export function randomAppearance(body: Body, hairStyles: string[], facialStyles:
   for (const s of SHAPES) {
     if (s.bodies && !s.bodies.includes(body)) continue;
     const k = s.rand ?? 0.8;
-    const v = s.min < 0 ? (tri() * 2 - 1) * k : Math.pow(r(), 1.6) * k;
+    const v = shapeMin(s, body) < 0 ? (tri() * 2 - 1) * k : Math.pow(r(), 1.6) * k;
     a.shape[s.key] = round3(v);
   }
   a.skin = any(SKIN_TONES);

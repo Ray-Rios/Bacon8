@@ -355,6 +355,23 @@ export class CharacterAnimator {
     return { l, r };
   }
 
+  /**
+   * What each arm is doing, for the body's arm corrections (manifest `posture.arm_out`):
+   * 'free' (empty), the set of what it holds ('torch', 'sword_1h', ...), 'two_hand' for both
+   * arms on a two-handed weapon, or 'swing' while that arm swings (no correction then).
+   */
+  armSets(): { l: string; r: string } {
+    const two = this.main?.hands === 2;
+    let l = two ? 'two_hand' : this.off ? this.off.set : 'free';
+    let r = two ? 'two_hand' : this.main ? this.main.set : 'free';
+    for (const o of this.overrides) {
+      if (!o.swing) continue;
+      if (o.channels.has('armL')) l = 'swing';
+      if (o.channels.has('armR')) r = 'swing';
+    }
+    return { l, r };
+  }
+
   /** What the hands hold (null: empty). A two-handed main weapon empties the off hand. */
   setGear(main: Gear | null, off: Gear | null) {
     this.main = main;

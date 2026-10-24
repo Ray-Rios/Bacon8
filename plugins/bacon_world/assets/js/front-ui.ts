@@ -4,6 +4,7 @@
 import {
   Appearance, Body, EYE_COLORS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SKIN_TONES, type ShapeGroup,
   defaultAppearance, normalizeAppearance, randomAppearance, shade,
+  shapeMin,
 } from './appearance';
 import type { StyleEntry } from './human-factory';
 import { STARTER_GEAR, type Gear } from './wardrobe';
@@ -480,7 +481,7 @@ export class FrontUI {
 
   private shapeSliders(group: ShapeGroup): HTMLElement[] {
     const a = this.draft;
-    return this.shapesIn(group).map((s) => this.slider(s.label, a.shape[s.key], s.min, s.max, (v) => this.change((x) => { x.shape[s.key] = v; }, false), undefined, s.ends));
+    return this.shapesIn(group).map((s) => this.slider(s.label, a.shape[s.key], shapeMin(s, a.body), s.max, (v) => this.change((x) => { x.shape[s.key] = v; }, false), undefined, s.ends));
   }
 
   private tabContent(): Node[] {
@@ -499,7 +500,7 @@ export class FrontUI {
     if (this.tab === 'face') {
       return [
         this.section('Face shape', ...SHAPES.filter((s) => s.tab === 'face')
-          .map((s) => this.slider(s.label, a.shape[s.key], s.min, s.max, (v) => this.change((x) => { x.shape[s.key] = v; }, false), undefined, s.ends))),
+          .map((s) => this.slider(s.label, a.shape[s.key], shapeMin(s, a.body), s.max, (v) => this.change((x) => { x.shape[s.key] = v; }, false), undefined, s.ends))),
         this.section('Eyes', this.swatches(EYE_COLORS, a.eyes, (c) => this.change((x) => { x.eyes = c; }))),
         this.section(h('span', {}, 'Eyebrows'),
           h('div', { class: 'bwf-seg', style: { marginBottom: '10px' } },

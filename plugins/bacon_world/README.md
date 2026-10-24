@@ -158,9 +158,12 @@ Events: `three_ui_create_character` (replies `%{ok, character_id}` or `%{ok: fal
   (R shade, G trim, B accent, A cut-out, from `Humans/Wardrobe/`) tinted with the item's
   main, trim and accent colours by a patched `MeshStandardMaterial`, alpha-tested.
 - After the animation each frame (`postAnimate`): joint offsets for morphs that move bones,
-  the posture correction (the female's pelvis tucked 20 degrees, the lumbar following and the
-  chest brought upright: manifest `posture` `pelvis_tilt_deg`, `spine_deg`) and relaxed fingers on
-  empty hands. Each starts from what the animation left in the bone, so nothing compounds
+  the posture correction (manifest `posture`: `pelvis_tilt_deg` tucks the pelvis, `spine_deg`
+  turns spine_01..03, `clavicle_deg` [forward, down] brings the shoulders forward and down,
+  `arm_out` turns each arm out by what it is doing (`CharacterAnimator.armSets()`),
+  `free_hand_deg` turns an empty hand, `relaxed_hand` replaces the default finger curl; hers is
+  24 / [-24, -9, 9] only, his is in `mhm_build.py`'s `POSTURE`) and relaxed fingers on empty
+  hands. Each starts from what the animation left in the bone, so nothing compounds
   on a bone no clip keys. Clips load through `fixForearmTwist`, which repairs the packs'
   forearm twist tracks (a pipeline bug that wrung the forearms in weapon clips).
 - Hair and facial hair are bound to the body's bones and take the same morphs. A hair style's
@@ -220,7 +223,9 @@ passes through untouched. While it is repairing jumps, the menu's FPS line says
 Skeletons live in three camps outside the village (`BaconWorld.Mobs.Spawns`): the Old
 Graveyard (decaying skeletons, levels 1-2), the Ruined Chapel (2-3) and the Barrow
 (skeleton warriors, 3-5, with two-handers). Each holds the weapon it will most likely
-drop. The village is safe: no creature goes within 40 m of the spawn, and a chase ends
+drop. The skeleton model is rigged on the male's armature (since 2026-10-24) and plays his
+animation packs. One-handed weapons with a single striking side are turned 180 degrees in
+the hand (`HOLD` in `items.ts`): add every new one there. The village is safe: no creature goes within 40 m of the spawn, and a chase ends
 there or 30 m from the creature's home, when it runs back and heals.
 
 One zone process runs them for the whole cluster (`BaconWorld.Mobs.Zone`, registered with

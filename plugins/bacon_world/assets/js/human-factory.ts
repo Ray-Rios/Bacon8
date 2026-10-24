@@ -29,7 +29,6 @@ import {
 
 export const HUMANS_BASE = '/models/Humans';
 /** The skeleton creatures' animation packs (the old male skeleton's). */
-export const MOBS_ANIMS = '/models/Mobs/Anims';
 
 /**
  * The shipped animation packs' forearm twist bones are wrong in many clips (every
@@ -178,12 +177,11 @@ export class HumanFactory {
    * The B8 animation packs for a body (Core: locomotion, strafes, reactions, social;
    * Combat: every weapon stance and swing), loaded once and shared by everyone with
    * that body. A missing pack resolves to no clips: the body's own 20 stand in.
-   * 'Skeleton' is the skeleton creatures' copy (/models/Mobs/Anims): they are built on the old
-   * (2026-10-21) male skeleton, whose bone rest poses the new male's packs don't match.
+   * The skeleton creatures share the male's (they are rigged on his armature).
    */
-  loadAnimPacks(body: Body | 'Male' | 'Female' | 'Skeleton'): Promise<THREE.AnimationClip[]> {
-    const tag = body === 'Skeleton' ? 'Skeleton' : body === 'male' || body === 'Male' ? 'Male' : 'Female';
-    const dir = tag === 'Skeleton' ? MOBS_ANIMS : `${HUMANS_BASE}/Anims`;
+  loadAnimPacks(body: Body | 'Male' | 'Female'): Promise<THREE.AnimationClip[]> {
+    const tag = body === 'male' || body === 'Male' ? 'Male' : 'Female';
+    const dir = `${HUMANS_BASE}/Anims`;
     let p = this.packs.get(tag);
     if (!p) {
       const one = (pack: string) =>
@@ -348,6 +346,14 @@ function wardrobeMaterial(m: THREE.MeshStandardMaterial) {
   return u;
 }
 
+const _q = new THREE.Quaternion();
+
+/** Moves `cur` toward `target` (degrees) at `rate` degrees per second. */
+function approachDeg(cur: number, target: number, rate: number, dt: number): number {
+  const step = rate * dt;
+  return cur < target ? Math.min(target, cur + step) : Math.max(target, cur - step);
+}
+
 export class HumanInstance {
   readonly root: THREE.Group;
   readonly model: THREE.Object3D;
@@ -379,6 +385,16 @@ export class HumanInstance {
     children: THREE.Bone[];
     spine: Array<{ bone: THREE.Bone; q: THREE.Quaternion }>;
   } | null = null;
+  // the shoulders brought forward (and down) after the animation: the library clips draw
+  // the clavicles back about 30 degrees, which on a body with long clavicles (the male) puts
+  // the arms behind the torso
+  private shoulders: Array<{ bone: THREE.Bone; q: THREE.Quaternion }> = [];
+  // posture.arm_out {<what the arm does>: [upper arm, forearm, keep hand?]}: degrees out from
+  // the body, per arm, eased toward the entry for what it is doing (armSets: 'free', a gear
+  // set such as 'torch', 'two_hand', 'swing'); with keep hand 1 a holding hand keeps its
+  // orientation, else it turns with the arm
+  private armOut: Record<string, number[]> = {};
+  private arms: Record<'l' | 'r', { ua: THREE.Bone; la: THREE.Bone; hand: THREE.Bone; uAxis: THREE.Vector3; lAxis: THREE.Vector3; sgn: number; cur: [number, number]; freeHand: THREE.Quaternion | null } | null> = { l: null, r: null };
   private fingers: Array<{ bone: THREE.Bone; side: 'l' | 'r'; relaxed: THREE.Quaternion }> = [];
   private handW = { l: 1, r: 1 };
   // What postAnimate last wrote to each bone, and what it found there: a bone no clip
@@ -442,11 +458,14 @@ export class HumanInstance {
     // relaxed fingers: rest x the knuckle drawn in (local Z) x a curl about each joint's own X
     const X = new THREE.Vector3(1, 0, 0);
     const Z = new THREE.Vector3(0, 0, 1);
+    // a body may tune its own (manifest `posture.relaxed_hand`, the same table as wardrobe.ts's
+    // RELAXED; `posture` is what BaconWorld.Models passes the client)
+    const relax = this.asset.manifest?.posture?.relaxed_hand || undefined;
     for (const [name, b] of this.bones) {
-      const deg = relaxedCurl(name);
+      const deg = relaxedCurl(name, relax);
       if (deg == null) continue;
       const q = this.restQuat.get(name)!.clone()
-        .multiply(new THREE.Quaternion().setFromAxisAngle(Z, THREE.MathUtils.degToRad(relaxedSpread(name))))
+        .multiply(new THREE.Quaternion().setFromAxisAngle(Z, THREE.MathUtils.degToRad(relaxedSpread(name, relax))))
         .multiply(new THREE.Quaternion().setFromAxisAngle(X, THREE.MathUtils.degToRad(deg)));
       this.fingers.push({ bone: b, side: name.endsWith('_l') ? 'l' : 'r', relaxed: q });
     }
@@ -459,11 +478,46 @@ export class HumanInstance {
     const tilt = Number(posture.pelvis_tilt_deg) || 0;
     const spineDeg: number[] | null = Array.isArray(posture.spine_deg) ? posture.spine_deg.map(Number) : null;
     const pelvis = this.bones.get('pelvis');
-    const sideAxis = (b: THREE.Object3D) => {
+    const axisIn = (b: THREE.Object3D, x: number, y: number, z: number) => {
       m.multiplyMatrices(inv, b.matrixWorld);
       const wq = new THREE.Quaternion().setFromRotationMatrix(m);
-      return new THREE.Vector3(1, 0, 0).applyQuaternion(wq.invert()).normalize();
+      return new THREE.Vector3(x, y, z).applyQuaternion(wq.invert()).normalize();
     };
+    const sideAxis = (b: THREE.Object3D) => axisIn(b, 1, 0, 0);
+    // posture.clavicle_deg [forward, down]: each clavicle turned about the body's up axis
+    // (positive brings the shoulder forward) and its forward axis (positive lowers it)
+    const clav = Array.isArray(posture.clavicle_deg) ? posture.clavicle_deg.map(Number) : [Number(posture.clavicle_deg) || 0, 0];
+    for (const side of ['l', 'r'] as const) {
+      const b = this.bones.get(`clavicle_${side}`);
+      const fwd = clav[0] || 0;
+      const down = clav[1] || 0;
+      if (!b || (!fwd && !down)) continue;
+      const sgn = side === 'l' ? -1 : 1; // +X is the body's left
+      const q = new THREE.Quaternion()
+        .setFromAxisAngle(axisIn(b, 0, 1, 0), sgn * THREE.MathUtils.degToRad(fwd))
+        .multiply(new THREE.Quaternion().setFromAxisAngle(axisIn(b, 0, 0, 1), sgn * THREE.MathUtils.degToRad(down)));
+      this.shoulders.push({ bone: b, q });
+    }
+    // posture.free_hand_deg [x, y, z]: an empty hand turned about its own axes (the right
+    // hand's; the left mirrors y and z), on top of the relaxed fingers
+    const fh = Array.isArray(posture.free_hand_deg) ? posture.free_hand_deg.map(Number) : null;
+    if ((posture.arm_out && typeof posture.arm_out === 'object') || fh) {
+      for (const [k, v] of Object.entries((posture.arm_out || {}) as Record<string, unknown>)) {
+        if (Array.isArray(v)) this.armOut[k] = v.map(Number);
+      }
+      for (const side of ['l', 'r'] as const) {
+        const ua = this.bones.get(`upperarm_${side}`);
+        const la = this.bones.get(`lowerarm_${side}`);
+        const hand = this.bones.get(`hand_${side}`);
+        if (!ua || !la || !hand || la.parent !== ua || hand.parent !== la) continue;
+        // out = about the body's forward axis, away from the body (+X is the body's left)
+        const m = side === 'l' ? -1 : 1;
+        const freeHand = fh
+          ? new THREE.Quaternion().setFromEuler(new THREE.Euler(THREE.MathUtils.degToRad(fh[0] || 0), m * THREE.MathUtils.degToRad(fh[1] || 0), m * THREE.MathUtils.degToRad(fh[2] || 0)))
+          : null;
+        this.arms[side] = { ua, la, hand, uAxis: axisIn(ua, 0, 0, 1), lAxis: axisIn(la, 0, 0, 1), sgn: side === 'l' ? 1 : -1, cur: [0, 0], freeHand };
+      }
+    }
     if ((tilt || spineDeg) && pelvis) {
       const q = new THREE.Quaternion().setFromAxisAngle(sideAxis(pelvis), -THREE.MathUtils.degToRad(tilt));
       const keep = spineDeg ? ['thigh_l', 'thigh_r'] : ['spine_01', 'thigh_l', 'thigh_r'];
@@ -652,7 +706,7 @@ export class HumanInstance {
    * After the mixer each frame: the posture correction, and relaxed fingers on the hands
    * that hold nothing (`free.l`, `free.r`; a punch closes them again).
    */
-  postAnimate(dt: number, free: { l: boolean; r: boolean } = { l: true, r: true }) {
+  postAnimate(dt: number, free: { l: boolean; r: boolean } = { l: true, r: true }, armSets?: { l: string; r: string }) {
     if (this.posture) {
       const pelvis = this.bones.get('pelvis')!;
       this.fromAnimated(pelvis);
@@ -673,8 +727,36 @@ export class HumanInstance {
         this.wrote(s.bone);
       }
     }
+    for (const s of this.shoulders) {
+      this.fromAnimated(s.bone);
+      s.bone.quaternion.multiply(s.q);
+      this.wrote(s.bone);
+    }
     this.handW.l = approach(this.handW.l, free.l ? 1 : 0, 6, dt);
     this.handW.r = approach(this.handW.r, free.r ? 1 : 0, 6, dt);
+    for (const side of ['l', 'r'] as const) {
+      const a = this.arms[side];
+      if (!a) continue;
+      const doing = armSets ? armSets[side] : free[side] ? 'free' : 'held';
+      const want = this.armOut[doing] || [0, 0];
+      a.cur[0] = approachDeg(a.cur[0], want[0] || 0, 90, dt);
+      a.cur[1] = approachDeg(a.cur[1], want[1] || 0, 90, dt);
+      this.fromAnimated(a.ua);
+      this.fromAnimated(a.la);
+      this.fromAnimated(a.hand);
+      if (a.cur[0] || a.cur[1]) {
+        const ua0 = a.ua.quaternion.clone();
+        const handWorld = ua0.clone().multiply(a.la.quaternion).multiply(a.hand.quaternion); // in the clavicle's frame
+        a.ua.quaternion.multiply(_q.setFromAxisAngle(a.uAxis, a.sgn * THREE.MathUtils.degToRad(a.cur[0])));
+        a.la.quaternion.multiply(_q.setFromAxisAngle(a.lAxis, a.sgn * THREE.MathUtils.degToRad(a.cur[1])));
+        if (!free[side] && want[2]) a.hand.quaternion.copy(a.ua.quaternion.clone().multiply(a.la.quaternion).invert().multiply(handWorld));
+      }
+      const hw = this.handW[side];
+      if (a.freeHand && hw > 0.001) a.hand.quaternion.multiply(_q.identity().slerp(a.freeHand, hw));
+      this.wrote(a.ua);
+      this.wrote(a.la);
+      this.wrote(a.hand);
+    }
     for (const f of this.fingers) {
       const w = f.side === 'l' ? this.handW.l : this.handW.r;
       this.fromAnimated(f.bone);

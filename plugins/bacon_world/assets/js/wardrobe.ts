@@ -113,7 +113,9 @@ export function boneOffsets(offsets: Record<string, Record<string, number[]>> | 
 // it in alongside the index. The library clips hold fists; an empty hand that isn't
 // punching takes this instead. Tuned in the harness, 2026-10-23; the curl roughly halved
 // and the thumb opened the same day (the owner: "curled in too much", not an idle hand).
-const RELAXED: Record<string, [number, number, number, number]> = {
+export type RelaxedHand = Record<string, number[]>;
+
+const RELAXED: RelaxedHand = {
   index: [15, 14, 6, 6],
   middle: [18, 17, 7, 1],
   ring: [21, 20, 8, -4],
@@ -124,17 +126,17 @@ const RELAXED: Record<string, [number, number, number, number]> = {
 const FINGER = /^(thumb|index|middle|ring|pinky)_0([123])_([lr])$/;
 
 /** Degrees of curl for a finger bone (thumb_02_l, index_03_r, ...) in the relaxed hand, or null. */
-export function relaxedCurl(bone: string): number | null {
+export function relaxedCurl(bone: string, table: RelaxedHand = RELAXED): number | null {
   const m = FINGER.exec(bone);
   if (!m) return null;
-  return RELAXED[m[1]][Number(m[2]) - 1];
+  return (table[m[1]] || RELAXED[m[1]])[Number(m[2]) - 1] ?? 0;
 }
 
 /** Degrees a knuckle (`*_01_*`) turns about its local Z toward the middle finger (0 for other joints). */
-export function relaxedSpread(bone: string): number {
+export function relaxedSpread(bone: string, table: RelaxedHand = RELAXED): number {
   const m = FINGER.exec(bone);
   if (!m || m[2] !== '1') return 0;
-  return RELAXED[m[1]][3] * (m[3] === 'l' ? -1 : 1);
+  return ((table[m[1]] || RELAXED[m[1]])[3] ?? 0) * (m[3] === 'l' ? -1 : 1);
 }
 
 /** Moves `cur` toward `target` at `rate` per second (both 0..1). */

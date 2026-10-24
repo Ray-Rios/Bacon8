@@ -47,6 +47,13 @@ defmodule BaconWorld.AppearanceTest do
     assert %{"glute_lift" => +0.0, "arms" => 0.3, "thighs" => 1.0, "calves" => -0.2, "waist" => -0.6} = m["shape"]
   end
 
+  test "shoulders: narrower than his look for the male only" do
+    assert {:ok, m} = A.normalize(%{"body" => "male", "shape" => %{"shoulders" => -3}}, nil)
+    assert m["shape"]["shoulders"] == -1.0
+    assert {:ok, f} = A.normalize(%{"body" => "female", "shape" => %{"shoulders" => -0.5}}, nil)
+    assert f["shape"]["shoulders"] == 0.0
+  end
+
   test "a retired style id maps to the style that replaced it" do
     styles = %{"female" => %{"hair" => ["Ponytail", "Lob"], "facial" => [], "aliases" => %{"HighPonytail" => "Ponytail", "Gone" => "Missing"}}}
     assert {:ok, a} = A.normalize(%{"body" => "female", "hair" => %{"style" => "HighPonytail"}}, nil, styles)

@@ -99,3 +99,12 @@ test('shades and brow colour', () => {
   a.brows = '#112233';
   assert.equal(browColor(a), '#112233');
 });
+
+test('shoulders: the male goes narrower than his look (Shoulders_Narrow); the female stays 0..1', () => {
+  const m = normalizeAppearance({ body: 'male', shape: { shoulders: -1 } });
+  assert.equal(m.shape.shoulders, -1);
+  assert.equal(morphWeights(m).Shoulders_Narrow, 1);
+  assert.equal(morphWeights(m).Shoulders_Broad, 0);
+  const f = normalizeAppearance({ body: 'female', shape: { shoulders: -1 } });
+  assert.equal(f.shape.shoulders, 0);
+});

@@ -120,7 +120,7 @@ export class NpcsView {
       e.root.rotation.y = e.yaw;
       e.animator?.update(dt);
       e.mixer?.update(dt);
-      e.human?.postAnimate(dt, e.animator ? e.animator.freeHands() : undefined);
+      e.human?.postAnimate(dt, e.animator ? e.animator.freeHands() : undefined, e.animator ? e.animator.armSets() : undefined);
       this.nameplates.set(`npc:${id}`, e.root, { name: e.view.name, sub: e.view.title ? `<${e.view.title}>` : undefined, color: NPC_COLOR }, { height: 1.85 * U, target: targetId === id });
     }
   }

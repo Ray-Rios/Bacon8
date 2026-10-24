@@ -633,7 +633,7 @@ export class CharacterModelManager {
       animator?.update(deltaSeconds);
       character.mixer?.update(deltaSeconds);
       // after the clips: bones the morphs move, posture, relaxed empty hands
-      this.humanInstances.get(id)?.postAnimate(deltaSeconds, animator ? animator.freeHands() : undefined);
+      this.humanInstances.get(id)?.postAnimate(deltaSeconds, animator ? animator.freeHands() : undefined, animator ? animator.armSets() : undefined);
     });
 
     this.creatures.forEach((creature) => {

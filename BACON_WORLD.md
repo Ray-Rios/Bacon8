@@ -63,7 +63,53 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-24 (second), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24b.md`):
+**Delivered 2026-10-24 (fourth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24d.md`, with the
+third, below), from the owner's look at the third:
+
+- **His upper body leaned back**: `spine_deg` is now [-24, -4, 0] (the chest's 14 degrees went;
+  the lumbar fix stays). His neck now sits ~5 cm ahead of the pelvis, as hers does.
+- **His hands** weren't relaxed: they rested on his thighs, bent forward at the wrist, fingers
+  splayed over the leg. Empty arms now hang 6 degrees out, the wrist is straightened
+  (`free_hand_deg` [-20, 8, -12]) and his fingers curl more than hers (`relaxed_hand`).
+- **Torch**: his elbow was tucked and the torch leaned in. The torch arm goes 12 degrees out at
+  the shoulder and 18 at the elbow, so it is held upright at his side like hers.
+- These are new `posture` fields in `human-factory.ts`: `arm_out` {what the arm does: [upper,
+  fore, keep hand?]} (what the arm does comes from the new `CharacterAnimator.armSets()`:
+  'free', the held item's set such as 'torch', 'two_hand', 'swing'; two-handers and swings get
+  nothing), `free_hand_deg` and `relaxed_hand`. The female has none of them, so she's unchanged.
+- **Shoulders narrower**: a new male morph, `Shoulders_Narrow` (MakeHuman shoulder distance
+  -1.0, v-shape -0.3 against his look's 0.3 / 0.5; the arms come in 44 mm by joint offsets),
+  and his Shoulders slider now runs -1..1 (Narrow..Broad; 0 is his approved look). The
+  female's stays 0..1 (`minFor` in `appearance.ts`, a clamp in `appearance.ex`). His whole body
+  was rebuilt for it (`mfull.cmd`); his hair and facial hair GLBs have no Narrow key yet, which
+  only shows on long styles at the narrow end.
+
+**Delivered 2026-10-24 (third), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24c.md`):
+
+- **The male's lower back and shoulders** (owner, 2026-10-24). Both came from the library
+  clips, not the mesh: the idles arch the lumbar (the "S" from pelvis to upper back, with the
+  crease above the pelvis) and draw both clavicles back about 30 degrees, which on his long
+  clavicles (17.5 cm to her 11.4) put his arms behind the torso and his shoulders up. His
+  manifest now has a posture like hers, `{"pelvis_tilt_deg": 30, "spine_deg": [-24, -6, 14],
+  "clavicle_deg": [18, 6]}` (her values left his lumbar arched; the spine became [-24, -4, 0] in
+  the fourth delivery). `clavicle_deg` is new in
+  `human-factory.ts` (shoulders forward, down; any body may use it; the female has none, so she
+  is unchanged). Written by `mhm_build.py`; `Male.json` and `out/mh/male/B8_Male.json` patched
+  in place (no rebuild needed: it is manifest data).
+- **Skeleton creatures on the new male**: `build_skeleton.py` now rigs on the MakeHuman male's
+  armature, moving its hand-placed pieces (skull, ribs, pelvis, vertebrae) by the old rig's
+  landmarks, so it fits his proportions. `mobs-view.ts` plays his packs
+  (`Humans/Anims/B8_Male_Anims_*`); `Mobs/Anims/` is no longer loaded (delete it once the owner
+  agrees). The model is meshopt now (72 KB, was 250).
+- **The hand axe's bit faced backward** (owner's screenshot). The one-handed swings lead with
+  the weapon bone's -Z and the weapons file puts the striking side on +Z, so every one-handed
+  weapon with one striking side needs `roll: 180` in `HOLD` (`items.ts`), as the scimitar and
+  cutlass already had: now the hand axe and war hammer too (and the hatchet, machete and
+  builder's hammer, in the weapons file but not yet items). **Rule for new weapons**: a new
+  single-sided one-hander goes in `HOLD` with roll 180; two-handers need none (their swings
+  were refitted to +Z).
+
+**Delivered 2026-10-24 (second), committed** (`3e8c225`, `handoff/CLAUDE_CODE_PROMPT_2026-10-24b.md`):
 
 - **Loot click bug**: left-clicking the corpse you were already looting opened the game menu.
   The click grabbed the mouse and the loot window let it go at once; both pointer-lock events
@@ -210,7 +256,8 @@ The first 2026-10-23 delivery:
   - `Hair/`: 18 male hair and 6 facial hair styles, 31 female hair styles, icons, `hair_manifest.json`;
   - `README.txt` and `CREDITS.md`.
 - `Weapons/B8_Weapons.glb` (43 weapons, shields and tools).
-- `Mobs/B8_Skeleton.glb`, and `Mobs/Anims/` (the old male packs it plays).
+- `Mobs/B8_Skeleton.glb` (rigged on the MakeHuman male since 2026-10-24; plays his packs), and
+  `Mobs/Anims/` (the old male packs, no longer loaded).
 - `World/B8_Props.glb` (90 props) and `B8_BuildKit.glb` (36 building pieces); `World/Textures/`:
   24 surface texture sets (`<set>_c/_n/_r.webp`) and `CREDITS.md`.
 - Every `.glb` has a `.glb.gz`. The local copies in `C:\Bacon8\priv\static\models` are current.
@@ -397,23 +444,12 @@ the development PC it sits in `C:\Bacon8\tmp\b8work\harness`):
 
 In rough priority order.
 
-**Next session, first: the male's lower back** (owner, 2026-10-24). He shows the same
-"S" curve from the pelvis to the upper back, with a crease above the pelvis, that the female
-had. Hers was fixed by a **posture correction** applied after the animation, not in the mesh:
-
-- `Female.json` has `"posture": {"pelvis_tilt_deg": 24.0, "spine_deg": [-24.0, -9.0, 9.0]}`,
-  written by `mhf_v3.py` (line ~374). `Male.json` has none: `mhm_build.py` pops it
-  (`man.pop("posture", None)`, line ~170).
-- `human-factory.ts` reads it (around lines 453-477, applied in `postAnimate`, ~656): the
-  pelvis turned about its side-to-side axis (positive tucks it under), its children turned
-  back so the legs stay put, and spine_01..03 turned by `spine_deg`.
-- The harness takes `?tilt=` and `?spine=a,b,c` to try values live, on either body
-  (`&body=male`; rebuild it with `hbuild.cmd` first). Render side
-  views (`view=side`) of idle, walk and the stances, with the glute sliders at max and min.
-- Then write his values into `mhm_build.py`'s manifest (instead of popping it), rebuild
-  (`mbuild.cmd` → `mmorph.cmd`, which also re-exports `B8_Male.json`), and stage `Male.json`.
-  `mhf_v3.py`'s comment there explains her values ([6, -11, -13] had arched the lumbar
-  again). Start from hers; his pelvis and spine rest angles differ, so expect other numbers.
+**The male's posture** (done 2026-10-24, section 2; all of it is in `mhm_build.py`'s `POSTURE`):
+tune it with the harness's `?tilt=`, `?spine=a,b,c`, `?clav=fwd,down`, `?arm=free:u,l;torch:u,l`,
+`?fh=x,y,z` and `?relax=index:a,b,c,s;...` (either body; they override the manifest). Render side
+views (`view=side&yaw=18` shows his idle in profile, `focus=spine_02&dist=2.9&az=250&el=0` the
+lower back) of idle, walk and the stances. The female could take a smaller `clavicle_deg` if
+her shoulders ever look set back; she hasn't had one.
 
 **The female (keep polishing; the owner wants her stunning):**
 
@@ -466,9 +502,10 @@ usable for us; the light Toigo skins are what's used.
 
 - The skill tree itself (Q E F Z X), armour beyond cloth, more merchants, and groups with
   shared loot.
-- **The skeleton creatures** play the old male packs (`Mobs/Anims/B8_Skeleton_Anims_*`, with
-  the old forearm-twist tracks the client repairs and no `QStaff_Sweep`). Rebuilding
-  `B8_Skeleton.glb` on the MakeHuman male rig would let them share his packs.
+- **The skeleton creatures** share the male's packs (2026-10-24) but not his posture
+  correction (it lives in `HumanInstance`), so they keep the clips' arched back and drawn-back
+  shoulders; bones don't crease, so it reads fine. Old `Mobs/Anims/` awaits the owner's OK to
+  delete. The halberd's sweep wasn't checked for which way its blade leads.
 - The male's six facial hair styles are refits of the old procedural cards; MakeHuman has no
   CC0 beard set yet.
 - The female's **hair** GLBs weren't re-fitted for the joint offsets (only `Shoulders_Broad`
@@ -519,6 +556,12 @@ Claude session linked to the development PC through the desktop app):
   `$HOME/mnt/Bacon8` (read, write, Python with Pillow). Hub files are CRLF: edit them with a
   short Python read-modify-write that keeps `\r\n`. Deleting needs the owner's permission
   prompt (`device_request_delete_permission`).
+- **MCP servers on the development PC** (BACON8.md §14 has the full list): `unreal`
+  (`run_python` in the editor), `Blender` (the interactive Blender 5.1: `execute_blender_code`,
+  screenshots, renders; its glTF importer can't read meshopt files, so import the pipeline's
+  pre-meshopt GLBs or append from the `.blend`s) and `MCP_DOCKER` (the Playwright browser for
+  the harness). Blender's window screenshot comes back black when it is minimised: render to
+  a file (Workbench, a camera) and stage it instead.
 - **Windows commands** (Blender 5.1, Docker): the VM can't run them. The Unreal editor's MCP
   (`run_python`) runs Python on Windows, so `subprocess.run(["cmd", "/c", r"C:\...\x.cmd"])`
   runs a `.cmd`; long jobs go in a `threading.Thread` and are polled from the VM by a log or a
@@ -528,14 +571,18 @@ Claude session linked to the development PC through the desktop app):
 - **Ready-made jobs** in `tmp/b8work/`: `mcore.cmd`, `mbuild.cmd`, `mmorph.cmd` (the male's
   stages A, C+F, G; `mfull.cmd` runs all three then meshopt), `meshopt_m.cmd`,
   `anims_chain_m.cmd` (his packs), `mhair_chain.cmd` / `mfac.cmd` (hair, facial hair),
-  `hbuild.cmd` / `vbuild.cmd` (harness bundles), `jstest.cmd` (JS tests, bundle, type-check)
+  `hbuild.cmd` / `vbuild.cmd` (harness bundles), `skel.cmd` + `meshopt_s.cmd` (the skeleton
+  creature), `jstest.cmd` (JS tests, bundle, type-check)
   and `mixtest.cmd` (Elixir compile and tests, with a throwaway Postgres).
 - **Seeing it**: the Docker MCP browser opens the harness at
   `http://host.docker.internal:8765/harness/grid.html?u=<params>&l=<label>&u=...` (several
   views side by side; navigation times out at once, then wait about a minute and
   screenshot). Parameters: `body`, `clip`, `t`, `view` (full, upper, side, hand), `yaw`,
   `focus=<bone>&dist=&az=`, `hair`, `facial`, `shape=key:v,...`, `gear=slot:item,...` (slots
-  `under_top`, `under_bottom`, `chest`, `legs`, `feet`), `main`, `off`, `tilt`, `spine`.
+  `under_top`, `under_bottom`, `chest`, `legs`, `feet`), `main`, `off`, `tilt`, `spine`, `clav`,
+  `rest=1` (the bind pose), `mob=1` (the skeleton creature on the male's packs). Each frame
+  leaves `window.POS` (key bone positions, metres) for measuring. The harness's
+  `catalog.json` is a copy of the items: add an item there before trying it.
 - **Staging models**: copy into `priv/static/models/...`, make the `.glb.gz` (`gzip -9 -k -f`),
   back up what's replaced under `tmp/b8work/backup_models/`.
 - **Deliver**: a `handoff/CLAUDE_CODE_PROMPT_<date><letter>.md` for Claude Code, and update

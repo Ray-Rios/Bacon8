@@ -19,7 +19,12 @@ what you read before changing it.
 Last substantive update: **2026-10-24**.
 
 - Bacon World: the male rebuilt on MakeHuman like the female (body, wardrobe, sliders, hair,
-  animation packs); player names blue, red with PvP on. Details in **`BACON_WORLD.md`** §2.
+  animation packs); player names blue, red with PvP on. Then his posture (lower back and
+  shoulders), the skeleton creatures rebuilt on his rig, and one-handed axe and hammer heads
+  facing the way they swing; then his hands, his lean, the torch arm and a narrower shoulder
+  slider. Details in **`BACON_WORLD.md`** §2.
+- §14 now lists the assistant tooling: the Unreal, Blender and Docker MCP servers on the
+  development PC and what each is for.
 
 On 2026-10-23:
 
@@ -1066,6 +1071,20 @@ Ordered roughly by how much it hurts.
 - **Deployment** is via the kustomize overlays in `k3s/`. `README.md` covers it; anything
   specific to one installation stays out of this repo. `deploy-prod.sh` backs up both
   databases before it touches anything, and on an empty install restores both.
+- **Assistant tooling (MCP).** Three MCP servers run on the development PC, and a Claude
+  session linked to it (Claude Code there, or a cloud session through the desktop app) uses
+  them alongside a shell. They are development tools; nothing in the hub or a game depends
+  on them.
+
+  | Server | What it is | Used for |
+  |---|---|---|
+  | `unreal` | Epic's `ModelContextProtocol` editor plugin (HTTP on loopback port 8000, `.mcp.json` at the repo root) plus RaysSpaceSim's `UnrealMCPPython`, which adds `run_python` (Python inside the running editor) | Editing the Unreal project; and, because it runs on Windows, launching Windows jobs (`subprocess` on a `.cmd`: Blender headless, Docker builds and tests). Tools run on the game thread with a 60 s budget: start long jobs in a thread and poll a log. RaysSpaceSim's `RAYSSPACESIM.md` has the details. |
+  | `Blender` | The Blender Lab MCP extension in the interactive Blender 5.1 | Inspecting and editing scenes live (`execute_blender_code`, object summaries, screenshots, renders, API and manual search). The asset pipeline itself still runs headless (`blender -b --factory-startup` via `tmp/b8work/jobs/run_pipe.py`), so builds are repeatable. |
+  | `MCP_DOCKER` | Docker's MCP gateway: a Playwright browser, fetch and more | Rendering the headless three.js harness (Bacon World's look checks) and other pages |
+
+  The web game is where characters and assets are developed first (fast to change and
+  check); the same B8 skeleton and assets then go to Unreal, Unity or Godot (decisions log,
+  2026-10-20). `library/pipeline` builds both the web GLBs and the engine exports.
 - **Brand assets**: replace a master in `brand/` (see its README), then regenerate every
   icon, favicon, manifest and splash in a throwaway container:
 

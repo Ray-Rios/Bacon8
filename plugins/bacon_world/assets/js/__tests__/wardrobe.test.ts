@@ -67,3 +67,11 @@ test('a relaxed hand curls more toward the little finger; approach is rate-limit
   assert.equal(approach(0.9, 1, 6, 0.1), 1);
   assert.equal(approach(0.5, 0, 6, 1), 0);
 });
+
+test('a body may bring its own relaxed hand table', () => {
+  const t = { index: [40, 30, 20, 5] };
+  assert.equal(relaxedCurl('index_02_r', t), 30);
+  assert.equal(relaxedSpread('index_01_l', t), -5);
+  // fingers the table leaves out keep the default
+  assert.equal(relaxedCurl('pinky_01_r', t), relaxedCurl('pinky_01_r'));
+});
