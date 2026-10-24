@@ -368,7 +368,7 @@ defmodule BaconWorldWeb.PlayLive do
          %{} = current_character <- current_character(socket),
          :ok <- validate_ground_bounds(y),
          :ok <- validate_move_speed(socket, current_character.position, x, y, z),
-         :ok <- validate_player_collision(socket.assigns.zone_online_characters || [], current_character.character_id, x, z) do
+         :ok <- validate_player_collision(socket.assigns.zone_online_characters || [], current_character.character_id, current_character.position, x, z) do
       topic = socket.assigns.current_zone_topic
       now_ms = System.monotonic_time(:millisecond)
 
@@ -483,42 +483,7 @@ defmodule BaconWorldWeb.PlayLive do
         Process.cancel_timer(timer)
       end
 
-      spawn_coords = socket.assigns[:pending_spawn_coords] || %{x: 0.0, y: 0.0, z: 0.0, heading: 0.0}
-
-      updated_character = Map.put(current, :position, %{
-        x: spawn_coords.x,
-        y: spawn_coords.y,
-        z: spawn_coords.z,
-        heading: spawn_coords.heading
-      })
-
-      persist_character_position_async(
-        socket.assigns.current_user.id,
-        current,
-        spawn_coords.x,
-        spawn_coords.y,
-        spawn_coords.z,
-        spawn_coords.heading
-      )
-
-      {:noreply,
-       socket
-       |> assign(
-         pending_respawn_timer: nil,
-         pending_spawn_coords: nil,
-         is_dead?: false,
-         current_character_runtime: updated_character,
-         last_world_update_ms: System.monotonic_time(:millisecond)
-       )
-       |> GameEvents.set_dead(false)
-       |> GameEvents.broadcast_hp(current.character_id, current.max_hp, current.max_hp, "alive")
-       |> push_event("character_respawned", %{
-            spawn_coords: spawn_coords,
-            hp: current.max_hp,
-            max_hp: current.max_hp,
-            mp: current.max_mp,
-            max_mp: current.max_mp
-          })}
+      {:noreply, respawn(socket, current)}
     else
       {:noreply, socket}
     end
@@ -529,42 +494,7 @@ defmodule BaconWorldWeb.PlayLive do
     current = current_character(socket)
 
     if socket.assigns.world_mode? && current && current.character_id == character_id do
-      spawn_coords = socket.assigns[:pending_spawn_coords] || %{x: 0.0, y: 0.0, z: 0.0, heading: 0.0}
-
-      updated_character = Map.put(current, :position, %{
-        x: spawn_coords.x,
-        y: spawn_coords.y,
-        z: spawn_coords.z,
-        heading: spawn_coords.heading
-      })
-
-      persist_character_position_async(
-        socket.assigns.current_user.id,
-        current,
-        spawn_coords.x,
-        spawn_coords.y,
-        spawn_coords.z,
-        spawn_coords.heading
-      )
-
-      {:noreply,
-       socket
-       |> assign(
-         pending_respawn_timer: nil,
-         pending_spawn_coords: nil,
-         is_dead?: false,
-         current_character_runtime: updated_character,
-         last_world_update_ms: System.monotonic_time(:millisecond)
-       )
-       |> GameEvents.set_dead(false)
-       |> GameEvents.broadcast_hp(current.character_id, current.max_hp, current.max_hp, "alive")
-       |> push_event("character_respawned", %{
-            spawn_coords: spawn_coords,
-            hp: current.max_hp,
-            max_hp: current.max_hp,
-            mp: current.max_mp,
-            max_mp: current.max_mp
-          })}
+      {:noreply, respawn(socket, current)}
     else
       {:noreply, assign(socket, pending_respawn_timer: nil, pending_spawn_coords: nil, is_dead?: false)}
     end
@@ -857,17 +787,96 @@ defmodule BaconWorldWeb.PlayLive do
     if speed > @max_move_speed, do: {:error, :invalid_move}, else: :ok
   end
 
-  defp validate_player_collision(online_characters, character_id, x, z) do
+  # Back to life at the zone's spawn point (moved clear of other players). The zone's
+  # presence gets the new position at once: the creatures read it, and until the client
+  # moved they kept attacking the spot where you died (2026-10-23).
+  defp respawn(socket, current) do
+    spawn = socket.assigns[:pending_spawn_coords] || %{x: 0.0, y: 0.0, z: 0.0, heading: 0.0}
+    spawn = free_spawn(spawn, socket.assigns[:zone_online_characters] || [], current.character_id)
+    pos = %{x: spawn.x, y: spawn.y, z: spawn.z, heading: spawn.heading}
+
+    persist_character_position_async(socket.assigns.current_user.id, current, spawn.x, spawn.y, spawn.z, spawn.heading)
+
+    if topic = socket.assigns[:current_zone_topic] do
+      Presence.update(self(), topic, current.character_id, fn meta ->
+        Map.merge(meta, %{x: spawn.x, y: spawn.y, z: spawn.z, heading: spawn.heading, updated_at: System.system_time(:millisecond)})
+      end)
+
+      # and the others see you there now, not when you first move
+      PubSub.broadcast(Bacon8.PubSub, topic, {:zone_position_update, %{
+        character_id: current.character_id,
+        character_name: current.name,
+        character_type: current.character_type,
+        model_path: current.model_path,
+        user_id: socket.assigns.current_user.id,
+        x: spawn.x,
+        y: spawn.y,
+        z: spawn.z,
+        heading: spawn.heading,
+        m: 0,
+        hp: current.max_hp,
+        max_hp: current.max_hp
+      }})
+    end
+
+    socket
+    |> assign(
+      pending_respawn_timer: nil,
+      pending_spawn_coords: nil,
+      is_dead?: false,
+      current_character_runtime: Map.put(current, :position, pos),
+      last_world_update_ms: System.monotonic_time(:millisecond)
+    )
+    |> GameEvents.set_dead(false)
+    |> GameEvents.broadcast_hp(current.character_id, current.max_hp, current.max_hp, "alive")
+    |> push_event("character_respawned", %{
+      spawn_coords: pos,
+      hp: current.max_hp,
+      max_hp: current.max_hp,
+      mp: current.max_mp,
+      max_mp: current.max_mp
+    })
+  end
+
+  # A move into another (living) player is refused, but a move that takes you farther from
+  # one you already overlap is fine: otherwise two players on the same spot (a respawn, a
+  # login) could never separate (2026-10-23: stuck on another player after respawning).
+  defp validate_player_collision(online_characters, character_id, from, x, z) do
+    fx = (from && from[:x]) || x
+    fz = (from && from[:z]) || z
+
     blocked? =
       online_characters
-      |> Enum.reject(&(&1.character_id == character_id))
+      |> Enum.reject(&(&1.character_id == character_id or &1[:dead] == true))
       |> Enum.any?(fn other ->
-        dx = (other.x || 0.0) - x
-        dz = (other.z || 0.0) - z
-        :math.sqrt(dx * dx + dz * dz) < @collision_radius
+        ox = other.x || 0.0
+        oz = other.z || 0.0
+        new_d = :math.sqrt((ox - x) * (ox - x) + (oz - z) * (oz - z))
+        old_d = :math.sqrt((ox - fx) * (ox - fx) + (oz - fz) * (oz - fz))
+        new_d < @collision_radius and new_d < old_d - 1.0e-6
       end)
 
     if blocked?, do: {:error, :invalid_move}, else: :ok
+  end
+
+  @doc false
+  # The spawn point, or the nearest spot around it clear of other living players.
+  def free_spawn(spawn, online_characters, character_id) do
+    others = Enum.reject(online_characters, &(&1.character_id == character_id or &1[:dead] == true))
+    clear? = fn x, z -> Enum.all?(others, fn o -> :math.pow((o.x || 0.0) - x, 2) + :math.pow((o.z || 0.0) - z, 2) >= :math.pow(@collision_radius * 1.2, 2) end) end
+
+    candidates =
+      [{0.0, 0.0}] ++
+        for ring <- 1..4, i <- 0..7 do
+          a = (i + ring * 0.5) * :math.pi() / 4
+          r = ring * @collision_radius * 1.5
+          {r * :math.sin(a), r * :math.cos(a)}
+        end
+
+    case Enum.find(candidates, fn {dx, dz} -> clear?.(spawn.x + dx, spawn.z + dz) end) do
+      {dx, dz} -> %{spawn | x: spawn.x + dx, z: spawn.z + dz}
+      nil -> spawn
+    end
   end
 
   defp push_authoritative_correction(socket) do

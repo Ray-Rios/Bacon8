@@ -7,6 +7,8 @@
 //   Mouse buttons, locked attack, Black Desert style: left button the left hand,
 //                         right button the right hand (held: keeps swinging).
 //                         The character turns to face where the camera looks.
+//   Left drag             with the cursor free: turn the camera around the character
+//                         (it keeps facing its way); letting go doesn't lock the pointer
 //   Right button held     with the cursor free: mouselook (EverQuest steering).
 //                         The camera turns and the character keeps facing the
 //                         camera's direction: W runs, S backpedals (slower), A/D
@@ -128,6 +130,11 @@ export class CharacterController {
   private keys = new Set<string>();
   private inputEnabled = true;
   private steering = false; // right button held (cursor free): mouselook, character faces the camera
+  // left button held (cursor free): where it went down, and whether it has moved enough to
+  // orbit the camera; a drag's click must not lock the pointer
+  private leftDown: { x: number; y: number } | null = null;
+  private orbiting = false;
+  private dragEndAt = -1e9;
   private attackHeld = { left: false, right: false }; // mouse buttons held with the pointer locked
   private faceCameraUntil = 0; // ms (performance.now): after a swing the character faces the camera
   private skipNextMouseMove = false;
@@ -228,6 +235,10 @@ export class CharacterController {
       this.steering = true;
       this.skipNextMouseMove = true;
     }
+    if (event.button === 0) {
+      this.leftDown = { x: event.clientX, y: event.clientY };
+      this.orbiting = false;
+    }
     this.cursor = { x: event.clientX - window.innerWidth / 2, y: event.clientY - window.innerHeight / 2 };
   }
 
@@ -236,7 +247,17 @@ export class CharacterController {
       this.steering = false;
       this.attackHeld.right = false;
     }
-    if (event.button === 0) this.attackHeld.left = false;
+    if (event.button === 0) {
+      this.attackHeld.left = false;
+      if (this.orbiting) this.dragEndAt = performance.now();
+      this.leftDown = null;
+      this.orbiting = false;
+    }
+  }
+
+  /** True just after a left drag with the cursor free ended: its click isn't a click. */
+  wasDrag(): boolean {
+    return performance.now() - this.dragEndAt < 300;
   }
 
   /** True while that hand's button is held with the pointer locked (swing again when ready). */
@@ -266,7 +287,19 @@ export class CharacterController {
     const locked = this.isPointerLocked();
     if (!locked) this.cursor = { x: event.clientX - window.innerWidth / 2, y: event.clientY - window.innerHeight / 2 };
     if (!this.inputEnabled) return;
-    if (!locked && !this.steering) return;
+    if (!locked && this.leftDown && !this.orbiting) {
+      // A left drag with the cursor free orbits the camera once it has moved a few pixels.
+      if ((event.buttons & 1) === 0) this.leftDown = null;
+      else if (Math.hypot(event.clientX - this.leftDown.x, event.clientY - this.leftDown.y) > 4) {
+        this.orbiting = true;
+        this.skipNextMouseMove = true;
+      }
+    }
+    if (this.orbiting && !locked && (event.buttons & 1) === 0) {
+      this.orbiting = false;
+      this.leftDown = null;
+    }
+    if (!locked && !this.steering && !this.orbiting) return;
     // A missed mouseup (released outside the window) must not leave us steering.
     if (this.steering && !locked && (event.buttons & 2) === 0) {
       this.steering = false;
@@ -321,6 +354,8 @@ export class CharacterController {
 
   private onClick(event: MouseEvent): void {
     if (event.button !== 0 || this.isPointerLocked()) return;
+    // The end of a camera drag isn't a click.
+    if (this.wasDrag()) return;
     if (event.target !== this.canvas) return;
     this.requestPointerLock();
   }
@@ -386,6 +421,8 @@ export class CharacterController {
   private clearInput(): void {
     this.keys.clear();
     this.steering = false;
+    this.orbiting = false;
+    this.leftDown = null;
     this.attackHeld.left = false;
     this.attackHeld.right = false;
   }

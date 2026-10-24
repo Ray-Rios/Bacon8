@@ -171,4 +171,14 @@ defmodule BaconWorld.WorldTest do
 
     assert %{model_path: ^model} = World.get_character_for_user(user_id, c.id)
   end
+
+  test "a respawn lands clear of other living players" do
+    spawn = %{x: 0.0, y: 0.0, z: 0.0, heading: 0.0}
+    assert BaconWorldWeb.PlayLive.free_spawn(spawn, [], "me") == spawn
+    blocker = %{character_id: "other", x: 0.1, z: 0.0, dead: false}
+    moved = BaconWorldWeb.PlayLive.free_spawn(spawn, [blocker], "me")
+    assert :math.sqrt(:math.pow(moved.x - 0.1, 2) + :math.pow(moved.z, 2)) > 1.1
+    # a corpse doesn't block, nor do you yourself
+    assert BaconWorldWeb.PlayLive.free_spawn(spawn, [%{blocker | dead: true}, %{blocker | character_id: "me"}], "me") == spawn
+  end
 end

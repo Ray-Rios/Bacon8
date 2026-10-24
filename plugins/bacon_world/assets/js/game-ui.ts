@@ -7,6 +7,7 @@
 // buy it; with the merchant open, right-click an item in your bags to sell it). Plain DOM with its
 // own scoped CSS (.bwg).
 import { describe, iconUrl, item, money } from './items';
+import { keepWindowsOnScreen, makeMovable } from './window-drag';
 
 export interface InvItem { slot: string; item_id: string; quantity: number }
 export interface Inventory { items: InvItem[]; coins: number; bag_slots: number }
@@ -163,6 +164,12 @@ export class GameUI {
     this.msgEl = h('div', { class: 'msg' });
     this.root.append(this.player, this.target, this.hotbar, this.inv, this.loot, this.mer, this.msgEl, this.tip, this.cursorEl);
     host.appendChild(this.root);
+    // Every window can be dragged to a new spot (window-drag.ts), remembered per browser.
+    this.unmovable = [
+      makeMovable(this.player, 'player'), makeMovable(this.target, 'target'), makeMovable(this.hotbar, 'hotbar'),
+      makeMovable(this.inv, 'inventory'), makeMovable(this.loot, 'loot'), makeMovable(this.mer, 'merchant'),
+    ];
+    window.addEventListener('resize', keepWindowsOnScreen);
     window.addEventListener('mousemove', this.onMouseMove);
     // Clicks on the game world while holding an item put it back (EverQuest
     // would drop it on the ground; we don't have ground items yet).
@@ -170,8 +177,12 @@ export class GameUI {
     this.renderHotbar({ left: null, right: null });
   }
 
+  private unmovable: Array<() => void> = [];
+
   dispose() {
     window.removeEventListener('mousemove', this.onMouseMove);
+    window.removeEventListener('resize', keepWindowsOnScreen);
+    this.unmovable.forEach((f) => f());
     this.root.remove();
     this.style.remove();
   }

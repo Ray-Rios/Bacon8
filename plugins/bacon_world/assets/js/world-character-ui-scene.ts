@@ -30,6 +30,7 @@ import { CharacterStage } from './character-stage';
 import { FrontUI } from './front-ui';
 import { WorldDressing, Collider } from './world-dressing';
 import { SURFACES_KEY } from './surface-textures';
+import { makeMovable, resetWindows } from './window-drag';
 import { BODY_MODEL, isHumanModel, randomAppearance } from './appearance';
 import { Nameplates, PLAYER_COLOR, plateHeight } from './nameplates';
 import { setAssetVersions } from './asset-url';
@@ -1276,6 +1277,9 @@ export const WorldCharacterUIScene = {
     chatPanel.appendChild(log);
     chatPanel.appendChild(form);
     layer.appendChild(chatPanel);
+    // dragged by its title row (window-drag.ts)
+    worldControls.style.cursor = 'move';
+    makeMovable(chatPanel, 'chat', worldControls);
 
     // Mouse look (character-controller.ts): a centre dot while the pointer is
     // locked, and a short message when the browser refuses the lock. No
@@ -1314,7 +1318,9 @@ export const WorldCharacterUIScene = {
   },
 
   updateLookHint(this: any, locked: boolean) {
-    this.lookDotEl?.classList.toggle('hidden', !locked);
+    // The centre dot stays hidden (the owner would rather not have it, 2026-10-23); swings
+    // still aim at the centre of the screen.
+    this.lookDotEl?.classList.add('hidden');
   },
 
   // A short message for a few seconds (e.g. the browser refused the lock).
@@ -1531,6 +1537,8 @@ export const WorldCharacterUIScene = {
     });
     surfaces.setAttribute('data-menu-surfaces', 'true');
     panel.appendChild(surfaces);
+    // Windows can be dragged anywhere (window-drag.ts); this puts them all back.
+    panel.appendChild(button('Reset windows', 'bg-slate-700 hover:bg-slate-600 text-slate-100', () => resetWindows()));
     const fps = document.createElement('div');
     fps.className = 'text-[11px] text-slate-500 mb-2';
     fps.setAttribute('data-menu-fps', 'true');
@@ -1541,8 +1549,9 @@ export const WorldCharacterUIScene = {
     help.className = 'text-[11px] leading-5 text-slate-400 border-t border-slate-800 pt-2 mt-1 mb-3';
     help.innerHTML = [
       '<b class="text-slate-300">Click</b> mouse-look on · <b class="text-slate-300">Ctrl</b> cursor back / mouse-look on again',
+      'Windows: drag them by the title or an empty spot (Reset windows puts them back)',
       'Mouse-look on: <b class="text-slate-300">left / right button</b> swing your left / right hand (hold to keep swinging)',
-      'Cursor free: <b class="text-slate-300">hold right button</b> to steer · <b class="text-slate-300">right-click</b> a corpse to loot it, a merchant to trade',
+      'Cursor free: <b class="text-slate-300">drag with the left button</b> to turn the camera · <b class="text-slate-300">hold right button</b> to steer · <b class="text-slate-300">right-click</b> a corpse to loot it, a merchant to trade',
       '<b class="text-slate-300">WASD</b> move · <b class="text-slate-300">Shift</b> sprint · <b class="text-slate-300">C</b> crouch · <b class="text-slate-300">Space</b> jump · <b class="text-slate-300">Wheel</b> zoom',
       '<b class="text-slate-300">I</b> inventory · <b class="text-slate-300">G</b> loot nearest corpse · <b class="text-slate-300">R</b> interact (trade) · <b class="text-slate-300">Tab</b> next target',
       '<b class="text-slate-300">Q E F Z X</b> special attacks (earned in the skill tree) · <b class="text-slate-300">Enter</b> chat · <b class="text-slate-300">Esc</b> this menu',
@@ -2242,6 +2251,9 @@ export const WorldCharacterUIScene = {
       this._handleSelectionClick(event);
       return;
     }
+
+    // The end of a camera drag (left drag, cursor free) isn't a click.
+    if (this.controller?.wasDrag?.()) return;
 
     // In world mode: ray-cast for characters (targeting). With the pointer locked
     // the cursor is hidden, so aim at the centre of the screen (the dot).
