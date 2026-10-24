@@ -79,7 +79,7 @@ They share the B8 skeleton and 20 CC0 clips from Quaternius' Universal Animation
 - The female is built on MakeHuman's CC0 body (2026-10-22). Her clothes, hair, lashes and
   brows are MakeHuman CC0 assets, fitted to her.
 
-The game repository builds them all with the scripts in `SourceAssets/Pipeline` (see its
+The asset pipeline builds them all with the scripts in `library/pipeline/scripts` (see its
 README), along with the animation packs, the weapons (shared grip on the `weapon_r` /
 `weapon_l` bones), the skeleton creature and the village kit.
 
@@ -192,6 +192,7 @@ Desert's mouse buttons with mouse-look on (`character-controller.ts`; numbers in
 |---|---|
 | Click the game | mouse-look on: free look, the character turns to face where it moves |
 | Left / right button (mouse-look on) | swing the left / right hand; held, keep swinging as the weapon's delay allows. A two-hander: left quick, right heavy. The character turns to face where you look |
+| Left drag (cursor free) | turn the camera around the character (she keeps facing her way); letting go doesn't lock the pointer |
 | Hold right button (cursor free) | steer: the character faces the camera; W runs, S backpedals (slower), A/D strafe, diagonals turn the body 45° |
 | Right-click (cursor free) | a corpse: loot it; a creature: target it; a merchant: trade |
 | Q E F Z X | special attacks, earned in the skill tree (locked for now) |
@@ -308,7 +309,7 @@ landings, footsteps by surface (cobbles on the plaza, gravel on the paths, grass
 swings, hits on bone and on flesh, bones breaking, coins, chimes. Each kind has several
 takes and a little pitch variety. Under it: birds and wind by day, crickets by night, the
 campfire when you're near it, and a quiet ambient music bed (`music_ambient.mp3`, made by
-the game repository's `SourceAssets/Pipeline/build_audio.py`).
+the asset pipeline's `library/pipeline/scripts/build_audio.py`).
 
 The game menu has a Sound switch (the master) and Effects, Nature and Music volume sliders.
 They are remembered per browser (`bacon_world:volume_*`, 0–100). Browsers allow sound only

@@ -10,7 +10,7 @@ Related documents:
 
 - `BACON8.md` covers the hub (plugin contract §9, invariants §6, workflow §14).
 - `plugins/bacon_world/README.md` is the module-by-module reference.
-- The game repository (`RaysSpaceSim/`, its own git) builds the art. See `SourceAssets/Pipeline/README.md`.
+- The asset pipeline (`C:\Bacon8\library\pipeline`, moved out of RaysSpaceSim on 2026-10-23) builds the art. See `library/pipeline/scripts/README.md`.
 
 **Rules for editing this file.** They are the same as BACON8.md's:
 
@@ -63,7 +63,22 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-23 (fifth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23e.md`), from the
+**Delivered 2026-10-23 (sixth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23f.md`):
+
+- **Respawn bugs**: the zone's presence now gets your spawn position the moment you respawn
+  (creatures kept attacking the spot where you died until you moved, and you kept dying), and
+  you respawn clear of other players. A move that takes you away from a player you overlap is
+  allowed (before, two players on one spot couldn't separate).
+- **No centre dot** with the mouse captured.
+- **Movable windows** (`window-drag.ts`): drag any window (player, target, hotbar, inventory,
+  loot, merchant, chat) by its title or an empty spot; positions are saved per browser; the Esc
+  menu's "Reset windows" puts them back.
+- **Left drag with the cursor free turns the camera** around the character (she keeps facing
+  her way), and letting go doesn't capture the mouse or pick a target.
+- **The male, started**: MakeHuman sources fetched into `library/makehuman` and a first male
+  look (`mh_female.LOOKS["m1"]`) rendered for the owner's review; see section 7.
+
+**Delivered 2026-10-23 (fifth)** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23e.md`), from the
 owner's play-testing:
 
 - **Melee arcs**: 90 degrees for one-handers, 110 for two-handers (was 150), and nothing behind
@@ -188,7 +203,9 @@ The first 2026-10-23 delivery:
 | 2026-10-21 | **Assets are ours or CC0.** Epic's content stays Unreal-only, and no paid UAL Pro/Source files from mirrors. **No DAZ-derived meshes**: the owner's two DAZ-based female files must not be used, so the female is built on MakeHuman (owner's choice, 2026-10-21). |
 | 2026-10-23 | **Asset rule widened on purpose: ours, CC0, or licensed for commercial use, credited, with the source files never redistributed.** Licensed sources (Substance .sbsar and the like) live in the gitignored shared library `C:\Bacon8\library\` with a licence table; only what we bake from them ships, and it goes on the credits page. The DAZ and Epic exclusions above still stand. |
 | 2026-10-23 | **Substance materials are baked in Blender** with Adobe's Substance 3D add-on (`b8_substance.py`). The library's unverified files aren't used until their source is recorded; files that can't be used legally are deleted. |
-| 2026-10-21 | The female should be **stunning**. She is editable in Blender (`RaysSpaceSim/SourceAssets/Characters/B8Human/B8_Female_MPFB.blend`) so the owner can sculpt her later. |
+| 2026-10-23 | **The asset pipeline lives in `C:\Bacon8\library\pipeline`** (moved out of RaysSpaceSim; not a git repository): `scripts/`, `Characters/` (the B8 skeleton and human blends), `Animations/`, `out/`. The v1 humans were deleted: their source files and the copies imported into Unreal. |
+| 2026-10-23 | **The MakeHuman male look `m2` is approved as is.** Carry on with his rebuild; his animations must not show A-pose fanned fingers. |
+| 2026-10-21 | The female should be **stunning**. She is editable in Blender (`library/pipeline/Characters/B8Human/B8_Female_MPFB.blend`) so the owner can sculpt her later. |
 | 2026-10-23 | **No clothes in character creation.** New characters start in **cream bikini underwear**. |
 | 2026-10-23 | **Underwear is equipment**: a top and a bottom, separate items, layered under clothes and armour, and removable. They are ordinary 3D gear: no content warnings around them. |
 | 2026-10-23 | **At least five underwear sets for sale from an NPC merchant.** The old clothes meshes become **cloth armour**. |
@@ -265,7 +282,7 @@ Characters are the hub's `game_characters` (games DB):
 
 ## 5. The humans and other art
 
-**Built by** `RaysSpaceSim/SourceAssets/Pipeline` (Blender's Python module, headless). Its
+**Built by** `library/pipeline/scripts` (Blender's Python module, headless). Its
 README has every script, source and run order.
 
 - **Male**: v2 (`build_humans2.py`) on Blender Studio's CC0 base mesh, with procedural hair
@@ -303,7 +320,7 @@ README has every script, source and run order.
 - `substance/`: 17 Substance materials whose licence is known (Allegorithmic, Adobe, TextureCan).
   The other 247 had no recorded source and were deleted on the owner's instruction, with 5
   restricted military camo patterns and 4 duplicates. `library/substance/LICENSES.md` is the licence table;
-  `RaysSpaceSim/SourceAssets/Pipeline/b8_substance.py` bakes `verified/` to WebP texture sets
+  `library/pipeline/scripts/b8_substance.py` bakes `verified/` to WebP texture sets
   (base colour, normal, ORM) with `meta.json` for the credits. None is in the game yet.
 
 **Sources** (none in git): the MPFB2 repository, the Ubuntu `makehuman-data` 1.1.1 package
@@ -362,9 +379,32 @@ In rough priority order.
   needs a slot rule (a dress replaces top and bottom) in `appearance.ts`/`.ex` and
   `human-factory.ts`.
 
-**The male:** rebuild on MakeHuman the same way: body, MakeHuman male hair (short01-04,
-afro01, culturalibre_hair_02/05), and male clothes from the same packs. Then both bodies share
-one pipeline.
+**The male (started 2026-10-23):** rebuild him on MakeHuman the way she was built, so both
+bodies share one pipeline. The plan:
+
+1. **The look** (done): `mh_female.LOOKS["m2"]`, approved by the owner as is (1.78 m,
+   athletic, angular face).
+2. **Body** (stage A done 2026-10-23): `B8_BODY=Male mhf_core.py` builds his skin (Toigo's light
+   male skin, Skins 02 pack, greyed for tinting), eyes, brows (`eyebrow008`), Mindfront lashes
+   01, the B8 skeleton and weights, and the 13 morph keys (the chest keys are his pectorals).
+   Output `library/pipeline/out/mh/male_core.blend`. Next: his finish stage (regions, AO,
+   export) and wardrobe.
+3. **Wardrobe** (stage F for him): underwear (Underwear 01 pack) and cloth armour as
+   body-derived shells, like hers, so items fit him too.
+4. **Hair**: MakeHuman's male styles (short01-04, afro01, culturalibre_hair_02/05) with scalp
+   decals; facial hair kept from his current cards until there's a CC0 set.
+5. **Animation packs** rebuilt on his rig, with `b8_gripfit.py` rerun for his weapon grips.
+   **No A-pose fanned fingers** (the owner, 2026-10-23): every clip must key the fingers (the
+   library bakes do; authored clips set a finger preset), and the client's relaxed hand covers
+   empty hands.
+6. **Client**: `Male.json` in the same shape as hers, the body sliders for him, and existing
+   male characters carried over.
+
+Sources (CC0) are in `C:\Bacon8\library\makehuman` (gitignored): the MPFB2 repository's data,
+MakeHuman's system assets (the Ubuntu `makehuman-data` package and the community
+`makehuman_system_assets` pack), and the community packs (hair01, shirts01, pants01, shoes01,
+underwear01, suits01, eyebrows01, eyelashes01, skins01-03). Not every skin in the skins packs is
+usable for us; the light Toigo skins are what's used.
 
 **Game (from BACON8.md's debt list, moved here):**
 
@@ -402,14 +442,14 @@ one pipeline.
 - The cloth armour and the underwear have design textures already; the leather and plate
   armour still to come should use the library's leathers and metals the same way.
 - Move `pack.py` (library set to runtime WebP, with the means `SETS` needs) into
-  `RaysSpaceSim/SourceAssets/Pipeline/` and generate `SETS` from it.
+  `library/pipeline/scripts/` and generate `SETS` from it.
 - Triplanar costs about ten texture reads per pixel on textured surfaces. Fine on desktop;
   if low-end machines struggle, the Esc menu's Textures switch turns it off. A cheaper path
   is baking UVs and textures into the GLBs in Blender (the Substance bake can do the same).
 - Trees' leaves, food, paint and gems are untextured on purpose (they read as stylised).
 
 **Assets still wanted:** weapon animations per weapon type, finished and polished (see
-`RaysSpaceSim/SourceAssets/Characters/ANIMATION_ROADMAP.md`), and a building system for the 36
+`library/pipeline/Characters/ANIMATION_ROADMAP.md`), and a building system for the 36
 kit pieces.
 
 ## 8. Picking up the torch
@@ -417,6 +457,6 @@ kit pieces.
 1. Read this file, then `plugins/bacon_world/README.md`, then BACON8.md §6 and §9.
 2. `git status` in `C:\Bacon8`. Anything uncommitted belongs to the newest prompt in
    `handoff/`. Has Claude Code run it? Its commit message says so.
-3. For art work, start from `RaysSpaceSim/SourceAssets/Pipeline/README.md`. Fetch the sources
+3. For art work, start from `library/pipeline/scripts/README.md`. Fetch the sources
    it lists, then rebuild in the cloud session and deliver with a new handoff prompt.
 4. Record new owner decisions in §3 and update §2 and §7 before you stop.
