@@ -1,6 +1,6 @@
 // The creatures the zone runs (BaconWorld.Mobs.Zone), drawn on the client: skeletons
-// (/models/Mobs/B8_Skeleton.glb, rigid on the B8 male skeleton, so they play the male
-// animation packs) holding the weapons they will drop, with EverQuest names over
+// (/models/Mobs/B8_Skeleton.glb, rigid on the old B8 male skeleton, so they play that
+// skeleton's animation packs, /models/Mobs/Anims) holding the weapons they will drop, with EverQuest names over
 // their heads coloured by how tough they are to you.
 //
 // The server sends a snapshot on entering ("fetch_mobs"), events as they happen
@@ -101,7 +101,7 @@ export class MobsView {
     this.group.name = 'Mobs';
     this.loader = new GLTFLoader();
     this.loader.setMeshoptDecoder(MeshoptDecoder);
-    this.clips = humans.loadAnimPacks('Male');
+    this.clips = humans.loadAnimPacks('Skeleton');
   }
 
   // ---------------------------------------------------------------- updates from the server

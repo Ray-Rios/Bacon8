@@ -29,21 +29,22 @@ defmodule BaconWorld.AppearanceTest do
     refute Map.has_key?(a, "outfit")
   end
 
-  test "male drops the bust slider; styles checked against a manifest" do
+  test "male keeps the chest (pectorals) slider; styles checked against a manifest" do
     styles = %{"male" => %{"hair" => ["Buzz"], "facial" => ["Goatee"]}}
     assert {:ok, a} = A.normalize(%{"body" => "male", "shape" => %{"chest" => 1}, "hair" => %{"style" => "Mohawk"}, "facial" => %{"style" => "Goatee"}}, nil, styles)
-    assert a["shape"]["chest"] == 0.0
-    assert a["hair"]["style"] == "CrewCut"
+    assert a["shape"]["chest"] == 1.0
+    assert a["hair"]["style"] == "Short"
     assert a["facial"]["style"] == "Goatee"
     assert {:ok, %{"hair" => %{"style" => "none"}}} = A.normalize(%{"body" => "male", "hair" => %{"style" => "none"}}, nil, styles)
   end
 
-  test "the female's chest, glute and limb sliders: kept and clamped for her, zero for him" do
+  test "chest shaping is hers only; glute, waist and limb sliders kept and clamped for both" do
     shape = %{"chest_height" => 0.5, "chest_spacing" => -2, "chest_shape" => 0.25, "glute_lift" => -1, "arms" => 0.3, "thighs" => 1, "calves" => -0.2, "waist" => -0.6}
     assert {:ok, f} = A.normalize(%{"body" => "female", "shape" => shape}, nil)
     assert %{"chest_height" => 0.5, "chest_spacing" => -1.0, "chest_shape" => 0.25, "glute_lift" => +0.0, "arms" => 0.3, "thighs" => 1.0, "calves" => -0.2, "waist" => -0.6} = f["shape"]
     assert {:ok, m} = A.normalize(%{"body" => "male", "shape" => shape}, nil)
-    assert Enum.all?(~w(chest_height chest_spacing chest_shape glute_lift arms thighs calves waist), &(m["shape"][&1] == 0.0))
+    assert Enum.all?(~w(chest_height chest_spacing chest_shape), &(m["shape"][&1] == 0.0))
+    assert %{"glute_lift" => +0.0, "arms" => 0.3, "thighs" => 1.0, "calves" => -0.2, "waist" => -0.6} = m["shape"]
   end
 
   test "a retired style id maps to the style that replaced it" do

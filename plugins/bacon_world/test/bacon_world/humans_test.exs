@@ -66,7 +66,7 @@ defmodule BaconWorld.HumansTest do
 
   test "characters without a stored look get the default for their model", %{user_id: user_id} do
     {:ok, c} = World.create_character(user_id, %{"name" => "Old", "character_type" => "Explorer", "model_path" => "/models/Humans/Male.glb"})
-    assert %{"body" => "male", "hair" => %{"style" => "CrewCut"}} = c.appearance
+    assert %{"body" => "male", "hair" => %{"style" => "Short"}} = c.appearance
   end
 
   test "update_appearance keeps the body type and checks ownership", %{user_id: user_id} do

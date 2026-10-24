@@ -45,26 +45,26 @@ export interface ShapeSpec {
   rand?: number;
 }
 
-// The female's body sliders follow Black Desert's creator: the chest, the glutes, the waist and
-// the limbs each have their own (morphs from the pipeline's mhf_morphs.py, stage G). The male
-// gets them when he is rebuilt the same way; until then they're female-only.
+// The body sliders follow Black Desert's creator: the chest, the glutes, the waist and the limbs
+// each have their own (morphs from the pipeline's mhf_morphs.py, stage G). The male (rebuilt on
+// MakeHuman, 2026-10-24) has all but the chest's shaping: his chest size is the pectorals.
 const F: Body[] = ['female'];
 export const SHAPES: ShapeSpec[] = [
   { key: 'weight', label: 'Build', min: -1, max: 1, neg: 'Weight_Thin', pos: 'Weight_Heavy', tab: 'body', group: 'Body', ends: ['Slim', 'Heavy'] },
   { key: 'muscle', label: 'Muscle', min: 0, max: 1, pos: 'Muscle', tab: 'body', group: 'Body', ends: ['Soft', 'Toned'] },
   { key: 'shoulders', label: 'Shoulders', min: 0, max: 1, pos: 'Shoulders_Broad', tab: 'body', group: 'Body', ends: ['Narrow', 'Broad'] },
-  { key: 'waist', label: 'Waist', min: -1, max: 1, neg: 'Waist_Narrow', pos: 'Waist_Wide', tab: 'body', group: 'Body', bodies: F, ends: ['Narrow', 'Wide'], rand: 0.4 },
+  { key: 'waist', label: 'Waist', min: -1, max: 1, neg: 'Waist_Narrow', pos: 'Waist_Wide', tab: 'body', group: 'Body', ends: ['Narrow', 'Wide'], rand: 0.4 },
   { key: 'belly', label: 'Belly', min: 0, max: 1, pos: 'Belly', tab: 'body', group: 'Body', ends: ['Flat', 'Round'] },
   { key: 'hips', label: 'Hips', min: 0, max: 1, pos: 'Hips_Wide', tab: 'body', group: 'Body', ends: ['Narrow', 'Wide'] },
-  { key: 'chest', label: 'Size', min: -1, max: 1, neg: 'Breasts_Small', pos: 'Breasts_Large', tab: 'body', group: 'Chest', bodies: F, ends: ['Small', 'Full'] },
+  { key: 'chest', label: 'Size', min: -1, max: 1, neg: 'Breasts_Small', pos: 'Breasts_Large', tab: 'body', group: 'Chest', ends: ['Small', 'Full'] },
   { key: 'chest_height', label: 'Height', min: -1, max: 1, neg: 'Chest_Low', pos: 'Chest_High', tab: 'body', group: 'Chest', bodies: F, ends: ['Low', 'High'], rand: 0.4 },
   { key: 'chest_spacing', label: 'Spacing', min: -1, max: 1, neg: 'Chest_Close', pos: 'Chest_Wide', tab: 'body', group: 'Chest', bodies: F, ends: ['Close', 'Wide'], rand: 0.4 },
   { key: 'chest_shape', label: 'Shape', min: -1, max: 1, neg: 'Chest_Round', pos: 'Chest_Perky', tab: 'body', group: 'Chest', bodies: F, ends: ['Round', 'Perky'], rand: 0.5 },
   { key: 'glutes', label: 'Size', min: -1, max: 1, neg: 'Glutes_Small', pos: 'Glutes_Large', tab: 'body', group: 'Glutes', ends: ['Small', 'Full'] },
-  { key: 'glute_lift', label: 'Lift', min: 0, max: 1, pos: 'Glutes_Lift', tab: 'body', group: 'Glutes', bodies: F, ends: ['Natural', 'Lifted'], rand: 0.5 },
-  { key: 'arms', label: 'Arms', min: -1, max: 1, neg: 'Arms_Slim', pos: 'Arms_Thick', tab: 'body', group: 'Arms and legs', bodies: F, ends: ['Slim', 'Thick'], rand: 0.4 },
-  { key: 'thighs', label: 'Thighs', min: -1, max: 1, neg: 'Thighs_Slim', pos: 'Thighs_Thick', tab: 'body', group: 'Arms and legs', bodies: F, ends: ['Slim', 'Thick'], rand: 0.4 },
-  { key: 'calves', label: 'Calves', min: -1, max: 1, neg: 'Calves_Slim', pos: 'Calves_Thick', tab: 'body', group: 'Arms and legs', bodies: F, ends: ['Slim', 'Thick'], rand: 0.4 },
+  { key: 'glute_lift', label: 'Lift', min: 0, max: 1, pos: 'Glutes_Lift', tab: 'body', group: 'Glutes', ends: ['Natural', 'Lifted'], rand: 0.5 },
+  { key: 'arms', label: 'Arms', min: -1, max: 1, neg: 'Arms_Slim', pos: 'Arms_Thick', tab: 'body', group: 'Arms and legs', ends: ['Slim', 'Thick'], rand: 0.4 },
+  { key: 'thighs', label: 'Thighs', min: -1, max: 1, neg: 'Thighs_Slim', pos: 'Thighs_Thick', tab: 'body', group: 'Arms and legs', ends: ['Slim', 'Thick'], rand: 0.4 },
+  { key: 'calves', label: 'Calves', min: -1, max: 1, neg: 'Calves_Slim', pos: 'Calves_Thick', tab: 'body', group: 'Arms and legs', ends: ['Slim', 'Thick'], rand: 0.4 },
   { key: 'face', label: 'Face', min: 0, max: 1, pos: 'Face_Full', tab: 'face', group: 'Face', ends: ['Lean', 'Full'] },
   { key: 'jaw', label: 'Jaw', min: 0, max: 1, pos: 'Jaw_Wide', tab: 'face', group: 'Face', ends: ['Soft', 'Wide'] },
   { key: 'nose', label: 'Nose', min: 0, max: 1, pos: 'Nose_Large', tab: 'face', group: 'Face', ends: ['Small', 'Large'] },
@@ -108,7 +108,7 @@ export function defaultAppearance(body: Body = 'male'): Appearance {
     skin: '#C68E6E',
     eyes: '#5A3D26',
     brows: null,
-    hair: { style: body === 'male' ? 'CrewCut' : 'Lob', color: '#2B1E14' },
+    hair: { style: body === 'male' ? 'Short' : 'Lob', color: '#2B1E14' },
     facial: { style: 'none', color: '#2B1E14' },
   };
 }

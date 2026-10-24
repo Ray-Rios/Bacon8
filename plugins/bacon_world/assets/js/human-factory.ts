@@ -28,6 +28,8 @@ import {
 } from './wardrobe';
 
 export const HUMANS_BASE = '/models/Humans';
+/** The skeleton creatures' animation packs (the old male skeleton's). */
+export const MOBS_ANIMS = '/models/Mobs/Anims';
 
 /**
  * The shipped animation packs' forearm twist bones are wrong in many clips (every
@@ -176,13 +178,16 @@ export class HumanFactory {
    * The B8 animation packs for a body (Core: locomotion, strafes, reactions, social;
    * Combat: every weapon stance and swing), loaded once and shared by everyone with
    * that body. A missing pack resolves to no clips: the body's own 20 stand in.
+   * 'Skeleton' is the skeleton creatures' copy (/models/Mobs/Anims): they are built on the old
+   * (2026-10-21) male skeleton, whose bone rest poses the new male's packs don't match.
    */
-  loadAnimPacks(body: Body | 'Male' | 'Female'): Promise<THREE.AnimationClip[]> {
-    const tag = body === 'male' || body === 'Male' ? 'Male' : 'Female';
+  loadAnimPacks(body: Body | 'Male' | 'Female' | 'Skeleton'): Promise<THREE.AnimationClip[]> {
+    const tag = body === 'Skeleton' ? 'Skeleton' : body === 'male' || body === 'Male' ? 'Male' : 'Female';
+    const dir = tag === 'Skeleton' ? MOBS_ANIMS : `${HUMANS_BASE}/Anims`;
     let p = this.packs.get(tag);
     if (!p) {
       const one = (pack: string) =>
-        this.load(`${HUMANS_BASE}/Anims/B8_${tag}_Anims_${pack}.glb`)
+        this.load(`${dir}/B8_${tag}_Anims_${pack}.glb`)
           .then((g: any) => fixForearmTwist(stripTranslations((g.animations || []) as THREE.AnimationClip[])))
           .catch((err) => {
             console.warn('[humans] animation pack failed to load', tag, pack, err);

@@ -18,7 +18,7 @@ Related documents:
   deployment.
 - Facts dated. The owner's decisions are recorded, not re-argued.
 
-Last update: **2026-10-23**.
+Last update: **2026-10-24**.
 
 ---
 
@@ -43,7 +43,7 @@ It is also the template other Bacon8 games copy.
 All of it uses our own or CC0 art. Every 3D asset is built by scripts in the game repository,
 so it can be rebuilt and changed.
 
-## 2. State on 2026-10-23
+## 2. State on 2026-10-24
 
 **Deployed (through `1eb78e8`, 2026-10-21):**
 
@@ -63,7 +63,16 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-23 (eighth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23h.md`):
+**Delivered 2026-10-24, uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24a.md`): **the male
+rebuilt on MakeHuman**, like her (section 5): body and skin (the legs' red calmed), wardrobe
+shells and MakeHuman garments, the stage-G body sliders except the chest shaping, 18 MakeHuman
+hair styles (his old style ids alias to them), his six facial hair styles refit to the new
+head, and his animation packs rebuilt on his rig (no fanned fingers). The skeleton creatures
+keep the old male packs (`Mobs/Anims`), since they're built on the old skeleton. The site's
+Credits page names MakeHuman (a migration). Models are staged, not synced: they ship together
+with the code.
+
+**Delivered 2026-10-23 (eighth), committed** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23h.md`):
 the sun and moon now sit in the sky (far along their direction from the camera, not 55 units
 from the plaza); the site's navbar/taskbar toggle works (state on `<html>`, which LiveView
 doesn't patch); moved windows come back where they were after logging in again (they were
@@ -183,14 +192,14 @@ The first 2026-10-23 delivery:
 **On the models volume (gitignored; synced only when the owner says):**
 
 - `Humans/` holds:
-  - `Male.glb` (v2), and `Female.glb` (MakeHuman v3, 2026-10-23), each with its `.json`;
-  - `Wardrobe/`: the female's 36 packed design textures (`.webp`) and `icons/` for the 20
-    wearable items;
+  - `Male.glb` (MakeHuman, staged 2026-10-24) and `Female.glb` (MakeHuman v3, 2026-10-23), each with its `.json`;
+  - `Wardrobe/`: the female's 36 packed design textures (`.webp`), `Wardrobe/Male/` his 10, and
+    `icons/` for the 20 wearable items;
   - `Anims/`: the four animation packs (core and combat for each body, 143 clips a body);
-  - `Hair/`: 23 male hair and 6 facial hair styles, 31 female hair styles, icons, `hair_manifest.json`;
+  - `Hair/`: 18 male hair and 6 facial hair styles, 31 female hair styles, icons, `hair_manifest.json`;
   - `README.txt` and `CREDITS.md`.
 - `Weapons/B8_Weapons.glb` (43 weapons, shields and tools).
-- `Mobs/B8_Skeleton.glb`.
+- `Mobs/B8_Skeleton.glb`, and `Mobs/Anims/` (the old male packs it plays).
 - `World/B8_Props.glb` (90 props) and `B8_BuildKit.glb` (36 building pieces); `World/Textures/`:
   24 surface texture sets (`<set>_c/_n/_r.webp`) and `CREDITS.md`.
 - Every `.glb` has a `.glb.gz`. The local copies in `C:\Bacon8\priv\static\models` are current.
@@ -278,12 +287,12 @@ Characters are the hub's `game_characters` (games DB):
   keep looks saved with retired styles working. A style's scalp decal (`decal` extras) gets a
   polygon offset, and alpha-tested cards get alpha-to-coverage.
 - **Morphs.** Every mesh with morph targets (body, garments, hair, lashes, brows) takes the
-  same weights from the look's sliders (13 on the male; 28 on the female since stage G). A morph that moves joints (`Shoulders_Broad`)
+  same weights from the look's sliders (22 on the male since 2026-10-24; 28 on the female since stage G). A morph that moves joints (`Shoulders_Broad`)
   moves the bones too (`joint_offsets` in the manifest).
-- **Wardrobe** (female v3). Worn items come from the gear (`under_top`, `under_bottom`,
+- **Wardrobe** (both bodies). Worn items come from the gear (`under_top`, `under_bottom`,
   `chest`, `legs`, `feet`), not the look. Each is a garment mesh plus a design: a packed
-  texture (shade, trim, accent, cut-out) tinted with the item's three colours. The male shows
-  his built-in shorts for underwear until he gets the same treatment.
+  texture (shade, trim, accent, cut-out) tinted with the item's three colours (his designs in
+  `Wardrobe/Male`).
 - **After the animation** (`postAnimate`): the posture correction and relaxed fingers on
   empty hands. Each bone starts from what the animation left (a bone no clip keyed this frame
   still holds last frame's output, which once compounded 7 degrees a frame until she stood on
@@ -294,8 +303,14 @@ Characters are the hub's `game_characters` (games DB):
 **Built by** `library/pipeline/scripts` (Blender's Python module, headless). Its
 README has every script, source and run order.
 
-- **Male**: v2 (`build_humans2.py`) on Blender Studio's CC0 base mesh, with procedural hair
-  (`build_hair.py`). *He is next for the MakeHuman treatment.*
+- **Male** (2026-10-24), the same pipeline with `B8_BODY=Male`: `mhf_core.py` (look `m2`,
+  1.78 m; Toigo's light male skin, its legs' colour calmed; `eyebrow008`; Mindfront lashes 01;
+  the chest keys are his pectorals), `mhm_build.py` (his wardrobe shells and MakeHuman
+  garments: the crude male tee, fisherman sweater, cloth shoes, ankle boots), `mhf_morphs.py`
+  (waist, limbs and glute lift; not the chest shaping), `mhf_anims.py` (his packs),
+  `mhf_syshair.py` (18 styles) and `mhm_facial.py` (his six facial hair styles, grown by
+  `build_hair.py` on the old male, refit to the new head). The old v2 male (`build_humans2.py`)
+  lives on only as the skeleton creatures' rig.
 - **Female** (2026-10-22), built by `mhf_core.py`, `mhf_finish.py`, `mhf_anims.py` and
   `mhf_syshair.py`:
   - body: MakeHuman's `hm08` CC0 body and targets, look `v2`;
@@ -388,26 +403,29 @@ In rough priority order.
   needs a slot rule (a dress replaces top and bottom) in `appearance.ts`/`.ex` and
   `human-factory.ts`.
 
-**The male (started 2026-10-23):** rebuild him on MakeHuman the way she was built, so both
-bodies share one pipeline. The plan:
+**The male (rebuilt on MakeHuman 2026-10-24; the plan, all done):**
 
 1. **The look** (done): `mh_female.LOOKS["m2"]`, approved by the owner as is (1.78 m,
    athletic, angular face).
-2. **Body** (stage A done 2026-10-23): `B8_BODY=Male mhf_core.py` builds his skin (Toigo's light
+2. **Body** (done): `B8_BODY=Male mhf_core.py` builds his skin (Toigo's light
    male skin, Skins 02 pack, greyed for tinting), eyes, brows (`eyebrow008`), Mindfront lashes
    01, the B8 skeleton and weights, and the 13 morph keys (the chest keys are his pectorals).
-   Output `library/pipeline/out/mh/male_core.blend`. Next: his finish stage (regions, AO,
-   export) and wardrobe.
-3. **Wardrobe** (stage F for him): underwear (Underwear 01 pack) and cloth armour as
-   body-derived shells, like hers, so items fit him too.
-4. **Hair**: MakeHuman's male styles (short01-04, afro01, culturalibre_hair_02/05) with scalp
-   decals; facial hair kept from his current cards until there's a CC0 set.
-5. **Animation packs** rebuilt on his rig, with `b8_gripfit.py` rerun for his weapon grips.
+   Output `library/pipeline/out/mh/male_core.blend`. His skin paints red knees and shins:
+   `calm=0.7` takes most of the colour out of the legs' and seat's detail.
+3. **Wardrobe** (done, `mhm_build.py`): underwear bottoms (classic, boyshort), tank, shorts and
+   trousers as body-derived shells; the MakeHuman tee, sweater, shoes and boots. Then
+   `mhf_morphs.py` adds the waist, limb and glute-lift keys (body and garments).
+4. **Hair** (done): 18 MakeHuman styles with scalp decals (`B8_BODY=Male mhf_syshair.py`).
+   His old card styles alias to the closest (CrewCut to Short, Buzz to Crop, and so on). The
+   six facial hair styles are his old ones refit to the new head (`mhm_facial.py`).
+5. **Animation packs** (done, `B8_BODY=Male mhf_anims.py`): the same clips and grips as hers
+   (the grips are in the clip specs, so `b8_gripfit.py` didn't need a rerun; they look right).
    **No A-pose fanned fingers** (the owner, 2026-10-23): every clip must key the fingers (the
    library bakes do; authored clips set a finger preset), and the client's relaxed hand covers
    empty hands.
-6. **Client**: `Male.json` in the same shape as hers, the body sliders for him, and existing
-   male characters carried over.
+6. **Client** (done): `Male.json` in her shape, his sliders (`appearance.ts`/`.ex`: only the
+   chest shaping stays hers), the default male hair is `Short`, and existing male characters
+   carry over through the hair aliases (their shape values use the same keys).
 
 Sources (CC0) are in `C:\Bacon8\library\makehuman` (gitignored): the MPFB2 repository's data,
 MakeHuman's system assets (the Ubuntu `makehuman-data` package and the community
@@ -419,18 +437,13 @@ usable for us; the light Toigo skins are what's used.
 
 - The skill tree itself (Q E F Z X), armour beyond cloth, more merchants, and groups with
   shared loot.
-- **The male's weapon clips** are the old ones (two-handed, spear, quarterstaff idle and dagger
-  guards out of proportion; no `QStaff_Sweep`, which falls back to a sword swing). His rebuild
-  should rerun `b8_gripfit.py` on his rig.
-- **The male's animation packs** still carry the bad forearm-twist tracks (the client repairs
-  them on load) and the old dagger guard: his source blend (`b8_humans2.blend`) isn't on the
-  development PC. Rebuild them with the male's MakeHuman rebuild.
-- **The male has none of the new body sliders** (female-only in `appearance.ts` and
-  `Appearance`); he gets them with the same treatment.
+- **The skeleton creatures** play the old male packs (`Mobs/Anims/B8_Skeleton_Anims_*`, with
+  the old forearm-twist tracks the client repairs and no `QStaff_Sweep`). Rebuilding
+  `B8_Skeleton.glb` on the MakeHuman male rig would let them share his packs.
+- The male's six facial hair styles are refits of the old procedural cards; MakeHuman has no
+  CC0 beard set yet.
 - The female's **hair** GLBs weren't re-fitted for the joint offsets (only `Shoulders_Broad`
   moves joints, so hair is unaffected for now).
-- **The male**: underwear on him is interim (his built-in shorts, tinted; nothing for the
-  top). He needs the v3 wardrobe after the MakeHuman rebuild.
 - Existing characters lose their old creator outfit and get the linen set and 1 gold at their
   next login.
 - Throw Stone's spell rows stay in the games DB (retired in code). A migration to delete them

@@ -75,9 +75,9 @@ model has been removed wears the first model still offered.
 The shipped models are the **Bacon8 humans**, `Humans/Male.glb` and `Humans/Female.glb`.
 They share the B8 skeleton and 20 CC0 clips from Quaternius' Universal Animation Library.
 
-- The male is built on Blender Studio's CC0 base mesh (v2).
-- The female is built on MakeHuman's CC0 body (2026-10-22). Her clothes, hair, lashes and
-  brows are MakeHuman CC0 assets, fitted to her.
+- Both are built on MakeHuman's CC0 body: the female 2026-10-22, the male 2026-10-24. Their
+  clothes, hair, lashes and brows are MakeHuman CC0 assets fitted to each; underwear, tank,
+  shorts and trousers are shells made from each body.
 
 The asset pipeline builds them all with the scripts in `library/pipeline/scripts` (see its
 README), along with the animation packs, the weapons (shared grip on the `weapon_r` /
@@ -120,11 +120,11 @@ A character's look lives in its `settings["appearance"]`. It holds:
 
 - body type and height;
 - body and face sliders (`appearance.ts` `SHAPES`): build, muscle, shoulders, belly, hips,
-  glutes and three face sliders for both bodies; for the female also Black Desert-style
-  chest (size, height, spacing, shape), glute lift, waist, arms, thighs and calves. The
+  glutes, chest size (his pectorals), glute lift, waist, arms, thighs, calves and three face
+  sliders for both bodies; for the female also the chest's height, spacing and shape. The
   creator shows them in sections (Body, Chest, Glutes, Arms and legs);
 - skin, eyes and brows;
-- a hair style (23 male, 31 female) and, for the male, one of 6 facial hair.
+- a hair style (18 male, 31 female) and, for the male, one of 6 facial hair.
 
 Clothes are not part of the look (since 2026-10-23): they are items (below).
 
@@ -286,11 +286,11 @@ These are gitignored, and the owner syncs them to the models volume with
 
 | Folder | What it holds |
 |---|---|
-| `Humans/` | `Male.glb` and `Female.glb` (meshopt-compressed), `Male.json` and `Female.json`, `README.txt`, `CREDITS.md` |
-| `Humans/Hair/` | 23 male hair, 6 facial hair and 31 female hair GLBs, `icons/`, `hair_manifest.json` (with `aliases`) |
+| `Humans/` | `Male.glb` and `Female.glb` (meshopt-compressed), `Male.json` and `Female.json`, `Wardrobe/` (hers) and `Wardrobe/Male/` design textures, `README.txt`, `CREDITS.md` |
+| `Humans/Hair/` | 18 male hair, 6 facial hair and 31 female hair GLBs, `icons/`, `hair_manifest.json` (with `aliases`) |
 | `Humans/Anims/` | the four animation packs |
 | `Weapons/` | `B8_Weapons.glb` (43 weapons, shields and tools in bone space) and `icons/` |
-| `Mobs/` | `B8_Skeleton.glb`, the skeleton creature, rigid on the B8 male armature |
+| `Mobs/` | `B8_Skeleton.glb`, the skeleton creature, rigid on the old (v2) B8 male armature, and `Anims/`, that armature's packs |
 | `World/` | `B8_Props.glb` and `B8_BuildKit.glb`; `Textures/`: surface texture sets (`<set>_c/_n/_r.webp`) and `CREDITS.md` |
 
 Without them, the site falls back to whatever is on the volume.

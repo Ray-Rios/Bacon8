@@ -50,9 +50,12 @@ test('normalise clamps, drops junk and falls back per field', () => {
 test('body fallbacks and model paths', () => {
   assert.equal(normalizeAppearance(null, 'female').body, 'female');
   assert.equal(normalizeAppearance({ body: 'robot' }).body, 'male');
-  assert.equal(normalizeAppearance({ body: 'male', shape: { chest: 1 } }).shape.chest, 0);
-  // the female-only sliders (chest, glutes, limbs) stay 0 on the male and are kept on her
-  assert.equal(normalizeAppearance({ body: 'male', shape: { arms: 1, chest_shape: -1 } }).shape.arms, 0);
+  // the male has the chest size (his pectorals), waist, glute lift and limbs; the chest's
+  // shaping sliders are hers only and stay 0 on him
+  assert.equal(normalizeAppearance({ body: 'male', shape: { chest: 1 } }).shape.chest, 1);
+  assert.equal(normalizeAppearance({ body: 'male', shape: { arms: 1, chest_shape: -1 } }).shape.arms, 1);
+  assert.equal(normalizeAppearance({ body: 'male', shape: { arms: 1, chest_shape: -1 } }).shape.chest_shape, 0);
+  assert.equal(morphWeights(normalizeAppearance({ body: 'male', shape: { waist: -0.5 } })).Waist_Narrow, 0.5);
   assert.equal(normalizeAppearance({ body: 'female', shape: { arms: 0.4, chest_shape: -3 } }).shape.chest_shape, -1);
   assert.equal(morphWeights(normalizeAppearance({ body: 'female', shape: { chest_shape: -0.5 } })).Chest_Round, 0.5);
   assert.equal(bodyFromModelPath('/models/Humans/Female.glb'), 'female');
@@ -73,7 +76,8 @@ test('morph weights split bipolar sliders', () => {
   assert.equal(w.Breasts_Small, 0);
   assert.equal(w.Muscle, 0.2);
   const m = morphWeights(defaultAppearance('male'));
-  assert.equal(m.Breasts_Large, undefined, 'the bust slider is female only');
+  assert.equal(m.Breasts_Large, 0, 'his chest slider drives the pectorals');
+  assert.equal(m.Chest_Perky, undefined, 'the chest shaping sliders are hers only');
 });
 
 test('random looks are valid and reproducible', () => {

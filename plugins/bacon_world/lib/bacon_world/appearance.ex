@@ -19,7 +19,7 @@ defmodule BaconWorld.Appearance do
         "v" => 1, "body" => "male" | "female", "height" => 0.92..1.08,
         "shape" => %{"weight" => -1..1, "muscle" => 0..1, ...},
         "skin" => "#C68E6E", "eyes" => "#5A3D26", "brows" => nil | "#RRGGBB",
-        "hair" => %{"style" => "CrewCut" | "none", "color" => "#2B1E14"},
+        "hair" => %{"style" => "Short" | "none", "color" => "#2B1E14"},
         "facial" => %{"style" => "none", "color" => "#2B1E14"}
       }
   """
@@ -74,7 +74,7 @@ defmodule BaconWorld.Appearance do
       "skin" => "#C68E6E",
       "eyes" => "#5A3D26",
       "brows" => nil,
-      "hair" => %{"style" => if(body == "male", do: "CrewCut", else: "Lob"), "color" => "#2B1E14"},
+      "hair" => %{"style" => if(body == "male", do: "Short", else: "Lob"), "color" => "#2B1E14"},
       "facial" => %{"style" => "none", "color" => "#2B1E14"}
     }
   end
@@ -149,10 +149,11 @@ defmodule BaconWorld.Appearance do
     |> fix_body()
   end
 
-  # Sliders the male body has no morphs for yet (the chest and the stage-G ones).
-  @female_only ~w(chest waist chest_height chest_spacing chest_shape glute_lift arms thighs calves)
+  # Sliders the male body has no morphs for: the chest's shaping (his chest size is the
+  # pectorals; the waist, glute lift and limb sliders are his too since the 2026-10-24 rebuild).
+  @female_only ~w(chest_height chest_spacing chest_shape)
 
-  # The chest sliders are for the female body; facial hair for the male.
+  # The chest shaping sliders are for the female body; facial hair for the male.
   defp fix_body(%{"body" => "male"} = look),
     do: update_in(look, ["shape"], &Map.merge(&1, Map.new(@female_only, fn k -> {k, 0.0} end)))
 

@@ -69,8 +69,8 @@ defmodule BaconWorld.Items do
   ]
 
   # What can be worn. Underwear: six sets (top and bottom are separate items), the
-  # linen one given to every character. The male body draws underwear bottoms with
-  # his shorts until he gets the made-from-the-body garments too.
+  # linen one given to every character. The male (MakeHuman, 2026-10-23) wears no top; his
+  # bottoms are his own Under_Bottom shell in briefs or boxer briefs (@male_bottom).
   @under [
     {"linen_bikini", "Linen Bikini", {"classic", "classic"}, {"#EAE0C8", "#D2C3A3", "#D2C3A3"}, 20, {"Top", "Bottom"}},
     {"athletic", "Athletic", {"sport", "boyshort"}, {"#2E3138", "#1F8A8A", "#E7F1FD"}, 60, {"Top", "Shorts"}},
@@ -80,6 +80,9 @@ defmodule BaconWorld.Items do
     {"emerald", "Emerald", {"longline", "highwaist"}, {"#1F6B4A", "#D6A92B", "#D6A92B"}, 120, {"Longline Top", "High-Waist Bottom"}}
   ]
   @band_tops ~w(sport bandeau longline)
+  # the male's cut for each of her bottom designs
+  @male_bottom %{"classic" => "classic", "lace" => "classic", "boyshort" => "boyshort", "highcut" => "classic",
+                 "string" => "classic", "highwaist" => "boyshort"}
 
   @underwear Enum.flat_map(@under, fn {id, name, {top, bottom}, {main, trim, accent}, value, {tn, bn}} ->
                colors = %{"main" => main, "trim" => trim, "accent" => accent}
@@ -89,11 +92,11 @@ defmodule BaconWorld.Items do
                  %{id: "#{id}_top", name: "#{name} #{tn}", kind: "armor", slots: ["under_top"], value: value, colors: colors,
                    wear: %{"female" => %{"garment" => top_garment, "design" => top}, "male" => nil}},
                  %{id: "#{id}_bottom", name: "#{name} #{bn}", kind: "armor", slots: ["under_bottom"], value: value, colors: colors,
-                   wear: %{"female" => %{"garment" => "Under_Bottom", "design" => bottom}, "male" => %{"garment" => "Bottom_Shorts"}}}
+                   wear: %{"female" => %{"garment" => "Under_Bottom", "design" => bottom}, "male" => %{"garment" => "Under_Bottom", "design" => @male_bottom[bottom]}}}
                ]
              end)
 
-  # Cloth armour: the same garment ids on both bodies.
+  # Cloth armour: the same garments and designs on both bodies (each body has its own textures).
   @cloth [
     %{id: "cloth_tunic", name: "Cloth Tunic", slots: ["chest"], ac: 2, value: 40, garment: "Top_Tee", colors: %{"main" => "#8A6A4A", "trim" => "#5C4630"}},
     %{id: "blue_dyed_tunic", name: "Blue Dyed Tunic", slots: ["chest"], ac: 2, value: 60, garment: "Top_Tee", colors: %{"main" => "#247DF1", "trim" => "#1B5FBA"}},
@@ -111,7 +114,7 @@ defmodule BaconWorld.Items do
 
                  c
                  |> Map.drop([:garment, :design])
-                 |> Map.merge(%{kind: "armor", wear: %{"female" => female, "male" => %{"garment" => c.garment}}})
+                 |> Map.merge(%{kind: "armor", wear: %{"female" => female, "male" => female}})
                end)
 
   @wear_slots ~w(under_top under_bottom chest legs feet)
