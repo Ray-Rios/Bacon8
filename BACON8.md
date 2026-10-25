@@ -63,15 +63,18 @@ On 2026-10-25:
 
 **Next session, start here:**
 
-1. **Pages and blog**: read `docs/pages-blog-builder.md`. The tests exist now. Next: ask the owner
-   its three open questions, settle the permissions question it records (GMs and editors can edit in
-   place but not reach `/admin/pages`), then collapse the four editing surfaces into one builder.
-   Have the path-handling change (`Content.InlineMedia`, `Uploads`) reviewed by someone else.
-2. **Chat, phase 3** (`docs/chat-channels-plugin.md`): delete the dead code, split `ChatLive`
-   (3,100 lines), and add the page that redeems an invite code. Phase 4 (moving the tables) is
-   still the owner's call.
-3. `handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md` is half done: finish RaysSpaceSim's half
-   (compile, verify, commit in that repo).
+1. **Done 2026-10-25 (`ee57a5e`)**: GMs and editors reach `/admin/pages` and `/admin/blog-management` only.
+   `Bacon8.Permissions` maps roles to areas; pages mount with `{UserAuth, {:require_area, :content}}`;
+   sidebar/navbar filter by area (`admin_access_test.exs` guards every other admin route). The block
+   editor now has one docked sticky toolbar (many columns no longer squeeze it).
+2. **Pages and blog**: read `docs/pages-blog-builder.md`. Ask the owner: may games/plugins post to the blog?
+   Consider capping columns (4-6) / stacking on narrow widths. Then collapse the four editing surfaces into
+   one builder. Have the path-handling change (`Content.InlineMedia`, `Uploads`) reviewed by someone else.
+3. **Chat, phase 4 (owner said yes: chat must be self-contained)**: move the chat tables out of the core
+   baseline migration into idempotent plugin migrations, move `users.channel_allowance/channel_order` to plugin
+   storage (copy before dropping), drop `user_notifications.channel_id`. Back up first. Phase 3: delete dead
+   code, split `ChatLive`, invite-redeem page.
+   RaysSpaceSim audio compiles and is committed (`9cc6ec3`) but has not been played in the editor or cooked.
 4. The standing rules are in `BACON_WORLD.md` §6 and the owner's notes: build and test only in
    Docker; commit with explicit file lists; **the deploy builds from the working tree, so check
    `git status` for another session's uncommitted work before deploying**.
