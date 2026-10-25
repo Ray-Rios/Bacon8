@@ -139,10 +139,23 @@ export function describe(id: string): string[] {
  *    axe's bit faced backward). Double-edged and round heads (swords, mace, morning star,
  *    club) look the same either way. The two-handed swings were refitted to +Z, so the
  *    two-handers need none. Add any new one-hander here when it joins the catalogue.
+ *  - `off`: **two-handers only**: where the left hand grips, metres along the haft (+Y,
+ *    toward the head) from the right hand's grip. human-factory.ts `twoHandGrip` puts the
+ *    left hand there every frame (2026-10-24: taking it from the clips put the male's left
+ *    hand off the end of the axe and at his hip). Every new two-hander needs one: keep it on
+ *    the haft (the file's extents, less `y`).
  */
-export const HOLD: Record<string, { y?: number; roll?: number }> = {
-  BattleAxe: { y: 0.35 },
-  Maul: { y: 0.35 },
+export const HOLD: Record<string, { y?: number; roll?: number; off?: number }> = {
+  // haft -0.20..0.70 from the hand, head beyond: left hand a third of the way up
+  BattleAxe: { y: 0.35, off: 0.32 },
+  Maul: { y: 0.35, off: 0.32 },
+  // the hilt runs -0.25..0.11: left hand below the right, at the pommel end
+  Greatsword: { off: -0.13 },
+  // long shafts held in their lower half, the left hand up the shaft
+  Spear: { off: 0.45 },
+  Halberd: { off: 0.42 },
+  // the staff is held at its middle, hands half a metre apart
+  Quarterstaff: { y: 0.25, off: 0.5 },
   Scimitar: { roll: 180 },
   Cutlass: { roll: 180 },
   Axe: { roll: 180 },
@@ -221,4 +234,6 @@ export async function holdItem(models: WeaponModels, root: THREE.Object3D, hand:
   if (bone.userData.b8Wanted !== token) return;
   bone.children.filter((c) => c.userData.b8Weapon).forEach((c) => bone.remove(c));
   if (fresh) bone.add(fresh);
+  // the off hand's grip on a two-hander (HOLD.off), read by human-factory.ts twoHandGrip
+  if (hand === 'main') bone.userData.b8OffGrip = want ? HOLD[want]?.off ?? null : null;
 }

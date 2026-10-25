@@ -49,7 +49,9 @@ export interface MobView {
 }
 
 export interface MobEvent {
-  t: 'spawn' | 'aggro' | 'attack' | 'damaged' | 'died' | 'gone' | 'corpse' | 'cast';
+  t: 'spawn' | 'aggro' | 'attack' | 'damaged' | 'died' | 'gone' | 'corpse' | 'cast' | 'rooted';
+  /** rooted: for how long (ms). */
+  ms?: number;
   /** attack and cast: what the creature does ("bite", "claw", "tail", "breath"). */
   move?: string;
   id?: string;

@@ -16,6 +16,8 @@ export interface NpcView {
   id: string;
   name: string;
   title?: string;
+  /** "trader" (a shop) or "stable" (the stablemaster: stable-ui.ts). */
+  kind?: string;
   x: number;
   z: number;
   face_x: number;

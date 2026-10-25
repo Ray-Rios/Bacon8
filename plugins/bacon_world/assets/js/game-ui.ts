@@ -144,6 +144,9 @@ export class GameUI {
   private lootItems: LootItem[] = [];
   private held: InvItem | null = null; // the item on the cursor
   private info: PlayerInfo | null = null;
+  private hands: { left: string | null; right: string | null } = { left: null, right: null };
+  // the Q..X slots, drawn by the skill bars (skills-ui.ts) once the skill tree is up
+  private skillSlots: ((key: string) => HTMLElement) | null = null;
   private msgTimer: ReturnType<typeof setTimeout> | null = null;
   private onMouseMove = (e: MouseEvent) => this.follow(e);
 
@@ -228,7 +231,18 @@ export class GameUI {
     this.renderHotbar({ left, right });
   }
 
+  /** Who draws the Q E F Z X slots (skills-ui.ts). */
+  setSkillSlots(fn: ((key: string) => HTMLElement) | null) {
+    this.skillSlots = fn;
+    this.refreshHotbar();
+  }
+
+  refreshHotbar() {
+    this.renderHotbar(this.hands);
+  }
+
   private renderHotbar(hands: { left: string | null; right: string | null }) {
+    this.hands = hands;
     this.hideTip();
     const hand = (key: string, id: string | null, slot: string, label: string) => {
       const icon = id ? iconUrl(id) : null;
@@ -240,6 +254,7 @@ export class GameUI {
     };
     const twoHanded = item(hands.right)?.hands === 2;
     const specials = SPECIAL_KEYS.map((k) => {
+      if (this.skillSlots) return this.skillSlots(k);
       const el = h('div', { class: 's off', 'data-hot': k }, h('span', { class: 'lk' }, '🔒'), h('span', { class: 'k' }, k));
       this.tipFor(el, () => ['Special attack', 'Earned through the skill tree as you level up.']);
       return el;

@@ -35,6 +35,7 @@ import { BODY_MODEL, isHumanModel, randomAppearance } from './appearance';
 import { Nameplates, playerColor, plateHeight } from './nameplates';
 import { setAssetVersions } from './asset-url';
 import { GameWorld } from './game-world';
+import { SkillsWorld } from './skills-world';
 import type { GameUI } from './game-ui';
 import type { MobsView } from './mobs-view';
 import type { NpcsView } from './npcs-view';
@@ -280,6 +281,11 @@ export const WorldCharacterUIScene = {
       if (!payload?.character_id || payload.character_id === this.state?.currentPlayer?.character_id) return;
       void this.mounts?.set(payload.character_id, payload.mount || null);
     });
+
+    // Casting (BaconWorldWeb.SkillEvents): how ours went, everyone's for the look, heals.
+    this.handleEvent('cast_result', (payload: any) => this.onCastResult(payload));
+    this.handleEvent('zone_cast', (payload: any) => this.onZoneCast(payload));
+    this.handleEvent('healed', (payload: any) => this.combatLog(`${payload.from} heals you for ${payload.amount} hit points.`, '#7DFF8F'));
 
     // The server took you off your mount (you died, or left the world).
     this.handleEvent('mount_changed', (payload: any) => {
@@ -881,6 +887,7 @@ export const WorldCharacterUIScene = {
     this.audio?.preload();
     this.initGame();
     this.initMounts();
+    this.initSkills();
 
     // Start day/night sky system
     if (!this.skySystem && this.ambientLight) {
@@ -1372,6 +1379,14 @@ export const WorldCharacterUIScene = {
     if (this.isDead) return;
     // Esc closes the inventory or loot window (or drops what the cursor holds) first.
     if (reason === 'key' && this.gameUI?.closeTop()) return;
+    if (reason === 'key' && this.stable?.isOpen) {
+      this.stable.close();
+      return;
+    }
+    if (reason === 'key' && this.skillsUI?.isOpen) {
+      this.skillsUI.close();
+      return;
+    }
     if (reason === 'lock-lost') {
       this.openGameMenu();
       return;
@@ -1581,7 +1596,8 @@ export const WorldCharacterUIScene = {
       'Cursor free: <b class="text-slate-300">drag with the left button</b> to turn the camera · <b class="text-slate-300">hold right button</b> to steer · <b class="text-slate-300">right-click</b> a corpse to loot it, a merchant to trade',
       '<b class="text-slate-300">WASD</b> move · <b class="text-slate-300">Shift</b> sprint · <b class="text-slate-300">C</b> crouch · <b class="text-slate-300">Space</b> jump · <b class="text-slate-300">Wheel</b> zoom',
       '<b class="text-slate-300">I</b> inventory · <b class="text-slate-300">G</b> loot nearest corpse · <b class="text-slate-300">R</b> interact (trade) · <b class="text-slate-300">Tab</b> next target',
-      '<b class="text-slate-300">Q E F Z X</b> special attacks (earned in the skill tree) · <b class="text-slate-300">Enter</b> chat · <b class="text-slate-300">Esc</b> this menu',
+      '<b class="text-slate-300">K</b> skill tree · <b class="text-slate-300">Q E F Z X</b> skills · <b class="text-slate-300">1-0</b>, <b class="text-slate-300">Shift+1-0</b> spells · <b class="text-slate-300">M</b> mount (double-tap <b class="text-slate-300">Space</b> to fly)',
+      '<b class="text-slate-300">Enter</b> chat · <b class="text-slate-300">Esc</b> this menu',
     ].join('<br>');
     panel.appendChild(help);
 
@@ -1771,6 +1787,12 @@ export const WorldCharacterUIScene = {
       if (movementKeys.includes(event.code)) {
         event.stopImmediatePropagation();
       }
+      return;
+    }
+
+    // K: the skill tree; Q E F Z X: skills; 1-0, Shift+1-0: the spell bar (skills-world.ts)
+    if (!this.isGameMenuOpen() && !this.isDead && this.skillKey(event)) {
+      event.preventDefault();
       return;
     }
 
@@ -2272,6 +2294,7 @@ export const WorldCharacterUIScene = {
       this.syncCharacterAnimations();
       this.characterManager?.updateAnimations(deltaSeconds);
       this.tickMounts(deltaSeconds);
+      this.tickSkills(deltaSeconds);
       this.tickGame(deltaSeconds);
       this.updateNameplates();
       this.tickTargetRing();
@@ -2669,4 +2692,5 @@ export const WorldCharacterUIScene = {
 
   // Fighting, creatures, looting, the inventory and the windows (game-world.ts).
   ...GameWorld,
+  ...SkillsWorld,
 };

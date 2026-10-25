@@ -39,6 +39,9 @@ import { GlobalHooks } from "./global_hooks";
 import { ProfileSettings } from "./profile_settings";
 import { ColorPicker, OpacitySlider } from "./color_picker";
 import { AudioHook } from "./audio";
+import { GameCard } from "./game_card";
+// <b8-gem>: the Bacon8 Gem (the currency and shop icon), a custom element.
+import "./fire_gem";
 // LiveView hooks from installed plugins (generated before each build; BACON8.md §9).
 import { PluginHooks } from "./plugins.generated";
 
@@ -107,6 +110,7 @@ async function loadHeavyModulesAndConnect() {
       ColorPicker,
       OpacitySlider,
       AudioHook,
+      GameCard,
       // Copies the text of the element named by data-target (admin log panes).
       CopyText: {
         mounted(this: any) {
@@ -204,6 +208,7 @@ async function loadHeavyModulesAndConnect() {
       ColorPicker,
       OpacitySlider,
       AudioHook,
+      GameCard,
       AutoDismissFlash: (window as any)._AutoDismissFlash,
       MessageReactions: (window as any)._MessageReactions,
       MessageList: (window as any)._MessageList,

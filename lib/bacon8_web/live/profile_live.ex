@@ -633,7 +633,7 @@ defmodule Bacon8Web.ProfileLive do
                   <%!-- Pages from active plugins (BACON8.md §9), e.g. the store's orders and library --%>
                   <.link :for={item <- Bacon8.Plugins.profile_tabs(@current_user)} navigate={item.path}
                          class="px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white transition-colors">
-                    <%= item.icon %> <%= item.label %>
+                    <Bacon8Web.Components.Gem.icon icon={item.icon} /> <%= item.label %>
                   </.link>
                 </div>
               </div>

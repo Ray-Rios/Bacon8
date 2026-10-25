@@ -16,6 +16,13 @@ defmodule BaconStoreWeb.StoreComponents do
   def kind_icon("license_key"), do: "🔑"
   def kind_icon(_), do: "🛍️"
 
+  @doc "A product kind's icon on a page: the Gem (`<b8-gem>`, it floats and reacts) for Gem packs."
+  attr :kind, :string, required: true
+  attr :size, :integer, default: 20
+
+  def kind_glyph(%{kind: "gem_pack"} = assigns), do: ~H"<Bacon8Web.Components.Gem.gem size={@size} />"
+  def kind_glyph(assigns), do: ~H"{kind_icon(@kind)}"
+
   @doc "A product tile for the storefront grid."
   attr :product, Product, required: true
   attr :owned, :boolean, default: false
@@ -37,7 +44,7 @@ defmodule BaconStoreWeb.StoreComponents do
           class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
         />
         <div :if={!@cover} class="flex h-full w-full items-center justify-center text-5xl opacity-80">
-          {kind_icon(@product.kind)}
+          <.kind_glyph kind={@product.kind} size={84} />
         </div>
         <span :if={@product.badge} class="absolute left-3 top-3 rounded-full bg-blue-600 px-2.5 py-0.5 text-xs font-semibold text-white shadow">
           {@product.badge}
@@ -67,7 +74,7 @@ defmodule BaconStoreWeb.StoreComponents do
         {Store.format_price(@product.price_cents, @product.currency)}
       </span>
       <span :if={@product.price_cents && @product.price_gems} class="text-gray-600">or</span>
-      <span :if={@product.price_gems} class="font-semibold text-sky-300">{Store.format_gems(@product.price_gems)}</span>
+      <span :if={@product.price_gems} class="font-semibold text-sky-300"><Bacon8Web.Components.Gem.gems amount={@product.price_gems} /></span>
     </div>
     """
   end

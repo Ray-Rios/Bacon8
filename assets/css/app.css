@@ -1,5 +1,7 @@
 @import "quill/dist/quill.snow.css";
 @import "./block-editor.css";
+@import "./game_card.css";
+@import "./fire_gem.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

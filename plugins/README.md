@@ -12,6 +12,8 @@ plugins/<slug>/
   lib/<slug>_web/routes.ex      `use Bacon8.Plugin.Routes` - api / browser / admin blocks
   priv/games_repo/migrations/   your tables, prefixed <slug>_
   priv/repo/migrations/         (optional) site-database tables
+  priv/static/                  (optional) files served at /plugins/<slug>/... (pictures, video, fonts, JSON)
+  priv/static/card/             (games) your card on /games: front-1.webp, front-2.webp ..., back.webp, card.json
   assets/js/index.ts            `export const hooks = {...}`: your LiveView hooks
   test/test_helper.exs          required by mix (may be empty)
   test/                         runs with `mix test`
@@ -37,6 +39,9 @@ Rules of the road:
   profile, admin dashboard cards and API-toolbox actions (BACON8.md §9).
 - Need to react to the hub? Implement `hub_event/1` (channel updated/deleted, member
   removed - see `Bacon8.Plugin`). It's called for installed plugins, active or not.
+- A game? Give it a card on /games: pictures and `card.json` in `priv/static/card/`, and put the
+  hub's `Bacon8Web.GameCardAdmin` section on your admin page so an admin can change it
+  (BACON8.md §9, "A plugin's own files and its game card").
 - Shipping files you read at runtime? Put them in `priv/` and find them with
   `Bacon8.Plugins.priv_dir("<slug>")`.
 - Settings: read your own environment variables at runtime (a small `Config` module

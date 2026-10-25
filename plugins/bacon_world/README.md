@@ -30,7 +30,14 @@ renamed its tables, its game row and its `plugin_states` row.
 | `lib/bacon_world/mobs.ex`, `mobs/` | Creatures: spawns and kinds, the rules (`Brain`, pure), the zone process, its keeper |
 | `lib/bacon_world_web/game_events.ex` | PlayLive's fighting, looting and inventory events |
 | `lib/bacon_world/mounts.ex` | Mounts: the dragon drakes, who owns which (entitlement kind `bacon_world_mount`; admins ride all), their store items (`ensure_store_products/0`) |
-| `lib/bacon_world_web/mount_events.ex` | PlayLive's mount events (`mounts_fetch`, `mount_summon`, `mount_dismount`), the presence's `mount`, `zone_mount` |
+| `lib/bacon_world_web/mount_events.ex` | PlayLive's mount events (`mounts_fetch`, `mount_summon`, `mount_dismount`, `stable_open`, `stable_choose`), the presence's `mount`, `zone_mount` |
+| `lib/bacon_world/abilities.ex` | Every spell, skill and buff the tree can hold: costs, cast times, cooldowns, ranges, amounts |
+| `lib/bacon_world/skill_tree.ex`, `skill_tree_record.ex` | The tree (nodes, edges, start): the shipped default, the saved one (`bacon_world_skill_trees`), validation, reachability |
+| `lib/bacon_world/skills.ex` | A character's learned nodes and points, their bonuses (max HP/MP), learning, the Q-X and spell-bar hotbars |
+| `lib/bacon_world_web/skill_events.ex` | PlayLive's skill events: `skills_fetch`, `skill_learn`, `hotbar_set`, `cast` (cast time, interruption), `cast_cancel`, and the effects (Recall, heal, fireball, roots, spin) |
+| `lib/bacon_world_web/admin/skill_tree_live.ex` | The admin skill tree editor, /admin/bacon_world/skills |
+| `lib/bacon_world_web/admin/home_live.ex` | /admin/bacon_world: the game's card on /games (the hub's `GameCardAdmin` section) and links |
+| `priv/static/card/` | The card on /games: `front-1.webp` (Baconator), `back.webp` (his eye), `card.json` (texts) |
 | `lib/bacon_world/models.ex` | Which character models players can pick; the humans' slider and hair manifests (`human_assets/0`) |
 | `lib/bacon_world/appearance.ex` | `BaconWorld.Appearance`: normalises a look (never trusts the client) |
 | `lib/bacon_world/{zone,spell,character_spell}.ex` | Schemas for the plugin's own tables |
@@ -50,6 +57,11 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/mobs-view.ts` | Creatures on the client: models, weapons, smoothing, corpses; dragons (Baconator: moves, breath, roar) |
 | `assets/js/dragon-view.ts` | The B8 dragon: loading, a rig that picks its own locomotion (ground or air), one-shots, fire breath, the mounts' hue shift |
 | `assets/js/mounts.ts` | Mounts on the client: the dragon under its rider, the rider seated on the saddle bone |
+| `assets/js/stable-ui.ts` | The stable window (the stablemaster): choose which owned mount M summons |
+| `assets/js/skills-ui.ts`, `skills-world.ts` | The skill tree window (K), the spell bar (2x10, bottom right), Q-X skill slots, casting on the client |
+| `assets/js/skill-tree-canvas.ts` | The tree drawn in SVG (pan, zoom), icons, ability dragging; shared by the game and the editor |
+| `assets/js/skill-tree-editor.ts` | The `BaconWorldSkillTreeEditor` hook (the admin editor) |
+| `assets/js/spell-fx.ts` | Spell effects: casting glow, fireball, heal, roots, recall, spin |
 | `assets/js/npcs-view.ts` | Merchants on the client: built as humans, picked by proxy cylinders, face you while trading |
 | `assets/js/wardrobe.ts` | Gear slots, what each worn item puts on the body and hides, and the bone corrections (joint offsets, relaxed fingers) |
 | `assets/js/items.ts`, `nameplates.ts`, `asset-url.ts` | Weapon models and icons; names over heads; versioned model URLs |

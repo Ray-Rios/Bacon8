@@ -131,7 +131,7 @@ defmodule Bacon8Web.Components.Taskbar do
                 </.link>
                 <%!-- Links from active plugins (BACON8.md §9), e.g. the store --%>
                 <.link :for={item <- Bacon8.Plugins.nav_links(@current_user)} navigate={item.path} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
-                  <span><%= item.icon %></span>
+                  <span><Bacon8Web.Components.Gem.icon icon={item.icon} /></span>
                   <span class="text-sm"><%= item.label %></span>
                 </.link>
                 <.link navigate={~p"/blog"} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">

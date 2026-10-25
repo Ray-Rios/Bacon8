@@ -92,7 +92,7 @@ defmodule BaconStoreWeb.StoreLive do
           <div :if={@balance} class="flex items-center gap-5 rounded-xl border border-gray-800 bg-gray-950/80 px-5 py-3">
             <div>
               <div class="text-xs uppercase tracking-wider text-gray-500">Your Gems</div>
-              <div class="text-2xl font-semibold text-white">{Store.format_gems(@balance)}</div>
+              <div class="text-2xl font-semibold text-white"><Bacon8Web.Components.Gem.gems amount={@balance} /></div>
             </div>
             <div class="flex flex-col gap-1 border-l border-gray-800 pl-5 text-sm">
               <.link navigate={~p"/store/library"} class="text-blue-400 hover:underline">Library</.link>
@@ -104,7 +104,7 @@ defmodule BaconStoreWeb.StoreLive do
         <nav class="mb-8 flex flex-wrap gap-2 border-b border-gray-800 pb-4">
           <.tab label="All" active={@tab == "all"} to={~p"/store"} />
           <.tab :for={c <- @categories} label={c.name} active={@tab == c.slug} to={~p"/store?category=#{c.slug}"} />
-          <.tab :if={@packs != []} label="💎 Gems" active={@tab == "gems"} to={~p"/store?category=gems"} />
+          <.tab :if={@packs != []} label="Gems" gem active={@tab == "gems"} to={~p"/store?category=gems"} />
         </nav>
 
         <div :if={@tab != "gems"}>
@@ -116,14 +116,21 @@ defmodule BaconStoreWeb.StoreLive do
 
         <section :if={@tab in ["all", "gems"] and @packs != []} class={[@tab == "all" && @products != [] && "mt-14"]}>
           <div class="mb-5 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 class="text-2xl font-semibold text-white">Gems</h2>
+            <h2 class="flex items-center gap-3 text-2xl font-semibold text-white" data-gem-host>
+              <Bacon8Web.Components.Gem.gem size={44} /> Gems
+            </h2>
             <p class="text-sm text-gray-500">100 Gems = $1. Spend them on anything here, and in every game on the hub.</p>
           </div>
           <p :if={not @card_open?} class="mb-4 text-sm text-yellow-300">Card purchases open soon.</p>
           <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            <div :for={pack <- @packs} class="flex flex-col rounded-xl border border-gray-800 bg-gray-950/80 p-4">
+            <div
+              :for={{pack, i} <- Enum.with_index(@packs)}
+              class="flex flex-col rounded-xl border border-gray-800 bg-gray-950/80 p-4 transition hover:border-orange-500/60"
+              data-gem-host
+            >
               <div class="flex items-start justify-between">
-                <span class="text-3xl">💎</span>
+                <%!-- The bigger the pack, the bigger the gem. --%>
+                <Bacon8Web.Components.Gem.gem size={40 + min(i, 5) * 8} />
                 <span :if={pack.badge} class="rounded bg-blue-600/30 px-2 py-0.5 text-xs text-blue-200">{pack.badge}</span>
               </div>
               <div class="mt-3 text-lg font-semibold text-white">{Store.format_number(Store.gems_for(pack))}</div>
@@ -155,6 +162,7 @@ defmodule BaconStoreWeb.StoreLive do
   attr :label, :string, required: true
   attr :active, :boolean, default: false
   attr :to, :string, required: true
+  attr :gem, :boolean, default: false
 
   defp tab(assigns) do
     ~H"""
@@ -166,7 +174,7 @@ defmodule BaconStoreWeb.StoreLive do
         !@active && "bg-gray-900 text-gray-300 hover:bg-gray-800 hover:text-white"
       ]}
     >
-      {@label}
+      <Bacon8Web.Components.Gem.gem :if={@gem} size={18} class="mr-1" />{@label}
     </.link>
     """
   end

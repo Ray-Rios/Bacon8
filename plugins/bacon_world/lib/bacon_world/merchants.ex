@@ -20,7 +20,41 @@ defmodule BaconWorld.Merchants do
   @buy_rate 0.25
 
   @merchants [
+    # The stablemaster (2026-10-24): no stock; she keeps your mounts. Talking to her
+    # (R) opens the stable (BaconWorldWeb.MountEvents): pick which of your mounts you
+    # ride, or follow a link to buy one in the Bacon Store.
     %{
+      id: "rowena",
+      kind: "stable",
+      name: "Rowena Ashby",
+      title: "Stablemaster",
+      zone: "lobby",
+      # by the paddock south-east of the plaza, facing the statue
+      x: 12.5,
+      z: 13.0,
+      face: {0.0, 16.0},
+      look: %{
+        "v" => 1,
+        "body" => "female",
+        "height" => 1.0,
+        "shape" => %{"weight" => 0.1, "muscle" => 0.35, "shoulders" => 0.3, "chest" => 0.0, "belly" => 0.0, "hips" => 0.2, "glutes" => 0.1, "face" => 0.2, "jaw" => 0.2, "nose" => 0.1},
+        "skin" => "#C98E68",
+        "eyes" => "#5A4632",
+        "brows" => nil,
+        "hair" => %{"style" => "Ponytail", "color" => "#3A2418"},
+        "facial" => %{"style" => "none", "color" => "#3A2418"}
+      },
+      gear: %{
+        "under_top" => "linen_bikini_top",
+        "under_bottom" => "linen_bikini_bottom",
+        "chest" => "cloth_tunic",
+        "legs" => "cloth_trousers",
+        "feet" => "leather_boots"
+      },
+      sells: []
+    },
+    %{
+      kind: "trader",
       id: "tilda",
       name: "Tilda Threadwell",
       title: "Clothier",
@@ -101,7 +135,8 @@ defmodule BaconWorld.Merchants do
         face_x: fx * u,
         face_z: fz * u,
         appearance: m.look,
-        gear: m.gear
+        gear: m.gear,
+        kind: Map.get(m, :kind, "trader")
       }
     end
   end

@@ -2,5 +2,6 @@
 // and merges `hooks` into the LiveSocket's hooks, so the names are global:
 // pick names unlikely to clash with another plugin's.
 import { WorldCharacterUIScene } from "./world-character-ui-scene";
+import { BaconWorldSkillTreeEditor } from "./skill-tree-editor";
 
-export const hooks = { WorldCharacterUIScene };
+export const hooks = { WorldCharacterUIScene, BaconWorldSkillTreeEditor };

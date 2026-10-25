@@ -55,7 +55,11 @@ defmodule BaconWorld.MerchantsTest do
     u = Brain.u()
     assert Merchants.near?(m, {m.x * u, m.z * u})
     refute Merchants.near?(m, {(m.x + 10) * u, m.z * u})
-    assert [%{id: "tilda", name: "Tilda Threadwell", gear: %{"chest" => "wool_sweater"}} = p] = Merchants.payload("lobby")
+    list = Merchants.payload("lobby")
+    assert %{id: "tilda", name: "Tilda Threadwell", kind: "trader", gear: %{"chest" => "wool_sweater"}} = p = Enum.find(list, &(&1.id == "tilda"))
+    # the stablemaster keeps the mounts (BaconWorldWeb.MountEvents), and sells nothing
+    assert %{kind: "stable", title: "Stablemaster"} = Enum.find(list, &(&1.id == "rowena"))
+    assert Merchants.get("rowena").sells == []
     assert_in_delta p.x, m.x * u, 1.0e-9
     assert Merchants.payload("nowhere") == []
   end

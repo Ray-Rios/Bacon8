@@ -90,6 +90,18 @@ defmodule BaconWorld.Mobs.Zone do
     {:reply, {:ok, hits}, %{state | mobs: mobs}}
   end
 
+  def handle_call({:spell_hit, attack}, _from, state) do
+    {mobs, result, events} = Brain.spell_hit(state.mobs, attack, now())
+    broadcast_events(state.topic, events)
+    {:reply, result, %{state | mobs: mobs}}
+  end
+
+  def handle_call({:root, attack}, _from, state) do
+    {mobs, result, events} = Brain.root(state.mobs, attack, now())
+    broadcast_events(state.topic, events)
+    {:reply, result, %{state | mobs: mobs}}
+  end
+
   def handle_call({:loot_open, id, character_id, pos}, _from, state) do
     with %{} = mob <- state.mobs[id] || {:error, :not_a_corpse},
          {:ok, mob2, coins, items} <- Brain.loot_open(mob, character_id, pos, now()) do
@@ -193,6 +205,7 @@ defmodule BaconWorld.Mobs.Zone do
   def event({:attack, id, cid, hit, damage, move}), do: %{t: "attack", id: id, target: cid, hit: hit, damage: damage, move: move}
   def event({:cast, id, move}), do: %{t: "cast", id: id, move: move}
   def event({:damaged, id, cid, damage, crit, hp, max_hp}), do: %{t: "damaged", id: id, by: cid, damage: damage, crit: crit, hp: hp, max_hp: max_hp}
+  def event({:rooted, id, ms}), do: %{t: "rooted", id: id, ms: ms}
   def event({:died, id, killer}), do: %{t: "died", id: id, killer: killer}
   def event({:corpse_gone, id}), do: %{t: "gone", id: id}
   def event({:corpse, mob}), do: %{t: "corpse", id: mob.id, corpse: Brain.view(mob).corpse, looter: mob.corpse && mob.corpse.looter}

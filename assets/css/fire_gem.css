@@ -1,0 +1,11 @@
+/* <b8-gem> (assets/js/fire_gem.ts): its box, and a still picture until the script runs. */
+b8-gem {
+  display: inline-block;
+  width: var(--gem-size, 1.25em);
+  height: var(--gem-size, 1.25em);
+  vertical-align: -0.22em;
+  flex: none;
+}
+b8-gem:not(:defined) {
+  background: url(/images/gem/gem.webp) center / contain no-repeat;
+}

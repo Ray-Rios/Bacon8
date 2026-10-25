@@ -415,6 +415,7 @@ defmodule BaconWorldWeb.GameEvents do
 
     socket
     |> BaconWorldWeb.MountEvents.dismount()
+    |> BaconWorldWeb.SkillEvents.cancel("dead")
     |> assign(pending_respawn_timer: timer, pending_spawn_coords: coords, is_dead?: true, looting: nil)
     |> set_dead(true)
     |> push_event("character_died", %{
@@ -427,7 +428,10 @@ defmodule BaconWorldWeb.GameEvents do
     })
   end
 
-  defp award_kills(socket, hits) do
+  @doc false
+  # Experience for the creatures in `hits` that died (also a spell's or a skill's:
+  # BaconWorldWeb.SkillEvents). Returns `{socket, progress | nil}`.
+  def award_kills(socket, hits) do
     kills = Enum.filter(hits, & &1.killed)
     me = current(socket)
 

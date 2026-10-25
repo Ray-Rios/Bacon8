@@ -36,7 +36,7 @@ defmodule BaconStore.Plugin do
   @impl true
   def admin_nav do
     [
-      %{label: "Products", path: "/admin/bacon_store/products", icon: "💎"},
+      %{label: "Products", path: "/admin/bacon_store/products", icon: "gem"},
       %{label: "Orders", path: "/admin/bacon_store/orders", icon: "📦"}
     ]
   end
@@ -58,7 +58,8 @@ defmodule BaconStore.Plugin do
   def storage_refs, do: Repo.all(from f in ProductFile, distinct: true, select: f.sha256)
 
   @impl true
-  def nav_links(_user), do: [%{label: "Store", path: "/store", icon: "🛒"}]
+  # "gem": the site's Gem (Bacon8Web.Components.Gem), turning and floating in the navbar.
+  def nav_links(_user), do: [%{label: "Store", path: "/store", icon: "gem"}]
 
   @impl true
   def profile_tabs(_user) do

@@ -148,6 +148,9 @@ defmodule BaconWorld.Mobs.Spawns do
   @doc "How far a chase may take it from home, metres."
   def leash(kind_id), do: Map.get(kind(kind_id), :leash, @leash)
 
+  @doc "True for a boss (roots last a third as long on one)."
+  def boss?(kind_id), do: Map.has_key?(@kinds, kind_id) and Map.get(kind(kind_id), :boss, false) == true
+
   @doc """
   Every spawn point: `%{id, camp, kind, x, z}` in metres, spread over the camp on
   a sunflower pattern so they don't stand in a line.

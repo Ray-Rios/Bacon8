@@ -187,7 +187,7 @@ defmodule Bacon8Web.Components.AdminSidebar do
         )
       ]}
     >
-      <span class="text-lg mr-3 sidebar-icon flex-shrink-0"><%= @icon %></span>
+      <span class="text-lg mr-3 sidebar-icon flex-shrink-0"><Bacon8Web.Components.Gem.icon icon={@icon} size={20} /></span>
       <span class="sidebar-label truncate"><%= @label %></span>
     </.link>
     """

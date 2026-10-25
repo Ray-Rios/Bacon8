@@ -96,7 +96,7 @@ defmodule BaconStoreWeb.StoreProductLive do
             <div class="aspect-[16/10] overflow-hidden rounded-2xl border border-gray-800 bg-gradient-to-br from-gray-900 to-gray-800">
               <img :if={@shown} src={media_url(@shown)} alt={@product.name} class="h-full w-full object-contain" />
               <div :if={!@shown} class="flex h-full w-full items-center justify-center text-7xl opacity-80">
-                {kind_icon(@product.kind)}
+                <.kind_glyph kind={@product.kind} size={180} />
               </div>
             </div>
             <div :if={length(@images) > 1} class="mt-3 grid grid-cols-5 gap-3 sm:grid-cols-6">
@@ -124,7 +124,7 @@ defmodule BaconStoreWeb.StoreProductLive do
           <aside class="lg:col-span-2">
             <div class="sticky top-6 rounded-2xl border border-gray-800 bg-gray-950/90 p-6">
               <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-gray-500">
-                <span>{kind_icon(@product.kind)}</span>
+                <span><.kind_glyph kind={@product.kind} size={18} /></span>
                 <span>{Catalog.kind_label(@product.kind)}</span>
                 <span :if={@product.badge} class="ml-auto rounded-full bg-blue-600 px-2.5 py-0.5 normal-case tracking-normal text-white">
                   {@product.badge}
@@ -157,16 +157,16 @@ defmodule BaconStoreWeb.StoreProductLive do
                       <%= cond do %>
                         <% (@balance || 0) < @product.price_gems -> %>
                           <button type="button" disabled class="w-full cursor-not-allowed rounded-xl border border-sky-800 px-4 py-3 font-semibold text-sky-300 opacity-50">
-                            Buy with Gems · {Store.format_gems(@product.price_gems)}
+                            Buy with Gems · <Bacon8Web.Components.Gem.gems amount={@product.price_gems} />
                           </button>
                           <p class="text-xs text-gray-400">
-                            You have {Store.format_gems(@balance || 0)}.
+                            You have <Bacon8Web.Components.Gem.gems amount={@balance || 0} />.
                             <.link navigate={~p"/store?category=gems"} class="text-blue-400 hover:underline">Get more Gems</.link>
                           </p>
                         <% @confirming -> %>
                           <div class="rounded-xl border border-sky-700 bg-sky-950/40 p-4">
                             <p class="text-sm text-gray-200">
-                              Spend {Store.format_gems(@product.price_gems)} of your {Store.format_gems(@balance)}?
+                              Spend <Bacon8Web.Components.Gem.gems amount={@product.price_gems} /> of your <Bacon8Web.Components.Gem.gems amount={@balance} />?
                             </p>
                             <div class="mt-3 flex gap-2">
                               <button type="button" phx-click="buy_gems" phx-disable-with="Buying…" class="flex-1 rounded-lg bg-sky-600 px-3 py-2 font-semibold text-white hover:bg-sky-500">
@@ -177,7 +177,7 @@ defmodule BaconStoreWeb.StoreProductLive do
                           </div>
                         <% true -> %>
                           <button type="button" phx-click="confirm_gems" class="w-full rounded-xl border border-sky-600 px-4 py-3 font-semibold text-sky-300 transition hover:bg-sky-950/60">
-                            Buy with Gems · {Store.format_gems(@product.price_gems)}
+                            Buy with Gems · <Bacon8Web.Components.Gem.gems amount={@product.price_gems} />
                           </button>
                       <% end %>
                     <% end %>

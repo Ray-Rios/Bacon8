@@ -5,4 +5,10 @@ defmodule BaconWorldWeb.Routes do
   browser do
     live "/", PlayLive, :index
   end
+
+  # /admin/bacon_world/...
+  admin do
+    live "/", Admin.HomeLive, :index
+    live "/skills", Admin.SkillTreeLive, :index
+  end
 end

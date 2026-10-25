@@ -34,7 +34,9 @@ defmodule BaconWorldWeb.PlayLive do
                   inventory_fetch inventory_move inventory_equip inventory_unequip inventory_destroy
                   merchant_open merchant_buy merchant_sell)
   # Riding (BaconWorldWeb.MountEvents).
-  @mount_events ~w(mounts_fetch mount_summon mount_dismount)
+  @mount_events ~w(mounts_fetch mount_summon mount_dismount stable_open stable_choose)
+  # The skill tree and casting (BaconWorldWeb.SkillEvents).
+  @skill_events ~w(skills_fetch skill_learn hotbar_set cast cast_cancel)
 
   on_mount {Bacon8Web.UserAuth, :require_authenticated_user}
 
@@ -367,6 +369,10 @@ defmodule BaconWorldWeb.PlayLive do
     BaconWorldWeb.MountEvents.handle_event(event, params, socket)
   end
 
+  def handle_event(event, params, socket) when event in @skill_events do
+    BaconWorldWeb.SkillEvents.handle_event(event, params, socket)
+  end
+
   def handle_event("world_position_update", params, socket) do
     with %{"x" => raw_x, "y" => raw_y, "z" => raw_z, "heading" => raw_heading} <- stringify_keys(params),
          {:ok, x} <- to_float(raw_x),
@@ -375,7 +381,8 @@ defmodule BaconWorldWeb.PlayLive do
          {:ok, heading} <- to_float(raw_heading),
          motion = motion_flags(params),
          %{} = current_character <- current_character(socket),
-         mount = BaconWorldWeb.MountEvents.mounted(socket),
+         # the mount ridden, or the one just left (a fall from the saddle)
+         mount = BaconWorldWeb.MountEvents.move_mount(socket),
          :ok <- validate_ground_bounds(y, mount),
          :ok <- validate_move_speed(socket, current_character.position, x, y, z, mount),
          :ok <- if(mount, do: :ok, else: validate_player_collision(socket.assigns.zone_online_characters || [], current_character.character_id, current_character.position, x, z)) do
@@ -569,6 +576,10 @@ defmodule BaconWorldWeb.PlayLive do
   def handle_info({:pvp_hit, hit}, socket), do: {:noreply, GameEvents.pvp_hit(hit, socket)}
   def handle_info({:zone_hp, payload}, socket), do: {:noreply, GameEvents.zone_hp(payload, socket)}
   def handle_info({:zone_mount, payload}, socket), do: {:noreply, BaconWorldWeb.MountEvents.zone_mount(payload, socket)}
+  def handle_info({:cast_complete, token}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.cast_complete(token, socket)}
+  def handle_info({:spell_land, landing}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.spell_land(landing, socket)}
+  def handle_info({:zone_cast, payload}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.zone_cast(payload, socket)}
+  def handle_info({:player_heal, heal}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.player_heal(heal, socket)}
 
   def handle_info(:characters_updated, socket) do
     characters = World.list_user_characters(socket.assigns.current_user.id)

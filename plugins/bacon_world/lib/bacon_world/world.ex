@@ -8,10 +8,13 @@ defmodule BaconWorld.World do
 
     * `stats`    - `"hp"`, `"max_hp"`, `"mp"`, `"max_mp"`, `"pvp_flagged"`,
                    `"level"`, `"xp"`, `"skill_points"` (`BaconWorld.Progression`),
+                   `"skill_nodes"` (the skill tree nodes it has; `BaconWorld.Skills`),
                    `"coins"` (copper) and the once-only gifts `"starter_kit"`,
                    `"starter_wear"` and `"starter_purse"` (`BaconWorld.Inventory`)
     * `settings` - `"character_type"`, `"model_path"`, `"zone_slug"`,
-                   `"position" => %{"x", "y", "z", "heading"}`,
+                   `"position" => %{"x", "y", "z", "heading"}`, `"bind"` (where
+                   Recall goes; the zone's spawn until set), `"hotbars"` (`BaconWorld.Skills`), `"mount"`
+                   (the mount you ride, chosen at the stable; `BaconWorld.Mounts`),
                    `"appearance"` (the look of a Bacon8 human; `BaconWorld.Appearance`)
 
   Writes to a single key go through `merge_stats/2` and `merge_settings/2`,
@@ -242,6 +245,8 @@ defmodule BaconWorld.World do
       character ->
         # Older characters: bring HP/MP up to their level, and hand out the starter kit once.
         {:ok, _} = Progression.normalize_stats(character.id)
+        # the skill tree's buffs (a tree the owner changed may have moved them)
+        {:ok, _} = BaconWorld.Skills.sync_stats(character.id)
         Inventory.grant_starter_kit(character.id)
         Inventory.grant_starter_wear(character.id)
         character = GamesRepo.one(by_id_query(character.id)) || character
@@ -267,6 +272,8 @@ defmodule BaconWorld.World do
            gear: Inventory.gear_ids(equipment),
            inventory: Inventory.payload(c.id),
            spells: Enum.map(Combat.list_character_spells(c.id), &Combat.spell_payload/1),
+           skills: BaconWorld.Skills.payload(character),
+           mount: (character.settings || %{})["mount"],
            zone: %{id: zone && zone.id, name: zone && zone.name, slug: zone && zone.slug},
            position: c.position
          }}

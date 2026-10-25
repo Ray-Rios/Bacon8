@@ -806,8 +806,8 @@ export class HumanInstance {
    * library's mannequin; each body's own proportions (the male's longer clavicles and arms)
    * and its posture put them apart (2026-10-24: the male's spear, maul and staff all missed
    * his left hand). A two-bone IK moves the left wrist so the grip (weapon_l) lands on the
-   * line of the main hand's weapon (weapon_r's +Y), as far from the main grip as the clip
-   * held the hands apart (at least a hand's width), then turns the hand so the grip runs along the haft. Blended
+   * line of the main hand's weapon (weapon_r's +Y) at the weapon's own off-hand grip
+   * (items.ts HOLD.off; the clip's spacing for a weapon without one), then turns the hand so the grip runs along the haft. Blended
    * in and out by `w`.
    */
   private twoHandGrip(w: number) {
@@ -828,13 +828,17 @@ export class HumanInstance {
     };
     read();
     const l1 = A.distanceTo(B), l2 = B.distanceTo(C);
-    const gap = 0.42 * l2; // about a hand's width
-    // how far up the haft: as far from the main hand as the clip had the hands apart, on
-    // the side it had the off hand (the nearest point would pull the hands together when
-    // the clip's off hand is well off the haft, crossing the arm over the chest)
-    const rel = _w1.subVectors(G, O);
-    const side = rel.dot(D) < 0 ? -1 : 1;
-    const t = side * Math.min(Math.max(rel.length(), gap), 2.4 * l2);
+    // where on the haft: the weapon's own grip (items.ts HOLD.off, metres along it; the
+    // bone's scale turns metres into the scene's units), or, for a weapon without one, as
+    // far from the main hand as the clip had the hands apart
+    const perMetre = _w1.setFromMatrixColumn(wr.matrixWorld, 1).length();
+    const off = wr.userData.b8OffGrip;
+    let t: number;
+    if (typeof off === 'number') t = off * perMetre;
+    else {
+      const rel = _w1.subVectors(G, O);
+      t = (rel.dot(D) < 0 ? -1 : 1) * Math.min(Math.max(rel.length(), 0.42 * l2), 2.4 * l2);
+    }
     for (let pass = 0; pass < 2; pass++) {
       // where the wrist goes: the grip on the haft, the hand's own offset kept
       const W = _w2.copy(O).addScaledVector(D, t).sub(G).add(C);
@@ -853,9 +857,10 @@ export class HumanInstance {
       read();
       rotateWorld(la, _w6.subVectors(C, B).normalize(), _w7.subVectors(W, B).normalize());
       read();
-      // the grip along the haft (whichever way round the clip held it)
+      // the grip along the haft, thumb toward the head (unless the clip has the fist
+      // turned well the other way: then the other way, not a wrist wrung through 180)
       const gy = _w6.setFromMatrixColumn(wl.matrixWorld, 1).normalize();
-      const want = _w7.copy(D).multiplyScalar(gy.dot(D) < 0 ? -1 : 1);
+      const want = _w7.copy(D).multiplyScalar(gy.dot(D) < -0.5 ? -1 : 1);
       rotateWorld(hand, gy.clone(), want);
       read();
     }

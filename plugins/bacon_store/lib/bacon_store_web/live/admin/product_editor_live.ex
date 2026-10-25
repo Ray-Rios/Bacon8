@@ -10,7 +10,7 @@ defmodule BaconStoreWeb.Admin.ProductEditorLive do
   """
   use Bacon8Web, :live_view
 
-  import BaconStoreWeb.StoreComponents, only: [media_url: 1, kind_icon: 1]
+  import BaconStoreWeb.StoreComponents, only: [media_url: 1, kind_glyph: 1]
   alias BaconStore.Store
   alias BaconStore.Store.{Catalog, Product}
   alias Bacon8Web.Components.AdminSidebar
@@ -317,7 +317,7 @@ defmodule BaconStoreWeb.Admin.ProductEditorLive do
           <div>
             <.link navigate={~p"/admin/bacon_store/products"} class="text-sm text-gray-400 hover:text-white">← Products</.link>
             <h1 class="mt-2 flex items-center gap-3 text-3xl font-bold text-white">
-              <span>{kind_icon(@product.kind)}</span>
+              <span><.kind_glyph kind={@product.kind} size={34} /></span>
               {if @product.id, do: @product.name, else: "New #{String.downcase(Catalog.kind_label(@product.kind))}"}
             </h1>
           </div>

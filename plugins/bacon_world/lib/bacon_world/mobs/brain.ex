@@ -86,7 +86,9 @@ defmodule BaconWorld.Mobs.Brain do
       # swinging before then (the breath's windup and blast)
       breath: nil,
       next_breath: now + 6_000,
-      busy_until: now
+      busy_until: now,
+      # rooted (a player's Entangling Roots): no moving before then, swinging still
+      rooted_until: now
     }
   end
 
@@ -124,8 +126,10 @@ defmodule BaconWorld.Mobs.Brain do
     {m, e1} = check_target(m, players)
     {m, e2} = maybe_aggro(m, players, kind)
     {m, e0} = breathe(m, players, kind, now)
-    {m, e3} = if now < m.busy_until, do: {%{m | vx: 0.0, vz: 0.0}, []}, else: act(m, players, kind, now, dt)
-    {m, e1 ++ e2 ++ e0 ++ e3}
+    {m2, e3} = if now < m.busy_until, do: {%{m | vx: 0.0, vz: 0.0}, []}, else: act(m, players, kind, now, dt)
+    # rooted: it turns and swings, but stays where it is
+    m2 = if now < Map.get(m, :rooted_until, now), do: %{m2 | x: m.x, z: m.z, vx: 0.0, vz: 0.0}, else: m2
+    {m2, e1 ++ e2 ++ e0 ++ e3}
   end
 
   @doc "True for a player too high up for the creatures (a flying mount)."
@@ -295,9 +299,13 @@ defmodule BaconWorld.Mobs.Brain do
   level, hp, max_hp}`.
   """
   def melee(mobs, attack, now, rand \\ &:rand.uniform/0) do
-    {max_targets, arc} = Melee.sweep(attack.item)
+    # a skill may sweep wider (the spin attack: everything around), reach further and
+    # hit harder or softer (`sweep`, `extra_reach` metres, `mult`); buffs add `pct`
+    {max_targets, arc} = attack[:sweep] || Melee.sweep(attack.item)
+    mult = (attack[:mult] || 1.0) * (1 + (attack[:pct] || 0) / 100)
+    extra = attack[:extra_reach] || 0.0
     # A big creature (the dragon) is hit at its hide, not its middle.
-    reach = fn mob -> (attack.item.reach + mob_radius(mob) + @player_radius + @swing_slack) * @u end
+    reach = fn mob -> (attack.item.reach + extra + mob_radius(mob) + @player_radius + @swing_slack) * @u end
 
     victims =
       mobs
@@ -309,6 +317,7 @@ defmodule BaconWorld.Mobs.Brain do
     Enum.reduce(victims, {mobs, [], []}, fn mob, {acc, hits, events} ->
       if rand.() < Melee.hit_chance(attack.level, mob.level) do
         {damage, crit} = Melee.roll_damage(attack.item, attack.level, attack.heavy, rand)
+        damage = if mult == 1.0, do: damage, else: max(1, round(damage * mult))
         {mob2, evs} = take_damage(mob, attack.id, damage, crit, now)
         hit = %{id: mob.id, hit: true, damage: damage, crit: crit, killed: not alive?(mob2), level: mob.level, hp: max(mob2.hp, 0), max_hp: mob.max_hp}
         {Map.put(acc, mob.id, mob2), hits ++ [hit], events ++ evs}
@@ -320,6 +329,42 @@ defmodule BaconWorld.Mobs.Brain do
       end
     end)
   end
+
+  @doc """
+  A spell landing on one creature (`BaconWorldWeb.SkillEvents`): `attack` is
+  `%{id (the caster), target, damage, crit, x, z, range}` (range in scene units, to the
+  creature's hide). Returns `{mobs, result, events}`; `result` is a hit map like
+  `melee/4`'s or `{:error, reason}`.
+  """
+  def spell_hit(mobs, attack, now) do
+    with %{} = mob <- mobs[attack.target] || {:error, :no_target},
+         true <- alive?(mob) || {:error, :no_target},
+         true <- in_spell_range?(mob, attack) || {:error, :out_of_range} do
+      {mob2, evs} = take_damage(mob, attack.id, attack.damage, attack[:crit] || false, now)
+      hit = %{id: mob.id, hit: true, damage: attack.damage, crit: attack[:crit] || false, killed: not alive?(mob2), level: mob.level, hp: max(mob2.hp, 0), max_hp: mob.max_hp}
+      {Map.put(mobs, mob.id, mob2), hit, evs}
+    else
+      err -> {mobs, err, []}
+    end
+  end
+
+  @doc """
+  Roots a creature for `attack.ms` (a boss for a third of it) and makes it angry.
+  Returns `{mobs, :ok | {:error, reason}, events}`.
+  """
+  def root(mobs, attack, now) do
+    with %{} = mob <- mobs[attack.target] || {:error, :no_target},
+         true <- alive?(mob) || {:error, :no_target},
+         true <- in_spell_range?(mob, attack) || {:error, :out_of_range} do
+      ms = if Spawns.boss?(mob.kind), do: div(attack.ms, 3), else: attack.ms
+      {mob2, evs} = provoke(%{mob | rooted_until: now + ms}, attack.id)
+      {Map.put(mobs, mob.id, mob2), :ok, [{:rooted, mob.id, ms} | evs]}
+    else
+      err -> {mobs, err, []}
+    end
+  end
+
+  defp in_spell_range?(mob, attack), do: dist({attack.x, attack.z}, {mob.x, mob.z}) <= attack.range + (mob_radius(mob) + @player_radius) * @u
 
   defp mob_radius(%{kind: kind}), do: if(Map.has_key?(Spawns.kinds(), kind), do: Spawns.radius(kind), else: @mob_radius)
 

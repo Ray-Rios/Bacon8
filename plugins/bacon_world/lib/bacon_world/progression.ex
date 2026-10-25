@@ -2,8 +2,9 @@ defmodule BaconWorld.Progression do
   @moduledoc """
   Levels and experience. There are no classes: every character starts the same
   and grows through one shared skill tree (Path of Exile style, but with a single
-  central starting point for everyone). That tree isn't built yet; each level
-  already banks a skill point for it (`stats["skill_points"]`).
+  central starting point for everyone). It is `BaconWorld.SkillTree`; each level
+  banks a skill point for it (`stats["skill_points"]`, the total ever earned;
+  `BaconWorld.Skills` works out what is left).
 
   Experience follows EverQuest's idea of "con": a creature far below you is worth
   nothing (grey), one at your level the full amount, tougher ones a little more.
@@ -76,16 +77,18 @@ defmodule BaconWorld.Progression do
       level = World.stat(c, "level")
       {level2, xp2} = apply_xp(level, World.stat(c, "xp") + amount)
       gained = level2 - level
+      # the skill tree's buffs ride on top of the level's pools (BaconWorld.Skills)
+      bonus = if gained > 0, do: BaconWorld.Skills.bonuses_for_stats(c.stats), else: %{}
 
       patch =
         if gained > 0 do
           %{
             "level" => level2,
             "xp" => xp2,
-            "max_hp" => max_hp(level2),
-            "hp" => max_hp(level2),
-            "max_mp" => max_mp(level2),
-            "mp" => max_mp(level2),
+            "max_hp" => max_hp(level2) + Map.get(bonus, "max_hp", 0),
+            "hp" => max_hp(level2) + Map.get(bonus, "max_hp", 0),
+            "max_mp" => max_mp(level2) + Map.get(bonus, "max_mp", 0),
+            "mp" => max_mp(level2) + Map.get(bonus, "max_mp", 0),
             "skill_points" => World.stat(c, "skill_points") + gained
           }
         else
@@ -115,8 +118,9 @@ defmodule BaconWorld.Progression do
   def normalize_stats(character_id) do
     with {:ok, c} <- World.fetch_character(character_id) do
       level = World.stat(c, "level")
-      want_hp = max_hp(level)
-      want_mp = max_mp(level)
+      bonus = BaconWorld.Skills.bonuses_for_stats(c.stats)
+      want_hp = max_hp(level) + Map.get(bonus, "max_hp", 0)
+      want_mp = max_mp(level) + Map.get(bonus, "max_mp", 0)
 
       patch =
         %{}

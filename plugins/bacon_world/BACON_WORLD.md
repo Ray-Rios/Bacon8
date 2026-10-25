@@ -65,6 +65,42 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
+**Delivered 2026-10-24 (sixth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24f.md`): the skill tree, the stable,
+the two-handed grips again and the dismount glitch, from the owner's testing of the fifth.
+
+- **Two-handed grips (the male).** The off hand's place on the haft now comes from the weapon
+  (`items.ts` `HOLD[...].off`, metres along the haft from the main hand: axe and maul 0.32,
+  spear 0.45, halberd 0.42, staff 0.5, greatsword -0.13), not from the clip. The clip-derived
+  side flipped on the muscular male, which put his left hand off the butt, at his hip.
+- **The stable**: Rowena Ashby, Stablemaster (`merchants.ex` kind `"stable"`), at a new paddock
+  next to the plaza (fences, hay, water). R opens the stable window (`stable-ui.ts`):
+  every mount, which you own, "Ride this one", and a Buy link to the store for the rest.
+  The choice is saved (`settings["mount"]`) and M summons it; before, the newest purchase won
+  (and the first, red, for admins).
+- **The dismount glitch.** Dismounting in the air left the player falling where the server's
+  movement checks rejected him and kept correcting him (the vibration). Now M refuses while
+  airborne (client, and the server above 2.5 m: reason `airborne`), and for 8 s after a
+  dismount the server still validates moves against the mount's limits.
+- **The skill tree** (K), Path of Exile style: one tree for everyone (`skill_tree.ex`), stored
+  in `bacon_world_skill_trees` (new migration) and edited at **/admin/bacon_world/skills**
+  (drag spells, skills and buffs from a palette onto nodes; add, move, join, delete nodes;
+  Save validates; "Reset" restores the shipped tree). The shipped tree: **Recall** at the
+  centre (learned by everyone at level 1) and six branches: Minor Healing, Fireball, Vigor
+  (+10 HP), Insight (+10 MP), Entangling Roots, Spin Attack. Each level from 2 gives one point;
+  a node can be learned when it touches one you have.
+- **Abilities** (`abilities.ex`, `skills.ex`, `skill_events.ex`): spells have mana, cast times
+  (moving interrupts), cooldowns and range; the server resolves them. Recall goes to the bind
+  point (`settings["bind"]`; nothing sets it yet, so the zone's spawn). Heal (self or the
+  targeted player), Fireball (a travelling bolt), Roots (6 s; a boss gets a third), Spin
+  Attack (every enemy within reach, 360 degrees). Buffs add to max HP/MP (and melee/spell %).
+- **Hotbars**: skills go on Q E F Z X (the special-attack slots); spells on a new **spell bar,
+  two rows of ten, bottom right** (1-0 and Shift+1-0), movable like the other windows. Drag
+  from the tree window onto a slot; learning a node puts it on a free slot. Saved per
+  character (`settings["hotbars"]`). Effects in `spell-fx.ts`; the icons are emoji for now.
+- **Its card on /games** (a hub feature, BACON8.md §9): a card with a front (Baconator's head)
+  and a back (his eye, the details, Play) that turns over on hover. The files are in
+  `priv/static/card/`; admins change it on the new **/admin/bacon_world** page.
+
 **Delivered 2026-10-24 (fifth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24e.md`): the boss, the mounts and flight, from the owner's request for "more
 monsters", a dragon boss named Baconator, and dragons to ride and fly.
 
@@ -379,6 +415,9 @@ The first 2026-10-23 delivery:
 | 2026-10-24 | **Mounts are for sale** (Bacon Store) **and fly like RaysSpaceSim: double-tap Space** to take off and land, **no barrel rolls**. |
 | 2026-10-24 | **Old character rigs and files are removed** (moved aside for deletion). The male and female share one skeleton definition, each with its own fit; that's what we work with. |
 | 2026-10-24 | **The dragon is realistic, not cartoony**: jawline, muscle, scaly skin, fiery red serpent eyes, leather wings, detailed horns (owner, on the first cut). |
+| 2026-10-24 | **The skill tree**: Path of Exile style, starting in the middle and radiating out in six directions; **Recall** (to the bind point) is everyone's level-1 skill; the first six nodes are a heal, a fireball, +10 HP, +10 MP, a root and a spin attack; one node a level, joined to what you have. The owner extends it on an admin page by dragging spells, skills and buffs onto nodes. |
+| 2026-10-24 | **Skills go on Q E F Z X; spells on their own bar, two rows of ten, bottom right** by default. |
+| 2026-10-24 | **A stablemaster NPC** chooses which of the account's mounts M summons. |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 
 ## 4. How it fits together
@@ -540,6 +579,15 @@ the development PC it sits in `C:\Bacon8\tmp\b8work\harness`):
 
 In rough priority order.
 
+**The skill tree (2026-10-24, sixth):**
+
+- The owner to try it in game and grow the tree at /admin/bacon_world/skills. New *kinds* of
+  ability (not just placing existing ones) need code: an entry in `abilities.ex` and its effect
+  in `skill_events.ex` (and `spell-fx.ts`).
+- A bind-point NPC or spot that sets `settings["bind"]` (Recall uses the zone spawn until then).
+- Painted ability icons instead of emoji; cast sounds.
+- Spell targeting of other players for harm (PvP fireball) isn't wired; heal works on players.
+
 **Monsters and mounts (2026-10-24):**
 
 - The owner to look at Baconator and the drakes in game (BACON_WORLD §2, fifth delivery); tune
@@ -682,6 +730,7 @@ Claude session linked to the development PC through the desktop app):
   creature), `jobs/dragon_go.py` + `meshopt_d.cmd` + `jobs/stage_dragon.sh` (the dragon; run
   the `.py` jobs with `python` from `run_python`, polled by `dragon.done`), `jobs/render_go.py`
   (Cycles renders of a GLB), `jobs/blender_go.py <script>` (any headless Blender script),
+  `sbuild.cmd` (the skills harness: `skills.html?points=&learned=n0,n2`, `?mode=editor`),
   `jstest.cmd` (JS tests, bundle, type-check)
   and `mixtest.cmd` (Elixir compile and tests, with a throwaway Postgres).
 - **Seeing it**: the Docker MCP browser opens the harness at

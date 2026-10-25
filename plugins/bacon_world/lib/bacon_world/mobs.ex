@@ -22,6 +22,12 @@ defmodule BaconWorld.Mobs do
   @doc "A player's swing (see `BaconWorld.Mobs.Brain.melee/4`). `{:ok, hits}`."
   def melee(slug, attack), do: call(slug, {:melee, attack}, {:error, :mobs_unavailable})
 
+  @doc "A spell landing on a creature (`Brain.spell_hit/3`): a hit map or `{:error, reason}`."
+  def spell_hit(slug, attack), do: call(slug, {:spell_hit, attack}, {:error, :mobs_unavailable})
+
+  @doc "Roots a creature (`Brain.root/3`): `:ok` or `{:error, reason}`."
+  def root(slug, attack), do: call(slug, {:root, attack}, {:error, :mobs_unavailable})
+
   def loot_open(slug, mob_id, character_id, pos), do: call(slug, {:loot_open, mob_id, character_id, pos}, {:error, :mobs_unavailable})
   def loot_take(slug, mob_id, character_id, index), do: call(slug, {:loot_take, mob_id, character_id, index}, {:error, :mobs_unavailable})
   def loot_return(slug, mob_id, item), do: cast(slug, {:loot_return, mob_id, item})

@@ -23,6 +23,15 @@ Last substantive update: **2026-10-24**.
   shoulders), the skeleton creatures rebuilt on his rig, and one-handed axe and hammer heads
   facing the way they swing; then his hands, his lean, the torch arm and a narrower shoulder
   slider. Details in **`BACON_WORLD.md`** §2.
+- **The Gem**: the currency's own fiery gem, rendered in Blender, turns and floats wherever Gems
+  appear and as the Store's navbar icon; hovering makes it react (§8, "The Gem").
+- **/games shows each game as a card with a front and a back** (hover turns it over; the front
+  cycles pictures). Each plugin ships its card in `priv/static/card/` (served from
+  `/plugins/<slug>/`) and edits it on its admin page; §9 "A plugin's own files and its game card".
+- Bacon World: the skill tree (K; Path of Exile style, Recall at the centre), Q-X skills and a
+  2x10 spell bar, a stablemaster to choose your mount, and Bacon World's first admin page,
+  **/admin/bacon_world/skills** (the tree editor, linked from `admin_nav/0`; its table
+  `bacon_world_skill_trees` comes with a plugin migration). Details in **`BACON_WORLD.md`** §2.
 - §14 now lists the assistant tooling: the Unreal, Blender and Docker MCP servers on the
   development PC and what each is for.
 
@@ -504,6 +513,7 @@ removed rather than kept as a `fixed` route.
 | Catalog | `BaconStore.Store.Catalog`: categories (`store_categories`), products, images and download files (`store_product_files`), license key pools (`store_license_keys`). File bodies use `Bacon8.Storage` like drive files; `Drive.gc_blobs/2` keeps any body a product file names |
 | Delivery | `BaconStore.Store.Fulfilment`: entitlements with `source_type` "store_order" (`store_download`, a plugin's item kind, `channel_access`, `channel_slots`), keys from the pool, Gems to the wallet. An open bank dispute takes it all away at once (Gems too, even into a negative balance); a won dispute gives it back, a lost one makes it permanent. Plugins get `{:entitlement_granted, e}` / `{:entitlement_revoked, e}` hub events |
 | Gems | `Store.buy_with_gems/2`: spend and deliver in one transaction |
+| The Gem (2026-10-25) | The currency has its own 3D gem, rendered in Blender (`library/pipeline/scripts/fire_gem.py`, Cycles turntable, 48 frames; `gem_sheets.py` adds the star glints and makes the sprite sheets `priv/static/images/gem/gem-64/160/288.webp` and the still `gem.webp`). On pages it is `<b8-gem>` (`assets/js/fire_gem.ts`): it turns and floats, and hovering makes it react a different way each time (whirl, hop, flare of embers, sparkles, wobble). Templates use `Bacon8Web.Components.Gem`: `<.gem size={20} />`, `<.gems amount={1500} />`, and `<.icon icon={item.icon} />` where `"gem"` is the gem (the Store's navbar link, Products in the admin sidebar). Amounts on the store pages, the Gem packs (bigger pack, bigger gem) and gem-pack products all use it; `Store.format_gems/1` stays for plain text |
 | Card | `Store.start_checkout/3` reserves a license key until the order is paid, fails or is cancelled. Paid but undeliverable (keys ran out) stays "paid" with a reason; `/admin/bacon_store/orders` has "Retry delivery" |
 | Expiry | `BaconStore.Store.Sweeper` (every 5 min, advisory lock): ends timed items and passes (a pass's channel membership goes with it), cancels card orders unpaid for 48 h |
 | Pages | `/store` (category tabs, product grid, Gem packs), `/store/p/:slug` (gallery, Buy with card / Gems), `/store/library` (downloads, keys, items and passes), `GET /store/media/:id` (images), `GET /store/download/:id` (buyers only, attachment) |
@@ -834,6 +844,30 @@ development and tests: it names an atom, so core still compiles without the plug
 **Private plugins in deploys.** `.dockerignore` keeps every plugin's `.git`, `k3s/`,
 `scripts/` and `*.sh` out of images. `deploy-prod.sh` applies each `plugins/*/k3s` (with a
 `kustomization.yaml`) and then any `*secrets.yaml` beside it.
+
+**A plugin's own files and its game card (2026-10-24).** `plugins/<slug>/priv/static/` is
+served at `/plugins/<slug>/...` (`Bacon8Web.Plugs.PluginStatic`: installed plugins only; pictures,
+video, `.woff2` and `.json`, never HTML, SVG or scripts). A game's card on /games is a literal
+card with a front and a back (`Bacon8Web.Components.GameCard`, the `GameCard` hook, `game_card.css`):
+the front cycles through pictures under the name and tagline; hovering turns it over with a glassy
+shine to the back (a picture, the details, a Play button); on touch screens a tap turns it.
+The plugin ships it in `priv/static/card/`:
+
+```
+priv/static/card/
+  front-1.webp, front-2.webp ...   the front's pictures, in number order (webp, png, jpg, avif)
+  back.webp                        the back's picture (optional: the first front, blurred)
+  card.json                        optional: {"tagline", "details" (blank line = new paragraph),
+                                   "play_label" (default "Play"), "seconds" (per picture, 2-60)}
+```
+
+An admin changes it on the plugin's admin page, which embeds the hub's section
+`<.live_component module={Bacon8Web.GameCardAdmin} id="game-card" plugin="<slug>" current_user={@current_user} />`
+(preview, add/reorder/remove pictures, back picture, texts). `Bacon8.GameCards` keeps the change in
+`game_cards` (one row per plugin, overriding the folder field by field) and uploads in
+`uploads/public/game_cards/<slug>/` (files no saved card uses are deleted on save); "Reset" goes
+back to the folder. /games updates live. Bacon World's section is on `/admin/bacon_world`,
+RaysSpaceSim's on `/admin/rays_space_sim/card`.
 
 **Game rows.** `activate/2` registers a plugin's `games` row; `Bacon8.Plugins.ensure_game/1`
 creates it on demand for plugins active by default that were never toggled (plugins call it to

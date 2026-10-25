@@ -38,6 +38,14 @@ defmodule BaconWorld.Plugin do
   @impl true
   def children, do: BaconWorld.Mobs.children()
 
+  # Its card on /games is in priv/static/card/ (Bacon8.GameCards), editable on /admin/bacon_world.
+  @impl true
+  def admin_nav,
+    do: [
+      %{label: "Bacon World", path: "/admin/bacon_world", icon: "🕹️"},
+      %{label: "Bacon World skills", path: "/admin/bacon_world/skills", icon: "🌳"}
+    ]
+
   # Mounts are sold as game items (BaconWorld.Mounts): the key is the mount's id.
   @impl true
   def entitlement_kinds, do: [BaconWorld.Mounts.kind()]

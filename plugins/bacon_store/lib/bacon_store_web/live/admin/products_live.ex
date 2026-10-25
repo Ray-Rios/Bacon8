@@ -7,7 +7,7 @@ defmodule BaconStoreWeb.Admin.ProductsLive do
   """
   use Bacon8Web, :live_view
 
-  import BaconStoreWeb.StoreComponents, only: [media_url: 1, kind_icon: 1]
+  import BaconStoreWeb.StoreComponents, only: [media_url: 1, kind_glyph: 1]
   alias BaconStore.Store
   alias BaconStore.Store.{Catalog, Product}
   alias Bacon8Web.Components.AdminSidebar
@@ -132,7 +132,7 @@ defmodule BaconStoreWeb.Admin.ProductsLive do
               class="group rounded-xl border border-gray-700 bg-gray-900/60 p-4 transition hover:border-blue-500 hover:bg-gray-900"
             >
               <div class="flex items-center gap-2 font-semibold text-white">
-                <span class="text-xl">{kind_icon(kind)}</span> New {String.downcase(label)}
+                <span class="text-xl"><.kind_glyph kind={kind} size={22} /></span> New {String.downcase(label)}
               </div>
               <p class="mt-1 text-xs leading-snug text-gray-400">{hint}</p>
             </.link>
@@ -160,7 +160,7 @@ defmodule BaconStoreWeb.Admin.ProductsLive do
                     <div class="flex items-center gap-3">
                       <div class="h-10 w-16 flex-shrink-0 overflow-hidden rounded bg-gray-800">
                         <img :if={Catalog.cover(p)} src={media_url(Catalog.cover(p))} alt="" class="h-full w-full object-cover" />
-                        <div :if={!Catalog.cover(p)} class="flex h-full items-center justify-center">{kind_icon(p.kind)}</div>
+                        <div :if={!Catalog.cover(p)} class="flex h-full items-center justify-center"><.kind_glyph kind={p.kind} size={26} /></div>
                       </div>
                       <div class="min-w-0">
                         <.link navigate={~p"/admin/bacon_store/products/#{p.id}"} class="font-medium text-white hover:underline">{p.name}</.link>
@@ -173,7 +173,7 @@ defmodule BaconStoreWeb.Admin.ProductsLive do
                   <td class="px-4 py-3 text-gray-400">{Catalog.kind_label(p.kind)}</td>
                   <td class="px-4 py-3 whitespace-nowrap">
                     <div :if={p.price_cents}>{Store.format_price(p.price_cents, p.currency)}</div>
-                    <div :if={p.price_gems} class="text-sky-300">{Store.format_gems(p.price_gems)}</div>
+                    <div :if={p.price_gems} class="text-sky-300"><Bacon8Web.Components.Gem.gems amount={p.price_gems} /></div>
                   </td>
                   <td class="px-4 py-3">
                     <span class={[

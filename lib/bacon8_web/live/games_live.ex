@@ -1,22 +1,41 @@
 defmodule Bacon8Web.GamesLive do
   @moduledoc """
   /games - the games list: one card per active plugin game
-  (`Bacon8.Plugins.active_games/0`), each linking to the plugin's page.
+  (`Bacon8.Plugins.active_games/0`). Each is a card with a front and a back
+  (`Bacon8Web.Components.GameCard`, `Bacon8.GameCards`): the plugin supplies it from its
+  `priv/static/card/` folder and an admin can change it on the plugin's admin page.
   """
   use Bacon8Web, :live_view
+
+  alias Bacon8Web.Components.GameCard
 
   on_mount {Bacon8Web.UserAuth, :require_authenticated_user}
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Phoenix.PubSub.subscribe(Bacon8.PubSub, Bacon8.Plugins.topic())
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Bacon8.PubSub, Bacon8.Plugins.topic())
+      Phoenix.PubSub.subscribe(Bacon8.PubSub, Bacon8.GameCards.topic())
+    end
 
-    {:ok, assign(socket, page_title: "Games", games: Bacon8.Plugins.active_games())}
+    {:ok, socket |> assign(page_title: "Games") |> load()}
   end
 
-  # An admin activated or deactivated a plugin.
+  # The games (and their cards' plugin slugs, which aren't always the game slug).
+  defp load(socket) do
+    games =
+      for mod <- Bacon8.Plugins.active(), game = Bacon8.Plugins.game_info(mod), game != nil do
+        Map.put(game, :plugin, mod.slug())
+      end
+
+    cards = Bacon8.GameCards.for_plugins(Enum.map(games, & &1.plugin))
+    assign(socket, games: games, cards: cards)
+  end
+
+  # An admin activated or deactivated a plugin, or changed a card.
   @impl true
-  def handle_info(:plugins_changed, socket), do: {:noreply, assign(socket, games: Bacon8.Plugins.active_games())}
+  def handle_info(:plugins_changed, socket), do: {:noreply, load(socket)}
+  def handle_info({:game_card_changed, _slug}, socket), do: {:noreply, load(socket)}
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # Sent by the desktop taskbar in the app layout; nothing to do here.
@@ -32,17 +51,14 @@ defmodule Bacon8Web.GamesLive do
         <h1 class="text-3xl font-bold text-white mb-2">Games</h1>
         <p class="text-gray-400 mb-10">Pick a game to play.</p>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          <%!-- Plugin pages are in their own live_session, so this is a full page load. --%>
-          <.link
+        <%!-- Play links into plugin pages, which are in their own live_session: a full page load. --%>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 max-w-sm sm:max-w-none mx-auto">
+          <GameCard.game_card
             :for={game <- @games}
-            navigate={game.path}
-            class="block text-left glass-dark rounded-lg p-6 border border-gray-700 hover:border-blue-400 transition-colors duration-300"
-          >
-            <div class="text-4xl mb-3">{Map.get(game, :icon, "🎮")}</div>
-            <div class="text-xl font-semibold text-white">{game.name}</div>
-            <p class="text-sm text-gray-400 mt-2">{game.description}</p>
-          </.link>
+            id={"game-card-#{game.plugin}"}
+            game={game}
+            card={@cards[game.plugin]}
+          />
         </div>
 
         <p :if={@games == []} class="text-gray-500">

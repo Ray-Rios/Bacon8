@@ -302,6 +302,27 @@ export class WorldDressing {
     this.prop('Wheelbarrow', -12.5, 19.5, 120, 0.6);
     this.prop('SackPile', -8.2, 19.8, 10, 0.5);
 
+    // the stable (south-east): a fenced paddock with hay and a trough, the stablemaster
+    // (BaconWorld.Merchants "rowena") at its gate, facing the plaza
+    for (let i = 0; i < 3; i++) {
+      this.put('K_Fence_Wood', 15 + i * 3, 10.5, 0);
+      this.put('K_Fence_Wood', 15 + i * 3, 19.5, 0);
+    }
+    this.box(18, 10.5, 4.5, 0.15, 0);
+    this.box(18, 19.5, 4.5, 0.15, 0);
+    for (const z of [12, 18]) {
+      this.put('K_Fence_Wood', 22.5, z, 90);
+      this.box(22.5, z, 0.15, 1.5, 0);
+    }
+    this.put('K_Fence_Wood', 13.5, 18, 90);
+    this.box(13.5, 18, 0.15, 1.5, 0);
+    this.prop('Haystack', 19.5, 17, 20, 1.0);
+    this.prop('BarrelWater', 16.5, 12.2, 0, 0.45);
+    this.prop('Bucket', 17.4, 12.0, 30, 0);
+    this.prop('Cart', 20.5, 13.0, 75, 1.0);
+    this.prop('SackPile', 14.6, 16.2, 10, 0.5);
+    this.prop('Signpost', 13.2, 11.2, 230, 0.3);
+
     // a little shrine and a statue at the south end of the plaza
     this.prop('Statue', 0, 16, 180, 0.7);
     this.prop('Candelabra', -1.4, 15, 0, 0, 0.0);

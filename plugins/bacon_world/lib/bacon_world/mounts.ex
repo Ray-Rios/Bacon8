@@ -85,6 +85,11 @@ defmodule BaconWorld.Mounts do
 
   def owns?(user, id), do: is_binary(id) and not is_nil(get(id)) and id in owned(user)
 
+  @doc "Each mount's page in the Bacon Store (`/store/p/mount-<id>`), for the stable's \"Buy\" links."
+  def store_paths, do: Map.new(@mounts, &{&1.id, "/store/p/" <> store_slug(&1.id)})
+
+  defp store_slug(id), do: "mount-" <> String.replace(id, "_", "-")
+
   defp admin?(%{role: "admin"}), do: true
   defp admin?(%{is_admin: true}), do: true
   defp admin?(_), do: false
@@ -100,7 +105,7 @@ defmodule BaconWorld.Mounts do
 
     if Code.ensure_loaded?(catalog) do
       for m <- @mounts do
-        slug = "mount-" <> String.replace(m.id, "_", "-")
+        slug = store_slug(m.id)
 
         case apply(catalog, :get_active_product_by_slug, [slug]) do
           nil ->

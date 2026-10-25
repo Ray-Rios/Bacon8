@@ -54,6 +54,10 @@ defmodule Bacon8Web.Endpoint do
     gzip: true,
     cache_control_for_etags: "public, max-age=86400"
 
+  # Installed plugins' own files: /plugins/<slug>/... from plugins/<slug>/priv/static/
+  # (pictures and the like only; game cards' pictures live there). BACON8.md §9.
+  plug Bacon8Web.Plugs.PluginStatic
+
   # Serve additional static asset folders for 3D world (terrain heightmaps, etc.)
   plug Plug.Static,
     at: "/",

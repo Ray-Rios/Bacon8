@@ -65,7 +65,7 @@ defmodule BaconStoreWeb.StoreOrderLive do
             <div><span class="text-gray-500">Ordered:</span> {local_datetime(@order.inserted_at, @tz)}</div>
             <div><span class="text-gray-500">Status:</span> <span class="text-white">{status_text(@order.status)}</span></div>
             <div><span class="text-gray-500">Price:</span> {Store.order_price(@order)}</div>
-            <div :if={@order.gems > 0}><span class="text-gray-500">Gems:</span> {Store.format_gems(@order.gems)}</div>
+            <div :if={@order.gems > 0}><span class="text-gray-500">Gems:</span> <Bacon8Web.Components.Gem.gems amount={@order.gems} /></div>
             <p :if={@order.status == "awaiting_payment"} class="text-sm text-gray-400 pt-2">
               This page updates by itself once the payment is confirmed.
             </p>
@@ -73,7 +73,7 @@ defmodule BaconStoreWeb.StoreOrderLive do
               Your payment went through. We're finishing your delivery and will have it in your library shortly.
             </p>
             <p :if={@order.status == "fulfilled" and @order.gems > 0} class="text-sm text-green-300 pt-2">
-              Your Gems have been added. Balance: {Store.format_gems(@balance)}
+              Your Gems have been added. Balance: <Bacon8Web.Components.Gem.gems amount={@balance} />
             </p>
             <p :if={@order.status == "fulfilled" and @order.gems == 0} class="text-sm text-green-300 pt-2">
               Delivered. <.link navigate={~p"/store/library"} class="text-blue-400 hover:underline">Open your library</.link>
@@ -82,7 +82,7 @@ defmodule BaconStoreWeb.StoreOrderLive do
         <% else %>
           <h1 class="text-3xl font-bold text-white mt-6 mb-2">Purchases</h1>
           <p class="text-gray-400 mb-6">
-            Balance: {Store.format_gems(@balance)} ·
+            Balance: <Bacon8Web.Components.Gem.gems amount={@balance} /> ·
             <.link navigate={~p"/store/library"} class="text-blue-400 hover:underline">Library</.link>
           </p>
           <div :if={@orders == []} class="text-gray-500">No purchases yet.</div>

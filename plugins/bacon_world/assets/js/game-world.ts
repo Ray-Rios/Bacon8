@@ -15,6 +15,7 @@ import { GameUI } from './game-ui';
 import { item, money, moneyWords, setCatalog } from './items';
 import { MobsView, type MobEntry, type MobEvent } from './mobs-view';
 import { MountSystem } from './mounts';
+import { StableWindow } from './stable-ui';
 import { conColor, playerColor } from './nameplates';
 import { NpcsView, NPC_COLOR } from './npcs-view';
 import { gearKey, type Gear } from './wardrobe';
@@ -34,6 +35,7 @@ const MOUNT_REFUSALS: Record<string, string> = {
   no_mount: "You don't have a mount yet. Dragons are for sale in the Bacon Store.",
   not_owned: "That mount isn't yours.",
   dead: 'Not while you are dead.',
+  airborne: 'Land first (double-tap Space, or fly down to the ground).',
 };
 
 function reply(hook: any, event: string, payload: any, fallback: any = { ok: false }): Promise<any> {
@@ -126,6 +128,8 @@ export const GameWorld = {
 
   teardownGame(this: any) {
     this.mounts?.clearAll();
+    this.teardownSkills?.();
+    this.stable?.close();
     if (this.lootingId) this.closeLoot();
     this.gameUI?.closeMerchant(false);
     this.tradingWith = null;
@@ -197,11 +201,19 @@ export const GameWorld = {
     if (!myId || !this.mounts) return;
     const riding = !!this.mounts.mountOf(myId);
     if (riding && wantOn !== true && !id) {
-      if (this.controller?.isFlying) {
+      // in the air (flying, or falling after leaving flight): land first. Climbing off
+      // up there left the rider falling with the server refusing the fall (2026-10-24).
+      if (this.controller?.isFlying || this.controller?.getMovementState?.()?.isGrounded === false) {
         this.combatLog('Land first (double-tap Space, or fly down to the ground).', '#B8B8B8');
         return;
       }
-      void reply(this, 'mount_dismount', {}).then(() => this.applyLocalMount(null));
+      void reply(this, 'mount_dismount', {}).then((res: any) => {
+        if (res?.ok === false) {
+          this.combatLog(MOUNT_REFUSALS[res.reason] || "You can't climb down here.", '#B8B8B8');
+          return;
+        }
+        this.applyLocalMount(null);
+      });
       return;
     }
     if (this.isDead) return;
@@ -229,6 +241,44 @@ export const GameWorld = {
   tickMounts(this: any, dt: number) {
     const myId = this.state?.currentPlayer?.character_id;
     this.mounts?.update(dt, (id: string) => (id === myId ? !!this.controller?.isFlying : ((this.remoteMotion?.get(id) ?? 0) & 4) !== 0));
+  },
+
+  // ---------------------------------------------------------------- the stable
+
+  async openStable(this: any, npcId: string) {
+    const res = await reply(this, 'stable_open', { id: npcId });
+    if (!res?.ok) {
+      this.combatLog(res?.error || "They won't talk to you right now.", '#B8B8B8');
+      return;
+    }
+    if (!this.stable) {
+      this.stable = new StableWindow(
+        this.gameUI.root,
+        (mount: string) => void this.chooseMount(npcId, mount),
+        () => (this.tradingWith = null)
+      );
+    }
+    if (this.lootingId) this.closeLoot();
+    this.gameUI?.closeMerchant(false);
+    this.tradingWith = npcId;
+    const name = this.state?.currentPlayer?.name || 'traveller';
+    this.combatLog(res.owned?.length ? `${res.stable.name} says, 'Your beasts are fed and rested, ${name}.'` : `${res.stable.name} says, 'No dragon of your own yet, ${name}? The Bacon Store has a few.'`, '#8FD3FF');
+    this.stable.open(res);
+    this.controller?.releasePointerLock();
+    this.audio?.play('bag_open', 0.5);
+  },
+
+  async chooseMount(this: any, npcId: string, mount: string) {
+    const res = await reply(this, 'stable_choose', { id: npcId, mount });
+    if (!res?.ok) {
+      this.combatLog(res?.error || "You can't do that right now.", '#B8B8B8');
+      return;
+    }
+    if (res.spec && this.mounts) this.mounts.catalog[mount] = res.spec;
+    this.stable?.update({ chosen: res.chosen, riding: res.riding });
+    const spec = this.mounts?.spec(mount);
+    this.combatLog(`You will ride your ${spec?.name || 'mount'} from now on (M).`, '#9FD8FF');
+    if (res.riding === mount) this.applyLocalMount(mount);
   },
 
   localCharacter(this: any) {
@@ -428,6 +478,9 @@ export const GameWorld = {
         if (e.target === myId && m) this.combatLog(`${capital(m.view.name)} notices you!`, '#FF9B7A');
         if (m?.dragon && dist < 60 * U) this.audio?.play('land', 1.0, dist);
         break;
+      case 'rooted':
+        this.onMobRooted?.(e, m);
+        break;
       case 'cast':
         if (m && e.move === 'breath' && dist < 45 * U) this.combatLog(`${capital(m.view.name)} rears back and draws a deep breath!`, '#FFB347');
         break;
@@ -573,6 +626,8 @@ export const GameWorld = {
       this.combatLog(`You are too far away to trade with ${n.name}.`, '#B8B8B8');
       return;
     }
+    // the stablemaster keeps your mounts (stable-ui.ts)
+    if (n.kind === 'stable') return this.openStable(npcId);
     const res = await reply(this, 'merchant_open', { id: npcId });
     if (!res.ok) {
       this.combatLog(res.error || "They won't trade with you right now.", '#B8B8B8');
