@@ -275,12 +275,10 @@ defmodule Bacon8.Uploads do
   Returns `:ok` on success or `{:error, reason}` on failure.
   """
   def delete_file(url_path) when is_binary(url_path) do
-    # Convert URL path to filesystem path
-    file_path = url_path
-                |> String.replace_prefix("/uploads/", "")
-                |> then(&Path.join([base_dir(), &1]))
-    
-    case File.rm(file_path) do
+    # Convert URL path to filesystem path, confined to base_dir(): nil when it climbs out
+    file_path = url_to_path(url_path)
+
+    case (if file_path, do: File.rm(file_path), else: {:error, :invalid_path}) do
       :ok ->
         Logger.info("Deleted file: #{url_path}")
 
@@ -309,11 +307,9 @@ defmodule Bacon8.Uploads do
   Checks if a file exists at the given URL path.
   """
   def file_exists?(url_path) when is_binary(url_path) do
-    file_path = url_path
-                |> String.replace_prefix("/uploads/", "")
-                |> then(&Path.join([base_dir(), &1]))
-    
-    File.exists?(file_path)
+    file_path = url_to_path(url_path)
+
+    file_path != nil and File.exists?(file_path)
   end
 
   def file_exists?(_), do: false

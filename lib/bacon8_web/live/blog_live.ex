@@ -27,18 +27,18 @@ defmodule Bacon8Web.BlogLive do
   end
 
   def handle_params(%{"slug" => slug}, _uri, socket) do
-    post = Content.get_post_by_slug!(slug)
+    # A draft is for staff only (it used to be readable by anyone who knew its slug), and a
+    # slug nobody has is "not found", not a crash.
+    case Content.get_post_by_slug(slug) do
+      %{is_published: true} = post ->
+        {:noreply, show_post(socket, post)}
 
-    {:noreply,
-     assign(socket,
-       post: post,
-       page_title: post.title,
-       view: :post_detail,
-       editing: false,
-       saving: false,
-       last_saved: nil,
-       pending_content: nil
-     )}
+      %{} = post ->
+        if can_edit?(socket.assigns), do: {:noreply, show_post(socket, post)}, else: post_not_found(socket)
+
+      nil ->
+        post_not_found(socket)
+    end
   end
 
   def handle_params(_params, _uri, socket) do
@@ -49,6 +49,26 @@ defmodule Bacon8Web.BlogLive do
        view: :post_list,
        editing: false
      )}
+  end
+
+  defp show_post(socket, post) do
+    assign(socket,
+      post: post,
+      page_title: post.title,
+      view: :post_detail,
+      editing: false,
+      saving: false,
+      last_saved: nil,
+      pending_content: nil
+    )
+  end
+
+  # A post's date: when it was published, or (a draft, or one published before dates were
+  # stamped) when it was written.
+  defp post_date(post, format), do: Calendar.strftime(post.published_at || post.inserted_at, format)
+
+  defp post_not_found(socket) do
+    {:noreply, socket |> put_flash(:error, "Post not found") |> push_navigate(to: "/blog")}
   end
 
   # Check if user can edit content
@@ -190,83 +210,28 @@ defmodule Bacon8Web.BlogLive do
     end
   end
 
-  defp handle_media_upload(%{"blockId" => block_id, "mediaType" => media_type, "data" => base64_data} = params, socket) do
-    post = socket.assigns.post
-    filename = params["filename"] || "upload_#{System.unique_integer([:positive])}"
-    mime_type = params["mimeType"] || "application/octet-stream"
-    file_size = params["size"] || 0
-    original_filename = params["filename"] || filename
-    
-    # Use post ID for the upload path: /uploads/public/blog/{post_id}/
-    upload_context = "blog/#{post.id}"
-    
-    # Decode base64 data
-    case Base.decode64(base64_data) do
-      {:ok, file_data} ->
-        # Create temp file
-        temp_dir = System.tmp_dir!()
-        temp_path = Path.join(temp_dir, filename)
-        
-        case File.write(temp_path, file_data) do
-          :ok ->
-            # Upload to /uploads/public/blog/{post_id}/ using Uploads module
-            case Bacon8.Uploads.upload_file(
-              nil,
-              temp_path,
-              %{client_name: filename, client_type: mime_type, client_size: file_size},
-              context: upload_context,
-              public: true
-            ) do
-              {:ok, url} ->
-                # Clean up temp file
-                File.rm(temp_path)
-                
-                # Push success event to client
-                {:noreply, push_event(socket, "block-media-uploaded", %{
-                  blockId: block_id,
-                  url: url,
-                  mediaType: media_type,
-                  filename: original_filename,
-                  mediaId: nil
-                })}
-              
-              {:error, reason} ->
-                File.rm(temp_path)
-                {:noreply, push_event(socket, "block-media-error", %{
-                  blockId: block_id,
-                  error: "Upload failed: #{inspect(reason)}"
-                })}
-            end
-          
-          {:error, reason} ->
-            {:noreply, push_event(socket, "block-media-error", %{
-              blockId: block_id,
-              error: "Failed to write temp file: #{inspect(reason)}"
-            })}
-        end
-      
-      :error ->
-        {:noreply, push_event(socket, "block-media-error", %{
-          blockId: block_id,
-          error: "Invalid file data"
-        })}
+  defp handle_media_upload(%{"blockId" => block_id, "mediaType" => media_type} = params, socket) do
+    case Bacon8.Content.InlineMedia.store("blog/#{socket.assigns.post.id}", params) do
+      {:ok, %{url: url, filename: filename}} ->
+        {:noreply,
+         push_event(socket, "block-media-uploaded", %{
+           blockId: block_id,
+           url: url,
+           mediaType: media_type,
+           filename: filename,
+           mediaId: nil
+         })}
+
+      {:error, message} ->
+        {:noreply, push_event(socket, "block-media-error", %{blockId: block_id, error: message})}
     end
   end
 
+  defp handle_media_upload(_params, socket), do: {:noreply, socket}
+
+  # Only this post's own uploads can be removed (Bacon8.Content.InlineMedia)
   defp handle_media_remove(%{"url" => url}, socket) when is_binary(url) do
-    # Delete the file directly from filesystem
-    # URL format: /uploads/public/blog/{post_id}/filename.ext
-    if String.starts_with?(url, "/uploads/public/") do
-      # Convert URL path to filesystem path
-      relative_path = String.replace_prefix(url, "/uploads/", "")
-      file_path = Path.join(Bacon8.Uploads.base_dir(), relative_path)
-      
-      # Delete the file if it exists
-      if File.exists?(file_path) do
-        File.rm(file_path)
-      end
-    end
-    
+    Bacon8.Content.InlineMedia.remove("blog/#{socket.assigns.post.id}", url)
     {:noreply, socket}
   end
 
@@ -342,7 +307,7 @@ defmodule Bacon8Web.BlogLive do
                       <!-- Content -->
                       <div class="w-1/2 p-8 flex flex-col justify-center">
                         <div class="text-blue-400 text-sm mb-2">
-                          <%= Calendar.strftime(post.published_at, "%B %d, %Y") %>
+                          <%= post_date(post, "%B %d, %Y") %>
                         </div>
                         <h3 class="text-2xl font-bold text-white mb-4"><%= post.title %></h3>
                         <p class="text-gray-300 mb-6 line-clamp-3"><%= post.excerpt || String.slice(post.content, 0, 200) <> "..." %></p>
@@ -362,7 +327,7 @@ defmodule Bacon8Web.BlogLive do
                               </div>
                             <% end %>
                             <span class="mr-4"><%= post.user.name || post.user.email %></span>
-                            <span><%= Calendar.strftime(post.published_at, "%b %d, %Y") %></span>
+                            <span><%= post_date(post, "%b %d, %Y") %></span>
                           </div>
                         </div>
                       </div>
@@ -415,7 +380,7 @@ defmodule Bacon8Web.BlogLive do
                         </div>
                       <% end %>
                       <span class="mr-4"><%= post.user.name || post.user.email %></span>
-                      <span><%= Calendar.strftime(post.published_at, "%b %d, %Y") %></span>
+                      <span><%= post_date(post, "%b %d, %Y") %></span>
                     </div>
 
                     <h3 class="text-xl font-bold text-white mb-3 hover:text-blue-400 transition-colors">
@@ -533,7 +498,7 @@ defmodule Bacon8Web.BlogLive do
                 </div>
               <% end %>
               <span class="mr-4"><%= @post.user.name || @post.user.email %></span>
-              <span><%= Calendar.strftime(@post.published_at, "%B %d, %Y") %></span>
+              <span><%= if @post.is_published, do: post_date(@post, "%B %d, %Y"), else: "Draft, not published" %></span>
             </div>
 
             <!-- Tags -->

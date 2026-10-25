@@ -18,7 +18,8 @@ defmodule Bacon8Web.PageLive do
          |> push_navigate(to: "/")}
       
       page ->
-        if page.is_published or (socket.assigns.current_user && socket.assigns.current_user.is_admin) do
+        # Drafts are for staff (admins, GMs and editors: whoever may edit the page)
+        if page.is_published or can_edit?(socket.assigns) do
           {:ok, assign(socket,
             page: page,
             page_title: page.title,
@@ -150,78 +151,28 @@ defmodule Bacon8Web.PageLive do
     end
   end
 
-  defp handle_media_upload(%{"blockId" => block_id, "mediaType" => media_type, "data" => base64_data} = params, socket) do
-    page = socket.assigns.page
-    filename = params["filename"] || "upload_#{System.unique_integer([:positive])}"
-    mime_type = params["mimeType"] || "application/octet-stream"
-    file_size = params["size"] || 0
-    original_filename = params["filename"] || filename
-    
-    # Use page ID for the upload path: /uploads/public/pages/{page_id}/
-    upload_context = "pages/#{page.id}"
-    
-    case Base.decode64(base64_data) do
-      {:ok, file_data} ->
-        temp_dir = System.tmp_dir!()
-        temp_path = Path.join(temp_dir, filename)
-        
-        case File.write(temp_path, file_data) do
-          :ok ->
-            # Upload to /uploads/public/pages/{page_id}/ using Uploads module
-            case Bacon8.Uploads.upload_file(
-              nil,
-              temp_path,
-              %{client_name: filename, client_type: mime_type, client_size: file_size},
-              context: upload_context,
-              public: true
-            ) do
-              {:ok, url} ->
-                File.rm(temp_path)
-                {:noreply, push_event(socket, "block-media-uploaded", %{
-                  blockId: block_id,
-                  url: url,
-                  mediaType: media_type,
-                  filename: original_filename,
-                  mediaId: nil
-                })}
-              
-              {:error, reason} ->
-                File.rm(temp_path)
-                {:noreply, push_event(socket, "block-media-error", %{
-                  blockId: block_id,
-                  error: "Upload failed: #{inspect(reason)}"
-                })}
-            end
-          
-          {:error, reason} ->
-            {:noreply, push_event(socket, "block-media-error", %{
-              blockId: block_id,
-              error: "Failed to write temp file: #{inspect(reason)}"
-            })}
-        end
-      
-      :error ->
-        {:noreply, push_event(socket, "block-media-error", %{
-          blockId: block_id,
-          error: "Invalid file data"
-        })}
+  defp handle_media_upload(%{"blockId" => block_id, "mediaType" => media_type} = params, socket) do
+    case Bacon8.Content.InlineMedia.store("pages/#{socket.assigns.page.id}", params) do
+      {:ok, %{url: url, filename: filename}} ->
+        {:noreply,
+         push_event(socket, "block-media-uploaded", %{
+           blockId: block_id,
+           url: url,
+           mediaType: media_type,
+           filename: filename,
+           mediaId: nil
+         })}
+
+      {:error, message} ->
+        {:noreply, push_event(socket, "block-media-error", %{blockId: block_id, error: message})}
     end
   end
 
+  defp handle_media_upload(_params, socket), do: {:noreply, socket}
+
+  # Only this page's own uploads can be removed (Bacon8.Content.InlineMedia)
   defp handle_media_remove(%{"url" => url}, socket) when is_binary(url) do
-    # Delete the file directly from filesystem
-    # URL format: /uploads/public/pages/{page_id}/filename.ext
-    if String.starts_with?(url, "/uploads/public/") do
-      # Convert URL path to filesystem path
-      relative_path = String.replace_prefix(url, "/uploads/", "")
-      file_path = Path.join(Bacon8.Uploads.base_dir(), relative_path)
-      
-      # Delete the file if it exists
-      if File.exists?(file_path) do
-        File.rm(file_path)
-      end
-    end
-    
+    Bacon8.Content.InlineMedia.remove("pages/#{socket.assigns.page.id}", url)
     {:noreply, socket}
   end
 

@@ -45,10 +45,15 @@ On 2026-10-25:
   notifications** (they read a user field that doesn't exist), **marking a notification read**
   and **"Mark all read"** (microseconds in a whole-second column), **the notification list**
   after its channel association went, and the old mention link. 409 tests pass.
-- The pages and blog builder rebuild is the other pending piece:
-  [`docs/pages-blog-builder.md`](docs/pages-blog-builder.md). The owner's answers (2026-10-25):
-  start with tests for the editors; only admins, GMs and editors write content; keep the
-  rows, columns and blocks model.
+- **Pages and blog: the safety net is built, and it found security and data bugs, now fixed**
+  (`docs/pages-blog-builder.md`): drafts were readable by anyone at `/blog/<slug>`; viewing a
+  draft and a slug nobody has both crashed; the inline media upload and remove handlers had two
+  **path-traversal holes** (staff-reachable), now `Bacon8.Content.InlineMedia` on `Bacon8.SafePath`
+  (`Uploads.delete_file/1` and `file_exists?/1` confined too); GMs and editors couldn't open drafts of
+  pages they may edit. Two dead editors (`PageEditorLive`, `BlogEditorLive`, 1,300 lines) were
+  deleted. 511 tests pass. **The path fix is security-sensitive and was reviewed by no one but its
+  author: see §14.** The owner's answers (2026-10-25): tests first; only admins, GMs and editors write
+  content; keep the rows, columns and blocks model.
 - **Glass** (`1fbeae7`): menus and popups are frosted (`.glass-menu`), palette swatches and the
   tint picker are textured glass, and the personal glass colour reaches Bacon World's windows
   (`--bwg-*`). The decisions-log row below has the detail. A follow-up fixed **preset buttons
@@ -58,10 +63,10 @@ On 2026-10-25:
 
 **Next session, start here:**
 
-1. **Pages and blog**: read `docs/pages-blog-builder.md` (its decisions are filled in). The
-   first step is tests for the editors' save, publish and error paths and for the public pages'
-   draft/published rules, the safety net the forum got. Then what annoys the owner, then the
-   production-grade list.
+1. **Pages and blog**: read `docs/pages-blog-builder.md`. The tests exist now. Next: ask the owner
+   its three open questions, settle the permissions question it records (GMs and editors can edit in
+   place but not reach `/admin/pages`), then collapse the four editing surfaces into one builder.
+   Have the path-handling change (`Content.InlineMedia`, `Uploads`) reviewed by someone else.
 2. **Chat, phase 3** (`docs/chat-channels-plugin.md`): delete the dead code, split `ChatLive`
    (3,100 lines), and add the page that redeems an invite code. Phase 4 (moving the tables) is
    still the owner's call.
@@ -1062,12 +1067,13 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 
 Ordered roughly by how much it hurts.
 
-- **Most of the core has no tests.** Found 2026-10-25 by module name (indirect cover may
-  exist): `Security`, `RateLimiter`, `SafePath`, `Uploads`, `UserFileUpload`, `UserSession`,
-  `Moderation`, `Email`, `Mailer`, `Notifications`, `Entitlements`, `Calendar`, `Desktop`,
-  `Audit`, `Avatar`, `Storage` and the media code. There are no LiveView tests for the editors,
-  the forum, the profile or the admin. Security-sensitive areas (BACON8.md §14) deserve tests
-  before they are touched. The forum and the content context were covered first.
+- **Much of the core still has no tests.** Found 2026-10-25 by module name (indirect cover may
+  exist): `Security`, `RateLimiter`, `Uploads` (apart from its path functions), `UserFileUpload`,
+  `UserSession`, `Moderation`, `Email`, `Mailer`, `Entitlements`, `Calendar`, `Desktop`, `Audit`,
+  `Avatar`, `Storage` and the media code. There are no LiveView tests for the profile, the admin
+  dashboard, user management or the SQL console. Covered so far: the forum (now the plugin), pages
+  and blog (the context, the public pages, both admin pages, the inline media), `SafePath`,
+  notifications. Security-sensitive areas (§14) deserve tests before they are touched.
 - **RaysSpaceSim's half of the 2026-10-25 sound delivery is uncommitted** in its repository
   (a C++ audio subsystem, 352 sounds, FLAC sources; `handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`).
   It has not been compiled or verified by Claude Code.

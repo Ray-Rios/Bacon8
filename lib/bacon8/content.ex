@@ -42,6 +42,16 @@ defmodule Bacon8.Content do
     Repo.get_by!(Post, slug: slug) |> Repo.preload(:user)
   end
 
+  @doc "The post with this slug, published or not, or nil."
+  def get_post_by_slug(slug) when is_binary(slug) do
+    case Repo.get_by(Post, slug: slug) do
+      nil -> nil
+      post -> Repo.preload(post, :user)
+    end
+  end
+
+  def get_post_by_slug(_), do: nil
+
   def create_post(user, attrs \\ %{}) do
     %Post{}
     |> Post.changeset(attrs)
