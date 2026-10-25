@@ -268,9 +268,22 @@ export const WorldCharacterUIScene = {
 
       if (this.state?.uiState === 'world' && this.state.currentPlayer) {
         void this.syncOtherPlayers();
+        const me = this.state.currentPlayer.character_id;
+        for (const c of this.state.onlineCharacters || []) if (c.character_id !== me && 'mount' in c) void this.mounts?.set(c.character_id, c.mount || null);
       } else {
         this.syncSceneMode();
       }
+    });
+
+    // Someone in the zone climbed on or off a mount (BaconWorldWeb.MountEvents).
+    this.handleEvent('zone_mount', (payload: any) => {
+      if (!payload?.character_id || payload.character_id === this.state?.currentPlayer?.character_id) return;
+      void this.mounts?.set(payload.character_id, payload.mount || null);
+    });
+
+    // The server took you off your mount (you died, or left the world).
+    this.handleEvent('mount_changed', (payload: any) => {
+      this.applyLocalMount?.(payload?.mount || null);
     });
 
     this.handleEvent('zone_position_update', (payload: any) => {
@@ -280,6 +293,7 @@ export const WorldCharacterUIScene = {
       const now = performance.now();
       this.remoteLastSeenMs.set(payload.character_id, now);
       this.remoteMotion.set(payload.character_id, typeof payload.m === 'number' ? payload.m : 0);
+      if ('mount' in payload) void this.mounts?.set(payload.character_id, payload.mount || null);
       this.remoteNetTargets.set(payload.character_id, {
         x: payload.x || 0,
         y: payload.y || 0,
@@ -866,6 +880,7 @@ export const WorldCharacterUIScene = {
     this.audio?.setMusic(true);
     this.audio?.preload();
     this.initGame();
+    this.initMounts();
 
     // Start day/night sky system
     if (!this.skySystem && this.ambientLight) {
@@ -982,6 +997,7 @@ export const WorldCharacterUIScene = {
           const lastSeen = this.remoteLastSeenMs.get(id) || 0;
           const lastTargetUpdate = this.remoteNetTargets.get(id)?.updatedAt || 0;
           if (now - lastSeen >= this.remoteStaleTimeoutMs && now - lastTargetUpdate >= this.remoteStaleTimeoutMs) {
+            this.mounts?.forget(id);
             this.characterManager?.removeCharacter(id);
             this.remoteNetTargets.delete(id);
             this.remoteLastSeenMs.delete(id);
@@ -1266,6 +1282,15 @@ export const WorldCharacterUIScene = {
       event.preventDefault();
       const message = input.value.trim();
       if (!message) return;
+      // /mount [id], /dismount
+      const cmd = /^\/(mount|dismount)\b\s*(\S*)/i.exec(message);
+      if (cmd) {
+        if (cmd[1].toLowerCase() === 'mount') this.toggleMount(cmd[2] || undefined, true);
+        else if (this.mounts?.mountOf(this.state?.currentPlayer?.character_id)) this.toggleMount();
+        input.value = '';
+        input.blur();
+        return;
+      }
       (this.pushEvent('world_chat_message', { message }) as any)?.catch?.(() => {});
       this.appendChatMessage('You', message);
       input.value = '';
@@ -1756,6 +1781,13 @@ export const WorldCharacterUIScene = {
       return;
     }
 
+    // M: climb onto (or off) your mount
+    if ((event.key === 'm' || event.key === 'M') && !event.ctrlKey && !event.metaKey && !event.altKey && !this.isGameMenuOpen()) {
+      event.preventDefault();
+      this.toggleMount();
+      return;
+    }
+
     // I: inventory; G: loot the nearest corpse
     if ((event.key === 'i' || event.key === 'I') && !this.isGameMenuOpen()) {
       this.gameUI?.toggleInventory();
@@ -1807,7 +1839,7 @@ export const WorldCharacterUIScene = {
         { name: character.name, color: playerColor(pvp.get(id) === true) },
         {
           // Measured once (bounds are costly); humans follow their height.
-          height: human || !known ? plateHeight(character.mesh, human) : undefined,
+          height: human || !known ? plateHeight(character.mesh, human) + (human ? (this.characterManager.getHuman(id)?.model?.position?.y || 0) * (character.mesh.scale?.y || 1) : 0) : undefined,
           target: id === this.targetId,
         }
       );
@@ -2024,9 +2056,9 @@ export const WorldCharacterUIScene = {
 
     const now = performance.now();
     const prev = this.lastSentLocalPosition;
-    // What the body is doing, so everyone else sees it: 1 crouching, 2 airborne.
+    // What the body is doing, so everyone else sees it: 1 crouching, 2 airborne, 4 flying (a mount).
     const ms = this.controller?.getMovementState?.();
-    const m = (ms?.isCrouching ? 1 : 0) | (ms && !ms.isGrounded ? 2 : 0);
+    const m = (ms?.isCrouching ? 1 : 0) | (ms && !ms.isGrounded ? 2 : 0) | (ms?.isFlying ? 4 : 0);
 
     const moved =
       !prev ||
@@ -2239,6 +2271,7 @@ export const WorldCharacterUIScene = {
       this.applyRemoteSmoothing(deltaSeconds);
       this.syncCharacterAnimations();
       this.characterManager?.updateAnimations(deltaSeconds);
+      this.tickMounts(deltaSeconds);
       this.tickGame(deltaSeconds);
       this.updateNameplates();
       this.tickTargetRing();

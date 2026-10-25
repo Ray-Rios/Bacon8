@@ -28,7 +28,6 @@ import {
 } from './wardrobe';
 
 export const HUMANS_BASE = '/models/Humans';
-/** The skeleton creatures' animation packs (the old male skeleton's). */
 
 /**
  * The shipped animation packs' forearm twist bones are wrong in many clips (every
@@ -347,6 +346,21 @@ function wardrobeMaterial(m: THREE.MeshStandardMaterial) {
 }
 
 const _q = new THREE.Quaternion();
+const _w1 = new THREE.Vector3(), _w2 = new THREE.Vector3(), _w3 = new THREE.Vector3(), _w4 = new THREE.Vector3();
+const _w5 = new THREE.Vector3(), _w6 = new THREE.Vector3(), _w7 = new THREE.Vector3();
+const _rq = new THREE.Quaternion(), _rw = new THREE.Quaternion(), _rp = new THREE.Quaternion();
+
+/** Turns `bone` in the world by the rotation taking `from` to `to` (unit vectors), keeping its children's world positions in step. */
+function rotateWorld(bone: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3) {
+  _rq.setFromUnitVectors(from, to);
+  bone.getWorldQuaternion(_rw);
+  _rw.premultiply(_rq);
+  if (bone.parent) bone.parent.getWorldQuaternion(_rp);
+  else _rp.identity();
+  bone.quaternion.copy(_rp.invert().multiply(_rw));
+  bone.updateWorldMatrix(false, true);
+}
+const RIDE_SPREAD_DEG = 32;
 
 /** Moves `cur` toward `target` (degrees) at `rate` degrees per second. */
 function approachDeg(cur: number, target: number, rate: number, dt: number): number {
@@ -389,6 +403,12 @@ export class HumanInstance {
   // the clavicles back about 30 degrees, which on a body with long clavicles (the male) puts
   // the arms behind the torso
   private shoulders: Array<{ bone: THREE.Bone; q: THREE.Quaternion }> = [];
+  // riding: thighs turned out by RIDE_SPREAD_DEG, eased in and out
+  private rideThighs: Array<{ bone: THREE.Bone; axis: THREE.Vector3; sgn: number }> = [];
+  private riding = false;
+  private rideW = 0;
+  private gripW = 0; // the two-handed off-hand grip (twoHandGrip), eased in and out
+  private touched = new Set<THREE.Object3D>();
   // posture.arm_out {<what the arm does>: [upper arm, forearm, keep hand?]}: degrees out from
   // the body, per arm, eased toward the entry for what it is doing (armSets: 'free', a gear
   // set such as 'torch', 'two_hand', 'swing'); with keep hand 1 a holding hand keeps its
@@ -497,6 +517,11 @@ export class HumanInstance {
         .setFromAxisAngle(axisIn(b, 0, 1, 0), sgn * THREE.MathUtils.degToRad(fwd))
         .multiply(new THREE.Quaternion().setFromAxisAngle(axisIn(b, 0, 0, 1), sgn * THREE.MathUtils.degToRad(down)));
       this.shoulders.push({ bone: b, q });
+    }
+    // riding (setRiding): the thighs apart, astride the mount (the sitting clip has them together)
+    for (const side of ['l', 'r'] as const) {
+      const th = this.bones.get(`thigh_${side}`);
+      if (th) this.rideThighs.push({ bone: th, axis: axisIn(th, 0, 0, 1), sgn: side === 'l' ? 1 : -1 });
     }
     // posture.free_hand_deg [x, y, z]: an empty hand turned about its own axes (the right
     // hand's; the left mirrors y and z), on top of the relaxed fingers
@@ -706,7 +731,8 @@ export class HumanInstance {
    * After the mixer each frame: the posture correction, and relaxed fingers on the hands
    * that hold nothing (`free.l`, `free.r`; a punch closes them again).
    */
-  postAnimate(dt: number, free: { l: boolean; r: boolean } = { l: true, r: true }, armSets?: { l: string; r: string }) {
+  postAnimate(dt: number, free: { l: boolean; r: boolean } = { l: true, r: true }, armSets?: { l: string; r: string; two?: boolean }) {
+    this.touched.clear();
     if (this.posture) {
       const pelvis = this.bones.get('pelvis')!;
       this.fromAnimated(pelvis);
@@ -757,6 +783,16 @@ export class HumanInstance {
       this.wrote(a.la);
       this.wrote(a.hand);
     }
+    this.gripW = approach(this.gripW, armSets?.two ? 1 : 0, 8, dt);
+    if (this.gripW > 0.001) this.twoHandGrip(this.gripW);
+    this.rideW = approach(this.rideW, this.riding ? 1 : 0, 3, dt);
+    if (this.rideW > 0.001) {
+      for (const t of this.rideThighs) {
+        this.fromAnimated(t.bone);
+        t.bone.quaternion.multiply(_q.setFromAxisAngle(t.axis, t.sgn * THREE.MathUtils.degToRad(RIDE_SPREAD_DEG * this.rideW)));
+        this.wrote(t.bone);
+      }
+    }
     for (const f of this.fingers) {
       const w = f.side === 'l' ? this.handW.l : this.handW.r;
       this.fromAnimated(f.bone);
@@ -765,8 +801,79 @@ export class HumanInstance {
     }
   }
 
+  /**
+   * Two-handed weapons: the off hand onto the haft. The clips place the hands for the
+   * library's mannequin; each body's own proportions (the male's longer clavicles and arms)
+   * and its posture put them apart (2026-10-24: the male's spear, maul and staff all missed
+   * his left hand). A two-bone IK moves the left wrist so the grip (weapon_l) lands on the
+   * line of the main hand's weapon (weapon_r's +Y), as far from the main grip as the clip
+   * held the hands apart (at least a hand's width), then turns the hand so the grip runs along the haft. Blended
+   * in and out by `w`.
+   */
+  private twoHandGrip(w: number) {
+    const ua = this.bones.get('upperarm_l'), la = this.bones.get('lowerarm_l'), hand = this.bones.get('hand_l');
+    const wl = this.bones.get('weapon_l'), wr = this.bones.get('weapon_r');
+    if (!ua || !la || !hand || !wl || !wr) return;
+    this.fromAnimated(ua);
+    this.fromAnimated(la);
+    this.fromAnimated(hand);
+    const q0 = [ua.quaternion.clone(), la.quaternion.clone(), hand.quaternion.clone()];
+    wr.updateWorldMatrix(true, false);
+    ua.updateWorldMatrix(true, true);
+    const O = wr.getWorldPosition(new THREE.Vector3());
+    const D = new THREE.Vector3().setFromMatrixColumn(wr.matrixWorld, 1).normalize();
+    const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), G = new THREE.Vector3();
+    const read = () => {
+      ua.getWorldPosition(A); la.getWorldPosition(B); hand.getWorldPosition(C); wl.getWorldPosition(G);
+    };
+    read();
+    const l1 = A.distanceTo(B), l2 = B.distanceTo(C);
+    const gap = 0.42 * l2; // about a hand's width
+    // how far up the haft: as far from the main hand as the clip had the hands apart, on
+    // the side it had the off hand (the nearest point would pull the hands together when
+    // the clip's off hand is well off the haft, crossing the arm over the chest)
+    const rel = _w1.subVectors(G, O);
+    const side = rel.dot(D) < 0 ? -1 : 1;
+    const t = side * Math.min(Math.max(rel.length(), gap), 2.4 * l2);
+    for (let pass = 0; pass < 2; pass++) {
+      // where the wrist goes: the grip on the haft, the hand's own offset kept
+      const W = _w2.copy(O).addScaledVector(D, t).sub(G).add(C);
+      // the elbow stays in its plane
+      const to = _w3.subVectors(W, A);
+      const d = THREE.MathUtils.clamp(to.length(), Math.abs(l1 - l2) + 1e-4, (l1 + l2) * 0.999);
+      const u = to.normalize();
+      const pole = _w4.subVectors(B, A);
+      pole.addScaledVector(u, -pole.dot(u));
+      if (pole.lengthSq() < 1e-10) pole.set(0, -1, 0).addScaledVector(u, -u.y);
+      pole.normalize();
+      const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+      const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+      const Bn = _w5.copy(A).addScaledVector(u, a).addScaledVector(pole, h);
+      rotateWorld(ua, _w6.subVectors(B, A).normalize(), _w7.subVectors(Bn, A).normalize());
+      read();
+      rotateWorld(la, _w6.subVectors(C, B).normalize(), _w7.subVectors(W, B).normalize());
+      read();
+      // the grip along the haft (whichever way round the clip held it)
+      const gy = _w6.setFromMatrixColumn(wl.matrixWorld, 1).normalize();
+      const want = _w7.copy(D).multiplyScalar(gy.dot(D) < 0 ? -1 : 1);
+      rotateWorld(hand, gy.clone(), want);
+      read();
+    }
+    if (w < 0.999) {
+      ua.quaternion.copy(q0[0].slerp(ua.quaternion, w));
+      la.quaternion.copy(q0[1].slerp(la.quaternion, w));
+      hand.quaternion.copy(q0[2].slerp(hand.quaternion, w));
+    }
+    this.wrote(ua);
+    this.wrote(la);
+    this.wrote(hand);
+  }
+
   // Puts back what the animation left in a bone if nothing has keyed it since our last write.
   private fromAnimated(bone: THREE.Object3D) {
+    // a bone one correction already started from this frame keeps that correction
+    if (this.touched.has(bone)) return;
+    this.touched.add(bone);
     const a = this.applied.get(bone);
     if (a && bone.quaternion.equals(a.wrote)) bone.quaternion.copy(a.found);
     if (a) a.found.copy(bone.quaternion);
@@ -841,6 +948,17 @@ export class HumanInstance {
   /** Bone by name (for attaching weapons to weapon_r / weapon_l). */
   bone(name: string): THREE.Bone | undefined {
     return this.bones.get(name);
+  }
+
+  /** On a mount: thighs apart, astride it (eased in and out). */
+  setRiding(on: boolean) {
+    this.riding = on;
+  }
+
+  /** Moves the body within its root: onto a mount's seat, or back on its feet (null). */
+  setSeat(p: THREE.Vector3 | null) {
+    if (p) this.model.position.copy(p);
+    else this.model.position.set(0, 0, 0);
   }
 
   dispose() {

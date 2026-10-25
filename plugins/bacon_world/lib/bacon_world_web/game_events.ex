@@ -98,6 +98,8 @@ defmodule BaconWorldWeb.GameEvents do
   def handle_event("melee_attack", params, socket) do
     with %{} = me <- current(socket),
          false <- socket.assigns[:is_dead?] || false,
+         # no fighting from the saddle (BaconWorldWeb.MountEvents)
+         nil <- socket.assigns[:mount],
          hand when hand in ["left", "right"] <- params["hand"],
          heading when is_number(heading) <- params["heading"] do
       heavy = params["heavy"] == true
@@ -412,6 +414,7 @@ defmodule BaconWorldWeb.GameEvents do
     if id = socket.assigns[:looting], do: Mobs.loot_close(socket.assigns[:mobs_zone] || "lobby", id, me.character_id)
 
     socket
+    |> BaconWorldWeb.MountEvents.dismount()
     |> assign(pending_respawn_timer: timer, pending_spawn_coords: coords, is_dead?: true, looting: nil)
     |> set_dead(true)
     |> push_event("character_died", %{

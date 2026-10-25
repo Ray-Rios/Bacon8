@@ -142,6 +142,9 @@ export const STANCES: Record<GearSet, StanceDef> = {
   lantern: { idle: 'Idle_Lantern_Loop', light: [{ clip: 'Punch_Jab', hit: 0.2 }] },
 };
 
+/** What a rider plays (anim packs, Core). */
+export const RIDE_CLIP = 'Sitting_Idle_Loop';
+
 // Clips authored for the left hand (not mirrored when swung left).
 const LEFT_HANDED = new Set(['Punch_Jab', 'Shield_Dash', 'Idle_Shield_Loop', 'Idle_Torch_Loop', 'Idle_Lantern_Loop']);
 const UNARMED_LEFT: Swing[] = [{ clip: 'Punch_Jab', hit: 0.2 }, { clip: 'Melee_Hook', hit: 0.28 }];
@@ -317,6 +320,8 @@ export class CharacterAnimator {
   private combo: Record<Hand, { n: number; at: number }> = { left: { n: 0, at: -9 }, right: { n: 0, at: -9 } };
   private airborneFor = 0;
   private dead = false;
+  // On a mount (mounts.ts): the whole body sits (RIDE_CLIP) whatever the legs would do.
+  private riding = false;
 
   constructor(root: THREE.Object3D, mixer: THREE.AnimationMixer, clips: Iterable<THREE.AnimationClip>) {
     this.root = root;
@@ -360,7 +365,7 @@ export class CharacterAnimator {
    * 'free' (empty), the set of what it holds ('torch', 'sword_1h', ...), 'two_hand' for both
    * arms on a two-handed weapon, or 'swing' while that arm swings (no correction then).
    */
-  armSets(): { l: string; r: string } {
+  armSets(): { l: string; r: string; two: boolean } {
     const two = this.main?.hands === 2;
     let l = two ? 'two_hand' : this.off ? this.off.set : 'free';
     let r = two ? 'two_hand' : this.main ? this.main.set : 'free';
@@ -369,7 +374,7 @@ export class CharacterAnimator {
       if (o.channels.has('armL')) l = 'swing';
       if (o.channels.has('armR')) r = 'swing';
     }
-    return { l, r };
+    return { l, r, two };
   }
 
   /** What the hands hold (null: empty). A two-handed main weapon empties the off hand. */
@@ -474,6 +479,16 @@ export class CharacterAnimator {
     this.overrides = [];
   }
 
+  /** On a mount: sit, astride (the hands stay free). */
+  setRiding(on: boolean) {
+    this.riding = on;
+    if (on) this.overrides = this.overrides.filter((o) => !o.swing);
+  }
+
+  get isRiding(): boolean {
+    return this.riding;
+  }
+
   update(dt: number) {
     this.time += dt;
     const m = this.motion;
@@ -527,6 +542,8 @@ export class CharacterAnimator {
       const authoredLeft = LEFT_HANDED.has(offDef.idle);
       base.armL = { clip: offDef.idle, mirror: !authoredLeft };
     }
+
+    if (this.riding && this.resolve(RIDE_CLIP)) for (const ch of CHANNELS) base[ch] = { clip: RIDE_CLIP, mirror: false };
 
     // Overrides win on their channels (latest first).
     const want = { ...base } as Record<Channel, { clip: string; mirror: boolean; o?: Override }>;

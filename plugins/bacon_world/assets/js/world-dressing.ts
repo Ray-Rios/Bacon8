@@ -352,6 +352,7 @@ export class WorldDressing {
       const toTown = Math.atan2(-cx, -cz);
       if (c.theme === 'graveyard') this.graveyard(cx, cz, R, toTown, r);
       else if (c.theme === 'ruins') this.ruins(cx, cz, R, toTown, r);
+      else if (c.theme === 'lair') this.lair(cx, cz, R, toTown, r);
       else this.barrow(cx, cz, R, toTown, r);
     }
     this.merge();
@@ -449,6 +450,54 @@ export class WorldDressing {
     }
     const st = at(0, -4.2);
     this.prop('Statue', st.x, st.z, rot, 0.6, 0, 0.9);
+  }
+
+  // Baconator's lair: scorched ground ringed by crags, open toward town, the hoard
+  // heaped behind where the dragon sleeps (the middle stays clear for the fight).
+  private lair(cx: number, cz: number, R: number, toTown: number, r: () => number) {
+    this.patch(cx, cz, R + 7, '#3A2F27', 47);
+    this.patch(cx, cz, R * 0.75, '#2A221D', 53);
+    const at = (a: number, d: number) => ({ x: cx + Math.sin(a) * d, z: cz + Math.cos(a) * d });
+    // the crags: tall boulders around the far three quarters
+    const n = 16;
+    for (let i = 0; i < n; i++) {
+      const a = toTown + Math.PI * 0.32 + (i / (n - 1)) * Math.PI * 1.36 + (r() - 0.5) * 0.12;
+      const d = R + 3.2 + r() * 2.4;
+      const p = at(a, d);
+      const s = 0.9 + r() * 0.8;
+      this.put('Boulder', p.x, p.z, r() * 360, -0.2, s * 1.1, s * (1.4 + r() * 1.2), s);
+      this.cols.push({ kind: 'circle', x: p.x, z: p.z, r: 1.7 * s });
+    }
+    // the hoard, behind the middle
+    const away = toTown + Math.PI;
+    const h = at(away, R * 0.72);
+    this.prop('Chest', h.x, h.z, toTown / D2R, 0.6, 0, 2.2);
+    for (let i = 0; i < 16; i++) {
+      const p = at(away + (r() - 0.5) * 1.2, R * (0.5 + r() * 0.4));
+      this.prop(r() < 0.7 ? 'CoinPile' : 'GemPile', p.x, p.z, r() * 360, 0, 0, 2.4 + r() * 2.6);
+    }
+    for (let i = 0; i < 4; i++) {
+      const p = at(away + (r() - 0.5) * 1.3, R * (0.5 + r() * 0.4));
+      this.prop(['Goblet', 'Amphora', 'Candelabra', 'Key'][i], p.x, p.z, r() * 360, 0, 0, 1.8);
+    }
+    // what is left of the ones who came before
+    for (let i = 0; i < 10; i++) {
+      const p = at(r() * Math.PI * 2, R * (0.3 + r() * 0.8));
+      this.prop('Skull', p.x, p.z, r() * 360, 0, 0, 0.9 + r() * 0.4);
+    }
+    for (let i = 0; i < 5; i++) {
+      const p = at(away + (r() - 0.5) * 2.6, R + 9 + r() * 4);
+      this.prop('TreeDead', p.x, p.z, r() * 360, 0.45, 0, 1.0 + r() * 0.5);
+    }
+    for (let i = 0; i < 6; i++) {
+      const p = at(r() * Math.PI * 2, R * (0.6 + r() * 0.5));
+      this.prop(r() < 0.5 ? 'Rock2' : 'Rock3', p.x, p.z, r() * 360, 0.35, 0, 0.6 + r() * 0.6);
+    }
+    // the way in: two braziers and a warning stone
+    const g = at(toTown, R + 3.4);
+    for (const s of [-1, 1]) this.prop('Brazier', g.x + Math.cos(toTown) * 2.6 * s, g.z - Math.sin(toTown) * 2.6 * s, 0, 0.35, 0, 1.2);
+    const w = at(toTown + 0.35, R + 5.5);
+    this.prop('Waystone', w.x, w.z, toTown / D2R, 0.5);
   }
 
   private barrow(cx: number, cz: number, R: number, toTown: number, r: () => number) {

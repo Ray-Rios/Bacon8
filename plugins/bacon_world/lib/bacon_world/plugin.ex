@@ -37,4 +37,8 @@ defmodule BaconWorld.Plugin do
   # alive by a keeper on every node.
   @impl true
   def children, do: BaconWorld.Mobs.children()
+
+  # Mounts are sold as game items (BaconWorld.Mounts): the key is the mount's id.
+  @impl true
+  def entitlement_kinds, do: [BaconWorld.Mounts.kind()]
 end

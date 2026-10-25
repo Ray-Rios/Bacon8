@@ -144,7 +144,7 @@ defmodule BaconWorld.Mobs.Zone do
     :exit, _ -> nil
   end
 
-  # %{character_id => %{x, z, dead, level}} from the zone's presence.
+  # %{character_id => %{x, y, z, dead, level}} from the zone's presence.
   defp players(nil), do: %{}
 
   defp players(topic) do
@@ -157,7 +157,7 @@ defmodule BaconWorld.Mobs.Zone do
           acc
 
         id ->
-          Map.put(acc, id, %{x: num(meta[:x]), z: num(meta[:z]), dead: meta[:dead] == true, level: meta[:level] || 1})
+          Map.put(acc, id, %{x: num(meta[:x]), y: num(meta[:y]), z: num(meta[:z]), dead: meta[:dead] == true, level: meta[:level] || 1})
       end
     end)
   rescue
@@ -190,6 +190,8 @@ defmodule BaconWorld.Mobs.Zone do
   def event({:spawn, view}), do: %{t: "spawn", mob: view}
   def event({:aggro, id, cid}), do: %{t: "aggro", id: id, target: cid}
   def event({:attack, id, cid, hit, damage}), do: %{t: "attack", id: id, target: cid, hit: hit, damage: damage}
+  def event({:attack, id, cid, hit, damage, move}), do: %{t: "attack", id: id, target: cid, hit: hit, damage: damage, move: move}
+  def event({:cast, id, move}), do: %{t: "cast", id: id, move: move}
   def event({:damaged, id, cid, damage, crit, hp, max_hp}), do: %{t: "damaged", id: id, by: cid, damage: damage, crit: crit, hp: hp, max_hp: max_hp}
   def event({:died, id, killer}), do: %{t: "died", id: id, killer: killer}
   def event({:corpse_gone, id}), do: %{t: "gone", id: id}

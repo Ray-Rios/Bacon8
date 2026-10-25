@@ -17,18 +17,26 @@
 //   Esc                   free the cursor and ask the scene for its game menu
 //   WASD / arrows         move relative to the camera; Shift sprints, C crouches,
 //                         Space jumps; the wheel zooms
+//   On a mount (setMount) the mount's speeds; one that flies takes off on a Space
+//                         double-tap (RaysSpaceSim's), and again lands. Flying: W/S
+//                         along the camera (look down to dive), A/D strafe, Space
+//                         climbs, C dives, Shift boosts; touching down lands.
 //
 // Mouse-look over remote desktop: see mouse-filter.ts.
 import * as THREE from '../../../../assets/js/vendor/three';
 import {
   CAMERA,
   CHARACTER_HEIGHT_UNITS,
+  FLIGHT,
   MOVE,
   PACE,
   SENSITIVITY,
   UNITS_PER_METRE,
   applyMouseLook,
+  approachVelocity,
   cameraPosition,
+  flightTarget,
+  isDoubleTap,
   facingYaw,
   moveDirection,
   stepVelocity,
@@ -75,8 +83,12 @@ export type MovementState = {
   isSprinting: boolean;
   isGrounded: boolean;
   isCrouching: boolean;
+  /** On a flying mount, in the air (mounts.ts). */
+  isFlying: boolean;
   /** Horizontal speed, m/s. */
   speed: number;
+  /** Vertical speed, m/s (+ up). */
+  verticalSpeed: number;
   /** Movement direction relative to where the character faces: +x right, +z forward (unit, or 0). */
   dirX: number;
   dirZ: number;
@@ -119,6 +131,13 @@ export class CharacterController {
   private isCrouching = false;
   private isSprinting = false;
   private speed = 0;
+
+  // Riding (mounts.ts): the mount's speeds, and flying
+  private mount: { groundSpeed: number; flySpeed: number; flies: boolean; pivot: number } | null = null;
+  private flying = false;
+  private flyVel = { x: 0, y: 0, z: 0 };
+  private lastSpaceMs = -1e9;
+  private footDistance: number | null = null;
 
   // Camera: yaw psi = 0 looks along +Z; look pitch < 0 looks down. The mouse turns it
   // directly, with no easing.
@@ -217,6 +236,15 @@ export class CharacterController {
     }
 
     if (!this.inputEnabled || !MOVEMENT_CODES.has(event.code)) return;
+    if (event.code === 'Space' && !event.repeat && this.mount?.flies) {
+      const now = performance.now();
+      if (isDoubleTap(this.lastSpaceMs, now)) {
+        this.setFlying(!this.flying);
+        this.lastSpaceMs = -1e9;
+      } else {
+        this.lastSpaceMs = now;
+      }
+    }
     this.keys.add(event.code);
     // Space and the arrows would scroll the page.
     if (event.code === 'Space' || event.code.startsWith('Arrow')) event.preventDefault();
@@ -355,7 +383,10 @@ export class CharacterController {
 
   private onWheel(event: WheelEvent): void {
     event.preventDefault();
-    this.distance = zoomDistance(this.distance, event.deltaY);
+    // mounted, the camera may pull further back (the dragon is big)
+    this.distance = this.mount
+      ? Math.min(FLIGHT.maxCameraDistance, Math.max(CAMERA.minDistance * 2, this.distance * Math.exp(event.deltaY * 0.001)))
+      : zoomDistance(this.distance, event.deltaY);
   }
 
   private onClick(event: MouseEvent): void {
@@ -470,6 +501,10 @@ export class CharacterController {
   }
 
   private updateMovement(dt: number): void {
+    if (this.flying) {
+      this.updateFlight(dt);
+      return;
+    }
     const input = {
       forward: this.held('KeyW', 'ArrowUp'),
       back: this.held('KeyS', 'ArrowDown'),
@@ -481,9 +516,11 @@ export class CharacterController {
     const fwd = (input.forward ? 1 : 0) - (input.back ? 1 : 0);
     const facingCamera = this.facingCamera();
 
-    this.isCrouching = this.held('KeyC') && this.isGrounded;
+    this.isCrouching = this.held('KeyC') && this.isGrounded && !this.mount;
     this.isSprinting = this.held('ShiftLeft', 'ShiftRight') && !this.isCrouching && !(facingCamera && fwd < 0);
     let maxSpeed = this.isCrouching ? MOVE.crouchSpeed : this.isSprinting ? MOVE.sprintSpeed : MOVE.jogSpeed;
+    // A mount runs at its own pace (sprinting half as fast again).
+    if (this.mount) maxSpeed = this.mount.groundSpeed * (this.isSprinting ? 1.5 : 1);
     if (facingCamera && fwd < 0) maxSpeed *= BACKPEDAL;
 
     const control = this.isGrounded ? 1 : MOVE.airControl;
@@ -552,8 +589,99 @@ export class CharacterController {
     }
   }
 
+  // Flying: no gravity; the velocity follows flightTarget(). Touching the ground lands.
+  private updateFlight(dt: number): void {
+    const m = this.mount!;
+    const input = {
+      forward: this.held('KeyW', 'ArrowUp'),
+      back: this.held('KeyS', 'ArrowDown'),
+      left: this.held('KeyA', 'ArrowLeft'),
+      right: this.held('KeyD', 'ArrowRight'),
+      up: this.held('Space'),
+      down: this.held('KeyC'),
+      boost: this.held('ShiftLeft', 'ShiftRight'),
+    };
+    this.isSprinting = input.boost;
+    this.isCrouching = false;
+    const target = flightTarget(input, this.yaw, this.lookPitch, m.flySpeed);
+    this.flyVel = approachVelocity(this.flyVel, target, FLIGHT.response, dt);
+    this.velocity = { x: this.flyVel.x, z: this.flyVel.z };
+    this.verticalSpeed = this.flyVel.y;
+    this.speed = Math.hypot(this.flyVel.x, this.flyVel.z);
+    // the mount faces the way it flies (or where the camera looks while hovering)
+    const face = this.speed > 1.5 ? Math.atan2(this.flyVel.x, this.flyVel.z) : this.yaw;
+    this.character.rotation.y = turnToward(this.character.rotation.y, face, MOVE.turnRate * 0.35 * dt);
+
+    const pos = this.character.position;
+    const fromX = pos.x;
+    const fromZ = pos.z;
+    pos.x += this.flyVel.x * UNITS_PER_METRE * dt;
+    pos.z += this.flyVel.z * UNITS_PER_METRE * dt;
+    pos.y += this.flyVel.y * UNITS_PER_METRE * dt;
+    const ground = this.groundHeight(pos.x, pos.z);
+    // near the ground the village's walls still count
+    if (this.options.collide && pos.y - ground < 3 * UNITS_PER_METRE) {
+      const ok = this.options.collide(pos.x, pos.z);
+      pos.x = ok.x;
+      pos.z = ok.z;
+      if (dt > 0) this.velocity = { x: (pos.x - fromX) / UNITS_PER_METRE / dt, z: (pos.z - fromZ) / UNITS_PER_METRE / dt };
+    }
+    const top = ground + FLIGHT.maxAltitude * UNITS_PER_METRE;
+    if (pos.y > top) {
+      pos.y = top;
+      this.flyVel.y = Math.min(0, this.flyVel.y);
+    }
+    if (pos.y <= ground) {
+      pos.y = ground;
+      // coming down onto the ground lands; skimming it level doesn't
+      if (this.flyVel.y < -0.5 || !input.up) {
+        this.setFlying(false);
+        this.isGrounded = true;
+      }
+      this.flyVel.y = Math.max(0, this.flyVel.y);
+    }
+    this.isGrounded = !this.flying;
+  }
+
+  private setFlying(on: boolean): void {
+    if (on === this.flying) return;
+    if (on && !this.mount?.flies) return;
+    this.flying = on;
+    if (on) {
+      this.flyVel = { x: this.velocity.x, y: FLIGHT.takeoffSpeed, z: this.velocity.z };
+      this.isGrounded = false;
+    } else {
+      // keep the momentum: fall the rest of the way (a mount lands softly)
+      this.verticalSpeed = Math.min(0, this.flyVel.y);
+      this.isGrounded = false;
+    }
+  }
+
+  /** Climbs on (a mount's speeds; `pivot` its rider's head height, scene units) or off (null). */
+  setMount(spec: { groundSpeed: number; flySpeed: number; flies: boolean; pivot: number } | null): void {
+    this.mount = spec;
+    if (!spec) {
+      this.flying = false;
+      if (this.footDistance !== null) this.distance = this.footDistance;
+      this.footDistance = null;
+      this.isGrounded = false;
+      return;
+    }
+    if (this.footDistance === null) this.footDistance = this.distance;
+    this.distance = Math.max(this.distance, FLIGHT.cameraDistance);
+    this.pivotY = null;
+  }
+
+  get isMounted(): boolean {
+    return !!this.mount;
+  }
+
+  get isFlying(): boolean {
+    return this.flying;
+  }
+
   private updateCamera(dt: number): void {
-    const height = this.options.characterHeight ?? CHARACTER_HEIGHT_UNITS;
+    const height = this.mount ? this.mount.pivot : this.options.characterHeight ?? CHARACTER_HEIGHT_UNITS;
     const feet = this.character.position;
     const targetPivotY = feet.y + height * CAMERA.pivotHeight;
     // Smooth only the pivot's height, to soften jump bobbing; the orbit itself
@@ -616,7 +744,9 @@ export class CharacterController {
       isSprinting: isMoving && this.isGrounded && (this.isSprinting || this.speed > PACE.jogUpTo),
       isGrounded: this.isGrounded,
       isCrouching: this.isCrouching,
+      isFlying: this.flying,
       speed: this.speed,
+      verticalSpeed: this.verticalSpeed,
     };
   }
 

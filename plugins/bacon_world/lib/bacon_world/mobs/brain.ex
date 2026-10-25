@@ -17,7 +17,10 @@ defmodule BaconWorld.Mobs.Brain do
 
     * `{:spawn, view}`
     * `{:aggro, id, character_id}`
-    * `{:attack, id, character_id, hit?, damage}`
+    * `{:attack, id, character_id, hit?, damage}`, or with a sixth element, the move
+      (`"bite"`, `"claw"`, `"tail"`, `"breath"`) for kinds that have `moves` or `breath`
+    * `{:cast, id, move}` - a creature starts something everyone should see coming (the
+      dragon rearing back to breathe fire)
     * `{:damaged, id, character_id, damage, crit?, hp, max_hp}` (from `melee/4`)
     * `{:died, id, killer_id}`
     * `{:corpse_gone, id}`
@@ -27,6 +30,8 @@ defmodule BaconWorld.Mobs.Brain do
   alias BaconWorld.Mobs.Spawns
 
   @u 2.2 / 1.8
+  # Players this high (metres, on a flying mount) are out of reach of the creatures.
+  @airborne_m 6.0
   @player_radius 0.35
   @mob_radius 0.4
   # Extra reach for the player's swing: positions arrive ~100 ms late.
@@ -76,7 +81,12 @@ defmodule BaconWorld.Mobs.Brain do
       corpse: nil,
       respawn_at: nil,
       vx: 0.0,
-      vz: 0.0
+      vz: 0.0,
+      # breath: a pending cone of fire `%{at}` (nil when none); busy_until: no moving or
+      # swinging before then (the breath's windup and blast)
+      breath: nil,
+      next_breath: now + 6_000,
+      busy_until: now
     }
   end
 
@@ -103,7 +113,7 @@ defmodule BaconWorld.Mobs.Brain do
 
   def tick(%{state: :dead} = m, _players, now, _dt, _point) do
     if now >= m.corpse.despawn_at do
-      {%{m | state: :gone, corpse: nil, respawn_at: now + Enum.random(Spawns.respawn_ms())}, [{:corpse_gone, m.id}]}
+      {%{m | state: :gone, corpse: nil, respawn_at: now + Enum.random(Spawns.respawn_ms(m.kind))}, [{:corpse_gone, m.id}]}
     else
       {m, []}
     end
@@ -113,16 +123,20 @@ defmodule BaconWorld.Mobs.Brain do
     kind = Spawns.kind(m.kind)
     {m, e1} = check_target(m, players)
     {m, e2} = maybe_aggro(m, players, kind)
-    {m, e3} = act(m, players, kind, now, dt)
-    {m, e1 ++ e2 ++ e3}
+    {m, e0} = breathe(m, players, kind, now)
+    {m, e3} = if now < m.busy_until, do: {%{m | vx: 0.0, vz: 0.0}, []}, else: act(m, players, kind, now, dt)
+    {m, e1 ++ e2 ++ e0 ++ e3}
   end
+
+  @doc "True for a player too high up for the creatures (a flying mount)."
+  def airborne?(p), do: (Map.get(p, :y) || 0.0) > @airborne_m * @u
 
   # A chase ends when the target is gone, dead, safe in the village, or too far from home.
   defp check_target(%{state: :chase, target: t} = m, players) do
     p = players[t]
     {hx, hz} = m.home
 
-    if is_nil(p) or p.dead or in_safe_zone?(p.x, p.z) or dist({m.x, m.z}, {hx, hz}) > Spawns.leash() * @u do
+    if is_nil(p) or p.dead or in_safe_zone?(p.x, p.z) or airborne?(p) or dist({m.x, m.z}, {hx, hz}) > Spawns.leash(m.kind) * @u do
       {%{m | state: :return, target: nil, goal: m.home}, []}
     else
       {m, []}
@@ -136,7 +150,7 @@ defmodule BaconWorld.Mobs.Brain do
 
     players
     |> Enum.filter(fn {_id, p} ->
-      not p.dead and not in_safe_zone?(p.x, p.z) and dist({m.x, m.z}, {p.x, p.z}) <= range and
+      not p.dead and not in_safe_zone?(p.x, p.z) and not airborne?(p) and dist({m.x, m.z}, {p.x, p.z}) <= range and
         aggressive_to?(m.level, p.level || 1)
     end)
     |> Enum.min_by(fn {_id, p} -> dist({m.x, m.z}, {p.x, p.z}) end, fn -> nil end)
@@ -177,16 +191,23 @@ defmodule BaconWorld.Mobs.Brain do
     reach = (kind.reach + @player_radius) * @u
     m = move(m, {p.x, p.z}, kind.run * @u, dt, reach * 0.8)
     m = %{m | h: Melee.heading_to({m.x, m.z}, {p.x, p.z})}
+    d = dist({m.x, m.z}, {p.x, p.z})
+    breath = kind[:breath]
 
-    if dist({m.x, m.z}, {p.x, p.z}) <= reach and now >= m.next_attack do
-      hit = :rand.uniform() < Melee.hit_chance(m.level, p.level || 1)
-      {lo, hi} = kind.dmg
-      damage = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
-      {%{m | next_attack: now + kind.dly_ms + Enum.random(0..300)}, [{:attack, m.id, t, hit, damage}]}
-    else
-      # Coming into range: a beat before the first swing.
-      m = if m.next_attack < now - kind.dly_ms, do: %{m | next_attack: now + 450}, else: m
-      {m, []}
+    cond do
+      breath && now >= m.next_breath && d <= breath.range * @u * 0.85 ->
+        # Rear back: the fire comes after the windup, at whoever is in the cone then.
+        at = now + breath.windup_ms
+        {%{m | breath: %{at: at}, busy_until: at + 1_300, next_breath: now + Enum.random(breath.every_ms), next_attack: max(m.next_attack, at + 1_600), vx: 0.0, vz: 0.0},
+         [{:cast, m.id, "breath"}]}
+
+      d <= reach and now >= m.next_attack ->
+        swing(m, t, p, kind, now)
+
+      true ->
+        # Coming into range: a beat before the first swing.
+        m = if m.next_attack < now - kind.dly_ms, do: %{m | next_attack: now + 450}, else: m
+        {m, []}
     end
   end
 
@@ -197,6 +218,45 @@ defmodule BaconWorld.Mobs.Brain do
       do: {%{m | state: :idle, goal: nil, hp: m.max_hp, damage_by: %{}, vx: 0.0, vz: 0.0, next_think: now + Enum.random(2_000..6_000)}, []},
       else: {m, []}
   end
+
+  defp swing(m, t, p, kind, now) do
+    hit = :rand.uniform() < Melee.hit_chance(m.level, p.level || 1)
+    {lo, hi} = kind.dmg
+    damage = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
+    m = %{m | next_attack: now + kind.dly_ms + Enum.random(0..300)}
+
+    case kind[:moves] do
+      nil ->
+        {m, [{:attack, m.id, t, hit, damage}]}
+
+      moves ->
+        move = Spawns.weighted(moves)
+        damage = if move == "tail", do: round(damage * 0.8), else: damage
+        {m, [{:attack, m.id, t, hit, damage, move}]}
+    end
+  end
+
+  # A breath whose windup is over: everyone in the cone burns (each rolls to hit).
+  defp breathe(%{breath: %{at: at}} = m, players, kind, now) when now >= at do
+    b = kind.breath
+    range = b.range * @u
+    {lo, hi} = b.dmg
+
+    events =
+      for {id, p} <- players,
+          not p.dead,
+          not in_safe_zone?(p.x, p.z),
+          not airborne?(p),
+          Melee.in_arc?({m.x, m.z}, m.h, {p.x, p.z}, range, b.half_arc_deg * 2) do
+        hit = :rand.uniform() < Melee.hit_chance(m.level, p.level || 1)
+        damage = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
+        {:attack, m.id, id, hit, damage, "breath"}
+      end
+
+    {%{m | breath: nil}, events}
+  end
+
+  defp breathe(m, _players, _kind, _now), do: {m, []}
 
   # Walks toward `goal` at `speed` (units/s), stopping `stop` short. Never into the village.
   defp move(m, {gx, gz}, speed, dt, stop) do
@@ -236,12 +296,13 @@ defmodule BaconWorld.Mobs.Brain do
   """
   def melee(mobs, attack, now, rand \\ &:rand.uniform/0) do
     {max_targets, arc} = Melee.sweep(attack.item)
-    reach = (attack.item.reach + @mob_radius + @player_radius + @swing_slack) * @u
+    # A big creature (the dragon) is hit at its hide, not its middle.
+    reach = fn mob -> (attack.item.reach + mob_radius(mob) + @player_radius + @swing_slack) * @u end
 
     victims =
       mobs
       |> Map.values()
-      |> Enum.filter(&(alive?(&1) and Melee.in_arc?({attack.x, attack.z}, attack.heading, {&1.x, &1.z}, reach, arc)))
+      |> Enum.filter(&(alive?(&1) and Melee.in_arc?({attack.x, attack.z}, attack.heading, {&1.x, &1.z}, reach.(&1), arc)))
       |> Enum.sort_by(fn mob -> {if(mob.id == attack[:target], do: 0, else: 1), dist({attack.x, attack.z}, {mob.x, mob.z})} end)
       |> Enum.take(max_targets)
 
@@ -259,6 +320,8 @@ defmodule BaconWorld.Mobs.Brain do
       end
     end)
   end
+
+  defp mob_radius(%{kind: kind}), do: if(Map.has_key?(Spawns.kinds(), kind), do: Spawns.radius(kind), else: @mob_radius)
 
   @doc "Applies damage from a character. Returns `{mob, events}`."
   def take_damage(mob, character_id, damage, crit, now) do
@@ -312,7 +375,9 @@ defmodule BaconWorld.Mobs.Brain do
         %{item_id: item_id, quantity: Enum.random(qty)}
       end
 
-    weapon ++ off ++ junk
+    drops = for {item_id, chance} <- Map.get(kind, :drops, []), :rand.uniform() < chance, do: %{item_id: item_id, quantity: 1}
+
+    weapon ++ off ++ junk ++ drops
   end
 
   # ---------------------------------------------------------------------------
@@ -386,7 +451,9 @@ defmodule BaconWorld.Mobs.Brain do
       weapon: m.weapon,
       offhand: m.offhand,
       target: m.target,
-      corpse: m.corpse && %{owner: m.corpse.owner, empty: m.corpse.items == [] and m.corpse.coins == 0}
+      corpse: m.corpse && %{owner: m.corpse.owner, empty: m.corpse.items == [] and m.corpse.coins == 0},
+      boss: Map.get(Spawns.kind(m.kind), :boss, false),
+      scale: Map.get(Spawns.kind(m.kind), :scale, 1.0)
     }
   end
 

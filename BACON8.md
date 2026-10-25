@@ -509,6 +509,7 @@ removed rather than kept as a `fixed` route.
 | Pages | `/store` (category tabs, product grid, Gem packs), `/store/p/:slug` (gallery, Buy with card / Gems), `/store/library` (downloads, keys, items and passes), `GET /store/media/:id` (images), `GET /store/download/:id` (buyers only, attachment) |
 | Admin | `/admin/bacon_store/products` (all products, new-product buttons per kind, categories), `/admin/bacon_store/products/new?kind=…` and `/admin/bacon_store/products/:id` (`BaconStoreWeb.Admin.ProductEditor`: text, prices, delivery, images, files, keys) |
 | Accounts | `Accounts.delete_user/1` anonymizes a user with orders, ledger entries or keys instead of deleting the row |
+| Game items (2026-10-24) | Bacon World's dragon mounts are the first plugin item kind: `BaconWorld.Plugin.entitlement_kinds/0` returns `["bacon_world_mount"]`, the key is the mount's id (`"*"` grants every mount). `BaconWorld.Mounts.ensure_store_products/0` creates their `item` products (`mount-<id>`, inactive) for the owner to publish. Admins ride all mounts without buying |
 
 Download size is capped by `config :bacon8, BaconStore.Store, max_download_bytes:` (default 2 GiB). Uploads go through the LiveView socket in 1 MB chunks and are staged in the pod's temp directory first, so the pod needs that much free temp space.
 

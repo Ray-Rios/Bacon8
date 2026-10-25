@@ -31,9 +31,9 @@ defmodule BaconWorld.MobsTest do
   describe "spawns" do
     test "every camp is outside the safe village and spawns its creatures" do
       points = Spawns.points()
-      assert length(points) == 17
+      assert length(points) == 18
       assert Enum.all?(points, fn p -> :math.sqrt(p.x * p.x + p.z * p.z) > Spawns.safe_radius() end)
-      assert points |> Enum.map(& &1.id) |> Enum.uniq() |> length() == 17
+      assert points |> Enum.map(& &1.id) |> Enum.uniq() |> length() == 18
     end
 
     test "creatures hold a weapon from their list; a two-hander leaves the off hand empty" do
@@ -203,9 +203,68 @@ defmodule BaconWorld.MobsTest do
 
       for {id, _} <- Items.starter_kit(), do: assert(Items.get(id))
 
-      for {_, kind} <- Spawns.kinds(), {id, _} <- kind.weapons ++ kind.offhand ++ Enum.map(kind.loot, &{elem(&1, 0), 0}), id do
+      for {_, kind} <- Spawns.kinds(), {id, _} <- kind.weapons ++ kind.offhand ++ Enum.map(kind.loot, &{elem(&1, 0), 0}) ++ Map.get(kind, :drops, []), id do
         assert Items.get(id), "#{id} is in the catalogue"
       end
+    end
+  end
+
+  describe "Baconator, the boss" do
+    defp dragon_point, do: %{id: "lair:0", camp: "lair", kind: "baconator", x: 92.0, z: 0.0}
+
+    defp dragon(attrs \\ %{}), do: dragon_point() |> Brain.spawn(0) |> Map.merge(%{h: -:math.pi() / 2}) |> Map.merge(attrs)
+
+    # metres from the dragon toward the village (-x), `side` metres off its line
+    defp near_dragon(m, side \\ 0.0, attrs \\ %{}), do: Map.merge(%{x: (92.0 - m) * @u, y: 0.0, z: side * @u, dead: false, level: 8}, attrs)
+
+    defp run_dragon(mob, players, from, ms) do
+      Enum.reduce(0..div(ms, 100), {mob, []}, fn i, {m, evs} ->
+        {m2, e} = Brain.tick(m, players, from + i * 100, 0.1, dragon_point())
+        {m2, evs ++ e}
+      end)
+    end
+
+    test "its lair is a camp of one, far outside the village" do
+      [p] = Enum.filter(Spawns.points(), &(&1.kind == "baconator"))
+      assert {p.x, p.z} == {92.0, 42.0}
+      assert Brain.view(Brain.spawn(p, 0)).boss
+    end
+
+    test "it bites, claws and lashes its tail at whoever it chases" do
+      {_m, evs} = run_dragon(dragon(%{next_breath: 1_000_000}), %{"a" => near_dragon(6.0)}, 0, 12_000)
+      moves = for {:attack, _, "a", _, _, move} <- evs, do: move
+      assert moves != []
+      assert Enum.all?(moves, &(&1 in ["bite", "claw", "tail"]))
+    end
+
+    test "fire: a roar first, then everyone in the cone burns and those outside it don't" do
+      players = %{"front" => near_dragon(8.0), "beside" => near_dragon(8.0, 3.0), "behind" => near_dragon(-9.0)}
+      m = dragon(%{state: :chase, target: "front", next_breath: 0, next_attack: 1_000_000})
+      {m, evs} = Brain.tick(m, players, 100, 0.1, dragon_point())
+      assert {:cast, "lair:0", "breath"} in evs
+      # nothing burns during the windup
+      {m, evs} = run_dragon(m, players, 200, 700)
+      refute Enum.any?(evs, &match?({:attack, _, _, _, _, "breath"}, &1))
+      {_m, evs} = run_dragon(m, players, 1_000, 600)
+      burned = for {:attack, _, id, _, _, "breath"} <- evs, do: id
+      assert "front" in burned and "beside" in burned
+      refute "behind" in burned
+    end
+
+    test "a player high on a flying mount is out of its reach" do
+      high = near_dragon(8.0, 0.0, %{y: 9.0 * @u})
+      {m, evs} = run_dragon(dragon(), %{"a" => high}, 0, 3_000)
+      assert m.state != :chase
+      refute Enum.any?(evs, &match?({:aggro, _, _}, &1))
+    end
+
+    test "its hide is hit from further away than a skeleton's middle" do
+      m = dragon(%{x: 0.0, z: 0.0})
+      item = Items.get("worn_short_sword")
+      # 3.5 m away: a skeleton would be out of reach
+      attack = %{id: "a", level: 30, x: 0.0, z: -3.5 * @u, heading: 0.0, item: item, heavy: false, target: m.id}
+      {_mobs, hits, _} = Brain.melee(%{m.id => m}, attack, 0, fn -> 0.0 end)
+      assert [%{hit: true}] = hits
     end
   end
 end

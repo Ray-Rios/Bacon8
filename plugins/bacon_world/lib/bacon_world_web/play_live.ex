@@ -19,6 +19,9 @@ defmodule BaconWorldWeb.PlayLive do
   alias Bacon8Web.Presence
 
   @max_move_speed 30.0
+  # On a mount (BaconWorld.Mounts): faster, and a flying one may climb (scene units).
+  @max_mounted_speed 45.0
+  @max_flying_y 160.0
   @interest_radius 2000.0
   @chat_radius 64.0
   @collision_radius 1.1
@@ -30,6 +33,8 @@ defmodule BaconWorldWeb.PlayLive do
   @game_events ~w(fetch_mobs melee_attack loot_open loot_take loot_all loot_close
                   inventory_fetch inventory_move inventory_equip inventory_unequip inventory_destroy
                   merchant_open merchant_buy merchant_sell)
+  # Riding (BaconWorldWeb.MountEvents).
+  @mount_events ~w(mounts_fetch mount_summon mount_dismount)
 
   on_mount {Bacon8Web.UserAuth, :require_authenticated_user}
 
@@ -358,6 +363,10 @@ defmodule BaconWorldWeb.PlayLive do
     GameEvents.handle_event(event, params, socket)
   end
 
+  def handle_event(event, params, socket) when event in @mount_events do
+    BaconWorldWeb.MountEvents.handle_event(event, params, socket)
+  end
+
   def handle_event("world_position_update", params, socket) do
     with %{"x" => raw_x, "y" => raw_y, "z" => raw_z, "heading" => raw_heading} <- stringify_keys(params),
          {:ok, x} <- to_float(raw_x),
@@ -366,9 +375,10 @@ defmodule BaconWorldWeb.PlayLive do
          {:ok, heading} <- to_float(raw_heading),
          motion = motion_flags(params),
          %{} = current_character <- current_character(socket),
-         :ok <- validate_ground_bounds(y),
-         :ok <- validate_move_speed(socket, current_character.position, x, y, z),
-         :ok <- validate_player_collision(socket.assigns.zone_online_characters || [], current_character.character_id, current_character.position, x, z) do
+         mount = BaconWorldWeb.MountEvents.mounted(socket),
+         :ok <- validate_ground_bounds(y, mount),
+         :ok <- validate_move_speed(socket, current_character.position, x, y, z, mount),
+         :ok <- if(mount, do: :ok, else: validate_player_collision(socket.assigns.zone_online_characters || [], current_character.character_id, current_character.position, x, z)) do
       topic = socket.assigns.current_zone_topic
       now_ms = System.monotonic_time(:millisecond)
 
@@ -395,6 +405,7 @@ defmodule BaconWorldWeb.PlayLive do
           z: z,
           heading: heading,
           m: motion,
+          mount: socket.assigns[:mount],
           hp: Map.get(current_character, :hp, 10),
           max_hp: Map.get(current_character, :max_hp, 10)
         }})
@@ -557,6 +568,7 @@ defmodule BaconWorldWeb.PlayLive do
   def handle_info({:zone_swing, payload}, socket), do: {:noreply, GameEvents.zone_swing(payload, socket)}
   def handle_info({:pvp_hit, hit}, socket), do: {:noreply, GameEvents.pvp_hit(hit, socket)}
   def handle_info({:zone_hp, payload}, socket), do: {:noreply, GameEvents.zone_hp(payload, socket)}
+  def handle_info({:zone_mount, payload}, socket), do: {:noreply, BaconWorldWeb.MountEvents.zone_mount(payload, socket)}
 
   def handle_info(:characters_updated, socket) do
     characters = World.list_user_characters(socket.assigns.current_user.id)
@@ -711,6 +723,7 @@ defmodule BaconWorldWeb.PlayLive do
       current_zone_topic: nil,
       current_presence_key: nil,
       zone_online_characters: [],
+      mount: nil,
       last_world_update_ms: nil,
       last_presence_update_ms: nil,
       last_remote_broadcast_ms: nil,
@@ -755,7 +768,8 @@ defmodule BaconWorldWeb.PlayLive do
         max_hp: meta[:max_hp],
         gear: meta[:gear] || %{},
         dead: meta[:dead] == true,
-        pvp: meta[:pvp] == true
+        pvp: meta[:pvp] == true,
+        mount: meta[:mount]
       }
     end)
   end
@@ -775,11 +789,12 @@ defmodule BaconWorldWeb.PlayLive do
     end)
   end
 
-  defp validate_ground_bounds(y) do
-    if y < -1.0 or y > 25.0, do: {:error, :invalid_move}, else: :ok
+  defp validate_ground_bounds(y, mount) do
+    top = if mount && mount.flies, do: @max_flying_y, else: 25.0
+    if y < -1.0 or y > top, do: {:error, :invalid_move}, else: :ok
   end
 
-  defp validate_move_speed(socket, current_position, x, y, z) do
+  defp validate_move_speed(socket, current_position, x, y, z, mount) do
     last_ms = socket.assigns.last_world_update_ms || System.monotonic_time(:millisecond)
     now_ms = System.monotonic_time(:millisecond)
     dt = max((now_ms - last_ms) / 1000.0, @min_dt_seconds)
@@ -790,7 +805,8 @@ defmodule BaconWorldWeb.PlayLive do
 
     speed = :math.sqrt(dx * dx + dy * dy + dz * dz) / dt
 
-    if speed > @max_move_speed, do: {:error, :invalid_move}, else: :ok
+    limit = if mount, do: @max_mounted_speed, else: @max_move_speed
+    if speed > limit, do: {:error, :invalid_move}, else: :ok
   end
 
   # Back to life at the zone's spawn point (moved clear of other players). The zone's
@@ -971,10 +987,11 @@ defmodule BaconWorldWeb.PlayLive do
     assign(socket, regen_token: token)
   end
 
-  # What the body is doing, for everyone else's animation: bit 1 crouching, bit 2 airborne.
+  # What the body is doing, for everyone else's animation: bit 1 crouching, bit 2 airborne,
+  # bit 4 flying (on a mount).
   defp motion_flags(params) do
     case params["m"] || params[:m] do
-      m when is_integer(m) and m >= 0 and m <= 3 -> m
+      m when is_integer(m) and m >= 0 and m <= 7 -> m
       _ -> 0
     end
   end

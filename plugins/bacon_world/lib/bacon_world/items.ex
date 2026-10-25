@@ -65,7 +65,15 @@ defmodule BaconWorld.Items do
 
     # Junk, for selling one day (EverQuest's bone chips).
     %{id: "bone_chips", name: "Bone Chips", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon: "Bone", value: 1},
-    %{id: "skull_fragment", name: "Skull Fragment", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon: "Skull", value: 2}
+    %{id: "skull_fragment", name: "Skull Fragment", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon: "Skull", value: 2},
+
+    # Baconator's hoard (2026-10-24): its scales and fangs sell well; the weapons are the
+    # best in the game so far.
+    %{id: "dragon_scale", name: "Dragon Scale", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon: "DragonScale", value: 250},
+    %{id: "baconator_fang", name: "Baconator's Fang", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 5, model: nil, icon: "DragonFang", value: 1500},
+    %{id: "emberforged_longsword", name: "Emberforged Longsword", kind: "weapon", slots: ["main", "off"], hands: 1, set: "sword_1h", skill: "1H Slashing", dmg: 15, dly: 13, reach: 1.15, model: "Longsword", value: 2400},
+    %{id: "dragonbone_greataxe", name: "Dragonbone Greataxe", kind: "weapon", slots: ["main"], hands: 2, set: "two_hand", skill: "2H Slashing", dmg: 24, dly: 21, reach: 1.3, model: "BattleAxe", value: 3200},
+    %{id: "scaleplate_shield", name: "Scaleplate Shield", kind: "shield", slots: ["off"], hands: 1, set: "shield", skill: "Bash", dmg: 5, dly: 14, reach: 0.6, ac: 11, model: "KiteShield", value: 2000}
   ]
 
   # What can be worn. Underwear: six sets (top and bottom are separate items), the

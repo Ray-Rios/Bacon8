@@ -175,3 +175,57 @@ export function zoomDistance(distance: number, wheelDeltaY: number): number {
   const next = distance * Math.exp(wheelDeltaY * 0.001);
   return Math.min(CAMERA.maxDistance, Math.max(CAMERA.minDistance, next));
 }
+
+// ---------------------------------------------------------------------------
+// Riding (mounts.ts): RaysSpaceSim's double-tap to fly (UCosmicFlightComponent's
+// JumpDoubleTapSeconds), without its rolls.
+// ---------------------------------------------------------------------------
+
+export const FLIGHT = {
+  doubleTapMs: 280, // two Space presses this close toggle flying
+  response: 2.6, // 1/s: how quickly the velocity follows the input
+  climbShare: 0.6, // Space / C climb and dive at this share of the flying speed
+  boost: 1.6, // Shift
+  maxAltitude: 120, // m above the ground plane (the server allows a little more)
+  takeoffSpeed: 4.0, // m/s up when taking off from the ground
+  cameraDistance: 8.5, // m, the boom when mounted
+  maxCameraDistance: 18, // m
+} as const;
+
+/** A second press within the window (ms) of the first. */
+export function isDoubleTap(previousMs: number, nowMs: number, windowMs: number = FLIGHT.doubleTapMs): boolean {
+  return nowMs - previousMs > 0 && nowMs - previousMs <= windowMs;
+}
+
+export type FlightInput = MoveInput & { up: boolean; down: boolean; boost: boolean };
+
+/**
+ * The velocity (m/s) flying asks for: W/S along where the camera looks (pitch included,
+ * so looking down and pressing W dives), A/D strafe level, Space climbs and C dives.
+ * `pitch` is the camera's look pitch (negative looks down).
+ */
+export function flightTarget(input: FlightInput, yaw: number, pitch: number, speed: number): { x: number; y: number; z: number } {
+  const f = (input.forward ? 1 : 0) - (input.back ? 1 : 0);
+  const r = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const u = (input.up ? 1 : 0) - (input.down ? 1 : 0);
+  const s = speed * (input.boost ? FLIGHT.boost : 1);
+  const { forward, right } = cameraBasis(yaw);
+  const cp = Math.cos(pitch);
+  let x = forward.x * cp * f + right.x * r;
+  let y = Math.sin(pitch) * f;
+  let z = forward.z * cp * f + right.z * r;
+  const len = Math.hypot(x, y, z);
+  if (len > 1e-6) {
+    x = (x / len) * s;
+    y = (y / len) * s;
+    z = (z / len) * s;
+  }
+  y += u * s * FLIGHT.climbShare;
+  return { x, y, z };
+}
+
+/** Moves `v` toward `target` with a first-order response (rate 1/s). */
+export function approachVelocity(v: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }, rate: number, dt: number) {
+  const k = 1 - Math.exp(-rate * dt);
+  return { x: v.x + (target.x - v.x) * k, y: v.y + (target.y - v.y) * k, z: v.z + (target.z - v.z) * k };
+}

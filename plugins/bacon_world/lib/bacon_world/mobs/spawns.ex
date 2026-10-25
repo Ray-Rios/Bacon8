@@ -9,6 +9,18 @@ defmodule BaconWorld.Mobs.Spawns do
 
   Each creature carries a weapon you can see in its hand, and that weapon is most
   of what it drops.
+
+  Some kinds have more (all optional; the skeletons have none of them):
+
+    * `radius` - metres from its middle to its hide (0.4 for a skeleton), for reach both ways
+    * `leash` - how far a chase may drag it from home (default `leash/0`)
+    * `moves` - `[{move, weight}]`: what its swings are ("bite", "claw", "tail"); the client
+      plays the clip and the chat names it
+    * `breath` - a cone of fire now and then: `every_ms`, `windup_ms` (the roar before it:
+      step out of the cone), `range` (m), `half_arc_deg`, `dmg`
+    * `drops` - `[{item_id, chance}]` on top of `loot`
+    * `respawn_ms` - instead of `respawn_ms/0`
+    * `boss`, `scale` - for the client (nameplate, model size)
   """
 
   @kinds %{
@@ -74,13 +86,42 @@ defmodule BaconWorld.Mobs.Spawns do
       loot: [{"bone_chips", 0.8, 2..5}, {"skull_fragment", 0.35, 1..2}],
       coins: 25..80,
       weapon_drop: 0.8
+    },
+    # The boss (2026-10-24): a red dragon in its lair north-east of the village. Big enough
+    # that you hit its flank, not its middle; it bites and claws what is in front, lashes its
+    # tail, and every 13-18 s rears back and breathes fire in a cone (a group spreads out;
+    # anyone can step out of the cone during the roar).
+    "baconator" => %{
+      name: "Baconator",
+      boss: true,
+      scale: 0.8,
+      levels: 12..12,
+      hp: {1400, 50},
+      dmg: {12, 22},
+      dly_ms: 2900,
+      walk: 2.4,
+      run: 6.8,
+      aggro: 24.0,
+      reach: 5.0,
+      radius: 3.4,
+      leash: 55.0,
+      moves: [{"bite", 5}, {"claw", 3}, {"tail", 2}],
+      breath: %{every_ms: 13_000..18_000, windup_ms: 1_050, range: 17.0, half_arc_deg: 32.0, dmg: {18, 32}},
+      weapons: [{nil, 1}],
+      offhand: [{nil, 1}],
+      loot: [{"dragon_scale", 1.0, 2..5}, {"baconator_fang", 0.45, 1..2}],
+      drops: [{"emberforged_longsword", 0.35}, {"dragonbone_greataxe", 0.25}, {"scaleplate_shield", 0.25}],
+      coins: 300..700,
+      weapon_drop: 0.0,
+      respawn_ms: 1_200_000..1_800_000
     }
   }
 
   @camps [
     %{id: "graveyard", name: "the Old Graveyard", x: 52.0, z: -48.0, radius: 9.0, theme: "graveyard", mobs: [{"decaying_skeleton", 6}]},
     %{id: "chapel", name: "the Ruined Chapel", x: -6.0, z: 64.0, radius: 10.0, theme: "ruins", mobs: [{"decaying_skeleton", 2}, {"skeleton", 4}]},
-    %{id: "barrow", name: "the Barrow", x: -66.0, z: -14.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton", 2}, {"skeleton_warrior", 3}]}
+    %{id: "barrow", name: "the Barrow", x: -66.0, z: -14.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton", 2}, {"skeleton_warrior", 3}]},
+    %{id: "lair", name: "Baconator's Lair", x: 92.0, z: 42.0, radius: 16.0, theme: "lair", mobs: [{"baconator", 1}]}
   ]
 
   # Metres.
@@ -98,6 +139,15 @@ defmodule BaconWorld.Mobs.Spawns do
   def loot_lock_ms, do: 60_000
   def respawn_ms, do: 70_000..110_000
 
+  @doc "How long a kind lies dead before it comes back."
+  def respawn_ms(kind_id), do: Map.get(kind(kind_id), :respawn_ms, respawn_ms())
+
+  @doc "Metres from a creature's middle to its hide."
+  def radius(kind_id), do: Map.get(kind(kind_id), :radius, 0.4)
+
+  @doc "How far a chase may take it from home, metres."
+  def leash(kind_id), do: Map.get(kind(kind_id), :leash, @leash)
+
   @doc """
   Every spawn point: `%{id, camp, kind, x, z}` in metres, spread over the camp on
   a sunflower pattern so they don't stand in a line.
@@ -112,7 +162,7 @@ defmodule BaconWorld.Mobs.Spawns do
       kinds
       |> Enum.with_index()
       |> Enum.map(fn {kind, n} ->
-        r = camp.radius * 0.8 * :math.sqrt((n + 0.5) / total)
+        r = if total == 1, do: 0.0, else: camp.radius * 0.8 * :math.sqrt((n + 0.5) / total)
         a = n * golden
         %{id: "#{camp.id}:#{n}", camp: camp.id, kind: kind, x: camp.x + r * :math.cos(a), z: camp.z + r * :math.sin(a)}
       end)

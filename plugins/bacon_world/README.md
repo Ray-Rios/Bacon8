@@ -29,6 +29,8 @@ renamed its tables, its game row and its `plugin_states` row.
 | `lib/bacon_world/melee.ex` | Swing numbers: reach and arc, hit chance, damage, delay |
 | `lib/bacon_world/mobs.ex`, `mobs/` | Creatures: spawns and kinds, the rules (`Brain`, pure), the zone process, its keeper |
 | `lib/bacon_world_web/game_events.ex` | PlayLive's fighting, looting and inventory events |
+| `lib/bacon_world/mounts.ex` | Mounts: the dragon drakes, who owns which (entitlement kind `bacon_world_mount`; admins ride all), their store items (`ensure_store_products/0`) |
+| `lib/bacon_world_web/mount_events.ex` | PlayLive's mount events (`mounts_fetch`, `mount_summon`, `mount_dismount`), the presence's `mount`, `zone_mount` |
 | `lib/bacon_world/models.ex` | Which character models players can pick; the humans' slider and hair manifests (`human_assets/0`) |
 | `lib/bacon_world/appearance.ex` | `BaconWorld.Appearance`: normalises a look (never trusts the client) |
 | `lib/bacon_world/{zone,spell,character_spell}.ex` | Schemas for the plugin's own tables |
@@ -39,13 +41,15 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/world-character-ui-scene.ts` | The hook (`WorldCharacterUIScene`): front end, world, multiplayer |
 | `assets/js/front-ui.ts`, `character-stage.ts` | Character select and creator (HTML) over a lit 3D stage |
 | `assets/js/appearance.ts`, `human-factory.ts` | The look model, and building a human from a look |
-| `assets/js/character-controller.ts`, `controls-math.ts`, `mouse-filter.ts` | Third-person controls (below); `mouse-filter.ts` repairs remote-desktop mouse-look |
+| `assets/js/character-controller.ts`, `controls-math.ts`, `mouse-filter.ts` | Third-person controls (below), mounted movement and flight (double-tap Space); `mouse-filter.ts` repairs remote-desktop mouse-look |
 | `assets/js/world-dressing.ts` | The lobby village and its colliders |
 | `assets/js/surface-textures.ts` | CC0 surface textures on the untextured models, by material name (triplanar, no UVs) |
 | `assets/js/model-manager.ts` | Characters in the scene: loading, their animators, what they hold |
 | `assets/js/anim-driver.ts` | The animator: four body channels, strafes, stances, swings with either hand (mirrored) |
 | `assets/js/game-world.ts`, `game-ui.ts` | Fighting, looting, the inventory; the EverQuest-style windows and hotbar |
-| `assets/js/mobs-view.ts` | Creatures on the client: models, weapons, smoothing, corpses |
+| `assets/js/mobs-view.ts` | Creatures on the client: models, weapons, smoothing, corpses; dragons (Baconator: moves, breath, roar) |
+| `assets/js/dragon-view.ts` | The B8 dragon: loading, a rig that picks its own locomotion (ground or air), one-shots, fire breath, the mounts' hue shift |
+| `assets/js/mounts.ts` | Mounts on the client: the dragon under its rider, the rider seated on the saddle bone |
 | `assets/js/npcs-view.ts` | Merchants on the client: built as humans, picked by proxy cylinders, face you while trading |
 | `assets/js/wardrobe.ts` | Gear slots, what each worn item puts on the body and hides, and the bone corrections (joint offsets, relaxed fingers) |
 | `assets/js/items.ts`, `nameplates.ts`, `asset-url.ts` | Weapon models and icons; names over heads; versioned model URLs |

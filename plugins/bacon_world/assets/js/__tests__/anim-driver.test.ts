@@ -88,7 +88,7 @@ test('a right-hand swing mirrored onto the left hand moves the left hand, and we
   anim.setMotion({ speed: 0, dirX: 0, dirZ: 1, grounded: true });
   for (let i = 0; i < 30; i++) { anim.update(1 / 30); mixer.update(1 / 30); }
   assert.ok(Math.abs(hl.position.x) < 1e-6 && Math.abs(hr.position.x) < 1e-6, 'idle hands at rest');
-  assert.deepEqual(anim.armSets(), { l: 'torch', r: 'free' });
+  assert.deepEqual(anim.armSets(), { l: 'torch', r: 'free', two: false });
   // The torch swings with the left hand: the right-hand clip, mirrored.
   const info = anim.attack('left');
   assert.ok(info && info.clip === 'Sword_Regular_A');

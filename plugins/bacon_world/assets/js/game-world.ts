@@ -14,6 +14,7 @@ import { UNITS_PER_METRE } from './controls-math';
 import { GameUI } from './game-ui';
 import { item, money, moneyWords, setCatalog } from './items';
 import { MobsView, type MobEntry, type MobEvent } from './mobs-view';
+import { MountSystem } from './mounts';
 import { conColor, playerColor } from './nameplates';
 import { NpcsView, NPC_COLOR } from './npcs-view';
 import { gearKey, type Gear } from './wardrobe';
@@ -25,6 +26,15 @@ const TRADE_RANGE = 5.6 * U; // a little inside BaconWorld.Merchants.reach/0 (6 
 const FIST = { dmg: 3, dly: 9 };
 
 type Hand = 'left' | 'right';
+
+// The combat log for a creature's moves (BaconWorld.Mobs.Spawns `moves`, `breath`).
+const MOVE_VERBS: Record<string, string> = { bite: 'bites', claw: 'claws', tail: 'lashes', breath: 'breathes fire on' };
+const MISS_VERBS: Record<string, string> = { bite: 'bite', claw: 'claw', tail: 'lash' };
+const MOUNT_REFUSALS: Record<string, string> = {
+  no_mount: "You don't have a mount yet. Dragons are for sale in the Bacon Store.",
+  not_owned: "That mount isn't yours.",
+  dead: 'Not while you are dead.',
+};
 
 function reply(hook: any, event: string, payload: any, fallback: any = { ok: false }): Promise<any> {
   return new Promise((resolve) => {
@@ -115,6 +125,7 @@ export const GameWorld = {
   },
 
   teardownGame(this: any) {
+    this.mounts?.clearAll();
     if (this.lootingId) this.closeLoot();
     this.gameUI?.closeMerchant(false);
     this.tradingWith = null;
@@ -167,6 +178,59 @@ export const GameWorld = {
     }
   },
 
+  // ---------------------------------------------------------------- mounts (mounts.ts)
+
+  /** What mounts there are and which are yours; draws everyone already riding. */
+  initMounts(this: any) {
+    if (!this.mounts) this.mounts = new MountSystem(() => this.characterManager);
+    void reply(this, 'mounts_fetch', {}, { catalog: {}, owned: [], mount: null }).then((res: any) => {
+      if (!this.mounts) return;
+      this.mounts.setCatalog(res.catalog || {}, res.owned || []);
+      for (const c of this.state?.onlineCharacters || []) if (c.mount) void this.mounts.set(c.character_id, c.mount);
+      if (res.mount) this.applyLocalMount(res.mount);
+    });
+  },
+
+  /** M (or /mount, /dismount): climb on your mount, or off it. `id` picks one. */
+  toggleMount(this: any, id?: string, wantOn?: boolean) {
+    const myId = this.state?.currentPlayer?.character_id;
+    if (!myId || !this.mounts) return;
+    const riding = !!this.mounts.mountOf(myId);
+    if (riding && wantOn !== true && !id) {
+      if (this.controller?.isFlying) {
+        this.combatLog('Land first (double-tap Space, or fly down to the ground).', '#B8B8B8');
+        return;
+      }
+      void reply(this, 'mount_dismount', {}).then(() => this.applyLocalMount(null));
+      return;
+    }
+    if (this.isDead) return;
+    void reply(this, 'mount_summon', id ? { id } : {}).then((res: any) => {
+      if (res?.ok && res.mount) {
+        if (res.spec) this.mounts.catalog[res.mount] = res.spec;
+        this.applyLocalMount(res.mount);
+        const spec = this.mounts.spec(res.mount);
+        this.combatLog(`You climb onto your ${spec?.name || 'mount'}.${spec?.flies ? ' Double-tap Space to fly.' : ''}`, '#9FD8FF');
+      } else {
+        this.combatLog(MOUNT_REFUSALS[res?.reason] || "You can't ride right now.", '#B8B8B8');
+      }
+    });
+  },
+
+  applyLocalMount(this: any, id: string | null) {
+    const myId = this.state?.currentPlayer?.character_id;
+    if (!myId || !this.mounts) return;
+    void this.mounts.set(myId, id);
+    const spec = this.mounts.spec(id);
+    this.controller?.setMount(spec ? { groundSpeed: spec.ground_speed, flySpeed: spec.fly_speed, flies: spec.flies, pivot: this.mounts.pivotFor(spec.id) } : null);
+  },
+
+  /** Per frame after the characters animated: dragons move with their riders. */
+  tickMounts(this: any, dt: number) {
+    const myId = this.state?.currentPlayer?.character_id;
+    this.mounts?.update(dt, (id: string) => (id === myId ? !!this.controller?.isFlying : ((this.remoteMotion?.get(id) ?? 0) & 4) !== 0));
+  },
+
   localCharacter(this: any) {
     const id = this.state?.currentPlayer?.character_id;
     return id ? this.characterManager?.getAllCharacters().get(id) : null;
@@ -191,6 +255,12 @@ export const GameWorld = {
   meleeAttack(this: any, hand: Hand) {
     if (this.isDead || !this.controller || !this.state?.currentPlayer) return;
     const myId = this.state.currentPlayer.character_id;
+    if (this.mounts?.mountOf(myId)) {
+      const now0 = performance.now();
+      if (now0 - (this.saddleNagAt || 0) > 3000) this.combatLog("You can't fight from the saddle. Press M to climb down.", '#B8B8B8');
+      this.saddleNagAt = now0;
+      return;
+    }
     const now = performance.now();
     if (now < this.swingReadyAt(hand)) return;
     const h = this.handItem(hand);
@@ -356,6 +426,10 @@ export const GameWorld = {
         break;
       case 'aggro':
         if (e.target === myId && m) this.combatLog(`${capital(m.view.name)} notices you!`, '#FF9B7A');
+        if (m?.dragon && dist < 60 * U) this.audio?.play('land', 1.0, dist);
+        break;
+      case 'cast':
+        if (m && e.move === 'breath' && dist < 45 * U) this.combatLog(`${capital(m.view.name)} rears back and draws a deep breath!`, '#FFB347');
         break;
     }
     if (e.id && e.id === this.targetId) this.refreshTarget();
@@ -368,12 +442,16 @@ export const GameWorld = {
     if (e.target === myId && me) {
       if (e.hit) {
         this.showFloatingDamage(me.mesh.position.clone(), String(e.damage), '#FF5A4A', 1.1);
-        this.combatLog(`${capital(m.view.name)} hits YOU for ${e.damage} points of damage.`, '#FF7A6A');
+        const verb = MOVE_VERBS[e.move || ''] || 'hits';
+        this.combatLog(`${capital(m.view.name)} ${verb} YOU for ${e.damage} points of damage.`, '#FF7A6A');
         this.audio?.play('hit_flesh', 1);
         if (Math.random() < 0.7) setTimeout(() => this.audio?.say('hurt', 0.75), 60);
         this.characterManager?.getAnimator(myId)?.hit();
       } else {
-        this.combatLog(`${capital(m.view.name)} tries to hit YOU, but misses!`, '#B8B8B8');
+        this.combatLog(
+          e.move === 'breath' ? `You dodge ${capital(m.view.name)}'s flames!` : `${capital(m.view.name)} tries to ${MISS_VERBS[e.move || ''] || 'hit'} YOU, but misses!`,
+          '#B8B8B8'
+        );
         this.audio?.play('swing', 0.6);
       }
     } else {

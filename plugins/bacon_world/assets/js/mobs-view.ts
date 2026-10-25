@@ -16,6 +16,7 @@ import { UNITS_PER_METRE } from './controls-math';
 import type { HumanFactory } from './human-factory';
 import { WeaponModels, gearOf, holdItem } from './items';
 import { Nameplates, conColor } from './nameplates';
+import { DRAGON_HIT_AT, DRAGON_MOVE_CLIP, DragonFactory, DragonRig, FireBreath } from './dragon-view';
 
 export const MOBS_BASE = '/models/Mobs';
 const MODELS: Record<string, string> = {
@@ -23,6 +24,8 @@ const MODELS: Record<string, string> = {
   skeleton: 'B8_Skeleton.glb',
   skeleton_warrior: 'B8_Skeleton.glb',
 };
+// Kinds drawn with the dragon (dragon-view.ts) instead of a skeleton on the male's packs.
+const DRAGONS = new Set(['baconator']);
 // Size by kind (the warriors are a little bigger).
 const SCALE: Record<string, number> = { decaying_skeleton: 0.97, skeleton: 1.0, skeleton_warrior: 1.07 };
 
@@ -41,10 +44,14 @@ export interface MobView {
   offhand: string | null;
   target: string | null;
   corpse: { owner: string | null; empty: boolean } | null;
+  boss?: boolean;
+  scale?: number;
 }
 
 export interface MobEvent {
-  t: 'spawn' | 'aggro' | 'attack' | 'damaged' | 'died' | 'gone' | 'corpse';
+  t: 'spawn' | 'aggro' | 'attack' | 'damaged' | 'died' | 'gone' | 'corpse' | 'cast';
+  /** attack and cast: what the creature does ("bite", "claw", "tail", "breath"). */
+  move?: string;
   id?: string;
   mob?: MobView;
   target?: string;
@@ -65,6 +72,9 @@ export interface MobEntry {
   model: THREE.Object3D | null;
   mixer: THREE.AnimationMixer | null;
   animator: CharacterAnimator | null;
+  /** The dragon's rig and its fire, for the dragon kinds. */
+  dragon: DragonRig | null;
+  fire: FireBreath | null;
   proxy: THREE.Mesh;
   net: { x: number; z: number; h: number; vx: number; vz: number; at: number };
   speed: number;
@@ -75,6 +85,9 @@ export interface MobEntry {
 
 const PROXY_STANDING = new THREE.CylinderGeometry(0.38, 0.38, 1.85, 8).translate(0, 0.92, 0);
 const PROXY_LYING = new THREE.BoxGeometry(0.8, 0.5, 2.2).translate(0, 0.25, 0);
+// The dragon at full size (metres; scaled with it): its body and neck, not the tail's end.
+const PROXY_DRAGON = new THREE.BoxGeometry(4.2, 5.6, 13).translate(0, 2.8, 1.2);
+const PROXY_DRAGON_LYING = new THREE.BoxGeometry(5, 3, 13).translate(0, 1.5, 1.2);
 const PROXY_MAT = new THREE.MeshBasicMaterial({ visible: false });
 
 export class MobsView {
@@ -91,6 +104,7 @@ export class MobsView {
   private clips: Promise<THREE.AnimationClip[]>;
   private pending: Array<{ at: number; fn: () => void }> = [];
   private time = 0;
+  private dragons = new DragonFactory();
 
   constructor(
     private humans: HumanFactory,
@@ -137,14 +151,36 @@ export class MobsView {
         }
         break;
       case 'aggro':
-        if (e) e.view.target = ev.target ?? null;
+        if (e) {
+          e.view.target = ev.target ?? null;
+          if (e.dragon && e.view.state !== 'dead') e.dragon.play('Roar');
+        }
         break;
       case 'attack':
         if (e && e.view.state !== 'dead') {
+          const entry = e;
+          if (e.dragon) {
+            // the breath's burn comes after its cast (the clip is already playing)
+            if (ev.move === 'breath') {
+              this.onSwingLanded?.(ev, entry);
+              break;
+            }
+            const clip = DRAGON_MOVE_CLIP[ev.move || 'bite'] || 'Bite';
+            e.dragon.play(clip, { rate: 1.15 });
+            this.pending.push({ at: this.time + (DRAGON_HIT_AT[clip] ?? 0.5) / 1.15, fn: () => this.onSwingLanded?.(ev, entry) });
+            break;
+          }
           const info = e.animator?.attack('right', false, 2.0);
           const at = this.time + (info?.hitIn ?? 0.3);
-          const entry = e;
           this.pending.push({ at, fn: () => this.onSwingLanded?.(ev, entry) });
+        }
+        break;
+      case 'cast':
+        if (e?.dragon && ev.move === 'breath' && e.view.state !== 'dead') {
+          e.dragon.play('Breath');
+          const entry = e;
+          // the flame from the blast in the clip (0.3 of 2.6 s) to its end
+          this.pending.push({ at: this.time + 0.8, fn: () => entry.fire?.start(1.35) });
         }
         break;
       case 'damaged':
@@ -152,6 +188,8 @@ export class MobsView {
           if (typeof ev.hp === 'number') e.view.hp = ev.hp;
           if (typeof ev.max_hp === 'number') e.view.max_hp = ev.max_hp;
           if ((ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0) e.animator?.hit();
+          // a boss flinches now and then, not at every scratch
+          if (e.dragon && (ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0 && Math.random() < 0.15) e.dragon.play('Hit');
         }
         break;
       case 'died':
@@ -161,7 +199,8 @@ export class MobsView {
           e.view.target = null;
           e.view.corpse = { owner: ev.killer ?? null, empty: false };
           e.animator?.die();
-          e.proxy.geometry = PROXY_LYING;
+          e.dragon?.die();
+          e.proxy.geometry = e.dragon ? PROXY_DRAGON_LYING : PROXY_LYING;
         }
         break;
       case 'corpse':
@@ -231,6 +270,8 @@ export class MobsView {
       }
       e.animator?.update(dt);
       e.mixer?.update(dt);
+      e.dragon?.update(dt);
+      e.fire?.update(dt);
       // The name: con colour, a corpse in grey.
       const plateId = `mob:${id}`;
       const dead = e.view.state === 'dead';
@@ -238,7 +279,7 @@ export class MobsView {
         plateId,
         e.root,
         { name: dead ? `${e.view.name}'s corpse` : e.view.name, color: dead ? '#B9B2A6' : conColor(e.view.level - me.level, me.level) },
-        { height: dead ? 0.6 * U : e.heightU, target: me.targetId === id }
+        { height: dead ? (e.dragon ? 2.6 * (e.view.scale ?? 1) * U : 0.6 * U) : e.heightU, target: me.targetId === id }
       );
     }
   }
@@ -317,8 +358,12 @@ export class MobsView {
     root.name = `mob:${v.id}`;
     root.position.set(v.x, 0, v.z);
     root.rotation.y = v.h;
-    const scale = SCALE[v.kind] ?? 1;
-    const proxy = new THREE.Mesh(v.state === 'dead' ? PROXY_LYING : PROXY_STANDING, PROXY_MAT);
+    const dragon = DRAGONS.has(v.kind);
+    const scale = dragon ? v.scale ?? 1 : SCALE[v.kind] ?? 1;
+    const proxy = new THREE.Mesh(
+      dragon ? (v.state === 'dead' ? PROXY_DRAGON_LYING : PROXY_DRAGON) : v.state === 'dead' ? PROXY_LYING : PROXY_STANDING,
+      PROXY_MAT
+    );
     proxy.userData.mobId = v.id;
     proxy.scale.setScalar(UNITS_PER_METRE * scale);
     root.add(proxy);
@@ -329,12 +374,14 @@ export class MobsView {
       model: null,
       mixer: null,
       animator: null,
+      dragon: null,
+      fire: null,
       proxy,
       net: { x: v.x, z: v.z, h: v.h, vx: 0, vz: 0, at: this.time },
       speed: 0,
       rise: rise ? 1.4 : 0,
       sink: -1,
-      heightU: (1.8 * scale + 0.3) * UNITS_PER_METRE,
+      heightU: dragon ? (7.6 * scale + 0.6) * UNITS_PER_METRE : (1.8 * scale + 0.3) * UNITS_PER_METRE,
     };
     if (rise) root.position.y = -1.9 * UNITS_PER_METRE;
     this.mobs.set(v.id, e);
@@ -345,6 +392,20 @@ export class MobsView {
 
   // Loads the model, then the animations and the weapons, into an entry.
   private async dress(e: MobEntry, scale: number) {
+    if (DRAGONS.has(e.view.kind)) {
+      const rig = await this.dragons.create(scale);
+      if (!rig || this.mobs.get(e.view.id) !== e) {
+        rig?.dispose();
+        return;
+      }
+      e.root.add(rig.root);
+      e.dragon = rig;
+      e.model = rig.model;
+      const head = rig.model.getObjectByName('head');
+      if (rig.mouth && head) e.fire = new FireBreath(this.group, rig.mouth, head, 17 * scale * UNITS_PER_METRE, 1.6 * scale * UNITS_PER_METRE);
+      if (e.view.state === 'dead') rig.die(true);
+      return;
+    }
     const tpl = await this.template(e.view.kind);
     if (!tpl || this.mobs.get(e.view.id) !== e) return;
     const model = SkeletonUtils.clone(tpl) as THREE.Object3D;
@@ -369,7 +430,7 @@ export class MobsView {
   }
 
   private applyGear(e: MobEntry) {
-    if (!e.model) return;
+    if (!e.model || e.dragon) return;
     const twoHanded = gearOf(e.view.weapon)?.hands === 2;
     e.animator?.setGear(gearOf(e.view.weapon), twoHanded ? null : gearOf(e.view.offhand));
     void holdItem(this.weapons, e.model, 'main', e.view.weapon);
@@ -384,10 +445,12 @@ export class MobsView {
     if (gearChanged) this.applyGear(e);
     if (v.state === 'dead' && !wasDead) {
       e.animator?.dieInstantly();
-      e.proxy.geometry = PROXY_LYING;
+      e.dragon?.die(true);
+      e.proxy.geometry = e.dragon ? PROXY_DRAGON_LYING : PROXY_LYING;
     } else if (v.state !== 'dead' && wasDead) {
       e.animator?.revive();
-      e.proxy.geometry = PROXY_STANDING;
+      e.dragon?.revive();
+      e.proxy.geometry = e.dragon ? PROXY_DRAGON : PROXY_STANDING;
     }
   }
 
@@ -396,6 +459,8 @@ export class MobsView {
     if (!e) return;
     this.group.remove(e.root);
     e.animator?.dispose();
+    e.dragon?.dispose();
+    e.fire?.dispose();
     // Geometry and materials are shared with the template and the weapons file.
     this.mobs.delete(id);
     this.nameplateIds.delete(`mob:${id}`);
