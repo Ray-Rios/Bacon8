@@ -26,7 +26,7 @@ defmodule Bacon8Web.Components.NotificationPanel do
     <%= if @show do %>
       <div 
         id="notification-panel"
-        class="fixed bottom-14 right-4 w-96 max-h-[32rem] glass-dark rounded-lg shadow-2xl border border-gray-600 overflow-hidden z-50 animate-slide-up"
+        class="fixed bottom-14 right-4 w-96 max-h-[32rem] glass-menu rounded-lg shadow-2xl overflow-hidden z-50 animate-slide-up"
       >
         <div class="p-4 border-b border-gray-600 flex items-center justify-between">
           <h3 class="text-white font-semibold text-lg">Notifications</h3>

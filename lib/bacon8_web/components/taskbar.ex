@@ -36,7 +36,7 @@ defmodule Bacon8Web.Components.Taskbar do
           
           <!-- Start Menu -->
           <div :if={@show_start_menu} 
-               class="absolute bottom-full left-0 mb-2 w-80 auth-glass-panel rounded-lg shadow-2xl border border-gray-600 overflow-hidden">
+               class="absolute bottom-full left-0 mb-2 w-80 glass-menu rounded-lg shadow-2xl overflow-hidden">
             <div class="p-4 border-b border-gray-600">
               <div class="flex items-center space-x-3">
                 <%= if @current_user do %>
@@ -231,7 +231,7 @@ defmodule Bacon8Web.Components.Taskbar do
             
             <!-- Audio Control Panel -->
             <%= if @show_audio_panel do %>
-              <div class="absolute bottom-full right-0 mb-2 w-80 glass-dark rounded-lg shadow-2xl border border-gray-600 overflow-hidden animate-slide-up">
+              <div class="absolute bottom-full right-0 mb-2 w-80 glass-menu rounded-lg shadow-2xl overflow-hidden animate-slide-up">
                 <div class="p-4 border-b border-gray-600">
                   <h3 class="text-white font-semibold">Audio & Notifications</h3>
                 </div>
@@ -315,7 +315,7 @@ defmodule Bacon8Web.Components.Taskbar do
 
             <!-- Calendar Popup -->
             <%= if @show_calendar do %>
-              <div class="absolute bottom-full right-0 mb-2 w-80 auth-glass-panel rounded-lg shadow-2xl border border-gray-600 overflow-hidden animate-slide-up z-50">
+              <div class="absolute bottom-full right-0 mb-2 w-80 glass-menu rounded-lg shadow-2xl overflow-hidden animate-slide-up z-50">
                 <div class="p-4 border-b border-gray-600 flex justify-between items-center">
                   <h3 class="text-white font-semibold date-full-header">Calendar</h3>
                   <button phx-click="toggle_calendar" phx-target={@target} class="text-gray-400 hover:text-white">✕</button>

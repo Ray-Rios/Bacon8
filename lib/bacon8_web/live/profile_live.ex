@@ -1008,14 +1008,14 @@ defmodule Bacon8Web.ProfileLive do
                         <label class="block text-sm text-gray-400 mb-3">Glass Theme</label>
                         <div class="grid grid-cols-4 gap-3">
                           <%= for {theme, label, color} <- [
-                            {"dark", "Dark", "bg-gray-900"},
-                            {"blue", "Blue", "bg-blue-600"},
-                            {"purple", "Purple", "bg-purple-600"},
-                            {"green", "Green", "bg-green-600"},
-                            {"red", "Red", "bg-red-600"},
-                            {"amber", "Amber", "bg-amber-500"},
-                            {"teal", "Teal", "bg-teal-500"},
-                            {"light", "Frosted", "bg-gray-100"}
+                            {"dark", "Dark", "#1F2937"},
+                            {"blue", "Blue", "#3B82F6"},
+                            {"purple", "Purple", "#9333EA"},
+                            {"green", "Green", "#22C55E"},
+                            {"red", "Red", "#EF4444"},
+                            {"amber", "Amber", "#F59E0B"},
+                            {"teal", "Teal", "#14B8A6"},
+                            {"light", "Frosted", "#F3F4F6"}
                           ] do %>
                             <button
                               type="button"
@@ -1023,7 +1023,7 @@ defmodule Bacon8Web.ProfileLive do
                               phx-value-theme={theme}
                               class={"flex flex-col items-center justify-center p-3 rounded-lg border transition-all #{if (get_in(@custom_data, ["glass_theme"]) || "dark") == theme, do: "border-white ring-2 ring-white/20 bg-white/5", else: "border-gray-700 hover:border-gray-500 hover:bg-white/5"}"}
                             >
-                              <div class={"w-8 h-8 rounded-full mb-2 #{color} border border-white/10 shadow-lg"}></div>
+                              <div class="glass-swatch mb-2" style={"--swatch: #{color}"}></div>
                               <span class="text-xs text-gray-300"><%= label %></span>
                             </button>
                           <% end %>
@@ -1040,7 +1040,7 @@ defmodule Bacon8Web.ProfileLive do
                             value={get_in(@custom_data, ["glass_custom_color"]) || "#000000"}
                             phx-hook="ColorPicker"
                             data-event="update_glass_custom_color"
-                            class="w-20 h-16 rounded-lg cursor-pointer border border-gray-600"
+                            class="glass-picker w-20 h-16 cursor-pointer"
                           />
                           <div class="flex-1">
                             <p class="text-sm text-gray-300">Choose a custom tint color for your glass panels</p>

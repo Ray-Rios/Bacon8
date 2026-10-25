@@ -9,7 +9,7 @@ defmodule Bacon8Web.Components.StartMenu do
     ~H"""
     <%= if @show do %>
       <div 
-        class="fixed bottom-14 left-4 w-80 glass-dark rounded-lg shadow-2xl border border-gray-600 overflow-hidden z-50 animate-slide-up flex flex-col"
+        class="fixed bottom-14 left-4 w-80 glass-menu rounded-lg shadow-2xl overflow-hidden z-50 animate-slide-up flex flex-col"
         style="height: 500px;"
       >
         <!-- User Profile -->

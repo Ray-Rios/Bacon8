@@ -54,7 +54,7 @@ defmodule Bacon8Web.Components.Navigation do
                 module={Bacon8Web.Components.Dropdown}
                 id={"#{@id_prefix}user-dropdown"}
                 trigger_class="flex items-center space-x-1 text-white hover:text-blue-400 transition-colors duration-300 min-w-0"
-                dropdown_class="absolute right-0 mt-2 w-48 glass-dark rounded-md shadow-lg py-1 z-50"
+                dropdown_class="absolute right-0 mt-2 w-48 glass-menu rounded-md shadow-lg py-1 z-50"
               >
                 <:trigger>
                   <%= avatar_tag(@current_user, size_class: "w-6 h-6 text-xs") %>
@@ -64,27 +64,27 @@ defmodule Bacon8Web.Components.Navigation do
                   </svg>
                 </:trigger>
                 <:content>
-                  <.link navigate={~p"/profile"} class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white">
+                  <.link navigate={~p"/profile"} class="block px-4 py-2 text-sm text-gray-300 hover:bg-white/15 hover:text-white">
                     👤 Profile Settings
                   </.link>
                   <%= if @current_user.is_admin do %>
-                    <hr class="border-gray-600 my-1">
-                    <.link navigate={~p"/admin"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-gray-700 hover:text-orange-200">
+                    <hr class="border-white/20 my-1">
+                    <.link navigate={~p"/admin"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-white/15 hover:text-orange-200">
                       🏠 Admin Dashboard
                     </.link>
-                    <.link navigate={~p"/admin/user-management"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-gray-700 hover:text-orange-200">
+                    <.link navigate={~p"/admin/user-management"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-white/15 hover:text-orange-200">
                       👥 User Management
                     </.link>
-                    <.link navigate={~p"/admin/blog-management"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-gray-700 hover:text-orange-200">
+                    <.link navigate={~p"/admin/blog-management"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-white/15 hover:text-orange-200">
                       📝 Blog Management
                     </.link>
 
-                    <.link navigate={~p"/admin/api-toolbox"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-gray-700 hover:text-orange-200">
+                    <.link navigate={~p"/admin/api-toolbox"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-white/15 hover:text-orange-200">
                       🧰 API Toolbox
                     </.link>
                   <% end %>
-                  <hr class="border-gray-600 my-1">
-                  <.link navigate={~p"/auth/logout"} class="block px-4 py-2 text-sm text-red-300 hover:bg-gray-700 hover:text-red-200">
+                  <hr class="border-white/20 my-1">
+                  <.link navigate={~p"/auth/logout"} class="block px-4 py-2 text-sm text-red-300 hover:bg-white/15 hover:text-red-200">
                    🚪 Logout
                   </.link>
                 </:content>

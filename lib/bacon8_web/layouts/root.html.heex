@@ -66,7 +66,8 @@
           'green': { bg: 'rgba(34, 197, 94, OPACITY)', border: 'rgba(34, 197, 94, 0.3)' },
           'red': { bg: 'rgba(239, 68, 68, OPACITY)', border: 'rgba(239, 68, 68, 0.3)' },
           'amber': { bg: 'rgba(245, 158, 11, OPACITY)', border: 'rgba(245, 158, 11, 0.3)' },
-          'teal': { bg: 'rgba(20, 184, 166, OPACITY)', border: 'rgba(20, 184, 166, 0.3)' }
+          'teal': { bg: 'rgba(20, 184, 166, OPACITY)', border: 'rgba(20, 184, 166, 0.3)' },
+          'light': { bg: 'rgba(249, 250, 251, OPACITY)', border: 'rgba(0, 0, 0, 0.15)' }
         };
         
         // Helper to convert hex to rgb
@@ -104,6 +105,29 @@
         root.style.setProperty('--glass-border', theme.border);
         root.style.setProperty('--glass-blur', blur + 'px');
         root.style.setProperty('--glass-saturation', '120%');
+
+        // The menus' body, and Bacon World's windows, follow the same colour. Same sums as
+        // setGlassExtras in assets/js/glass_theme.ts (which handles live changes): keep them in step.
+        const rgb = (theme.bg.match(/\d+/g) || []).slice(0, 3).map(Number);
+        if (rgb.length === 3) {
+          const mix = (c, base, t) => c.map((v, i) => Math.round(v * t + base[i] * (1 - t)));
+          const css = (c, a) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a === undefined ? 1 : a})`;
+          const op = parseFloat(opacity) || 0.15;
+          root.style.setProperty('--glass-rgb', rgb.join(', '));
+          const luma = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+          const keep = luma <= 90 ? 0.45 : luma <= 180 ? 0.3 : 0.18;
+          root.style.setProperty('--glass-menu-bg', css(mix(rgb, [11, 15, 25], keep), Math.min(0.85, Math.max(0.62, 0.35 + op * 0.6))));
+          root.style.setProperty('--glass-menu-border', css(mix(rgb, [255, 255, 255], 0.35), 0.45));
+          const personalised = user.glass_theme !== 'dark' || (user.glass_custom_color && user.glass_custom_color !== '#000000');
+          if (personalised) {
+            root.style.setProperty('--bwg-bg', css(mix(rgb, [10, 9, 8], 0.2), 0.94));
+            root.style.setProperty('--bwg-title-a', css(mix(rgb, [20, 18, 16], 0.34)));
+            root.style.setProperty('--bwg-title-b', css(mix(rgb, [12, 11, 10], 0.16)));
+            root.style.setProperty('--bwg-border', css(mix(rgb, [255, 255, 255], 0.55)));
+            root.style.setProperty('--bwg-border-soft', css(mix(rgb, [255, 255, 255], 0.3)));
+            root.style.setProperty('--bwg-accent', css(mix(rgb, [255, 255, 255], 0.45)));
+          }
+        }
         
         console.log('Global glass theme initialized:', {theme: user.glass_theme, opacity, blur, custom_color: user.glass_custom_color});
       });

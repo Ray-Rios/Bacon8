@@ -9,7 +9,7 @@ defmodule Bacon8Web.Components.AudioPanel do
     ~H"""
     <%= if @show do %>
       <div 
-        class="fixed bottom-14 right-20 w-80 glass-dark rounded-lg shadow-2xl border border-gray-600 overflow-hidden z-50 animate-slide-up"
+        class="fixed bottom-14 right-20 w-80 glass-menu rounded-lg shadow-2xl overflow-hidden z-50 animate-slide-up"
       >
         <div class="p-4 border-b border-gray-600 flex items-center justify-between">
           <h3 class="text-white font-semibold">Audio Settings</h3>

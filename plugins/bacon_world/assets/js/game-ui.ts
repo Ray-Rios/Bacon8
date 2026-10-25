@@ -38,10 +38,10 @@ export interface GameUICallbacks {
 const CSS = `
 .bwg{position:absolute;inset:0;pointer-events:none;font:12px/1.3 "Trebuchet MS","Segoe UI",Arial,sans-serif;color:#e8dcc0;user-select:none;-webkit-user-select:none;z-index:5}
 .bwg *{box-sizing:border-box}
-.bwg .w{position:absolute;pointer-events:auto;background:rgba(17,15,13,.96);border:1px solid #6d5b3c;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.7),0 8px 22px rgba(0,0,0,.55)}
-.bwg .t{padding:3px 8px;background:linear-gradient(#2c251c,#191510);border-bottom:1px solid #4b3f2b;color:#e9cf8f;font-size:11px;letter-spacing:.08em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bwg .w{position:absolute;pointer-events:auto;background:var(--bwg-bg,rgba(17,15,13,.96));border:1px solid var(--bwg-border,#6d5b3c);border-radius:3px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.7),0 8px 22px rgba(0,0,0,.55)}
+.bwg .t{padding:3px 8px;background:linear-gradient(var(--bwg-title-a,#2c251c),var(--bwg-title-b,#191510));border-bottom:1px solid var(--bwg-border-soft,#4b3f2b);color:var(--bwg-accent,#e9cf8f);font-size:11px;letter-spacing:.08em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .bwg .t b{font-weight:600;letter-spacing:.04em;text-transform:none;font-size:12px}
-.bwg .x{cursor:pointer;color:#bfa66c;padding:0 2px}.bwg .x:hover{color:#fff}
+.bwg .x{cursor:pointer;color:var(--bwg-accent,#bfa66c);padding:0 2px}.bwg .x:hover{color:#fff}
 .bwg .bar{position:relative;height:12px;background:#0a0908;border:1px solid #3b3226;border-radius:2px;overflow:hidden;margin-top:3px}
 .bwg .bar i{position:absolute;inset:0 auto 0 0;transition:width .25s}
 .bwg .bar span{position:absolute;inset:0;text-align:center;font-size:9px;line-height:10px;color:#fff;text-shadow:0 1px 1px #000}
@@ -49,7 +49,7 @@ const CSS = `
 .bwg .pw{left:12px;top:12px;width:208px;padding:0 0 6px}
 .bwg .pw .in{padding:2px 8px 0}
 .bwg .row{display:flex;gap:4px;margin-top:5px}
-.bwg .btn{pointer-events:auto;cursor:pointer;font:inherit;font-size:10px;color:#e8dcc0;background:linear-gradient(#3a3024,#211b14);border:1px solid #6d5b3c;border-radius:2px;padding:2px 7px}
+.bwg .btn{pointer-events:auto;cursor:pointer;font:inherit;font-size:10px;color:#e8dcc0;background:linear-gradient(var(--bwg-title-a,#3a3024),var(--bwg-title-b,#211b14));border:1px solid var(--bwg-border,#6d5b3c);border-radius:2px;padding:2px 7px}
 .bwg .btn:hover{border-color:#c9a65e;color:#fff}.bwg .btn.on{background:linear-gradient(#7a2a1f,#42140f);border-color:#d0573f}
 .bwg .btn:disabled{opacity:.4;cursor:default}
 .bwg .tw{left:50%;top:12px;transform:translateX(-50%);min-width:220px;padding:0 0 6px;display:none}
@@ -90,7 +90,7 @@ const CSS = `
 .bwg .mer .sellbox{display:flex;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid #4b3f2b}
 .bwg .mer .sellbox .msg2{flex:1;font-size:11px;color:#bfae88}
 .bwg .mer .coins{color:#f0d77a;font-size:11px;padding:0 10px 6px}
-.bwg .tip{position:fixed;display:none;pointer-events:none;max-width:240px;padding:6px 8px;background:rgba(10,9,8,.96);border:1px solid #6d5b3c;border-radius:3px;font-size:11px;color:#d8ccb0;z-index:10;box-shadow:0 6px 14px rgba(0,0,0,.6)}
+.bwg .tip{position:fixed;display:none;pointer-events:none;max-width:240px;padding:6px 8px;background:var(--bwg-bg,rgba(10,9,8,.96));border:1px solid var(--bwg-border,#6d5b3c);border-radius:3px;font-size:11px;color:#d8ccb0;z-index:10;box-shadow:0 6px 14px rgba(0,0,0,.6)}
 .bwg .tip b{display:block;color:#f0d77a;font-size:12px;margin-bottom:2px}
 .bwg .cur{position:fixed;width:40px;height:40px;pointer-events:none;display:none;z-index:11;transform:translate(-50%,-50%)}
 .bwg .cur img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 2px 3px #000)}

@@ -8,7 +8,7 @@ defmodule Bacon8Web.Components.Calendar do
     ~H"""
     <%= if @show do %>
       <div 
-        class="fixed bottom-14 right-4 w-80 glass-dark rounded-lg shadow-2xl border border-gray-600 overflow-hidden z-50 animate-slide-up p-4"
+        class="fixed bottom-14 right-4 w-80 glass-menu rounded-lg shadow-2xl overflow-hidden z-50 animate-slide-up p-4"
       >
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-white font-semibold text-lg">
