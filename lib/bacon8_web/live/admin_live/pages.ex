@@ -6,7 +6,7 @@ defmodule Bacon8Web.AdminLive.Pages do
   alias Bacon8Web.Components.BlockEditor
   alias Bacon8Web.Components.SocialShare
 
-  on_mount {Bacon8Web.UserAuth, :require_admin_user}
+  on_mount {Bacon8Web.UserAuth, {:require_area, :content}}
 
   @default_platforms ["twitter", "facebook", "linkedin", "reddit", "email"]
 
@@ -135,7 +135,7 @@ defmodule Bacon8Web.AdminLive.Pages do
 
   def render(assigns) do
     ~H"""
-    <AdminSidebar.admin_layout current_path="/admin/pages">
+    <AdminSidebar.admin_layout current_path="/admin/pages" current_user={@current_user}>
       <div class="max-w-6xl mx-auto">
           <div class="auth-glass-panel p-8 rounded-xl">
             <div class="flex justify-between items-center mb-8">

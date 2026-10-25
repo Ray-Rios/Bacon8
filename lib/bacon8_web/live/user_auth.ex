@@ -16,6 +16,7 @@ defmodule Bacon8Web.UserAuth do
     * `:default` → assigns current_user if present (public pages).
     * `:require_authenticated_user` → assigns and redirects if missing.
     * `:require_admin_user` → assigns and redirects if missing or not admin.
+    * `{:require_area, area}` → the same for a page staff roles may open (`Bacon8.Permissions`).
   """
   def on_mount(:default, _params, session, socket) do
     socket = assign_current_user(socket, session)
@@ -55,6 +56,31 @@ defmodule Bacon8Web.UserAuth do
 
       true ->
         {:halt, push_navigate(socket, to: "/login")}
+    end
+  end
+
+  # An admin page that staff roles may open too (Bacon8.Permissions): the same checks as
+  # :require_admin_user, but the user needs the named area, which an admin always has.
+  def on_mount({:require_area, area}, _params, session, socket) do
+    socket = assign_current_user(socket, session)
+    user = socket.assigns.current_user
+
+    cond do
+      user == nil ->
+        {:halt, push_navigate(socket, to: "/login")}
+
+      user.status != "active" or user.role == "banned" ->
+        {:halt,
+         socket
+         |> put_flash(:error, "Your account has been suspended.")
+         |> logout()}
+
+      not Bacon8.Permissions.can?(user, area) ->
+        {:halt, push_navigate(socket, to: "/")}
+
+      true ->
+        socket = setup_disconnect_subscription(socket, user)
+        {:cont, socket}
     end
   end
 

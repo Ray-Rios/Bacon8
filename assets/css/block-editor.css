@@ -9,8 +9,13 @@
    ============================================ */
 
 .block-editor {
-  @apply bg-gray-900/50 rounded-xl border border-gray-700 overflow-hidden;
+  @apply bg-gray-900/50 rounded-xl border border-gray-700;
   max-width: 100%;
+  /* `clip` rounds the corners like `hidden` but is not a scroll container, so the toolbar dock
+     (position: sticky) sticks against the page's scroll, not against this box. Old browsers
+     that don't know `clip` keep `hidden`: the dock then just sits at the top of the editor. */
+  overflow: hidden;
+  overflow: clip;
 }
 
 /* ============================================
@@ -285,6 +290,43 @@
 .rich-text-toolbar {
   @apply flex flex-wrap items-center gap-1 p-2 bg-gray-800 border-b border-gray-700;
   @apply transition-all duration-200;
+}
+
+/* A text block's own toolbar is never shown inside the block: at 8 columns it had about 170px
+   and its controls stacked into a column taller than the text. When the block is focused the
+   toolbar moves into the editor's dock (block_editor_hook.ts, dockToolbar), which is as wide as
+   the editor. A toolbar inside the dock doesn't match this rule. */
+.rich-text-block .rich-text-toolbar {
+  display: none;
+}
+
+.editor-toolbar-dock {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin-bottom: 0.75rem;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(75, 85, 99, 0.6);
+  background: rgba(17, 24, 39, 0.94);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.editor-toolbar-dock .dock-hint {
+  padding: 0.6rem 0.9rem;
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.editor-toolbar-dock .rich-text-toolbar {
+  width: 100%;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
 }
 
 .rich-text-toolbar.active {

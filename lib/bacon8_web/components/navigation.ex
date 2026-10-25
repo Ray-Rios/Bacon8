@@ -36,8 +36,9 @@ defmodule Bacon8Web.Components.Navigation do
               <.link navigate={~p"/blog"} class="text-white hover:text-blue-400 transition-colors duration-300 text-sm">
                 🚬 Blog
               </.link>
-              <%= if @current_user && @current_user.is_admin do %>
-                <.link navigate={~p"/admin"} class="text-orange-400 hover:text-orange-300 transition-colors duration-300 text-sm font-semibold">
+              <%!-- Admins land on the dashboard; GMs and editors on the part they may open (Bacon8.Permissions) --%>
+              <%= if Bacon8.Permissions.staff?(@current_user) do %>
+                <.link navigate={Bacon8.Permissions.home_path(@current_user)} class="text-orange-400 hover:text-orange-300 transition-colors duration-300 text-sm font-semibold">
                   ⚙️ Admin
                 </.link>
               <% end %>
@@ -80,6 +81,16 @@ defmodule Bacon8Web.Components.Navigation do
                     <.link navigate={~p"/admin/api-toolbox"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-white/15 hover:text-orange-200">
                       🧰 API Toolbox
                     </.link>
+                  <% else %>
+                    <%= if Bacon8.Permissions.can?(@current_user, :content) do %>
+                      <hr class="border-white/20 my-1">
+                      <.link navigate={~p"/admin/pages"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-white/15 hover:text-orange-200">
+                        📄 Pages
+                      </.link>
+                      <.link navigate={~p"/admin/blog-management"} class="block px-4 py-2 text-sm text-orange-300 hover:bg-white/15 hover:text-orange-200">
+                        📝 Blog Management
+                      </.link>
+                    <% end %>
                   <% end %>
                   <hr class="border-white/20 my-1">
                   <.link navigate={~p"/auth/logout"} class="block px-4 py-2 text-sm text-red-300 hover:bg-white/15 hover:text-red-200">

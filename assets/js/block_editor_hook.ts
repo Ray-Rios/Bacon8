@@ -179,6 +179,12 @@ const BlockEditorHook = {
     // Build the editor HTML
     const html = `
       <div class="block-editor">
+        <!-- ONE formatting toolbar for the whole editor: the focused text block's toolbar is moved
+             in here (dockToolbar), so its width never depends on the width of a column. -->
+        <div class="editor-toolbar-dock" id="${this.el.id}-toolbar-dock">
+          <span class="dock-hint">Click in a text block to format it</span>
+        </div>
+
         <!-- Editor Content (with drop zone for files) -->
         <div class="block-editor-content" id="${this.el.id}-drop-zone">
           ${this.renderRows()}
@@ -746,6 +752,21 @@ const BlockEditorHook = {
     return div.innerHTML;
   },
 
+  // Puts a text block's toolbar in the editor's dock (the one toolbar above all columns).
+  dockToolbar(this: any, toolbar: HTMLElement) {
+    const dock = this.el.querySelector('.editor-toolbar-dock') as HTMLElement | null;
+    if (!dock) return;
+
+    if (toolbar.parentElement !== dock) {
+      // replaces the hint or the previous block's toolbar (which keeps its listeners and
+      // comes back the next time its block is focused)
+      dock.replaceChildren(toolbar);
+    }
+
+    dock.classList.add('has-toolbar');
+    toolbar.classList.add('active');
+  },
+
   initializeRichTextEditors(this: any) {
     // Find all rich text editor containers
     const textBlocks = this.el.querySelectorAll('.rich-text-block');
@@ -931,18 +952,11 @@ const BlockEditorHook = {
         });
       }
       
-      // Show toolbar on focus
+      // The toolbar moves up to the editor's dock when this block is focused, and stays there
+      // (with the block's own listeners) until another block takes the dock. It is not hidden on
+      // blur: a click on one of its controls blurs the block, and it must not vanish under the click.
       editor.addEventListener('focus', () => {
-        toolbar.classList.add('active');
-      });
-      
-      // Hide toolbar on blur (with delay for button clicks)
-      editor.addEventListener('blur', () => {
-        setTimeout(() => {
-          if (!container.contains(document.activeElement)) {
-            toolbar.classList.remove('active');
-          }
-        }, 200);
+        this.dockToolbar(toolbar);
       });
       
       // Handle content changes

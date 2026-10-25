@@ -14,8 +14,12 @@ defmodule Bacon8Web.Components.AdminSidebar do
     * `:current_path` - The current URL path to highlight active nav item
   """
   attr :current_path, :string, default: "/admin"
+  attr :current_user, :map, default: nil, doc: "who is looking; nil is taken as an admin (those pages are admin-only anyway)"
 
   def admin_sidebar(assigns) do
+    # Staff roles (Bacon8.Permissions) see only the links to the areas they may open.
+    assigns = assign(assigns, :full, is_nil(assigns.current_user) or Bacon8.Permissions.admin?(assigns.current_user))
+
     ~H"""
     <div
       id="admin-sidebar"
@@ -25,7 +29,7 @@ defmodule Bacon8Web.Components.AdminSidebar do
     >
       <div class="flex-1 overflow-y-auto p-4 overflow-x-hidden sidebar-content">
         <!-- Dashboard Section -->
-        <div class="mb-6">
+        <div :if={@full} class="mb-6">
           <.sidebar_link
             href="/admin"
             icon="📊"
@@ -35,7 +39,7 @@ defmodule Bacon8Web.Components.AdminSidebar do
         </div>
         
         <!-- Users Section -->
-        <div class="mb-6">
+        <div :if={@full} class="mb-6">
           <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 sidebar-section-header">
             Users
           </h2>
@@ -65,6 +69,7 @@ defmodule Bacon8Web.Components.AdminSidebar do
             active={String.starts_with?(@current_path, "/admin/pages")}
           />
           <.sidebar_link
+            :if={@full}
             href="/admin/uploads"
             icon="📤"
             label="Uploads"
@@ -73,7 +78,7 @@ defmodule Bacon8Web.Components.AdminSidebar do
         </div>
         
         <!-- Tools Section -->
-        <div class="mb-6">
+        <div :if={@full} class="mb-6">
           <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 sidebar-section-header">
             Tools
           </h2>
@@ -92,7 +97,7 @@ defmodule Bacon8Web.Components.AdminSidebar do
         </div>
         
         <!-- Games Section -->
-        <div class="mb-6">
+        <div :if={@full} class="mb-6">
           <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 sidebar-section-header">
             Games
           </h2>
@@ -108,7 +113,7 @@ defmodule Bacon8Web.Components.AdminSidebar do
         </div>
 
         <!-- Tools Section -->
-        <div class="mb-6">
+        <div :if={@full} class="mb-6">
           <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 sidebar-section-header">
             Tools
           </h2>
@@ -192,13 +197,14 @@ defmodule Bacon8Web.Components.AdminSidebar do
   Provides consistent layout across all admin pages.
   """
   attr :current_path, :string, default: "/admin"
+  attr :current_user, :map, default: nil
   slot :inner_block, required: true
 
   def admin_layout(assigns) do
     ~H"""
     <Bacon8Web.Components.PageContainer.fullscreen_container>
       <div class="flex h-full relative z-10">
-        <.admin_sidebar current_path={@current_path} />
+        <.admin_sidebar current_path={@current_path} current_user={@current_user} />
         
         <!-- Main Content -->
         <main id="admin-main-content" class="flex-1 overflow-y-auto p-6">

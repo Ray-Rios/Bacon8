@@ -24,13 +24,16 @@ defmodule Bacon8Web.AdminPagesTest do
       assert kind in [:redirect, :live_redirect]
     end
 
-    # GMs and editors write pages in place, on the public pages. The admin pages (this one
-    # sits in the admin sidebar, beside the SQL console and user management) are for admins.
-    # Whether staff roles should reach this page is open: docs/pages-blog-builder.md.
-    test "members, GMs and editors are sent home" do
-      for role <- ~w(member gm editor) do
-        assert {:error, {kind, %{to: "/"}}} = live(signed_in(person(role)), "/admin/pages")
-        assert kind in [:redirect, :live_redirect]
+    # GMs and editors may open the content area of the admin (Bacon8.Permissions), and nothing
+    # else in it; test/bacon8_web/live/admin_access_test.exs holds the proof of the "nothing".
+    test "members are sent home" do
+      assert {:error, {kind, %{to: "/"}}} = live(signed_in(person("member")), "/admin/pages")
+      assert kind in [:redirect, :live_redirect]
+    end
+
+    test "GMs and editors get in" do
+      for role <- ~w(gm editor) do
+        assert {:ok, _view, _html} = live(signed_in(person(role)), "/admin/pages")
       end
     end
 
