@@ -2,7 +2,7 @@ defmodule Bacon8.Forum.ChannelsTest do
   # The channels half of the forum: creating, editing, ordering, deleting, the
   # per-user allowance, and who may do what to a channel. Written as
   # characterisation tests before the forum moves out of the core into the
-  # chat_channels plugin (docs/adr/0002-chat-channels-plugin.md): whatever the
+  # chat_channels plugin (docs/chat-channels-plugin.md): whatever the
   # plugin does, these must still hold.
   #
   # Not async: the forum fires audit and notification tasks that need the shared

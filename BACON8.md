@@ -24,7 +24,38 @@ On 2026-10-25:
   bolstered (placed sound, spells, dragons, flight, beds, music by mood, the UI); RaysSpaceSim
   given a whole soundscape (`UCosmicAudioSubsystem`, 93 events, music by mood). All CC0, built
   and loudness-normalised by `library/pipeline/scripts/audio/build_audio_v2.py`. Details in
-  **`BACON_WORLD.md`** §2 and RaysSpaceSim's `RAYSSPACESIM.md` §7a.
+  **`BACON_WORLD.md`** §2 and RaysSpaceSim's `RAYSSPACESIM.md` §7a. The hub half is committed
+  (`575aac6`); RaysSpaceSim's half (C++, 352 sounds, FLAC sources) is **still uncommitted in its
+  own repository** and needs `Scripts/compile_editor.sh` (see §13).
+- **Tests for the forum and for pages and blog** (`test/bacon8/forum/*`, `content_test.exs`,
+  139 tests; `37d84ea`), and the bugs they found, fixed: publishing a page or post crashed
+  without an explicit `published_at`; a draft with no body crashed; renaming rewrote the URL;
+  channel names weren't unique; a channel's owner couldn't moderate it without a member row;
+  posting to a missing channel crashed; comment approval did nothing. 364 tests pass.
+- **Plan: the forum becomes the `chat_channels` plugin** (navbar "Chat", `/chat`):
+  [`docs/chat-channels-plugin.md`](docs/chat-channels-plugin.md). Not started. It **supersedes
+  ADR 0001 on one point** (ADR 0001 kept the forum in the core). The pages and blog builder
+  rebuild is the other pending piece: [`docs/pages-blog-builder.md`](docs/pages-blog-builder.md).
+- **Glass** (`1fbeae7`): menus and popups are frosted (`.glass-menu`), palette swatches and the
+  tint picker are textured glass, and the personal glass colour reaches Bacon World's windows
+  (`--bwg-*`). The decisions-log row below has the detail. A follow-up fixed **preset buttons
+  doing nothing once a custom tint was set**: the custom colour outranks the theme everywhere,
+  so choosing a preset now clears it (`ProfileLive.glass_theme_choice/2`, tested).
+- `docs/adr/` was deleted in `95aba50`; its links now point at git history.
+
+**Next session, start here:**
+
+1. Read `docs/chat-channels-plugin.md` and `docs/pages-blog-builder.md`. The owner said
+   "let's work through the forum -> chat and the pages/blog builder changes. Feel free to ask
+   questions": ask them (each doc ends with the questions) before building anything.
+2. The first build step for chat is **phase 1 of the plan** (move the code, cut the seams).
+   Production's plugin list must gain `chat_channels` in the same change (the plan's
+   operational notes). Move the 105 forum tests with the code.
+3. `handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md` is half done: finish RaysSpaceSim's half
+   (compile, verify, commit in that repo).
+4. The standing rules are in `BACON_WORLD.md` §6 and the owner's notes: build and test only in
+   Docker; commit with explicit file lists; **the deploy builds from the working tree, so check
+   `git status` for another session's uncommitted work before deploying**.
 
 On 2026-10-24:
 
@@ -167,7 +198,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-20 | **All flagged third-party material is removed** and replaced with our own or CC0 work: synthesized sound effects and music (`scripts/audio/`), an original default avatar, no third-party fonts, and new character models (next row). The removed files wait in a gitignored holding folder until the owner deletes them. | Owner's decision; it was placeholder content. |
 | 2026-10-20 | **Characters use our own skeleton, "B8 skeleton v1".** It has Unreal-style names, which Unreal's IK Retargeter, Unity's Humanoid and Godot's BoneMap all map. It has 3 spine bones, twist bones, breast and glute jiggle bones on every body, and `weapon_l`/`weapon_r` grip bones. Male and female share it. The bodies are Blender Studio's CC0 base meshes; the animations are Quaternius' CC0 Universal Animation Library, baked onto the skeleton. Built by the asset pipeline (`library/pipeline/Characters/B8Human`, originally in the game repository). | Owner's decision. Epic's skeleton and animations may only be used in Unreal, and the web, Unity and Godot versions must look the same as the Unreal game. |
 | 2026-10-20 | **Legal pages are CMS pages:** `/pages/terms`, `privacy`, `refunds`, `copyright`, `contact`, `credits` and `gems`. They are seeded unpublished as placeholders to be reviewed with a lawyer, and the store's small print links to them. | Owner's decision. They can be edited in `/admin/pages` without a deploy. |
-| 2026-10-20 | **Direction: a reusable core, with games and commerce as plugins** (`docs/adr/0001-core-and-plugins.md`). Web Lobby becomes **Bacon World** (`bacon_world`). The store, Gems and payments become **Bacon Store** (`bacon_store`). The games platform becomes a plugin later. The core becomes the starting point for other stand-alone sites. | Owner's decision. A site that sells nothing or runs no games shouldn't carry the code for them. |
+| 2026-10-20 | **Direction: a reusable core, with games and commerce as plugins** (ADR 0001, removed from the tree on 2026-10-24 and still in git: `git show 95aba50^:docs/adr/0001-core-and-plugins.md`). Web Lobby becomes **Bacon World** (`bacon_world`). The store, Gems and payments become **Bacon Store** (`bacon_store`). The games platform becomes a plugin later. The core becomes the starting point for other stand-alone sites. | Owner's decision. A site that sells nothing or runs no games shouldn't carry the code for them. |
 | 2026-10-21 | **Web Lobby is renamed Bacon World** (`web_lobby` -> `bacon_world`), stored names included: the three `bacon_world_*` tables with their keys and indexes, the game row and the `plugin_states` row, by the plugin's own migrations. Plugins gain `previous_slugs/0`; old `/games/web_lobby/...` and `/admin/web_lobby/...` links answer 301. Ledger rows keep the slug they were written with. | ADR 0001, phase 1. A first-party game's name should say what it is; the redirect keeps old links and bookmarks working. |
 | 2026-10-25 | **Glass: menus are frosted, palette swatches are glass, the colour follows the player.** Popups (the navbar user menu, the taskbar's start, audio, calendar and notification panels) use `.glass-menu` (`assets/css/app.css`): a tinted body that is always 62-85% opaque, a stronger blur, a sheen, a light edge and a fine grain, instead of the player's 15% `--glass-bg`, which left big panels nearly clear. The profile palette uses `.glass-swatch` (and `.glass-picker`) so no colour is a flat disc. The personal glass colour sets `--glass-menu-*` and, when the player has chosen one, `--bwg-*`, which Bacon World's windows read (unset: the game's own look). `glass_theme.ts` (live changes) and the inline script in `layouts/root.html.heex` (page load) do the same sums: keep them in step. | Owner's request. Menus read as clear against the frosted bars, and the profile colour never reached the game. |
 | 2026-10-23 | **The asset pipeline moved to `library/pipeline`** (out of the RaysSpaceSim repository; not a git repository), shared by every game; the v1 humans were deleted, their sources and the copies imported into Unreal. | Owner's decision. |
@@ -1011,6 +1042,24 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 ## 13. Known debt
 
 Ordered roughly by how much it hurts.
+
+- **Most of the core has no tests.** Found 2026-10-25 by module name (indirect cover may
+  exist): `Security`, `RateLimiter`, `SafePath`, `Uploads`, `UserFileUpload`, `UserSession`,
+  `Moderation`, `Email`, `Mailer`, `Notifications`, `Entitlements`, `Calendar`, `Desktop`,
+  `Audit`, `Avatar`, `Storage` and the media code. There are no LiveView tests for the editors,
+  the forum, the profile or the admin. Security-sensitive areas (BACON8.md §14) deserve tests
+  before they are touched. The forum and the content context were covered first.
+- **RaysSpaceSim's half of the 2026-10-25 sound delivery is uncommitted** in its repository
+  (a C++ audio subsystem, 352 sounds, FLAC sources; `handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`).
+  It has not been compiled or verified by Claude Code.
+- **The forum is still in the core** (planned: `docs/chat-channels-plugin.md`), with dead code
+  to drop while moving it: `list_user_channels/1` (a stub that returns `[]`),
+  `list_messages_by_room/2` (broken), `create_message/1`, `list_public_user_channels/0`,
+  `list_channel_streams/2`. `list_channel_streams` and voice/video/stream channels have no
+  tests.
+- **Comments on the blog have no moderation UI**, and nothing calls `approve_comment`.
+- **The core plugin events carry forum structs** (`%Bacon8.Forum.Channel{}`); they change with
+  the extraction.
 
 - **RaysSpaceSim's settings still live in the hub's prod configmap** (`HOLOSIM_*`,
   `WORLD_*`, and `deploy-game.sh` writes `HOLOSIM_IMAGE` there), so a game deploy edits a

@@ -400,7 +400,7 @@ fingerprints, identifier lists, lockout, rate limiting), the **Gem ledger and
 webhook inbox**, and the **plugin system**.
 
 **Where this is going:**
-[`docs/adr/0001-core-and-plugins.md`](docs/adr/0001-core-and-plugins.md). The store (with
+ADR 0001 (core and plugins; removed from the tree on 2026-10-24, still in git: `git show 95aba50^:docs/adr/0001-core-and-plugins.md`). The store (with
 Gems and payments) became a plugin on 2026-10-21, and the games platform is next. A new
 site will then start as the core plus the plugins it wants, rather than by deleting
 subsystems.
@@ -416,7 +416,8 @@ page) lists the sources; the 3D models' credits sit beside them on the models vo
   before changing the hub.
 - [`BACON_WORLD.md`](BACON_WORLD.md): the game's state, decisions and next steps.
 - `plugins/*/README.md`: each plugin's reference.
-- `docs/adr/`: architecture decisions.
+- `docs/`: plans, for example [`chat-channels-plugin.md`](docs/chat-channels-plugin.md). The old
+  architecture decision record (`docs/adr/`) is in git history only.
 
 ---
 

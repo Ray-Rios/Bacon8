@@ -13,6 +13,9 @@ Status: **plan, nothing moved yet.** Written 2026-10-25 after the forum got its 
   declare `requires/0 = ["chat_channels"]`, and the hub refuses to activate them (or to
   switch chat off under them) otherwise. The mechanism exists and is tested
   (`test/bacon8/plugin_hooks_test.exs`, "requires/0").
+- **This supersedes ADR 0001 on one point.** ADR 0001 (removed from the tree; `git show 95aba50^:docs/adr/0001-core-and-plugins.md`)
+  listed "the forum and chat channels" as part of the core. The owner has now decided chat
+  is a plugin. Everything else in ADR 0001 stands.
 - The core keeps `/pages` and `/blog` (the `Bacon8.Content` context). They are rebuilt
   separately (see "Not in this plan").
 
@@ -104,6 +107,36 @@ All have no callers outside the forum module (checked 2026-10-25):
 - `create_message/1` (the one-argument "Social Hubs" version)
 - `list_public_user_channels/0`
 - `list_channel_streams/2`
+
+## Status and first steps (for the next session)
+
+**Status 2026-10-25:** the tests exist (`test/bacon8/forum/`, 105) and the plan is written.
+No code has moved. The owner asked to work through it ("feel free to ask questions"), so the
+first move is to ask the three decisions below, then:
+
+1. Create `plugins/chat_channels/` with `ChatChannels.Plugin` (`slug: "chat_channels"`,
+   `mount: "chat"`, `nav_links/1` returning "Chat") following `plugins/bacon_store/` as the
+   model (its `plugin.ex`, `routes.ex`, `priv/`, `test/`).
+2. Move `lib/bacon8/forum.ex` and `lib/bacon8/forum/*` to `ChatChannels.*`, `ForumLive`,
+   `EmojiPickerComponent` and `AdminLive.CustomEmojis` to the plugin's web namespace, and the
+   `ChatInput` hook and forum sidebar code out of `assets/js/app.ts` into
+   `plugins/chat_channels/assets/js/index.ts` (exporting `hooks`; `assets/scripts/gen-plugin-hooks.js`
+   picks it up).
+3. Move `test/bacon8/forum/*` and `test/support/forum_fixtures.ex` to the plugin's `test/`
+   (`mix.exs` already runs every plugin's `test/` and `test/support`). Rename the modules in them
+   in the same step; they are the check that nothing changed.
+4. Cut each seam in the table above, in this order (each compiles on its own): Accounts, Files,
+   Notifications, DesktopLive, then the two plugins that call it. `Bacon8.Plugin`'s event docs
+   change last.
+5. Add `chat_channels` to `BACON8_ACTIVE_PLUGINS` in `k3s/overlays/prod/configmap.yaml` **in the
+   same commit**; add `requires/0 = ["chat_channels"]` to the RaysSpaceSim plugin.
+6. Verify: the full suite, `mix compile --warnings-as-errors`, the release test, `/chat` loads,
+   the old links answer 301 (phase 2).
+
+Things not yet looked at, so treat as open: `ForumLive` tracks who is online with
+`Bacon8Web.Presence` on `presence:channel:<id>` topics (a core module the plugin can keep using, but
+confirm), and whether the uploads guard needs to know the plugin (its `forum/` path); `desktop_live.ex` line ~26
+and ~1234 (the invites badge) are the only desktop references found.
 
 ## Decisions for the owner
 

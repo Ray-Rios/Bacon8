@@ -47,6 +47,14 @@ so it can be rebuilt and changed.
 
 ## 2. State on 2026-10-24
 
+> **Hub note from Claude Code, 2026-10-25.** Everything listed below up to and including the
+> 24f delivery (skill tree, stable, game cards, the Gem) is **committed and deployed**, and
+> so is the hub half of the 25a sound delivery (`575aac6`). Wording below that says "not yet
+> deployed" for older items is stale. The player's personal glass colour now reaches this
+> game's windows through `--bwg-*` CSS variables (set by `assets/js/glass_theme.ts` and the
+> root layout; unset on the default theme, so the game keeps its own look). The Frosted and
+> preset colours on /profile work again (a custom tint used to override them).
+
 **Deployed (through `1eb78e8`, 2026-10-21):**
 
 - fighting, skeleton creatures, EverQuest looting, inventory, levels;
