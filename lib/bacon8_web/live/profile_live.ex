@@ -3,6 +3,16 @@ defmodule Bacon8Web.ProfileLive do
   alias Bacon8.Accounts
 
 
+  @doc false
+  # Choosing a preset drops the custom tint. The custom colour outranks the theme everywhere
+  # (glass_theme.ts and the root layout both apply it first), so keeping it made every preset
+  # button say "Glass theme updated!" and change nothing.
+  def glass_theme_choice(custom_data, theme) do
+    (custom_data || %{})
+    |> Map.put("glass_theme", theme)
+    |> Map.delete("glass_custom_color")
+  end
+
   @impl true
   def mount(_params, _session, socket) do
     current_user = socket.assigns.current_user
@@ -312,8 +322,7 @@ defmodule Bacon8Web.ProfileLive do
 
   @impl true
   def handle_event("update_glass_theme", %{"theme" => theme}, socket) do
-    custom_data = socket.assigns.custom_data || %{}
-    updated_data = Map.put(custom_data, "glass_theme", theme)
+    updated_data = glass_theme_choice(socket.assigns.custom_data, theme)
     
     # Save immediately to user preferences
     case Accounts.update_user(socket.assigns.user, %{
