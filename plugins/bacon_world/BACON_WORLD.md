@@ -30,13 +30,15 @@ A small online RPG in the browser, written with three.js and Phoenix LiveView:
   plain cream underwear; clothes are cloth armour you buy, find and wear.
 - Walk a village with other players and chat with people nearby.
 - Fight skeletons outside town with either hand, loot their corpses EverQuest-style and level up.
+- Take on Baconator, a fire-breathing dragon boss in his lair, and ride (and fly) dragon mounts
+  bought in the Bacon Store.
 
 It is also the template other Bacon8 games copy.
 
 **Direction.** It should feel like a classic MMO, with:
 
 - EverQuest's windows, looting and con colours;
-- RaysSpaceSim's on-foot controls (minus flight);
+- RaysSpaceSim's on-foot controls, and its double-tap-Space flight on mounts (no rolls);
 - Black Desert's mouse-button attacks;
 - Path of Exile's single shared skill tree.
 
@@ -63,7 +65,91 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-24 (fourth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24d.md`, with the
+**Delivered 2026-10-24 (fifth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24e.md`): the boss, the mounts and flight, from the owner's request for "more
+monsters", a dragon boss named Baconator, and dragons to ride and fly.
+
+- **The skeletons, the owner's question.** There is one human skeleton *definition*, the B8
+  skeleton (67 bones, `b8_skel.py` / `b8_skeleton.json`; same names and hierarchy for both). Each
+  body has its own *fit* of it (rest proportions and orientations, `mh_rig.py`), so the
+  animation packs are baked per body (`Humans/Anims/B8_Female_*`, `B8_Male_*`). The skeleton
+  creatures use the male's fit and packs. New human-shaped monsters can do the same. The dragon has
+  its own rig (below), and the boss and the mounts share it.
+- **The old rigs, removed** (moved to `tmp/_to_delete/2026-10-24_old_rigs/`, since deleting needs the
+  owner's OK): the four old skeleton packs (`priv/static/models/Mobs/Anims/*`, the folder is left
+  empty), `build_humans2.py`, `b8_head.py`, `b8_garments.py`, `mhm_facial.py`, and the v2 male
+  backup. `build_humans.py` stays, because it holds the shared helpers and the skeleton definition.
+  Some code still points at files that are now gone, and it is left as it was: `build_anims.py`
+  (`HUMANS`, the humans2 blend), `build_hair.py` and the `OLD` defaults in `mhf_finish.py` /
+  `mhf_transfer.py`.
+- **The dragon model** (original; the owner's reference art, which is Games Workshop's, set
+  only the mood: big, red, horned, winged, breathing fire). It is built from code in three scripts:
+  - `build_dragon.py` makes the rig, the clips, the assembly and the export.
+  - `dragon_shape.py` makes the sculpt. The torso, neck, tail and skull are lofts. Muscle masses
+    are laid over the bones: pectorals, flight muscles, deltoids, biceps and triceps, forearms,
+    haunches, thighs with quads and hamstrings, calves, and neck muscles. A voxel remesh
+    (2.5 cm) fuses them into one skin, a Taubin smooth blends the joins, and fields carve the eye
+    sockets, nostrils and ribs. The jaw is a second, finer sculpt with a hard jawline edge, so the
+    mouth opens. Parts are built at game resolution: ridged, twisted horns (a great pair, a
+    second pair, cheek fans, jaw frills, brow horns, a crest), teeth with fangs, a forked tongue,
+    hooked claws, dorsal blades, the wing bones with knuckles, membranes that sag between the
+    fingers, and almond eyes.
+  - `dragon_skin.py` makes the skin. The sculpt is decimated to the game mesh, which then takes
+    its weights from the primitives and is baked in Cycles. The bake covers the form (normals),
+    shingled Voronoi scales (finer on the head and toes), banded belly plates that run the length
+    of the spine, a mouth, horn and claw gradients, membrane leather (veins, creases, pores),
+    serpent eyes with glowing irises and a black slit, and roughness and AO.
+  - The export has three materials: `Dragon_Skin` (a 4K atlas), `Dragon_Membrane` (2K,
+    double-sided) and `Dragon_Eye` (emissive). Its WebP textures are put through meshopt.
+  - The numbers: 54k triangles, 7.6 MB (7.0 MB gzipped; 4K skin WebP, roughness resized to 2K) on the web, and it builds in about 25 (the first full build took 45, with 48 AO samples; it's 16 now) minutes
+    headless (`tmp/b8work/jobs/dragon_go.py`). It is 16.75 m long with a 21.4 m wingspan, and
+    Baconator is 0.8 of that.
+  - The rig (46 joints) and the 13 clips are the same as in the first cut: Idle, Walk, Run, Fly,
+    Hover, Glide, Bite, Claw, TailSwipe, Breath, Roar, Hit and Death.
+- **Baconator** (`spawns.ex`) is level 12, 1,400 HP plus 50 per level, and lives in his own camp,
+  Baconator's Lair (92, 42 m; `world-dressing.ts` `lair`). The lair is scorched ground ringed by
+  crags, with a hoard of coins, gems and a chest behind him, bones, dead trees, braziers and a
+  waystone.
+  - His moves are bite, claw and tail (the tail hits for ×0.8).
+  - He also breathes fire every 13 to 18 s: a 17 m cone (±32°) after a 1.05 s windup ("rears back
+    and draws a deep breath!"), so you can dodge it. It hits everyone in the cone.
+  - Reach and body radius are per kind, and he leashes at 55 m. He ignores and drops players who
+    fly over 6 m up.
+  - He respawns in 20 to 30 minutes.
+  - Loot: dragon scales, Baconator's fangs, and a chance at the Emberforged Longsword, the
+    Dragonbone Greataxe and the Scaleplate Shield. Their icons are `W_DragonScale` and
+    `W_DragonFang`, rendered with the dragon's own materials (`build_dragon_icons.py`).
+- **Mounts** (`BaconWorld.Mounts`, entitlement kind `bacon_world_mount`) are three drakes:
+  Ember, Verdant and Frost. They are the dragon at 0.38 scale and are hue-shifted in the client
+  (`hueShift` in `dragon-view.ts`, from the boss's colours to the mount's).
+  - Speeds: 10 m/s on the ground (Shift ×1.5) and 17 to 18 m/s in the air (Shift ×1.6).
+  - Store prices: $15, $15 and $18. The store items are created inactive by
+    `BaconWorld.Mounts.ensure_store_products/0` and stay hidden until the owner publishes them.
+    Admins ride all three for testing.
+  - Controls: **M** (or `/mount [id]`, `/dismount`) climbs on and off. You can't fight from the
+    saddle, and dying drops you off.
+  - Riders sit astride (the `Sitting_Idle_Loop` clip with the thighs turned out). They are
+    seated on the saddle bone each frame (`mounts.ts`). Everyone sees mounts through the zone
+    presence and `zone_mount`.
+- **Flight, like RaysSpaceSim**: on a mount that flies, **double-tap Space** to take off or land
+  (within 0.28 s, as `JumpDoubleTapSeconds` in `CosmicFlightComponent.h`).
+  - W and S follow the camera's pitch (look down and press W to dive), A and D strafe level,
+    Space climbs and C dives. There are no rolls.
+  - Altitude is capped at 120 m. The server allows a mounted speed of 45 units/s and heights up
+    to 160 units on a flier. Motion bit 4 tells others you fly, and the dragon plays Hover, Fly or
+    Glide.
+- **Two-handed grips (the owner, 2026-10-24: "every 2 handed weapon I picked up is wrong" on the
+  male).** The clips place both hands for the library's mannequin. On each body's own fit, and
+  with the male's longer clavicles and arms, his left hand ended up 15 cm off the haft (the
+  female was about 4 cm off). `human-factory.ts` `twoHandGrip` now runs a two-bone IK on the left
+  arm whenever a two-handed weapon is held, idle and swings alike. It puts the left grip
+  (`weapon_l`) on the haft line (`weapon_r`'s +Y), as far from the main hand as the clip had the
+  hands apart (at least a hand's width). It keeps the elbow in its plane, turns the hand along
+  the haft, and eases in and out (`CharacterAnimator.armSets()` now returns `two`). Checked in
+  the harness on both bodies with the spear, maul, quarterstaff and greatsword, idle and swings.
+- Tests: `mobs_test.exs` gained the boss's five tests (61 tests, all pass, warnings as errors),
+  and `flight.test.ts` was added (68 JS tests, all pass; the bundle and type-check are clean).
+
+**Delivered 2026-10-24 (fourth), committed** (`c8597cd`, `handoff/CLAUDE_CODE_PROMPT_2026-10-24d.md`, with the
 third, below), from the owner's look at the third:
 
 - **His upper body leaned back**: `spine_deg` is now [-24, -4, 0] (the chest's 14 degrees went;
@@ -84,7 +170,7 @@ third, below), from the owner's look at the third:
   was rebuilt for it (`mfull.cmd`); his hair and facial hair GLBs have no Narrow key yet, which
   only shows on long styles at the narrow end.
 
-**Delivered 2026-10-24 (third), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24c.md`):
+**Delivered 2026-10-24 (third), committed** (`c8597cd`, `handoff/CLAUDE_CODE_PROMPT_2026-10-24c.md`):
 
 - **The male's lower back and shoulders** (owner, 2026-10-24). Both came from the library
   clips, not the mesh: the idles arch the lumbar (the "S" from pelvis to upper back, with the
@@ -289,6 +375,10 @@ The first 2026-10-23 delivery:
 | 2026-10-23 | **Throw Stone is removed**: it was only a test from the old web-lobby game. |
 | 2026-10-23 | **R is reserved for interactions** (NPCs now; doors and the like later). Right-clicking a merchant with the cursor free still works too. |
 | 2026-10-23 | **Body sliders take their cues from Black Desert Online**: more control over the chest (call it "chest", not "bust"), glutes ("glutes", not "seat"), waist and limbs. |
+| 2026-10-24 | **More monsters, starting with a boss: Baconator, a dragon** (original design; the owner's reference art only sets the mood). **The dragon's rig doubles as the mounts'.** |
+| 2026-10-24 | **Mounts are for sale** (Bacon Store) **and fly like RaysSpaceSim: double-tap Space** to take off and land, **no barrel rolls**. |
+| 2026-10-24 | **Old character rigs and files are removed** (moved aside for deletion). The male and female share one skeleton definition, each with its own fit; that's what we work with. |
+| 2026-10-24 | **The dragon is realistic, not cartoony**: jawline, muscle, scaly skin, fiery red serpent eyes, leather wings, detailed horns (owner, on the first cut). |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 
 ## 4. How it fits together
@@ -366,9 +456,9 @@ README has every script, source and run order.
   the chest keys are his pectorals), `mhm_build.py` (his wardrobe shells and MakeHuman
   garments: the crude male tee, fisherman sweater, cloth shoes, ankle boots), `mhf_morphs.py`
   (waist, limbs and glute lift; not the chest shaping), `mhf_anims.py` (his packs),
-  `mhf_syshair.py` (18 styles) and `mhm_facial.py` (his six facial hair styles, grown by
-  `build_hair.py` on the old male, refit to the new head). The old v2 male (`build_humans2.py`)
-  lives on only as the skeleton creatures' rig.
+  `mhf_syshair.py` (18 styles) and his six facial hair styles (grown by `build_hair.py` on the old
+  male and refit to the new head by `mhm_facial.py`, retired with the old rigs on 2026-10-24; the
+  GLBs stay). The skeleton creatures are rigged on his armature (2026-10-24, third delivery).
 - **Female** (2026-10-22), built by `mhf_core.py`, `mhf_finish.py`, `mhf_anims.py` and
   `mhf_syshair.py`:
   - body: MakeHuman's `hm08` CC0 body and targets, look `v2`;
@@ -392,6 +482,12 @@ README has every script, source and run order.
   all CC0. Each has a soft scalp decal so the hairline isn't a hard edge, and the morphs.
 - **Credits**: `priv/static/models/Humans/CREDITS.md` (models volume) and the site's
   `/pages/credits`.
+
+- **The dragon** (2026-10-24, `build_dragon.py` + `dragon_shape.py` + `dragon_skin.py`; section 2 has
+  the method): one model for Baconator and the mounts, its own 46-joint rig and 13 clips, baked
+  4K skin, 2K wing leather, emissive slit eyes. Headless: `python tmp\b8work\jobs\dragon_go.py`
+  (`fast` for a coarse look), then `meshopt_d.cmd` and `jobs/stage_dragon.sh`. Loot icons:
+  `build_dragon_icons.py` (`dicons.cmd`).
 
 **The shared library** (2026-10-23, `C:\Bacon8\library`, gitignored, see its README):
 - `textures/`: 120 CC0 PBR texture sets at 2K (ambientCG and Poly Haven): fabrics, leathers,
@@ -443,6 +539,17 @@ the development PC it sits in `C:\Bacon8\tmp\b8work\harness`):
 ## 7. Known issues and next steps
 
 In rough priority order.
+
+**Monsters and mounts (2026-10-24):**
+
+- The owner to look at Baconator and the drakes in game (BACON_WORLD §2, fifth delivery); tune
+  the sculpt in `dragon_shape.py` (muscle blobs, skull table `SKULL`, jaw `JAW`) and the skin in
+  `dragon_skin.py` from what he says. Renders: `jobs/render_go.py <glb> <out> [clip:t] [shots]`.
+- Mount store items: run `BaconWorld.Mounts.ensure_store_products/0` (owner's OK), then publish.
+- More monsters: human-shaped ones on the male's or female's fit (like the skeletons), more beasts on
+  the dragon rig (a wyvern or drake without wings is a material and a few shapes away).
+- The rider's seat (`SEAT_DROP_M`) on very tall or short bodies; a saddle prop.
+- Flying: no aerial combat yet; Baconator ignores fliers over 6 m.
 
 **The male's posture** (done 2026-10-24, section 2; all of it is in `mhm_build.py`'s `POSTURE`):
 tune it with the harness's `?tilt=`, `?spine=a,b,c`, `?clav=fwd,down`, `?arm=free:u,l;torch:u,l`,
@@ -572,7 +679,10 @@ Claude session linked to the development PC through the desktop app):
   stages A, C+F, G; `mfull.cmd` runs all three then meshopt), `meshopt_m.cmd`,
   `anims_chain_m.cmd` (his packs), `mhair_chain.cmd` / `mfac.cmd` (hair, facial hair),
   `hbuild.cmd` / `vbuild.cmd` (harness bundles), `skel.cmd` + `meshopt_s.cmd` (the skeleton
-  creature), `jstest.cmd` (JS tests, bundle, type-check)
+  creature), `jobs/dragon_go.py` + `meshopt_d.cmd` + `jobs/stage_dragon.sh` (the dragon; run
+  the `.py` jobs with `python` from `run_python`, polled by `dragon.done`), `jobs/render_go.py`
+  (Cycles renders of a GLB), `jobs/blender_go.py <script>` (any headless Blender script),
+  `jstest.cmd` (JS tests, bundle, type-check)
   and `mixtest.cmd` (Elixir compile and tests, with a throwaway Postgres).
 - **Seeing it**: the Docker MCP browser opens the harness at
   `http://host.docker.internal:8765/harness/grid.html?u=<params>&l=<label>&u=...` (several
@@ -580,7 +690,9 @@ Claude session linked to the development PC through the desktop app):
   screenshot). Parameters: `body`, `clip`, `t`, `view` (full, upper, side, hand), `yaw`,
   `focus=<bone>&dist=&az=`, `hair`, `facial`, `shape=key:v,...`, `gear=slot:item,...` (slots
   `under_top`, `under_bottom`, `chest`, `legs`, `feet`), `main`, `off`, `tilt`, `spine`, `clav`,
-  `rest=1` (the bind pose), `mob=1` (the skeleton creature on the male's packs). Each frame
+  `rest=1` (the bind pose), `mob=1` (the skeleton creature on the male's packs). `village.html?mode=dragon`
+  (`scale`, `clip`, `t`, `tint=scales,membrane,eye`, `fly=1`, `yaw`) and `mode=lair` show the dragon
+  and the lair. Each frame
   leaves `window.POS` (key bone positions, metres) for measuring. The harness's
   `catalog.json` is a copy of the items: add an item there before trying it.
 - **Staging models**: copy into `priv/static/models/...`, make the `.glb.gz` (`gzip -9 -k -f`),
