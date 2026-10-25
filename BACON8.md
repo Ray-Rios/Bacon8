@@ -16,7 +16,17 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-24**.
+Last substantive update: **2026-10-25**.
+
+On 2026-10-25:
+
+- **Sound for both games** (`handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`): Bacon World's sound
+  bolstered (placed sound, spells, dragons, flight, beds, music by mood, the UI); RaysSpaceSim
+  given a whole soundscape (`UCosmicAudioSubsystem`, 93 events, music by mood). All CC0, built
+  and loudness-normalised by `library/pipeline/scripts/audio/build_audio_v2.py`. Details in
+  **`BACON_WORLD.md`** §2 and RaysSpaceSim's `RAYSSPACESIM.md` §7a.
+
+On 2026-10-24:
 
 - Bacon World: the male rebuilt on MakeHuman like the female (body, wardrobe, sliders, hair,
   animation packs); player names blue, red with PvP on. Then his posture (lower back and

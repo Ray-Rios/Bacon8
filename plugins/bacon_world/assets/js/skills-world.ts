@@ -11,6 +11,9 @@ import { SpellFx } from './spell-fx';
 import { SKILL_KEYS, SkillsUI, type SkillsData } from './skills-ui';
 import type { MobEntry, MobEvent } from './mobs-view';
 
+// The charge you hear while casting (lobby-audio.ts cast_loop_<school>).
+const CAST_SCHOOL: Record<string, string> = { fireball: 'fire', heal: 'holy', root: 'nature', recall: 'arcane' };
+
 const U = UNITS_PER_METRE;
 
 function reply(hook: any, event: string, payload: object, fallback: any = { ok: false }): Promise<any> {
@@ -92,7 +95,7 @@ export const SkillsWorld = {
       this.combatLog(res.error || "You can't learn that right now.", '#B8B8B8');
       return;
     }
-    this.audio?.play('level_up', 0.5);
+    this.audio?.play('ui_learn', 0.8);
     this.applySkills(res);
   },
 
@@ -237,12 +240,21 @@ export const SkillsWorld = {
       case 'begin':
         if (ch) {
           stopGlow();
-          this.castGlows.set(p.character_id, this.spellFx.casting(ch.mesh, CAST_COLOR[p.ability] || '#ffd27a'));
+          const glow = this.spellFx.casting(ch.mesh, CAST_COLOR[p.ability] || '#ffd27a');
+          const school = CAST_SCHOOL[p.ability];
+          const hum = school ? this.audio?.loop(`cast_loop_${school}`, 0.9, ch.mesh.position) : null;
+          this.castGlows.set(p.character_id, {
+            stop: () => {
+              glow.stop();
+              hum?.stop(0.2);
+            },
+          });
           anim?.oneShot('Spell_Simple_Enter', { upperOnly: true, rate: 0.8 });
         }
         break;
       case 'cancel':
         stopGlow();
+        if (ch) this.audio?.playAt('fizzle', ch.mesh.position, 0.8);
         break;
       case 'launch': {
         stopGlow();
@@ -257,22 +269,47 @@ export const SkillsWorld = {
           const hgt = m.dragon ? 3.2 * (m.view.scale || 1) : 1.1;
           return m.root.position.clone().add(new THREE.Vector3(0, hgt * U, 0));
         };
-        const dist = target()?.distanceTo(from) ?? 0;
-        this.spellFx.projectile(from, target, p.travel_ms || 400);
-        this.audio?.play('swing', 0.6, dist, 0.6);
+        const ms = p.travel_ms || 400;
+        this.spellFx.projectile(from, target, ms);
+        this.audio?.playAt('fireball_cast', from, 1);
+        // the fireball's roar travels with it
+        const fly = this.audio?.loop('fireball_fly', 0.85, from);
+        {
+          const t0 = performance.now();
+          const at = from.clone();
+          const timer = setInterval(() => {
+            const k = Math.min(1, (performance.now() - t0) / ms);
+            const to = target();
+            if (to) at.copy(from).lerp(to, k);
+            fly?.set(0.85, at);
+            if (k >= 1) {
+              clearInterval(timer);
+              fly?.stop(0.12);
+              this.audio?.playAt('fireball_hit', at, 1);
+            }
+          }, 50);
+        }
         break;
       }
       case 'land':
         stopGlow();
         if (p.ability === 'recall') {
-          if (p.from) this.spellFx.recall(new THREE.Vector3(p.from[0], p.from[1], p.from[2]));
+          if (p.from) {
+            const at = new THREE.Vector3(p.from[0], p.from[1], p.from[2]);
+            this.spellFx.recall(at);
+            this.audio?.playAt('recall', at, 1);
+          }
           if (p.to) setTimeout(() => this.spellFx?.recall(new THREE.Vector3(p.to[0], p.to[1], p.to[2])), 150);
         } else if (p.ability === 'heal') {
           anim?.oneShot('Spell_Simple_Shoot', { upperOnly: true });
           const t = this.characterManager?.getAllCharacters().get(p.target);
-          if (t) this.spellFx.heal(t.mesh);
+          if (t) {
+            this.spellFx.heal(t.mesh);
+            this.audio?.playAt('heal', t.mesh.position, 1);
+          }
         } else if (ch) {
           anim?.oneShot('Spell_Simple_Shoot', { upperOnly: true });
+          if (p.ability === 'root') this.audio?.playAt('root_cast', ch.mesh.position, 0.9);
         }
         break;
       case 'spin':
@@ -281,7 +318,7 @@ export const SkillsWorld = {
           anim?.oneShot('Sword_Regular_C', { upperOnly: true, rate: 1.3 });
           const human = this.characterManager?.getHuman(p.character_id);
           if (human?.model) this.spins.push({ model: human.model, t: 0 });
-          this.audio?.play('swing', 1.0, 0, 0.8);
+          this.audio?.playAt('spin', ch.mesh.position, 1);
         }
         break;
     }
@@ -292,5 +329,6 @@ export const SkillsWorld = {
     if (!m || !this.spellFx) return;
     const r = m.dragon ? 3.0 * (m.view.scale || 1) : 0.7;
     this.spellFx.root(m.root, (e as any).ms || 6000, r);
+    this.audio?.playAt('root_hit', m.root.position, 1);
   },
 };

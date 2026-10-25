@@ -229,6 +229,11 @@ export const WorldCharacterUIScene = {
     this.characterManager.setActiveScene(this.scene);
     this.characterManager.setHumanFactory(this.humanFactory);
     this.audio = new LobbyAudio();
+    // quiet hover and click sounds on every button, slot and window, here and in the world
+    this.audio.attachUi(this.el);
+    // the select screen has its own music (the inn), until the world starts
+    this.audio.setMood('menu');
+    this.audio.setMusic(true);
     this.worldGroup = new THREE.Group();
     this.scene.add(this.worldGroup);
 
@@ -883,6 +888,7 @@ export const WorldCharacterUIScene = {
     this.worldInitialized = true;
     if (this.enteringTimer) clearTimeout(this.enteringTimer);
     this.front?.setEntering(false);
+    this.audio?.setMood((this.ambientLight?.intensity ?? 0.85) > 0.32 ? 'day' : 'night');
     this.audio?.setMusic(true);
     this.audio?.preload();
     this.initGame();
@@ -1120,7 +1126,9 @@ export const WorldCharacterUIScene = {
       }
       if (!this.wasGrounded && grounded) {
         const air = now - (this.airborneSince || now);
-        this.audio.play('land', air > 450 ? 0.9 : 0.55);
+        // a long fall (or coming down off a mount's flight) lands hard
+        if (air > 1100) this.audio.play('land_hard', 1);
+        else this.audio.play('land', air > 450 ? 0.9 : 0.55);
       }
       this.wasGrounded = grounded;
       // Steps by pace: sprint 260 ms, jog 330 ms, crouch-walk 500 ms; the sound by what's underfoot.
@@ -1153,7 +1161,8 @@ export const WorldCharacterUIScene = {
   },
 
   teardownWorldMode(this: any) {
-    this.audio?.setMusic(false);
+    // back to the select screen's music
+    this.audio?.setMood('menu');
     this.teardownGame();
     if (this.positionHeartbeatInterval) {
       clearInterval(this.positionHeartbeatInterval);

@@ -99,6 +99,8 @@ export class MobsView {
   onEvent: ((e: MobEvent, mob: MobEntry | undefined) => void) | null = null;
   /** A creature's swing lands now (its animation reached the impact). */
   onSwingLanded: ((e: MobEvent, mob: MobEntry) => void) | null = null;
+  /** The dragon's voice, breath, wing beats and footfalls, from where it is (lobby-audio.ts kinds). */
+  onSound: ((kind: string, at: THREE.Vector3, gain?: number) => void) | null = null;
 
   private mobs = new Map<string, MobEntry>();
   private loader: GLTFLoader;
@@ -155,7 +157,11 @@ export class MobsView {
       case 'aggro':
         if (e) {
           e.view.target = ev.target ?? null;
-          if (e.dragon && e.view.state !== 'dead') e.dragon.play('Roar');
+          if (e.dragon && e.view.state !== 'dead') {
+            e.dragon.play('Roar');
+            const at = e.root.position;
+            setTimeout(() => this.onSound?.('dragon_roar', at, 1), 250);
+          }
         }
         break;
       case 'attack':
@@ -169,6 +175,7 @@ export class MobsView {
             }
             const clip = DRAGON_MOVE_CLIP[ev.move || 'bite'] || 'Bite';
             e.dragon.play(clip, { rate: 1.15 });
+            if (Math.random() < 0.6) this.onSound?.('dragon_growl', e.root.position, 0.8);
             this.pending.push({ at: this.time + (DRAGON_HIT_AT[clip] ?? 0.5) / 1.15, fn: () => this.onSwingLanded?.(ev, entry) });
             break;
           }
@@ -181,6 +188,7 @@ export class MobsView {
         if (e?.dragon && ev.move === 'breath' && e.view.state !== 'dead') {
           e.dragon.play('Breath');
           const entry = e;
+          this.pending.push({ at: this.time + 0.7, fn: () => this.onSound?.('dragon_breath', entry.root.position, 1) });
           // the flame from the blast in the clip (0.3 of 2.6 s) to its end
           this.pending.push({ at: this.time + 0.8, fn: () => entry.fire?.start(1.35) });
         }
@@ -191,7 +199,10 @@ export class MobsView {
           if (typeof ev.max_hp === 'number') e.view.max_hp = ev.max_hp;
           if ((ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0) e.animator?.hit();
           // a boss flinches now and then, not at every scratch
-          if (e.dragon && (ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0 && Math.random() < 0.15) e.dragon.play('Hit');
+          if (e.dragon && (ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0 && Math.random() < 0.15) {
+            e.dragon.play('Hit');
+            this.onSound?.('dragon_hurt', e.root.position, 0.9);
+          }
         }
         break;
       case 'died':
@@ -201,6 +212,11 @@ export class MobsView {
           e.view.target = null;
           e.view.corpse = { owner: ev.killer ?? null, empty: false };
           e.animator?.die();
+          if (e.dragon) {
+            this.onSound?.('dragon_roar', e.root.position, 0.8);
+            const at = e.root.position;
+            setTimeout(() => this.onSound?.('land_hard', at, 1), 1400);
+          }
           e.dragon?.die();
           e.proxy.geometry = e.dragon ? PROXY_DRAGON_LYING : PROXY_LYING;
         }
@@ -213,6 +229,11 @@ export class MobsView {
         break;
     }
     this.onEvent?.(ev, e);
+  }
+
+  /** Every creature, live or dead. */
+  all(): IterableIterator<MobEntry> {
+    return this.mobs.values();
   }
 
   // ---------------------------------------------------------------- per frame
@@ -402,6 +423,7 @@ export class MobsView {
       }
       e.root.add(rig.root);
       e.dragon = rig;
+      rig.onCycle = (kind, strength) => this.onSound?.(kind === 'wing' ? 'wing_flap' : 'dragon_step', e.root.position, strength);
       e.model = rig.model;
       const head = rig.model.getObjectByName('head');
       if (rig.mouth && head) e.fire = new FireBreath(this.group, rig.mouth, head, 17 * scale * UNITS_PER_METRE, 1.6 * scale * UNITS_PER_METRE);

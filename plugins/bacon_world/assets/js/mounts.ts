@@ -38,6 +38,8 @@ export class MountSystem {
   private riders = new Map<string, Ridden>();
   private dragons = new DragonFactory();
   private seat = new THREE.Vector3();
+  /** A mount's wing beats and footfalls (lobby-audio.ts kinds), from where its rider is. */
+  onSound: ((kind: string, at: THREE.Vector3, gain: number, characterId: string) => void) | null = null;
 
   constructor(private characters: () => CharacterModelManager | null) {}
 
@@ -74,6 +76,9 @@ export class MountSystem {
     const ch = cm?.getAllCharacters().get(characterId);
     if (!rig || !ch) return;
     ch.mesh.add(rig.root);
+    // a drake is a third the boss's size: lighter beats and steps
+    rig.onCycle = (kind, strength) =>
+      this.onSound?.(kind === 'wing' ? 'wing_flap' : 'dragon_step', ch.mesh.position, strength * (kind === 'wing' ? 0.55 : 0.35), characterId);
     cm?.getAnimator(characterId)?.setRiding(true);
     cm?.getHuman(characterId)?.setRiding(true);
   }

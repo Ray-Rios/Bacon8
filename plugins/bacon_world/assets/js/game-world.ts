@@ -111,6 +111,7 @@ export const GameWorld = {
       }));
       this.mobsView.onEvent = (e: MobEvent, m: MobEntry | undefined) => this.onMobEvent(e, m);
       this.mobsView.onSwingLanded = (e: MobEvent, m: MobEntry) => this.onMobSwingLanded(e, m);
+      this.mobsView.onSound = (kind: string, at: THREE.Vector3, gain?: number) => this.audio?.playAt(kind, at, gain ?? 1);
       this.scene.add(this.mobsView.group);
     }
     void reply(this, 'fetch_mobs', {}, { mobs: [], camps: [], merchants: [] }).then((res: any) => {
@@ -139,6 +140,8 @@ export const GameWorld = {
     this.npcsView?.clear();
     if (this.npcsView && this.scene) this.scene.remove(this.npcsView.group);
     this.npcsView = null;
+    this.flightWind?.stop(0.3);
+    this.flightWind = null;
     this.audio?.setAmbience(false);
   },
 
@@ -149,6 +152,7 @@ export const GameWorld = {
     this.npcsView?.update(dt, this.targetId);
     const me = this.localCharacter();
     if (!me) return;
+    this.tickAudio(dt, me);
     // Walking away from a merchant ends the trade.
     if (this.tradingWith) {
       const n = this.npcsView?.get(this.tradingWith);
@@ -182,11 +186,63 @@ export const GameWorld = {
     }
   },
 
+  // ---------------------------------------------------------------- sound (lobby-audio.ts)
+
+  /**
+   * Per frame: the ear follows the camera. Four times a second: where we are for the
+   * nature beds (the lair, high in the sky), the music's mood (day, night, the lair,
+   * fighting Baconator) and the wind while flying.
+   */
+  tickAudio(this: any, dt: number, me: any) {
+    const a = this.audio;
+    if (!a) return;
+    if (this.camera) {
+      const e = this.camera.matrixWorld.elements;
+      a.setListener({ x: e[12], y: e[13], z: e[14] }, e[0], e[2]);
+    }
+    this.audioTick = (this.audioTick || 0) - dt;
+    if (this.audioTick > 0) return;
+    this.audioTick = 0.25;
+    const p = me.mesh.position;
+    let lair = 0;
+    for (const c of this.camps || []) {
+      if (c.theme !== 'lair') continue;
+      const d = Math.hypot(p.x - c.x, p.z - c.z);
+      const r = c.radius || 20 * U;
+      lair = Math.max(lair, Math.min(1, Math.max(0, 1 - (d - r) / (0.8 * r))));
+    }
+    const flying = !!this.controller?.isFlying;
+    const alt = p.y / U;
+    const high = flying ? Math.min(1, Math.max(0, (alt - 8) / 30)) : 0;
+    a.setPlace(lair, high);
+    // The boss's music while Baconator is after us (or we're at him), until he's down.
+    const myId = this.state?.currentPlayer?.character_id;
+    let boss = false;
+    for (const m of this.mobsView?.all?.() || []) {
+      if (m.dragon && m.view.state !== 'dead' && (m.view.target === myId || (this.targetId === m.view.id && m.view.target))) boss = true;
+    }
+    const day = (this.ambientLight?.intensity ?? 0.85) > 0.32;
+    a.setMood(boss ? 'boss' : lair > 0.6 ? 'lair' : day ? 'day' : 'night');
+    // wind rushing past while flying, louder the faster we go
+    if (flying) {
+      const speed = this.controller?.getMovementState?.()?.speed ?? 0;
+      const k = 0.25 + 0.75 * Math.min(1, speed / (30 * U));
+      if (!this.flightWind) this.flightWind = a.loop('flight_wind', 0, undefined, 'amb');
+      this.flightWind?.set(k);
+    } else if (this.flightWind) {
+      this.flightWind.stop(1.2);
+      this.flightWind = null;
+    }
+  },
+
   // ---------------------------------------------------------------- mounts (mounts.ts)
 
   /** What mounts there are and which are yours; draws everyone already riding. */
   initMounts(this: any) {
-    if (!this.mounts) this.mounts = new MountSystem(() => this.characterManager);
+    if (!this.mounts) {
+      this.mounts = new MountSystem(() => this.characterManager);
+      this.mounts.onSound = (kind: string, at: THREE.Vector3, gain: number) => this.audio?.playAt(kind, at, gain, kind === 'wing_flap' ? 1.2 : 1.15);
+    }
     void reply(this, 'mounts_fetch', {}, { catalog: {}, owned: [], mount: null }).then((res: any) => {
       if (!this.mounts) return;
       this.mounts.setCatalog(res.catalog || {}, res.owned || []);

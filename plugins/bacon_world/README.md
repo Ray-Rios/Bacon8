@@ -65,7 +65,8 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/npcs-view.ts` | Merchants on the client: built as humans, picked by proxy cylinders, face you while trading |
 | `assets/js/wardrobe.ts` | Gear slots, what each worn item puts on the body and hides, and the bone corrections (joint offsets, relaxed fingers) |
 | `assets/js/items.ts`, `nameplates.ts`, `asset-url.ts` | Weapon models and icons; names over heads; versioned model URLs |
-| `assets/js/lobby-audio.ts` | Sound: recorded effects, nature beds, ambient music |
+| `assets/js/lobby-audio.ts` | Sound: recorded effects, placed in the world (pan, distance, low-pass), nature beds, music by mood, the UI's roll-over and click |
+| `assets/js/audio-mix.ts` | Sound logic with no browser: playlists and rests, `placeSound`, repeat gaps, which ambient details fit where you are (tested in `__tests__/audio-mix.test.ts`) |
 | `assets/js/__tests__/` | JS unit tests: `sh __tests__/run.sh` in a node container (esbuild + `node --test`) |
 | `test/` | Runs with `mix test` |
 
@@ -329,8 +330,27 @@ beside a `.glb` is served compressed (the hub's `/models` static has `gzip: true
 landings, footsteps by surface (cobbles on the plaza, gravel on the paths, grass), weapon
 swings, hits on bone and on flesh, bones breaking, coins, chimes. Each kind has several
 takes and a little pitch variety. Under it: birds and wind by day, crickets by night, the
-campfire when you're near it, and a quiet ambient music bed (`music_ambient.mp3`, made by
-the asset pipeline's `library/pipeline/scripts/build_audio.py`).
+campfire when you're near it.
+
+**The 2026-10-25 pass** (sources: OpenGameArt CC0 and Kenney CC0, every one in `CREDITS.md`;
+built by `library/pipeline/scripts/audio/build_audio_v2.py`, which loudness-normalises every
+take per category so nothing jumps out):
+
+- **Placed sound.** World sounds play where they happen: panned, quieter and duller with
+  distance (`placeSound` in `audio-mix.ts`), at most 28 voices with the quietest stolen, all
+  through one gentle compressor. Each kind has a minimum gap so a burst never stacks.
+- **Spells.** A cast loop by school while casting (fire, holy, nature, arcane), the fireball's
+  cast, flight and hit, heal, recall, roots, spin, a fizzle when a cast is cancelled.
+- **Dragons and mounts.** Roars on aggro, growls, breath, hurts, a death roar and thud; wing
+  beats and footsteps timed to the animation cycle (`onCycle` in `dragon-view.ts`).
+- **Flying.** Wind that rises with speed; a hard landing after a long fall.
+- **Beds and details.** Higher-altitude and dragon-lair beds crossfade in; rare details (a bird,
+  leaves, a gust, a drip in a lair) every 5-14 s, picked by time of day and place.
+- **Music by mood** (`music/<mood>_<n>.mp3`): menu, day (7 tracks), night (3), lair (3), boss.
+  Shuffled, never the same twice running, with 50-150 s of rest between calm tracks so the
+  world carries the silence. A live dragon on you switches to the boss track.
+- **The interface.** Soft roll-over and click on every button, open/close on windows,
+  learn, drag and drop, an error tick.
 
 The game menu has a Sound switch (the master) and Effects, Nature and Music volume sliders.
 They are remembered per browser (`bacon_world:volume_*`, 0–100). Browsers allow sound only

@@ -131,6 +131,13 @@ export class DragonRig {
   private speed = 0; // m/s, eased
   private climb = 0; // m/s, eased
   private materials: THREE.Material[] = [];
+  /**
+   * Called at each wing beat (flying or hovering: the middle of the downstroke) and each
+   * footfall (walking or running), so the owner can sound them. `strength` 0..1.
+   */
+  onCycle: ((kind: 'wing' | 'step', strength: number) => void) | null = null;
+  private cyclePhase = 0;
+  private cycleClip = '';
 
   constructor(t: Template, scale: number, colors?: DragonColors) {
     this.scale = scale;
@@ -289,6 +296,32 @@ export class DragonRig {
       if (a) a.timeScale = rate;
     }
     this.mixer.update(dt);
+    this.cycleSounds();
+  }
+
+  // Wing beats and footfalls from where the locomotion loop is in its cycle. The flight
+  // loops lift the wings to the top a quarter of the way in (build_dragon.py: the wing's
+  // roll is -(bias + amp sin t)), so the downstroke's push of air is just before halfway.
+  private cycleSounds() {
+    const name = this.base;
+    const a = name ? this.actions.get(name) : null;
+    if (!this.onCycle || this.dead || !a || !name) return;
+    const d = a.getClip().duration;
+    if (!(d > 0)) return;
+    const ph = (((a.time % d) + d) % d) / d;
+    if (name !== this.cycleClip) {
+      this.cycleClip = name;
+      this.cyclePhase = ph;
+      return;
+    }
+    const crossed = (m: number) => (ph >= this.cyclePhase ? this.cyclePhase < m && m <= ph : this.cyclePhase < m || m <= ph);
+    if (name === 'Fly_Loop' || name === 'Hover_Loop') {
+      if (crossed(0.42)) this.onCycle('wing', name === 'Hover_Loop' ? 1 : 0.8);
+    } else if (name === 'Walk_Loop' || name === 'Run_Loop') {
+      const s = Math.min(1, this.speed / (RUN_REF * Math.max(this.scale, 0.3)));
+      if (crossed(0.02) || crossed(0.52)) this.onCycle('step', 0.45 + 0.55 * s);
+    }
+    this.cyclePhase = ph;
   }
 
   /** The seat's position in `space`'s frame (for the rider), or null. */

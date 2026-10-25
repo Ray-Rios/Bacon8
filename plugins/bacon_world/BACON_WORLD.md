@@ -65,6 +65,18 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
+**Delivered 2026-10-25, uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`): **the sound pass.**
+The owner: *"multiple ambient sound tracks ... a wide range of sound effects ... sound immersion
+needs to be world-class, but not overdone, loud or jarring."* Placed sound (pan, distance,
+low-pass, a voice cap, a master compressor), spell schools, dragon and mount voices timed to their
+animations, flight wind, hard landings, lair and high-altitude beds, rare ambient details, music
+by mood (menu, 7 day, 3 night, 3 lair, boss) with long rests between tracks, and soft UI
+roll-overs and clicks. All CC0 (OpenGameArt, Kenney), loudness-normalised per category by
+`library/pipeline/scripts/audio/build_audio_v2.py`. Code: `lobby-audio.ts` (rewritten, old API
+kept), `audio-mix.ts` (new, tested), hooks in `dragon-view.ts`, `mobs-view.ts`, `mounts.ts`,
+`game-world.ts`, `skills-world.ts`, `world-character-ui-scene.ts`. The same handoff gives
+RaysSpaceSim its whole soundscape (RAYSSPACESIM.md).
+
 **Delivered 2026-10-24 (sixth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24f.md`): the skill tree, the stable,
 the two-handed grips again and the dismount glitch, from the owner's testing of the fifth.
 
@@ -397,6 +409,7 @@ The first 2026-10-23 delivery:
 | 2026-10-21 | **Skeleton creatures** live in camps outside the village; the village is safe. |
 | 2026-10-21 | **Real recorded sounds** for grunts, landings, hits and swings (CC0 recordings), **not synthesized**. |
 | 2026-10-22 | **Volume sliders**, not on/off switches, for effects, nature and music. |
+| 2026-10-25 | **Sound is immersive but never loud or jarring**: several takes of everything, never the same take twice, minimum gaps, distance dulling, music that rests between tracks. Real CC0 recordings, still not synthesized. |
 | 2026-10-22 | **No camera-smoothing option.** Remote-desktop jumps are repaired by `mouse-filter.ts`; a local mouse is untouched. |
 | 2026-10-21 | **Assets are ours or CC0.** Epic's content stays Unreal-only, and no paid UAL Pro/Source files from mirrors. **No DAZ-derived meshes**: the owner's two DAZ-based female files must not be used, so the female is built on MakeHuman (owner's choice, 2026-10-21). |
 | 2026-10-23 | **Asset rule widened on purpose: ours, CC0, or licensed for commercial use, credited, with the source files never redistributed.** Licensed sources (Substance .sbsar and the like) live in the gitignored shared library `C:\Bacon8\library\` with a licence table; only what we bake from them ships, and it goes on the credits page. The DAZ and Epic exclusions above still stand. |
@@ -456,7 +469,8 @@ Characters are the hub's `game_characters` (games DB):
 - `mobs-view.ts`, `npcs-view.ts` (merchants), `nameplates.ts`, `items.ts`, `world-dressing.ts`
   (the village and its colliders).
 - `wardrobe.ts`: gear slots, what each worn item puts on the body, and the bone corrections.
-- `lobby-audio.ts`: sound.
+- `lobby-audio.ts`: sound (buses, placed voices, loops, moods, the UI); `audio-mix.ts`: its
+  testable logic. New sounds go in `priv/static/audio/world/` and a `GROUPS`/`POOLS` entry.
 
 **Humans on the client** (`human-factory.ts`):
 
@@ -585,7 +599,8 @@ In rough priority order.
   ability (not just placing existing ones) need code: an entry in `abilities.ex` and its effect
   in `skill_events.ex` (and `spell-fx.ts`).
 - A bind-point NPC or spot that sets `settings["bind"]` (Recall uses the zone spawn until then).
-- Painted ability icons instead of emoji; cast sounds.
+- Painted ability icons instead of emoji. (Cast sounds: done 2026-10-25 for fire, holy, nature
+  and arcane; a new school needs a `cast_loop_<school>.mp3` and a `CAST_SCHOOL` entry.)
 - Spell targeting of other players for harm (PvP fireball) isn't wired; heal works on players.
 
 **Monsters and mounts (2026-10-24):**
