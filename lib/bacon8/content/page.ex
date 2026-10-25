@@ -32,6 +32,7 @@ defmodule Bacon8.Content.Page do
                     :meta_description, :meta_keywords, :featured_image, :category, :order, :author_id,
                     :show_share_buttons, :share_platforms, :share_buttons_colored])
     |> validate_required_if_published()
+    |> default_content()
     |> validate_length(:title, min: 1, max: 200)
     |> validate_length(:excerpt, max: 500)
     |> validate_length(:meta_description, max: 160)
@@ -49,22 +50,32 @@ defmodule Bacon8.Content.Page do
     end
   end
 
+  # The pages table won't take a NULL body, but a draft may not have one yet.
+  defp default_content(changeset) do
+    if is_nil(get_field(changeset, :content)), do: put_change(changeset, :content, ""), else: changeset
+  end
+
+  # A slug is made from the title only while there is none: a page that has a URL
+  # keeps it when it is renamed (the old URL is out in links, and the legal pages
+  # are linked from the footer), and the editor sends the slug back unchanged, so
+  # "no slug change" cannot mean "make a new one".
   defp maybe_generate_slug(changeset) do
-    case get_change(changeset, :slug) do
-      nil ->
-        title = get_change(changeset, :title)
-        if title do
-          slug = title 
-                 |> String.downcase() 
-                 |> String.replace(~r/[^a-z0-9\s]/, "") 
-                 |> String.replace(~r/\s+/, "-")
-          put_change(changeset, :slug, slug)
-        else
-          changeset
-        end
-      _ -> changeset
+    title = get_field(changeset, :title)
+
+    if blank?(get_field(changeset, :slug)) and not blank?(title) do
+      slug =
+        title
+        |> String.downcase()
+        |> String.replace(~r/[^a-z0-9\s]/, "")
+        |> String.replace(~r/\s+/, "-")
+
+      put_change(changeset, :slug, slug)
+    else
+      changeset
     end
   end
+
+  defp blank?(value), do: is_nil(value) or String.trim(value) == ""
 
   defp maybe_set_published_at(changeset) do
     is_published = get_change(changeset, :is_published)
@@ -78,7 +89,7 @@ defmodule Bacon8.Content.Page do
       
       # Set published_at when publishing for the first time
       is_published == true && is_nil(current_published_at) ->
-        put_change(changeset, :published_at, DateTime.utc_now())
+        put_change(changeset, :published_at, DateTime.truncate(DateTime.utc_now(), :second))
       
       # Clear published_at when unpublishing
       is_published == false ->

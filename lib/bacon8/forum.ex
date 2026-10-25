@@ -503,40 +503,52 @@ defmodule Bacon8.Forum do
     if result != :ok do
       result
     else
-      # Ensure user is allowed to post into the channel
+      # Ensure the channel exists and the user is allowed to post into it
       channel = get_channel(channel_id)
-      if not can_post_in_channel?(user, channel) do
-        {:error, :forbidden}
+
+      if is_nil(channel) do
+        {:error, :not_found}
       else
-        # Map parent_id to reply_to_id if present
-        attrs = if Map.has_key?(attrs, :parent_id) do
+        create_message_in(user, channel, channel_id, attrs)
+      end
+    end
+  end
+
+  defp create_message_in(user, channel, channel_id, attrs) do
+    if not can_post_in_channel?(user, channel) do
+      {:error, :forbidden}
+    else
+      # Map parent_id to reply_to_id if present
+      attrs =
+        if Map.has_key?(attrs, :parent_id) do
           Map.put(attrs, :reply_to_id, attrs.parent_id)
         else
           attrs
         end
 
-        # After checks, proceed to create message
-        %Message{}
-        |> Message.changeset(attrs)
-        |> Ecto.Changeset.put_assoc(:user, user)
-        |> Ecto.Changeset.put_change(:channel_id, channel_id)
-        |> Repo.insert()
-        |> case do
-          {:ok, message} ->
-            # Audit log: message created
-            Task.start(fn -> Bacon8.Audit.log(user.id, "create_message", "message", message.id, %{channel_id: channel_id}) end)
-            
-            # Process @mentions and create notifications (async)
-            Task.start(fn -> 
-              Bacon8.Notifications.process_message_mentions(message, user)
-            end)
-            
-            # Preload replies (empty) so it's a list, not NotLoaded
-            message = Repo.preload(message, [:user, :reactions, :attachments, :replies])
-            pubsub_broadcast("channel:#{channel_id}", {:new_message, message})
-            {:ok, message}
-          error -> error
-        end
+      # After checks, proceed to create message
+      %Message{}
+      |> Message.changeset(attrs)
+      |> Ecto.Changeset.put_assoc(:user, user)
+      |> Ecto.Changeset.put_change(:channel_id, channel_id)
+      |> Repo.insert()
+      |> case do
+        {:ok, message} ->
+          # Audit log: message created
+          Task.start(fn -> Bacon8.Audit.log(user.id, "create_message", "message", message.id, %{channel_id: channel_id}) end)
+
+          # Process @mentions and create notifications (async)
+          Task.start(fn ->
+            Bacon8.Notifications.process_message_mentions(message, user)
+          end)
+
+          # Preload replies (empty) so it's a list, not NotLoaded
+          message = Repo.preload(message, [:user, :reactions, :attachments, :replies])
+          pubsub_broadcast("channel:#{channel_id}", {:new_message, message})
+          {:ok, message}
+
+        error ->
+          error
       end
     end
   end
@@ -1061,11 +1073,12 @@ defmodule Bacon8.Forum do
   def can_moderate_channel?(%{id: user_id} = user, %Channel{} = channel) do
     is_admin = Map.get(user, :is_admin, false) || Map.get(user, :role) in ["admin", "gm", "editor"]
 
-    if is_admin do
-      true
-    else
-      member_role = user_role_in_channel(channel.id, user_id)
-      member_role in ["owner", "moderator"]
+    cond do
+      is_admin -> true
+      # the owner on the channel row moderates it even without a member row (can_manage_channel?
+      # already lets them manage it, which includes moderating)
+      Map.get(channel, :owner_id) == user_id -> true
+      true -> user_role_in_channel(channel.id, user_id) in ["owner", "moderator"]
     end
   end
 

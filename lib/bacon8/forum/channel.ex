@@ -40,6 +40,10 @@ defmodule Bacon8.Forum.Channel do
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 100)
     |> validate_inclusion(:channel_type, ["text", "voice", "video", "stream"])
+    # Names have to be unique, but the table has no unique index (adding one could fail on
+    # a site that already has two), so check in the app; the constraint is kept for when
+    # an index exists.
+    |> unsafe_validate_unique([:name], Bacon8.Repo)
     |> unique_constraint(:name)
     |> unique_constraint(:invite_code)
     |> validate_channel_limit()

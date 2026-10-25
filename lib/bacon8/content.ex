@@ -178,12 +178,10 @@ defmodule Bacon8.Content do
     Repo.delete(comment)
   end
 
+  # Comments have is_approved, not a status. There is no spam state: a "spam" function used to
+  # pass a status the schema ignores, so it did nothing and nothing called it.
   def approve_comment(%Comment{} = comment) do
-    update_comment(comment, %{status: :approved})
-  end
-
-  def spam_comment(%Comment{} = comment) do
-    update_comment(comment, %{status: :spam})
+    update_comment(comment, %{is_approved: true})
   end
 
   # Admin functions
