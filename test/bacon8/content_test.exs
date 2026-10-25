@@ -5,10 +5,10 @@ defmodule Bacon8.ContentTest do
   # without changing what the site does.
   use Bacon8.DataCase, async: true
 
-  import Bacon8.ForumFixtures, only: [user: 0, user: 1]
-
   alias Bacon8.Content
   alias Bacon8.Content.{Page, Post}
+
+  defp user(attrs \\ %{}), do: user_fixture(attrs)
 
   defp title, do: "Title #{System.unique_integer([:positive])}"
 

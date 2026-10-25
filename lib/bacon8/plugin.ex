@@ -34,7 +34,7 @@ defmodule Bacon8.Plugin do
           optional(:slug) => String.t()
         }
 
-  @type nav_item :: %{label: String.t(), path: String.t(), icon: String.t()}
+  @type nav_item :: %{required(:label) => String.t(), required(:path) => String.t(), required(:icon) => String.t(), optional(:badge) => pos_integer()}
 
   @doc "Folder name; lowercase letters, digits and underscores."
   @callback slug() :: String.t()
@@ -91,7 +91,11 @@ defmodule Bacon8.Plugin do
   """
   @callback storage_refs() :: [String.t()]
 
-  @doc "Links this plugin adds to the site navigation and taskbar while active."
+  @doc """
+  Links this plugin adds to the site navigation and taskbar while active. A link may carry
+  a `:badge`, a count shown beside it (chat uses it for pending invites); leave it out when
+  there is nothing to show.
+  """
   @callback nav_links(user :: struct() | nil) :: [nav_item()]
 
   @doc "Links this plugin adds to the profile page while active (e.g. purchase history)."
@@ -144,9 +148,11 @@ defmodule Bacon8.Plugin do
 
   Events:
 
-    * `{:channel_updated, %Bacon8.Forum.Channel{} = new, %Bacon8.Forum.Channel{} = old}`
+    * `{:channel_updated, %ChatChannels.Channel{} = new, %ChatChannels.Channel{} = old}`
     * `{:channel_deleted, channel_id}` - before the channel's rows go
     * `{:channel_member_removed, channel_id, user_id}` - kicked, banned or left
+    * `{:user_content_removed, user_id}` - the user was banned or deleted: remove what they
+      wrote. Sent inside the account's transaction, so what a plugin does here rolls back with it
     * `{:entitlement_granted, %Bacon8.Entitlements.Entitlement{} = e}` - a
       store purchase granted something (a game item of a kind this plugin
       declares in `entitlement_kinds/0`, a download, a pass); after commit

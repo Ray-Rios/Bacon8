@@ -437,13 +437,9 @@ defmodule Bacon8.Accounts do
     Repo.transaction(fn ->
       import Ecto.Query
       
-      # 1. Delete all forum messages
-      {deleted_count, _} = Repo.delete_all(from(m in Bacon8.Forum.Message, where: m.user_id == ^user_id))
-      Logger.info("Deleted #{deleted_count} forum messages for banned user #{user_id}")
-
-      # 2. Delete all reactions
-      {deleted_reactions, _} = Repo.delete_all(from(r in Bacon8.Forum.Reaction, where: r.user_id == ^user_id))
-      Logger.info("Deleted #{deleted_reactions} reactions for banned user #{user_id}")
+      # 1. Plugins remove what the user wrote (chat messages and reactions). Asked of every
+      #    installed plugin, inside this transaction, so a failure rolls the cleanup back.
+      Bacon8.Plugins.notify({:user_content_removed, user_id})
 
       # 3. User files are NOT deleted here: they follow the drive's 30-day hold
       #    (Bacon8.Drive.on_role_change/3, purged by Bacon8.Drive.Janitor).
@@ -672,11 +668,8 @@ defmodule Bacon8.Accounts do
       {tokens_deleted, _} = Repo.delete_all(from(t in Bacon8.Accounts.UserToken, where: t.user_id == ^user_id))
       Logger.debug("delete_user: deleted #{tokens_deleted} user tokens")
 
-      {reactions_deleted, _} = Repo.delete_all(from(r in Bacon8.Forum.Reaction, where: r.user_id == ^user_id))
-      Logger.debug("delete_user: deleted #{reactions_deleted} chat reactions")
-
-      {chat_msgs_deleted, _} = Repo.delete_all(from(m in Bacon8.Forum.Message, where: m.user_id == ^user_id))
-      Logger.debug("delete_user: deleted #{chat_msgs_deleted} chat messages")
+      # Plugins remove what the user wrote (chat messages and reactions), in this transaction.
+      Bacon8.Plugins.notify({:user_content_removed, user_id})
 
       # Game tables have been removed from the codebase
 

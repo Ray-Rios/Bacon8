@@ -1,6 +1,6 @@
 # Plan: the /pages and /blog builders
 
-Status: **not started; this is the starting point for the next session.** Written 2026-10-25.
+Status: **not started; this is the starting point.** Written 2026-10-25; the owner answered the first questions the same day (below).
 The owner's words: the core keeps the traditional `/pages` and `/blog`, "which need to be
 bolstered quite a bit as the build tool for both isn't production grade."
 
@@ -48,28 +48,25 @@ Still true and **not** yet looked at:
 - `Content.list_posts_by_type/1` and the `:post_type` filter are stubs ("not implemented in
   current schema").
 
-## Questions for the owner (ask these first)
+## Decisions so far (owner, 2026-10-25)
 
-1. **What is wrong with the builder in daily use?** The most useful input is a list of the
-   things that annoyed you: it decides the order better than an audit would.
-2. **Keep the block model (rows, columns, blocks) or move to something else?** Keeping it is
-   cheap and keeps every existing page working. A different editor (a rich-text editor with
-   blocks, or Markdown) is a bigger change with a migration of every page's JSON.
-3. **Who writes?** Only you, or staff and members too? That decides drafts, review, roles
-   and comment moderation.
-4. **What does "production grade" need to include?** A suggested list to pick from:
-   - revisions and undo (a page's history);
-   - scheduled publishing;
-   - SEO fields and a sitemap that follows published pages (there is `priv/static/sitemap.xml`);
-   - an image library with alt text;
-   - preview before publishing;
-   - categories and tags on posts (tags exist; categories do not);
-   - an RSS feed for the blog;
-   - comment moderation, with spam control.
-5. **Is the blog meant to be per-site content only**, or should games (a plugin) be able to
-   post to it (patch notes, for instance)?
+- **Start with tests for the editors**, so the rebuild has a safety net.
+- **Who writes:** admins, GMs and editors only. Members don't write pages or posts. (So there is no
+  member-facing editor, and comment moderation is a staff job.)
+- **Keep the rows, columns and blocks model.** Every existing page keeps working, and no
+  content migration is needed.
 
-## Suggested order, once those are answered
+## Still to ask
+
+1. **What is wrong in daily use?** The most useful input is a list of what annoyed the owner in the
+   editors; it decides the order better than an audit.
+2. **What does "production grade" need to include?** A suggested list to pick from: revisions and
+   undo; scheduled publishing; SEO fields and a sitemap that follows published pages; an image
+   library with alt text; preview before publishing; categories and tags on posts; an RSS feed;
+   comment moderation with spam control.
+3. **Is the blog per-site content only**, or may games (plugins) post to it (patch notes)?
+
+## Suggested order
 
 1. Tests for the LiveViews that matter (the editors' save, publish and error paths, and
    the public pages' draft/published rules), so the rebuild has a safety net, as the forum

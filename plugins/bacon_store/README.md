@@ -16,6 +16,7 @@ store.
 | `lib/bacon_store/plugin.ex` | The plugin: mount `"store"`, admin nav, entitlement kinds, and the hooks core calls |
 | `lib/bacon_store/store.ex`, `store/` | Products, orders, checkout, delivery (`Fulfilment`), the library, the `Sweeper` |
 | `lib/bacon_store/wallet.ex`, `wallet/` | The double-entry Gem ledger |
+| `lib/bacon_store/chat.ex` | The store's only contact with Chat Channels (channel passes and slots), found when called so the store builds without chat |
 | `lib/bacon_store/payments.ex`, `payments/` | Providers (`Stripe`, `Fake`), the webhook event inbox |
 | `lib/bacon_store_web/routes.ex` | All routes, below |
 | `lib/bacon_store_web/live/` | Store pages; `admin/` for products and orders |

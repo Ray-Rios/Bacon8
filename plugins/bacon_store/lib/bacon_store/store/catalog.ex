@@ -359,16 +359,9 @@ defmodule BaconStore.Store.Catalog do
   end
 
   @doc "Private chat channels, the ones an access pass can sell."
-  def access_channels do
-    Repo.all(from c in Bacon8.Forum.Channel, where: c.is_private == true, order_by: [asc: c.name], select: %{id: c.id, name: c.name})
-  end
+  def access_channels, do: BaconStore.Chat.private_channels()
 
-  def channel_name(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> Repo.one(from c in Bacon8.Forum.Channel, where: c.id == ^uuid, select: c.name)
-      :error -> nil
-    end
-  end
+  def channel_name(id), do: BaconStore.Chat.channel_name(id)
 
   @doc "One line saying what a purchase delivers, for product pages and the admin list."
   def describe(%Product{kind: "gem_pack"} = p), do: "#{BaconStore.Store.format_number(p.gems || 0)} Gems"

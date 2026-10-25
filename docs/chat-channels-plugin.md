@@ -1,6 +1,6 @@
 # Plan: the forum becomes the `chat_channels` plugin
 
-Status: **plan, nothing moved yet.** Written 2026-10-25 after the forum got its tests
+Status: **phases 1 and 2 done 2026-10-25**; phases 3 and 4 open. Written 2026-10-25 after the forum got its tests
 (`test/bacon8/forum/*`: 105 tests, plus 34 for pages and blog; commit `37d84ea`).
 
 ## Decision (owner, 2026-10-25)
@@ -108,45 +108,51 @@ All have no callers outside the forum module (checked 2026-10-25):
 - `list_public_user_channels/0`
 - `list_channel_streams/2`
 
-## Status and first steps (for the next session)
+## What was done (phases 1 and 2, 2026-10-25)
 
-**Status 2026-10-25:** the tests exist (`test/bacon8/forum/`, 105) and the plan is written.
-No code has moved. The owner asked to work through it ("feel free to ask questions"), so the
-first move is to ask the three decisions below, then:
+The code moved with `git mv` (history kept) and was renamed: `Bacon8.Forum` is `ChatChannels`,
+the schemas `ChatChannels.Channel` and so on, `ForumLive` is `ChatChannelsWeb.ChatLive`. The plugin is
+`plugins/chat_channels` (slug `chat_channels`, mount `chat`); see its README.
 
-1. Create `plugins/chat_channels/` with `ChatChannels.Plugin` (`slug: "chat_channels"`,
-   `mount: "chat"`, `nav_links/1` returning "Chat") following `plugins/bacon_store/` as the
-   model (its `plugin.ex`, `routes.ex`, `priv/`, `test/`).
-2. Move `lib/bacon8/forum.ex` and `lib/bacon8/forum/*` to `ChatChannels.*`, `ForumLive`,
-   `EmojiPickerComponent` and `AdminLive.CustomEmojis` to the plugin's web namespace, and the
-   `ChatInput` hook and forum sidebar code out of `assets/js/app.ts` into
-   `plugins/chat_channels/assets/js/index.ts` (exporting `hooks`; `assets/scripts/gen-plugin-hooks.js`
-   picks it up).
-3. Move `test/bacon8/forum/*` and `test/support/forum_fixtures.ex` to the plugin's `test/`
-   (`mix.exs` already runs every plugin's `test/` and `test/support`). Rename the modules in them
-   in the same step; they are the check that nothing changed.
-4. Cut each seam in the table above, in this order (each compiles on its own): Accounts, Files,
-   Notifications, DesktopLive, then the two plugins that call it. `Bacon8.Plugin`'s event docs
-   change last.
-5. Add `chat_channels` to `BACON8_ACTIVE_PLUGINS` in `k3s/overlays/prod/configmap.yaml` **in the
-   same commit**; add `requires/0 = ["chat_channels"]` to the RaysSpaceSim plugin.
-6. Verify: the full suite, `mix compile --warnings-as-errors`, the release test, `/chat` loads,
-   the old links answer 301 (phase 2).
+| Seam | How it was cut |
+|---|---|
+| Account removal | A hub event, `{:user_content_removed, user_id}`, sent inside the account's transaction; the plugin deletes its rows. `User` lost `has_many :chat_messages` |
+| Notifications | Generic: `source_kind`, `source_id` and `metadata.path` (migration `20261025020000`); the hub's panel renders those. Mentions and invitations are created by the plugin (`ChatChannels.Notices`). `Notifications.create_notification/1` now announces what it creates |
+| Desktop | The invitation list, accept and decline moved to the Chat page; the nav link carries a count badge (the plugin contract has an optional `:badge`). The bell counts notifications only (an invitation is now one) |
+| `Bacon8.Files` | Looks the attachment schema up when needed and sees none without chat |
+| Bacon Store | `BaconStore.Chat` finds chat when called (no compile-time dependency); channel lists use schemaless queries |
+| RaysSpaceSim | `requires/0 = ["chat_channels"]`; calls `ChatChannels` directly |
+| Navigation | The hard-coded "Forum" links went; the plugin's `nav_links/1` supplies "Chat" |
+| Old address | `/forum` and `/forum/:channel_id` answer 301 to `/chat` (a `fixed` route; the query string is kept) |
+| Activation | `chat_channels` is in the default list (`config/config.exs`) and in production's `BACON8_ACTIVE_PLUGINS` (`k3s/overlays/prod/configmap.yaml`) |
+| JS | The four forum-only hooks (`MessageList`, `ChatInput`, `SidebarResizer`, `Sortable`) moved to the plugin's `assets/js/index.ts`; a dead `MessageReactions` hook was dropped |
+| Dead code dropped | `Bacon8.ForumAttachment`, `AdminLive.Channels` (a "coming soon" stub), `EmojiPickerComponent` (unused) |
 
-Things not yet looked at, so treat as open: `ForumLive` tracks who is online with
-`Bacon8Web.Presence` on `presence:channel:<id>` topics (a core module the plugin can keep using, but
-confirm), and whether the uploads guard needs to know the plugin (its `forum/` path); `desktop_live.ex` line ~26
-and ~1234 (the invites badge) are the only desktop references found.
+Checked: the hub compiles and its core tests pass **without** the plugin (and without RaysSpaceSim,
+which needs it); the one exception is the store's own channel-pass tests.
 
-## Decisions for the owner
+**Bugs found on the way, fixed:** @mentions never created a notification (`actor.username` does not
+exist, inside a task that failed quietly); marking a notification read crashed (microseconds in
+a whole-second column) and "Mark all read" and the old-notification cleanup silently did
+nothing for the same reason; `list_user_notifications/2` preloaded the removed association and
+its `rescue` returned an empty list; the mention link opened the wrong page; `bob@example.com`
+counted as a mention of "example".
 
-1. **Mention notifications.** Simplest: `user_notifications` gets `source_kind` and `source_id`
-   columns in place of `channel_id` (one core migration). The alternative keeps `channel_id`
-   as a bare column, which works but leaves a chat-shaped column in the core.
-2. **Pending invites on the desktop.** A desktop app belonging to the plugin, or a badge
-   count on the nav link?
-3. **Phase 4 at all?** The columns and baseline DDL can stay in the core indefinitely at the
-   price of the core still creating chat tables on a site that never installs the plugin.
+## What is left
+
+- **Phase 3, tidy:** delete the dead functions (README lists them); split `ChatLive` (sidebar,
+  message list, composer, member list, invite dialogs); add the page that redeems an invite code
+  (`/chat/invite/:code`; `ChatChannels.get_invite_link/1` already returns that address).
+- **Phase 4, finish the separation (owner's call):** move the baseline DDL into plugin migrations
+  (idempotent), move `users.channel_allowance` and `channel_order` out of the user row, drop
+  `user_notifications.channel_id` and its foreign key.
+- Test the voice, video and stream channels.
+
+## Decisions (owner, 2026-10-25)
+
+1. **Mention notifications:** generic source columns (done).
+2. **Pending invites:** a badge on the Chat nav link, with the list on the Chat page (done).
+3. **Phase 4:** still open.
 
 ## Not in this plan
 

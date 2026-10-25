@@ -13,19 +13,10 @@ defmodule Bacon8Web.DesktopLive do
     if connected?(socket) do
       PubSub.subscribe(Bacon8.PubSub, "desktop:public")
       
-      # Subscribe to user-specific invite notifications
+      # Subscribe to user notifications (mentions, invites, ...)
       if assigns[:current_user] do
-        PubSub.subscribe(Bacon8.PubSub, "user:#{assigns.current_user.id}:invites")
-        # Subscribe to user notifications (mentions, etc.)
         PubSub.subscribe(Bacon8.PubSub, "user:#{assigns.current_user.id}:notifications")
       end
-    end
-    
-    # Load pending invites count for notification badge
-    pending_invite_count = if assigns[:current_user] do
-      Bacon8.Forum.count_pending_invites(assigns.current_user.id)
-    else
-      0
     end
     
     # Load unread mention notifications count
@@ -64,8 +55,6 @@ defmodule Bacon8Web.DesktopLive do
        end
     end)
     |> assign_new(:selected_date, fn -> nil end)
-    |> assign_new(:pending_invites, fn -> [] end)
-    |> assign(:pending_invite_count, pending_invite_count)
     |> assign_new(:mention_notifications, fn -> 
       if assigns[:current_user] do
         Bacon8.Notifications.list_user_notifications(assigns.current_user.id, limit: 10)
@@ -172,22 +161,21 @@ defmodule Bacon8Web.DesktopLive do
   end
 
   def handle_event("toggle_notifications", _params, socket) do
-    # Load fresh invites and notifications when opening panel
-    {show_notifications, pending_invites, mention_notifications} = if !socket.assigns.show_notifications && socket.assigns.current_user do
-      invites = Bacon8.Forum.list_pending_invites_for_user(socket.assigns.current_user.id)
-      mentions = Bacon8.Notifications.list_user_notifications(socket.assigns.current_user.id, limit: 20)
-      {true, invites, mentions}
-    else
-      {false, [], []}
-    end
-    
-    {:noreply, assign(socket, 
-      show_notifications: show_notifications, 
-      pending_invites: pending_invites,
-      mention_notifications: mention_notifications,
-      show_audio_panel: false, 
-      show_calendar: false
-    )}
+    # Load fresh notifications when opening the panel
+    {show_notifications, mention_notifications} =
+      if !socket.assigns.show_notifications && socket.assigns.current_user do
+        {true, Bacon8.Notifications.list_user_notifications(socket.assigns.current_user.id, limit: 20)}
+      else
+        {false, []}
+      end
+
+    {:noreply,
+     assign(socket,
+       show_notifications: show_notifications,
+       mention_notifications: mention_notifications,
+       show_audio_panel: false,
+       show_calendar: false
+     )}
   end
 
   def handle_event("toggle_audio_panel", _params, socket) do
@@ -279,38 +267,6 @@ defmodule Bacon8Web.DesktopLive do
     end
   end
 
-  def handle_event("accept_invite", %{"invite_id" => invite_id}, socket) do
-    require Logger
-    Logger.info("Desktop: accept_invite called invite_id=#{invite_id} user=#{socket.assigns.current_user && socket.assigns.current_user.id}")
-    require Logger
-    # invite_id is a UUID string, keep it as-is
-    Logger.info("Accepting invite #{invite_id} for user #{socket.assigns.current_user.id}")
-    
-    case Bacon8.Forum.accept_channel_invite(invite_id, socket.assigns.current_user.id) do
-      {:ok, _member} ->
-        Logger.info("Successfully accepted invite #{invite_id}")
-        # Reload invites and count
-        pending_invites = Bacon8.Forum.list_pending_invites_for_user(socket.assigns.current_user.id)
-        pending_invite_count = length(pending_invites)
-        
-        {:noreply,
-         socket
-         |> assign(pending_invites: pending_invites, pending_invite_count: pending_invite_count)
-         |> put_flash(:info, "✓ Joined channel successfully!")}
-      
-      {:error, reason} ->
-        Logger.error("Failed to accept invite #{invite_id}: #{inspect(reason)}")
-        message = case reason do
-          :not_found -> "Invite not found"
-          :forbidden -> "You don't have permission to accept this invite"
-          :invite_expired -> "This invite has expired"
-          :already_member -> "You're already a member of this channel"
-          _ -> "Failed to accept invite: #{inspect(reason)}"
-        end
-        {:noreply, put_flash(socket, :error, message)}
-    end
-  end
-
   def handle_event("schedule_meeting", %{"title" => title}, socket) do
     # In a real implementation, this would create a database record
     # For now, we'll just simulate success
@@ -321,45 +277,21 @@ defmodule Bacon8Web.DesktopLive do
      |> put_flash(:info, "Meeting '#{title}' scheduled successfully in channel!")}
   end
 
-  def handle_event("decline_invite", %{"invite_id" => invite_id}, socket) do
-    require Logger
-    Logger.info("Desktop: decline_invite called invite_id=#{invite_id} user=#{socket.assigns.current_user && socket.assigns.current_user.id}")
-    require Logger
-    # invite_id is a UUID string, keep it as-is
-    Logger.info("Declining invite #{invite_id} for user #{socket.assigns.current_user.id}")
-    
-    case Bacon8.Forum.decline_invite(invite_id, socket.assigns.current_user.id) do
-      {:ok, _} ->
-        Logger.info("Successfully declined invite #{invite_id}")
-        # Reload invites and count
-        pending_invites = Bacon8.Forum.list_pending_invites_for_user(socket.assigns.current_user.id)
-        pending_invite_count = length(pending_invites)
-        
-        {:noreply, assign(socket, pending_invites: pending_invites, pending_invite_count: pending_invite_count)}
-      
-      {:error, reason} ->
-        Logger.error("Failed to decline invite #{invite_id}: #{inspect(reason)}")
-        {:noreply, put_flash(socket, :error, "Failed to decline invite")}
-    end
-  end
-
-  def handle_event("open_mention", %{"notification_id" => notification_id, "channel_id" => channel_id, "message_id" => message_id}, socket) do
-    # Mark notification as read
+  def handle_event("open_notification", %{"notification_id" => notification_id} = params, socket) do
+    # Mark it read, close the panel, and go where the notification says (its plugin set the path)
     if socket.assigns.current_user do
       case Bacon8.Notifications.get_notification(socket.assigns.current_user.id, notification_id) do
         nil -> :ok
         notification -> Bacon8.Notifications.mark_as_read(notification)
       end
     end
-    
-    # Close notification panel and navigate to the forum with channel/message context
-    # Build URL to navigate to the message
-    forum_url = "/forum?channel=#{channel_id}&message=#{message_id}"
-    
-    {:noreply, 
-     socket
-     |> assign(show_notifications: false)
-     |> push_navigate(to: forum_url)}
+
+    socket = assign(socket, show_notifications: false)
+
+    case params["path"] do
+      "/" <> _ = path -> {:noreply, push_navigate(socket, to: path)}
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_event("mark_all_notifications_read", _params, socket) do
@@ -1228,26 +1160,6 @@ defmodule Bacon8Web.DesktopLive do
     {:noreply, assign(socket, :windows, windows)}
   end
 
-  def handle_info({:new_invite, _invite}, socket) do
-    # Update invite count when new invite arrives
-    pending_invite_count = if socket.assigns.current_user do
-      Bacon8.Forum.count_pending_invites(socket.assigns.current_user.id)
-    else
-      0
-    end
-    
-    # Play notification sound if enabled
-    socket = if socket.assigns.current_user && socket.assigns.current_user.notification_sound_enabled do
-      volume = socket.assigns.current_user.master_volume || 0.5
-      sound_path = "/audio/ui/notification.mp3"
-      push_event(socket, "play_sound", %{path: sound_path, volume: volume})
-    else
-      socket
-    end
-    
-    {:noreply, assign(socket, pending_invite_count: pending_invite_count)}
-  end
-
   def handle_info({:new_notification, _notification}, socket) do
     # Update notification count when new mention arrives
     unread_notification_count = if socket.assigns.current_user do
@@ -1509,7 +1421,6 @@ defmodule Bacon8Web.DesktopLive do
           show_notifications={@show_notifications}
           show_audio_panel={@show_audio_panel}
           show_calendar={@show_calendar}
-          pending_invite_count={@pending_invite_count}
           unread_notification_count={@unread_notification_count}
           taskbar_projects={@taskbar_projects}
           calendar_events={@calendar_events}
@@ -1522,7 +1433,6 @@ defmodule Bacon8Web.DesktopLive do
       <div class="pointer-events-auto">
         <Bacon8Web.Components.NotificationPanel.notification_panel
           show={@show_notifications}
-          pending_invites={@pending_invites}
           mention_notifications={@mention_notifications}
           current_user={@current_user}
           target={@myself}

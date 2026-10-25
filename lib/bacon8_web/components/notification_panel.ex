@@ -1,6 +1,6 @@
 defmodule Bacon8Web.Components.NotificationPanel do
   @moduledoc """
-  Notification panel component for displaying pending invites and other notifications
+  Notification panel component: the hub's notifications (mentions, invites, ... from any plugin)
   """
   use Bacon8Web, :html
 
@@ -8,17 +8,12 @@ defmodule Bacon8Web.Components.NotificationPanel do
   Renders a notification panel that pops up from the taskbar
   """
   attr :show, :boolean, default: false
-  attr :pending_invites, :list, default: []
   attr :mention_notifications, :list, default: []
   attr :current_user, :map, required: true
   attr :target, :any, default: nil
 
   def notification_panel(assigns) do
-    # Combine invites and mentions, sort by time
-    all_notifications = 
-      (Enum.map(assigns.pending_invites, &Map.put(&1, :notification_type, :invite)) ++
-       Enum.map(assigns.mention_notifications, &Map.put(&1, :notification_type, :mention)))
-      |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+    all_notifications = Enum.sort_by(assigns.mention_notifications, & &1.inserted_at, {:desc, DateTime})
     
     assigns = assign(assigns, :all_notifications, all_notifications)
     
@@ -59,12 +54,7 @@ defmodule Bacon8Web.Components.NotificationPanel do
           <% else %>
             <div class="divide-y divide-gray-700">
               <%= for notification <- @all_notifications do %>
-                <%= case notification.notification_type do %>
-                  <% :invite -> %>
-                    <.invite_notification invite={notification} target={@target} />
-                  <% :mention -> %>
-                    <.mention_notification notification={notification} target={@target} />
-                <% end %>
+                <.mention_notification notification={notification} target={@target} />
               <% end %>
             </div>
           <% end %>
@@ -73,63 +63,12 @@ defmodule Bacon8Web.Components.NotificationPanel do
         <%= if !Enum.empty?(@all_notifications) do %>
           <div class="p-3 border-t border-gray-600 bg-gray-900/50">
             <div class="text-xs text-gray-400 text-center">
-              💡 Tip: Click on a mention to go to the message
+              💡 Tip: Click a notification to open it
             </div>
           </div>
         <% end %>
       </div>
     <% end %>
-    """
-  end
-
-  attr :invite, :map, required: true
-  attr :target, :any, default: nil
-  
-  defp invite_notification(assigns) do
-    ~H"""
-    <div class="p-4 hover:bg-gray-800/50 transition-colors">
-      <div class="flex items-start justify-between mb-2">
-        <div class="flex-1">
-          <div class="text-white font-medium mb-1">
-            📨 Channel Invite
-          </div>
-          <div class="text-gray-300 text-sm mb-2">
-            <span class="font-semibold text-cyan-400"><%= @invite.inviter.name || @invite.inviter.email %></span>
-            invited you to
-            <span class="font-semibold text-purple-400">#<%= @invite.channel.name %></span>
-          </div>
-          <%= if @invite.channel.description do %>
-            <div class="text-gray-400 text-xs mb-2 italic">
-              "<%= @invite.channel.description %>"
-            </div>
-          <% end %>
-          <div class="text-xs text-gray-500">
-            <%= format_relative_time(@invite.inserted_at) %>
-          </div>
-        </div>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <button
-          type="button"
-          phx-click="accept_invite"
-          phx-value-invite_id={@invite.id}
-          phx-target={@target}
-          class="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded transition-colors"
-        >
-          ✓ Accept
-        </button>
-        <button
-          type="button"
-          phx-click="decline_invite"
-          phx-value-invite_id={@invite.id}
-          phx-target={@target}
-          class="flex-1 px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded transition-colors"
-        >
-          ✕ Decline
-        </button>
-      </div>
-    </div>
     """
   end
 
@@ -140,10 +79,9 @@ defmodule Bacon8Web.Components.NotificationPanel do
     ~H"""
     <div 
       class={"p-4 hover:bg-gray-800/50 transition-colors cursor-pointer #{unless @notification.read, do: "bg-blue-900/20 border-l-2 border-blue-500"}"}
-      phx-click="open_mention"
+      phx-click="open_notification"
       phx-value-notification_id={@notification.id}
-      phx-value-channel_id={@notification.channel_id}
-      phx-value-message_id={@notification.resource_id}
+      phx-value-path={@notification.metadata["path"]}
       phx-target={@target}
     >
       <div class="flex items-start gap-3">
@@ -158,8 +96,8 @@ defmodule Bacon8Web.Components.NotificationPanel do
             <% end %>
           </div>
           
-          <div class="text-gray-400 text-sm mb-1 truncate">
-            in <span class="text-purple-400">#<%= @notification.metadata["channel_name"] || "channel" %></span>
+          <div :if={@notification.metadata["source_name"] || @notification.metadata["channel_name"]} class="text-gray-400 text-sm mb-1 truncate">
+            in <span class="text-purple-400">#<%= @notification.metadata["source_name"] || @notification.metadata["channel_name"] %></span>
           </div>
           
           <div class="text-gray-500 text-xs line-clamp-2">

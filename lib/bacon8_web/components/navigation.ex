@@ -28,9 +28,7 @@ defmodule Bacon8Web.Components.Navigation do
               <%!-- Links from active plugins (BACON8.md §9), e.g. the store --%>
               <.link :for={item <- Bacon8.Plugins.nav_links(@current_user)} navigate={item.path} class="text-white hover:text-blue-400 transition-colors duration-300 text-sm">
                 <Bacon8Web.Components.Gem.icon icon={item.icon} size={20} /> <%= item.label %>
-              </.link>
-              <.link navigate={~p"/forum"} class="text-white hover:text-blue-400 transition-colors duration-300 text-sm">
-                💬 Forum
+                <span :if={Map.get(item, :badge)} class="ml-1 rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white"><%= item.badge %></span>
               </.link>
               <.link navigate={~p"/games"} class="text-white hover:text-blue-400 transition-colors duration-300 text-sm">
                 🎮 Games

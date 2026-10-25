@@ -7,7 +7,6 @@ defmodule Bacon8.Files do
   alias Bacon8.Repo
   alias Bacon8.Files.UserFile
   alias Bacon8.Files.UserFolder
-  alias Bacon8.Forum.MessageAttachment
 
   # ==================== FOLDER OPERATIONS ====================
 
@@ -377,12 +376,21 @@ defmodule Bacon8.Files do
     |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
   end
 
+  # Chat attachments belong to the chat_channels plugin, which a site may not install: the
+  # schema is looked up when needed, and without it there are none.
+  defp attachment_schema do
+    schema = Module.concat([ChatChannels, MessageAttachment])
+    if Code.ensure_loaded?(schema), do: schema, else: nil
+  end
+
   @doc "List forum/chat attachments for a user - these are actual uploaded files"
   def list_user_attachments(user, folder_path \\ "/") do
+    schema = attachment_schema()
+
     # Only show at root level for now (these don't have folder structure)
-    if folder_path == "/" do
+    if folder_path == "/" and schema do
       try do
-        from(a in MessageAttachment, 
+        from(a in schema, 
           where: a.user_id == ^user.id,
           order_by: [desc: a.inserted_at]
         )
@@ -448,15 +456,22 @@ defmodule Bacon8.Files do
     media = Bacon8.Content.list_user_media(user)
     
     # Also include forum message attachments (these are actual working uploads)
-    attachments = try do
-      from(a in MessageAttachment, 
-        where: a.user_id == ^user.id,
-        order_by: [desc: a.inserted_at]
-      )
-      |> Repo.all()
-    rescue
-      _ -> []
-    end
+    attachments =
+      case attachment_schema() do
+        nil ->
+          []
+
+        schema ->
+          try do
+            from(a in schema,
+              where: a.user_id == ^user.id,
+              order_by: [desc: a.inserted_at]
+            )
+            |> Repo.all()
+          rescue
+            _ -> []
+          end
+      end
     
     # Normalize
     normalized_files = Enum.map(files, fn f -> 
@@ -627,7 +642,7 @@ defmodule Bacon8.Files do
 
     # Get total size from MessageAttachment uploads (convert Decimal to integer)
     message_attachments_size = 
-      case from(m in MessageAttachment, where: m.user_id == ^user_id, select: sum(m.file_size)) |> Repo.one() do
+      case (if schema = attachment_schema(), do: from(m in schema, where: m.user_id == ^user_id, select: sum(m.file_size)) |> Repo.one()) do
         nil -> 0
         %Decimal{} = decimal -> Decimal.to_integer(decimal)
         size -> size
@@ -636,7 +651,7 @@ defmodule Bacon8.Files do
     # Get count of files
     user_files_count = from(f in UserFile, where: f.user_id == ^user_id, select: count()) |> Repo.one() || 0
     user_media_count = from(m in Bacon8.Content.UserMedia, where: m.user_id == ^user_id, select: count()) |> Repo.one() || 0
-    message_attachments_count = from(m in MessageAttachment, where: m.user_id == ^user_id, select: count()) |> Repo.one() || 0
+    message_attachments_count = (if schema = attachment_schema(), do: from(m in schema, where: m.user_id == ^user_id, select: count()) |> Repo.one()) || 0
 
     total_size = user_files_size + user_media_size + message_attachments_size
     total_count = user_files_count + user_media_count + message_attachments_count

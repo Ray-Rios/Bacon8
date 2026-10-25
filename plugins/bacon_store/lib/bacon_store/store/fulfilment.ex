@@ -31,7 +31,8 @@ defmodule BaconStore.Store.Fulfilment do
 
   import Ecto.Query
 
-  alias Bacon8.{Entitlements, Forum, Repo}
+  alias Bacon8.{Entitlements, Repo}
+  alias BaconStore.Chat
   alias BaconStore.Wallet
   alias Bacon8.Accounts.User
   alias Bacon8.Entitlements.Entitlement
@@ -68,8 +69,8 @@ defmodule BaconStore.Store.Fulfilment do
     cond do
       is_nil(Catalog.channel_name(channel_id)) -> {:error, :not_for_sale}
       Enum.any?(passes, &is_nil(&1.ends_at)) -> {:error, :already_owned}
-      match?(%{is_banned: true}, Forum.get_channel_member(channel_id, user.id)) -> {:error, :banned_from_channel}
-      passes == [] and Forum.is_channel_member?(channel_id, user.id) -> {:error, :already_member}
+      match?(%{is_banned: true}, Chat.get_member(channel_id, user.id)) -> {:error, :banned_from_channel}
+      passes == [] and Chat.member?(channel_id, user.id) -> {:error, :already_member}
       true -> :ok
     end
   end
@@ -210,10 +211,10 @@ defmodule BaconStore.Store.Fulfilment do
   defp ends_at(from, days), do: DateTime.add(from, days * 86_400, :second)
 
   defp ensure_member(channel_id, user_id) do
-    if Forum.is_channel_member?(channel_id, user_id) do
+    if Chat.member?(channel_id, user_id) do
       :ok
     else
-      case Forum.create_channel_member(%{channel_id: channel_id, user_id: user_id, role: "member"}) do
+      case Chat.add_member(%{channel_id: channel_id, user_id: user_id, role: "member"}) do
         {:ok, _} -> :ok
         {:error, changeset} -> {:error, {:membership, changeset.errors}}
       end
@@ -364,8 +365,8 @@ defmodule BaconStore.Store.Fulfilment do
   # runs, or if the buyer has been promoted (moderator, owner) since.
   defp maybe_remove_member(user_id, channel_id) do
     if active_passes(user_id, channel_id) == [] do
-      case Forum.get_channel_member(channel_id, user_id) do
-        %{role: "member", is_banned: false} -> Forum.remove_channel_member(channel_id, user_id)
+      case Chat.get_member(channel_id, user_id) do
+        %{role: "member", is_banned: false} -> Chat.remove_member(channel_id, user_id)
         _ -> :ok
       end
     end

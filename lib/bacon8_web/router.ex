@@ -129,8 +129,6 @@ defmodule Bacon8Web.Router do
     live "/blog/:slug", BlogLive, :show
     
     live "/pages/:slug", PageLive, :show
-    live "/forum", ForumLive, :index
-    live "/forum/:channel_id", ForumLive, :channel
     live "/games", GamesLive, :index
 
     # Profile routes (with auth check in mount)
@@ -153,7 +151,6 @@ defmodule Bacon8Web.Router do
     live "/admin/security", AdminLive.Security, :index
     live "/admin/emails", AdminLive.Emails, :index
     live "/admin/api-toolbox", AdminLive.ApiToolbox, :index
-    live "/admin/custom-emojis", AdminLive.CustomEmojis, :index
     live "/admin/plugins", AdminLive.Plugins, :index
 
   end

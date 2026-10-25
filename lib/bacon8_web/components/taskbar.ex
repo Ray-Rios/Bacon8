@@ -14,7 +14,6 @@ defmodule Bacon8Web.Components.Taskbar do
   attr :show_notifications, :boolean, default: false
   attr :show_audio_panel, :boolean, default: false
   attr :show_calendar, :boolean, default: false
-  attr :pending_invite_count, :integer, default: 0
   attr :unread_notification_count, :integer, default: 0
   attr :taskbar_projects, :list, default: []
   attr :calendar_events, :list, default: []
@@ -125,14 +124,11 @@ defmodule Bacon8Web.Components.Taskbar do
             <!-- Quick Access Links -->
             <div class="border-t border-gray-600 p-3">
               <div class="space-y-1">
-                <.link navigate={~p"/forum"} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
-                  <span>🎭</span>
-                  <span class="text-sm">Forum</span>
-                </.link>
                 <%!-- Links from active plugins (BACON8.md §9), e.g. the store --%>
                 <.link :for={item <- Bacon8.Plugins.nav_links(@current_user)} navigate={item.path} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
                   <span><Bacon8Web.Components.Gem.icon icon={item.icon} /></span>
                   <span class="text-sm"><%= item.label %></span>
+                  <span :if={Map.get(item, :badge)} class="ml-auto rounded-full bg-red-500 px-1.5 text-xs font-bold text-white"><%= item.badge %></span>
                 </.link>
                 <.link navigate={~p"/blog"} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
                   <span>🚬</span>
@@ -210,7 +206,7 @@ defmodule Bacon8Web.Components.Taskbar do
               class="p-2 rounded hover:glass-dark hover:bg-white/20 text-gray-300 hover:text-white transition-colors relative"
             >
               <span class="text-lg">🔔</span>
-              <% total_count = @pending_invite_count + @unread_notification_count %>
+              <% total_count = @unread_notification_count %>
               <%= if total_count > 0 do %>
                 <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
                   <%= min(total_count, 9) %><%= if total_count > 9, do: "+" %>

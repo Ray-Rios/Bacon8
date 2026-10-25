@@ -94,7 +94,7 @@ config :cors_plug,
 # Ecto Repo defaults
 # ----------------------------
 # Plugins active until an admin saves a choice on /admin/plugins (BACON8.md §9).
-config :bacon8, :default_active_plugins, ["bacon_world", "bacon_store"]
+config :bacon8, :default_active_plugins, ["bacon_world", "bacon_store", "chat_channels"]
 
 config :bacon8, Bacon8.Repo,
   username: System.get_env("DB_USERNAME") || "root",

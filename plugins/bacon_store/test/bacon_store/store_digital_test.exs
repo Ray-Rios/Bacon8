@@ -21,7 +21,7 @@ defmodule BaconStore.StoreDigitalTest do
   end
 
   defp private_channel! do
-    Repo.insert!(%Bacon8.Forum.Channel{name: "vip-#{System.unique_integer([:positive])}", is_private: true})
+    Repo.insert!(%ChatChannels.Channel{name: "vip-#{System.unique_integer([:positive])}", is_private: true})
   end
 
   describe "products" do
@@ -143,7 +143,7 @@ defmodule BaconStore.StoreDigitalTest do
       user = buyer(1000)
 
       assert {:ok, _} = Store.buy_with_gems(user, p)
-      assert Bacon8.Forum.is_channel_member?(channel.id, user.id)
+      assert ChatChannels.is_channel_member?(channel.id, user.id)
 
       # Buying again while it runs adds 30 days to the end.
       assert {:ok, _} = Store.buy_with_gems(user, p)
@@ -152,16 +152,16 @@ defmodule BaconStore.StoreDigitalTest do
 
       # After the first pass ends the second keeps them in; after both, they're out.
       Fulfilment.expire(DateTime.add(DateTime.utc_now(), 31 * 86_400, :second))
-      assert Bacon8.Forum.is_channel_member?(channel.id, user.id)
+      assert ChatChannels.is_channel_member?(channel.id, user.id)
       Fulfilment.expire(DateTime.add(DateTime.utc_now(), 61 * 86_400, :second))
-      refute Bacon8.Forum.is_channel_member?(channel.id, user.id)
+      refute ChatChannels.is_channel_member?(channel.id, user.id)
     end
 
     test "existing members can't buy a pass to a channel they're in" do
       channel = private_channel!()
       p = product!(%{kind: "access", name: "VIP", price_gems: 100, grant_kind: "channel", grant_key: channel.id})
       user = buyer(1000)
-      {:ok, _} = Bacon8.Forum.create_channel_member(%{channel_id: channel.id, user_id: user.id, role: "member"})
+      {:ok, _} = ChatChannels.create_channel_member(%{channel_id: channel.id, user_id: user.id, role: "member"})
 
       assert {:error, :already_member} = Store.buy_with_gems(user, p)
     end
@@ -169,10 +169,10 @@ defmodule BaconStore.StoreDigitalTest do
     test "channel slots raise the allowance for good" do
       p = product!(%{kind: "access", name: "3 slots", price_gems: 100, grant_kind: "channel_slots", grant_quantity: 3})
       user = buyer(1000)
-      before = Bacon8.Forum.channel_allowance(user.id)
+      before = ChatChannels.channel_allowance(user.id)
 
       assert {:ok, _} = Store.buy_with_gems(user, p)
-      assert Bacon8.Forum.channel_allowance(user.id) == before + 3
+      assert ChatChannels.channel_allowance(user.id) == before + 3
     end
 
     test "license keys: one per sale, then sold out" do
@@ -226,7 +226,7 @@ defmodule BaconStore.StoreDigitalTest do
       pass = product!(%{kind: "access", name: "VIP", price_cents: 500, grant_kind: "channel", grant_key: channel.id})
       slots = product!(%{kind: "access", name: "Slots", price_cents: 500, grant_kind: "channel_slots", grant_quantity: 2})
       user = buyer()
-      base = Bacon8.Forum.channel_allowance(user.id)
+      base = ChatChannels.channel_allowance(user.id)
 
       orders =
         for p <- [dl, pass, slots] do
@@ -237,15 +237,15 @@ defmodule BaconStore.StoreDigitalTest do
 
       for o <- orders, do: :ok = Fake.dispute(o.provider_ref, :dispute_opened)
       refute Library.can_download?(user, file)
-      refute Bacon8.Forum.is_channel_member?(channel.id, user.id)
-      assert Bacon8.Forum.channel_allowance(user.id) == base
+      refute ChatChannels.is_channel_member?(channel.id, user.id)
+      assert ChatChannels.channel_allowance(user.id) == base
       assert Enum.any?(Library.for_user(user).grants, &(&1.state == :on_hold))
       assert_received {:fixture_hub_event, {:entitlement_revoked, %{revoked_reason: "disputed"}}}
 
       for o <- orders, do: :ok = Fake.dispute(o.provider_ref, :dispute_won)
       assert Library.can_download?(user, file)
-      assert Bacon8.Forum.is_channel_member?(channel.id, user.id)
-      assert Bacon8.Forum.channel_allowance(user.id) == base + 2
+      assert ChatChannels.is_channel_member?(channel.id, user.id)
+      assert ChatChannels.channel_allowance(user.id) == base + 2
       assert_received {:fixture_hub_event, {:entitlement_granted, %{kind: "channel_access"}}}
     end
 
@@ -267,7 +267,7 @@ defmodule BaconStore.StoreDigitalTest do
       {:ok, file} = Catalog.add_file(dl, "download", tmp_upload("x"), "x.zip")
       slots = product!(%{kind: "access", name: "Slots", price_cents: 500, grant_kind: "channel_slots", grant_quantity: 2})
       user = buyer()
-      base = Bacon8.Forum.channel_allowance(user.id)
+      base = ChatChannels.channel_allowance(user.id)
 
       for p <- [dl, slots] do
         {:ok, order, _} = Store.start_checkout(user, p)
@@ -277,7 +277,7 @@ defmodule BaconStore.StoreDigitalTest do
       end
 
       refute Library.can_download?(Repo.reload(user), file)
-      assert Bacon8.Forum.channel_allowance(user.id) == base
+      assert ChatChannels.channel_allowance(user.id) == base
     end
   end
 

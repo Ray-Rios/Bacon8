@@ -35,7 +35,7 @@ defmodule Bacon8.Accounts.User do
     field :background_custom_data, :map, default: %{}
 
     # How many channels this user may create. Was a 5 hardcoded in
-    # Forum.Channel; now per-user so the store can sell more. Not settable by the
+    # ChatChannels.Channel; now per-user so the store can sell more. Not settable by the
     # user - it is granted by a purchase or by an admin, so it is cast only in
     # the admin changeset, never in registration or profile updates.
     #
@@ -70,7 +70,6 @@ defmodule Bacon8.Accounts.User do
     has_many :posts, Bacon8.Content.Post, on_delete: :nilify_all
     has_many :comments, Bacon8.Content.Comment, on_delete: :nilify_all
     has_many :files, Bacon8.Files.UserFile, on_delete: :delete_all
-    has_many :chat_messages, Bacon8.Forum.Message, on_delete: :delete_all
 
     timestamps(type: :utc_datetime)
   end

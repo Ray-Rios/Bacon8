@@ -23,23 +23,26 @@ defmodule Bacon8.Notifications.UserNotification do
     
     belongs_to :user, Bacon8.Accounts.User
     belongs_to :actor, Bacon8.Accounts.User  # Who triggered the notification
-    belongs_to :channel, Bacon8.Forum.Channel
+
+    # What it came from (a plugin's own kind and id, e.g. "chat_channel"). The old
+    # channel_id column is still in the table, unused, until the plan's last phase.
+    field :source_kind, :string
+    field :source_id, :binary_id
 
     timestamps(type: :utc_datetime)
   end
 
   def changeset(notification, attrs) do
     notification
-    |> cast(attrs, [:type, :title, :content, :read, :read_at, :resource_type, :resource_id, :metadata, :user_id, :actor_id, :channel_id])
+    |> cast(attrs, [:type, :title, :content, :read, :read_at, :resource_type, :resource_id, :metadata, :user_id, :actor_id, :source_kind, :source_id])
     |> validate_required([:type, :user_id])
     |> validate_inclusion(:type, ["mention", "reply", "invite", "system"])
     |> foreign_key_constraint(:user_id)
     |> foreign_key_constraint(:actor_id)
-    |> foreign_key_constraint(:channel_id)
   end
 
   def mark_read_changeset(notification) do
     notification
-    |> change(%{read: true, read_at: DateTime.utc_now()})
+    |> change(%{read: true, read_at: DateTime.truncate(DateTime.utc_now(), :second)})
   end
 end

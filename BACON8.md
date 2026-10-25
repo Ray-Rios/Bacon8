@@ -32,10 +32,23 @@ On 2026-10-25:
   without an explicit `published_at`; a draft with no body crashed; renaming rewrote the URL;
   channel names weren't unique; a channel's owner couldn't moderate it without a member row;
   posting to a missing channel crashed; comment approval did nothing. 364 tests pass.
-- **Plan: the forum becomes the `chat_channels` plugin** (navbar "Chat", `/chat`):
-  [`docs/chat-channels-plugin.md`](docs/chat-channels-plugin.md). Not started. It **supersedes
-  ADR 0001 on one point** (ADR 0001 kept the forum in the core). The pages and blog builder
-  rebuild is the other pending piece: [`docs/pages-blog-builder.md`](docs/pages-blog-builder.md).
+- **The forum is now the `chat_channels` plugin** (phases 1 and 2 of
+  [`docs/chat-channels-plugin.md`](docs/chat-channels-plugin.md)): `plugins/chat_channels`,
+  mounted at `/chat`, the navbar link says "Chat", and `/forum` answers 301 to it. It
+  **supersedes ADR 0001 on one point** (ADR 0001 kept the forum in the core). The seams were
+  cut: account removal goes through a hub event, notifications are generic (`source_kind`,
+  `source_id`, `metadata.path`), invitations are listed on the Chat page with a count badge on
+  the nav link (the plugin contract gained an optional `:badge`), the Bacon Store reaches chat
+  through `BaconStore.Chat` (so it still builds without it) and RaysSpaceSim now
+  `requires/0` it. **Production's `BACON8_ACTIVE_PLUGINS` and the default list now name
+  `chat_channels`.** Moving it also fixed things that had never worked: **@mention
+  notifications** (they read a user field that doesn't exist), **marking a notification read**
+  and **"Mark all read"** (microseconds in a whole-second column), **the notification list**
+  after its channel association went, and the old mention link. 409 tests pass.
+- The pages and blog builder rebuild is the other pending piece:
+  [`docs/pages-blog-builder.md`](docs/pages-blog-builder.md). The owner's answers (2026-10-25):
+  start with tests for the editors; only admins, GMs and editors write content; keep the
+  rows, columns and blocks model.
 - **Glass** (`1fbeae7`): menus and popups are frosted (`.glass-menu`), palette swatches and the
   tint picker are textured glass, and the personal glass colour reaches Bacon World's windows
   (`--bwg-*`). The decisions-log row below has the detail. A follow-up fixed **preset buttons
@@ -45,12 +58,13 @@ On 2026-10-25:
 
 **Next session, start here:**
 
-1. Read `docs/chat-channels-plugin.md` and `docs/pages-blog-builder.md`. The owner said
-   "let's work through the forum -> chat and the pages/blog builder changes. Feel free to ask
-   questions": ask them (each doc ends with the questions) before building anything.
-2. The first build step for chat is **phase 1 of the plan** (move the code, cut the seams).
-   Production's plugin list must gain `chat_channels` in the same change (the plan's
-   operational notes). Move the 105 forum tests with the code.
+1. **Pages and blog**: read `docs/pages-blog-builder.md` (its decisions are filled in). The
+   first step is tests for the editors' save, publish and error paths and for the public pages'
+   draft/published rules, the safety net the forum got. Then what annoys the owner, then the
+   production-grade list.
+2. **Chat, phase 3** (`docs/chat-channels-plugin.md`): delete the dead code, split `ChatLive`
+   (3,100 lines), and add the page that redeems an invite code. Phase 4 (moving the tables) is
+   still the owner's call.
 3. `handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md` is half done: finish RaysSpaceSim's half
    (compile, verify, commit in that repo).
 4. The standing rules are in `BACON_WORLD.md` §6 and the owner's notes: build and test only in
@@ -201,6 +215,8 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-20 | **Direction: a reusable core, with games and commerce as plugins** (ADR 0001, removed from the tree on 2026-10-24 and still in git: `git show 95aba50^:docs/adr/0001-core-and-plugins.md`). Web Lobby becomes **Bacon World** (`bacon_world`). The store, Gems and payments become **Bacon Store** (`bacon_store`). The games platform becomes a plugin later. The core becomes the starting point for other stand-alone sites. | Owner's decision. A site that sells nothing or runs no games shouldn't carry the code for them. |
 | 2026-10-21 | **Web Lobby is renamed Bacon World** (`web_lobby` -> `bacon_world`), stored names included: the three `bacon_world_*` tables with their keys and indexes, the game row and the `plugin_states` row, by the plugin's own migrations. Plugins gain `previous_slugs/0`; old `/games/web_lobby/...` and `/admin/web_lobby/...` links answer 301. Ledger rows keep the slug they were written with. | ADR 0001, phase 1. A first-party game's name should say what it is; the redirect keeps old links and bookmarks working. |
 | 2026-10-25 | **Glass: menus are frosted, palette swatches are glass, the colour follows the player.** Popups (the navbar user menu, the taskbar's start, audio, calendar and notification panels) use `.glass-menu` (`assets/css/app.css`): a tinted body that is always 62-85% opaque, a stronger blur, a sheen, a light edge and a fine grain, instead of the player's 15% `--glass-bg`, which left big panels nearly clear. The profile palette uses `.glass-swatch` (and `.glass-picker`) so no colour is a flat disc. The personal glass colour sets `--glass-menu-*` and, when the player has chosen one, `--bwg-*`, which Bacon World's windows read (unset: the game's own look). `glass_theme.ts` (live changes) and the inline script in `layouts/root.html.heex` (page load) do the same sums: keep them in step. | Owner's request. Menus read as clear against the frosted bars, and the profile colour never reached the game. |
+| 2026-10-25 | **The forum is a plugin, `chat_channels`**, mounted at `/chat` (nav link "Chat"). Games that build per channel `require` it (RaysSpaceSim does); the store treats it as optional. A notification says what it came from (`source_kind`, `source_id`) and where it goes (`metadata.path`), so the hub knows nothing about channels; pending invitations are listed on the Chat page and counted by a badge on the nav link. Supersedes ADR 0001's "the core keeps the forum and chat channels". | Owner's decision (and answers to the plan's open questions). The core should be accounts, content and the plugin framework; anything a site might not want is a plugin. |
+| 2026-10-25 | **Pages and blog stay in the core**, are rebuilt to production grade (tests first), are written by admins, GMs and editors only, and keep the rows, columns and blocks model. | Owner's decision. |
 | 2026-10-23 | **The asset pipeline moved to `library/pipeline`** (out of the RaysSpaceSim repository; not a git repository), shared by every game; the v1 humans were deleted, their sources and the copies imported into Unreal. | Owner's decision. |
 | 2026-10-23 | **Asset rule (all games): ours, CC0, or licensed for commercial use, credited, with the source files never redistributed.** Licensed source files live in the gitignored shared library `library/` (one licence table per kind, e.g. `library/substance/LICENSES.md`); only baked outputs ship, credited on `/pages/credits`. | Owner's decision. Widens "ours or CC0" on purpose so curated libraries (Substance materials) can be used, without ever publishing files we may only use. |
 | 2026-10-21 | **Web pods wait for migrations.** An init container in `bacon8-web` runs `Bacon8.Release.await_migrations/0` and starts the app only when no migration is pending. | A deploy starts `db-init` and the web pods together, so new code could serve the old schema for a few seconds, or write rows a stored-name migration then has to merge (found during ADR 0001 phase 1). |
@@ -215,7 +231,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 ```
                  ┌──────────────────────────── Bacon8Web ──────────────────────────────┐
  browser ──────▶ │ Endpoint ─ UploadsGuard ─ Plug.Static ─ Session ─ Router            │
-                 │   LiveViews (pages, admin, store, forum, games)                     │
+                 │   LiveViews (pages, admin, and the plugins': store, chat, games)                     │
                  │   DesktopLive (global live_component on authed pages)               │
                  │   Channels (chat, presence)                                         │
  game client ──▶ │   /api/auth/*  /api/games/:slug/*  (JSON, Guardian bearer)          │
@@ -223,7 +239,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
                  └───────────────────────────────┬─────────────────────────────────────┘
                                                  │
                  ┌──────────────────────────── Bacon8 (contexts) ──────────────────────┐
-                 │ Accounts  Security  Content  Forum  Files  Scheduler  Settings      │
+                 │ Accounts  Security  Content  Files  Scheduler  Settings             │
                  │ Notifications  Email  Moderation/Audit  Desktop                     │
                  │ Games (platform core)   Drive   Entitlements   Plugins              │
                  └──────────┬──────────────────────────────────────┬───────────────────┘
@@ -288,7 +304,7 @@ k3s/                       kustomize base + overlays (dev, prod)
 config/runtime.exs         all deploy-time configuration via env vars
 ```
 
-**Not part of the hub:** any plugin folder other than `plugins/bacon_world` and `plugins/bacon_store` (gitignored; a
+**Not part of the hub:** any plugin folder other than `plugins/bacon_world`, `plugins/bacon_store` and `plugins/chat_channels` (gitignored; a
 private plugin is its own repository), and a game repository checked out at the root
 (`/RaysSpaceSim/`, gitignored). RaysSpaceSim's deploy and build scripts, k8s manifests,
 code map, mix task and admin pages moved into its private plugin on 2026-10-16.
@@ -699,8 +715,8 @@ section (now `/admin/rays_space_sim`), the launcher card (now its page
 and namespace secret, the `HOLOSIM_*` / `WORLD_*` settings (read by `RaysSpaceSim.Config`;
 the values still sit in the prod configmap), and the `holo_sims*` tables (now the plugin's
 baseline migration). The plugin owns the foreign keys
-from the hub's `instance_id` columns to `holo_sims`. Forum channels are Holo-sims' access
-lists; the plugin follows channel changes through `hub_event/1`.
+from the hub's `instance_id` columns to `holo_sims`. Chat channels are Holo-sims' access
+lists (the plugin `requires/0` `chat_channels`); the plugin follows channel changes through `hub_event/1`.
 
 The hub's games baseline (`20260809100000_games_baseline`) creates `instance_id` /
 `instance_location` with no foreign keys, so a fresh install without the plugin works; the
@@ -873,9 +889,11 @@ conn assign set by `PluginActive`.
 
 **Hub events.** `Bacon8.Plugins.notify/1` calls `hub_event/1` on every installed plugin,
 synchronously, in the caller's process; a plugin that raises is logged and skipped. Events
-so far, all from `Bacon8.Forum`: `{:channel_updated, new, old}`, `{:channel_deleted, id}`
-(before the channel's rows go, outside its transaction), `{:channel_member_removed,
-channel_id, user_id}` (kick or ban). Plugins must ignore events they don't know.
+so far: from Chat Channels, `{:channel_updated, new, old}`, `{:channel_deleted, id}`
+(before the channel's rows go, outside its transaction) and `{:channel_member_removed,
+channel_id, user_id}` (kick or ban); from the hub, `{:user_content_removed, user_id}` (an
+account was banned or deleted: remove what it wrote, inside the account's transaction).
+Plugins must ignore events they don't know.
 
 **Files and settings.** `Bacon8.Plugins.priv_dir/1` finds a plugin's `priv/` in a release
 or the source tree. A plugin reads its own environment variables at runtime; the hub's
@@ -1000,7 +1018,8 @@ Core apps come from `Bacon8.Desktop.core_apps/0`; plugins add theirs via
 
 ## 11. Chat channels and VIP channels
 
-Channels live in `Bacon8.Forum` (`channels`, `channel_members`, `messages`,
+Channels live in the `chat_channels` plugin (`plugins/chat_channels`, module `ChatChannels`;
+tables `chat_channels`, `channel_members`, `chat_messages`,
 `message_attachments`) with Phoenix Channels for real time and presence, plus an optional
 Redis bridge for cross-node delivery.
 
@@ -1052,15 +1071,13 @@ Ordered roughly by how much it hurts.
 - **RaysSpaceSim's half of the 2026-10-25 sound delivery is uncommitted** in its repository
   (a C++ audio subsystem, 352 sounds, FLAC sources; `handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`).
   It has not been compiled or verified by Claude Code.
-- **The forum is still in the core** (planned: `docs/chat-channels-plugin.md`), with dead code
-  to drop while moving it: `list_user_channels/1` (a stub that returns `[]`),
-  `list_messages_by_room/2` (broken), `create_message/1`, `list_public_user_channels/0`,
-  `list_channel_streams/2`. `list_channel_streams` and voice/video/stream channels have no
-  tests.
+- **Chat Channels still has leftovers** (`docs/chat-channels-plugin.md`, phases 3 and 4):
+  dead code to delete (`list_user_channels/1`, `list_messages_by_room/2`, `create_message/1`,
+  `list_public_user_channels/0`, `list_channel_streams/2`), `ChatLive` is 3,100 lines, invite
+  codes can be created but no page redeems one, voice/video/stream channels have no tests, and
+  the tables are still created by the core baseline migration (with `users.channel_allowance`
+  and `channel_order` on the user row). The store's own channel-pass tests need chat installed.
 - **Comments on the blog have no moderation UI**, and nothing calls `approve_comment`.
-- **The core plugin events carry forum structs** (`%Bacon8.Forum.Channel{}`); they change with
-  the extraction.
-
 - **RaysSpaceSim's settings still live in the hub's prod configmap** (`HOLOSIM_*`,
   `WORLD_*`, and `deploy-game.sh` writes `HOLOSIM_IMAGE` there), so a game deploy edits a
   hub file. Move them to a configmap the plugin's `k3s/` owns and have the hub deployment
