@@ -106,7 +106,7 @@ defmodule Bacon8Web.BlogLive do
   def handle_event("editor-change", params, socket) do
     if can_edit?(socket.assigns) and socket.assigns.editing do
       # Store the content (prefer JSON block format, fallback to HTML)
-      content = Map.get(params, "content") || Map.get(params, "html", "")
+      content = Bacon8Web.ContentEditing.content(params)
       {:noreply, assign(socket, pending_content: content)}
     else
       {:noreply, socket}
@@ -119,7 +119,7 @@ defmodule Bacon8Web.BlogLive do
       socket = assign(socket, saving: true)
       post = socket.assigns.post
       # Prefer JSON block format, fallback to HTML
-      content = Map.get(params, "content") || Map.get(params, "html", "")
+      content = Bacon8Web.ContentEditing.content(params)
       
       case Content.update_post(post, %{content: content}) do
         {:ok, updated_post} ->
@@ -182,66 +182,15 @@ defmodule Bacon8Web.BlogLive do
     {:noreply, socket}
   end
 
-  # Handle media uploads from block editor
-  def handle_event("block-media-upload", params, socket) do
+  # Media events from the block editor (one implementation for every editing screen)
+  def handle_event(event, params, socket) when event in ["block-media-upload", "block-media-remove", "block-image-upload"] do
     if can_edit?(socket.assigns) do
-      handle_media_upload(params, socket)
-    else
-      {:noreply, put_flash(socket, :error, "You don't have permission to upload.")}
-    end
-  end
-
-  # Handle media removal from block editor
-  def handle_event("block-media-remove", %{"blockId" => _block_id} = params, socket) do
-    if can_edit?(socket.assigns) do
-      handle_media_remove(params, socket)
+      context = Bacon8Web.ContentEditing.context(:post, socket.assigns.post)
+      {:noreply, Bacon8Web.ContentEditing.media(event, params, socket, context)}
     else
       {:noreply, socket}
     end
   end
-
-  # Legacy handler for older block-image-upload events
-  def handle_event("block-image-upload", params, socket) do
-    if can_edit?(socket.assigns) do
-      # Convert to new format and process
-      handle_media_upload(Map.put(params, "mediaType", "image"), socket)
-    else
-      {:noreply, socket}
-    end
-  end
-
-  defp handle_media_upload(%{"blockId" => block_id, "mediaType" => media_type} = params, socket) do
-    case Bacon8.Content.InlineMedia.store("blog/#{socket.assigns.post.id}", params) do
-      {:ok, %{url: url, filename: filename}} ->
-        {:noreply,
-         push_event(socket, "block-media-uploaded", %{
-           blockId: block_id,
-           url: url,
-           mediaType: media_type,
-           filename: filename,
-           mediaId: nil
-         })}
-
-      {:error, message} ->
-        {:noreply, push_event(socket, "block-media-error", %{blockId: block_id, error: message})}
-    end
-  end
-
-  defp handle_media_upload(_params, socket), do: {:noreply, socket}
-
-  # Only this post's own uploads can be removed (Bacon8.Content.InlineMedia)
-  defp handle_media_remove(%{"url" => url}, socket) when is_binary(url) do
-    Bacon8.Content.InlineMedia.remove("blog/#{socket.assigns.post.id}", url)
-    {:noreply, socket}
-  end
-
-  defp handle_media_remove(%{"itemId" => _item_id}, socket) do
-    # For gallery items, deletion is handled by the URL-based removal
-    # since we're not storing them in the database
-    {:noreply, socket}
-  end
-
-  defp handle_media_remove(_params, socket), do: {:noreply, socket}
 
   # Helper to get featured image URL - handles both Arc files and plain URLs
   defp get_featured_image_url(post, _version) do

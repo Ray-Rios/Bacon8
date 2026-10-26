@@ -18,6 +18,7 @@ defmodule Bacon8Web.AdminLive.Pages do
        page_title: "Pages",
        show_form: false,
        editing_page: nil,
+       new_draft_id: nil,
        form: to_form(Page.changeset(%Page{}, %{})),
        show_share_buttons: true,
        share_platforms: @default_platforms,
@@ -25,15 +26,26 @@ defmodule Bacon8Web.AdminLive.Pages do
      )}
   end
 
+  # A new page starts as a saved draft, so the editor has a record to autosave to and to attach
+  # uploads to (Bacon8.Content.create_draft/2).
   def handle_event("new_page", _params, socket) do
-    {:noreply, assign(socket, 
-      show_form: true, 
-      editing_page: nil, 
-      form: to_form(Page.changeset(%Page{}, %{})),
-      show_share_buttons: true,
-      share_platforms: @default_platforms,
-      share_buttons_colored: false
-    )}
+    case Content.create_draft(:page, socket.assigns.current_user) do
+      {:ok, page} ->
+        {:noreply,
+         assign(socket,
+           pages: Content.list_pages(),
+           show_form: true,
+           editing_page: page,
+           new_draft_id: page.id,
+           form: to_form(Page.changeset(page, %{})),
+           show_share_buttons: true,
+           share_platforms: @default_platforms,
+           share_buttons_colored: false
+         )}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Couldn't start a new page")}
+    end
   end
 
   def handle_event("edit_page", %{"id" => id}, socket) do
@@ -49,7 +61,27 @@ defmodule Bacon8Web.AdminLive.Pages do
   end
 
   def handle_event("cancel_form", _params, socket) do
-    {:noreply, assign(socket, show_form: false, editing_page: nil, form: to_form(Page.changeset(%Page{}, %{})))}
+    # A draft nobody wrote anything in goes away, so "New page" then "Cancel" leaves nothing behind
+    page = socket.assigns.editing_page
+
+    if page && page.id == socket.assigns.new_draft_id && Content.untouched_draft?(Content.get_page!(page.id)),
+      do: Content.delete_page(page)
+
+    {:noreply, assign(socket, pages: Content.list_pages(), show_form: false, editing_page: nil, form: to_form(Page.changeset(%Page{}, %{})))}
+  end
+
+  # The editor reports every change, and saves a draft's body now and then (ContentEditing.autosave/4);
+  # the form's own hidden field carries the body on Save and Publish.
+  def handle_event("editor-change", _params, socket), do: {:noreply, socket}
+
+  def handle_event("editor-autosave", params, socket) do
+    {:noreply, Bacon8Web.ContentEditing.autosave(socket, :page, :editing_page, params)}
+  end
+
+  # The block editor's media events (shared with the other editing screens)
+  def handle_event(event, params, socket) when event in ["block-media-upload", "block-media-remove", "block-image-upload"] do
+    context = Bacon8Web.ContentEditing.context(:page, socket.assigns.editing_page)
+    {:noreply, Bacon8Web.ContentEditing.media(event, params, socket, context)}
   end
 
   def handle_event("validate", %{"page" => params}, socket) do
@@ -78,7 +110,7 @@ defmodule Bacon8Web.AdminLive.Pages do
             {:noreply, assign(socket, form: to_form(ch)) |> put_flash(:error, "Failed to save page")}
         end
       page ->
-        case Content.update_page(page, params) do
+        case Content.update_page(page, Content.slug_for_save(:page, page, params)) do
           {:ok, updated_page} ->
             {:noreply,
              socket

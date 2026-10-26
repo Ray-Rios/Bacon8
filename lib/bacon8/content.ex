@@ -92,6 +92,40 @@ defmodule Bacon8.Content do
     |> Repo.insert()
   end
 
+  @doc """
+  Starts a new page or post as an empty draft titled "Untitled" with a free slug, so the editor
+  always has a record to autosave and attach uploads to. Returns `{:ok, record}`.
+  """
+  def create_draft(:page, user) do
+    create_page(%{title: "Untitled", slug: Bacon8.Content.Slugs.free(:page, "untitled"), author_id: user.id})
+  end
+
+  def create_draft(:post, user) do
+    create_post(user, %{title: "Untitled", slug: Bacon8.Content.Slugs.free(:post, "untitled")})
+  end
+
+  @doc """
+  When a draft still has the slug `create_draft/2` gave it ("untitled", "untitled-2"...) and the
+  form leaves it alone, the slug follows the title it was just given. Anything the editor typed
+  into the slug field, or a slug a published page already lives at, is never touched.
+  `params` has string keys; returns them, with a new "slug" when it applies.
+  """
+  def slug_for_save(kind, record, params) do
+    title = String.trim(to_string(params["title"] || ""))
+    current = record && record.slug
+
+    if is_binary(current) and Regex.match?(~r/^untitled(-\d+)?$/, current) and params["slug"] in [nil, "", current] and title != "" and
+         not record.is_published do
+      Map.put(params, "slug", Bacon8.Content.Slugs.free(kind, title))
+    else
+      params
+    end
+  end
+
+  @doc "True for a record still exactly as `create_draft/2` made it (nothing worth keeping)."
+  def untouched_draft?(%{title: "Untitled", content: content, is_published: false}), do: content in [nil, ""]
+  def untouched_draft?(_), do: false
+
   def update_page(%Page{} = page, attrs) do
     page
     |> Page.changeset(attrs)

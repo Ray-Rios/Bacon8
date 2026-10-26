@@ -21,7 +21,6 @@ defmodule Bacon8.Content.PluginPosts do
 
   alias Bacon8.{Content, Repo}
   alias Bacon8.Accounts.User
-  alias Bacon8.Content.Post
 
   def create(plugin_slug, attrs, opts \\ []) when is_binary(plugin_slug) and is_map(attrs) do
     title = attrs |> field(:title) |> to_string() |> String.trim()
@@ -31,7 +30,7 @@ defmodule Bacon8.Content.PluginPosts do
          {:ok, author} <- author(opts[:author]) do
       Content.create_post(author, %{
         title: title,
-        slug: free_slug(field(attrs, :slug) || title),
+        slug: Bacon8.Content.Slugs.free(:post, field(attrs, :slug) || title),
         content: body,
         excerpt: field(attrs, :excerpt),
         tags: Enum.uniq([plugin_slug | List.wrap(field(attrs, :tags))]),
@@ -93,25 +92,4 @@ defmodule Bacon8.Content.PluginPosts do
   defp esc(text), do: text |> to_string() |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
   defp id(prefix), do: prefix <> Base.encode16(:crypto.strong_rand_bytes(4), case: :lower)
-
-  # The slug the title would get, with -2, -3... added while another post has it.
-  defp free_slug(text) do
-    base =
-      text
-      |> to_string()
-      |> String.downcase()
-      |> String.replace(~r/[^a-z0-9\s]/, "")
-      |> String.replace(~r/\s+/, "-")
-      |> String.slice(0, 90)
-      |> String.trim("-")
-      |> case do
-        "" -> "post"
-        s -> s
-      end
-
-    Enum.find_value(1..1000, fn n ->
-      slug = if n == 1, do: base, else: "#{base}-#{n}"
-      if Repo.exists?(from p in Post, where: p.slug == ^slug), do: nil, else: slug
-    end)
-  end
 end

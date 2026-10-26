@@ -2,6 +2,7 @@ defmodule Bacon8Web.AdminBlogManagementTest do
   # /admin/blog-management: where posts are written, published and removed.
   use Bacon8.DataCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
   import Bacon8.LiveHelpers
@@ -54,7 +55,7 @@ defmodule Bacon8Web.AdminBlogManagementTest do
       t = title()
       html = save(view, %{"title" => t, "content" => "<p>words</p>"}, "draft")
 
-      assert html =~ "Draft saved"
+      assert html =~ "Draft updated"
       post = Repo.get_by!(Post, title: t) |> Repo.preload(:user)
       assert post.user.id == admin.id
       refute post.is_published
@@ -68,7 +69,7 @@ defmodule Bacon8Web.AdminBlogManagementTest do
       html = save(view, %{"title" => title(), "content" => "  "}, "publish")
       assert html =~ "Cannot publish: Post must have a title and content"
 
-      assert Repo.aggregate(Post, :count) == 0
+      assert Repo.aggregate(from(p in Post, where: p.is_published), :count) == 0
     end
 
     test "publishing stamps it", %{view: view} do

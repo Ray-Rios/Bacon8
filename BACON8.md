@@ -80,8 +80,9 @@ On 2026-10-25:
    `Bacon8.Permissions` maps roles to areas; pages mount with `{UserAuth, {:require_area, :content}}`;
    sidebar/navbar filter by area (`admin_access_test.exs` guards every other admin route). The block
    editor now has one docked sticky toolbar (many columns no longer squeeze it).
-2. **Pages and blog**: read `docs/pages-blog-builder.md`. Collapse the four editing surfaces into one builder
-   (the owner's biggest ask). Plugins and games may post to the blog: `Content.post_from_plugin/3` exists, and
+2. **Pages and blog**: read `docs/pages-blog-builder.md`. The four editing surfaces now share one engine
+   (`Bacon8Web.ContentEditing`, 2026-10-26; new pages/posts start as drafts; admin editors handle media and autosave).
+   Next: one UI (admin list+form vs edit-in-place), then the production-grade list. Plugins and games may post to the blog: `Content.post_from_plugin/3` exists, and
    no plugin calls it yet (RaysSpaceSim patch notes would). The editor's column squeeze is solved by the docked
    toolbar, so no column cap. The path-handling review is done (`69f6f43`).
 3. **Chat is finished** (2026-10-26): self-contained plugin, own tables and settings, dead code gone,

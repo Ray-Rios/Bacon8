@@ -1,6 +1,6 @@
 # Plan: the /pages and /blog builders
 
-Status: **the safety net is built (2026-10-25); the rebuild itself has not started.** The owner answered the first questions the same day (below).
+Status: **the safety net is built (2026-10-25); the rebuild is under way: the four screens share one editing engine (2026-10-26, "One builder" below).** The owner answered the first questions the same day (below).
 The owner's words: the core keeps the traditional `/pages` and `/blog`, "which need to be
 bolstered quite a bit as the build tool for both isn't production grade."
 
@@ -114,6 +114,29 @@ The editors and public pages:
    one block editor today but not one save path), keeping the block model.
 4. Fix what the owner listed, then add the production-grade items they pick, one at a time, each with
    tests and a deploy.
+
+## One builder (2026-10-26)
+
+The four screens now share **one implementation of the editor's events**, `Bacon8Web.ContentEditing`
+(`lib/bacon8_web/live/content_editing.ex`): media upload and removal (through `Content.InlineMedia`, per-record
+folders), the body the editor sends, and autosave for the admin screens. `PageLive` and `BlogLive` lost their
+copies of the media handlers.
+
+Found while merging: **the admin screens never handled the editor's events.** `/admin/pages` had no clause for
+`editor-change`, `editor-autosave` or the media events (the block editor pushes them as you type), and
+`/admin/blog-management` swallowed them in a catch-all, so **pictures and files dropped into the editor there
+silently went nowhere**. Both now handle them.
+
+To give an upload somewhere to live, **a new page or post is created as a saved draft the moment you press New**
+(`Content.create_draft/2`: "Untitled", a free slug). Cancelling a draft you started and never wrote in deletes it
+(`Content.untouched_draft?/1`, only the one started in that session). The slug follows the first real title
+(`Content.slug_for_save/3`), but never a slug someone typed or one a published page lives at.
+`Bacon8.Content.Slugs.free/2` is the shared "never collides" slug (plugin posts use it too). Autosave on the admin
+screens saves only unpublished records, so a live page changes when its editor presses Save or Publish.
+Tests: `test/bacon8_web/live/content_editing_test.exs`.
+
+**Still separate:** the admin screens' list-plus-form UI versus the public pages' edit-in-place (two UIs, one
+engine now); the blog's featured image, media picker and tags; the production-grade list below.
 
 ## Posts from plugins and games
 

@@ -54,7 +54,7 @@ defmodule Bacon8Web.AdminPagesTest do
       t = title()
       html = save(view, %{"title" => t, "content" => "<p>words</p>"}, "draft")
 
-      assert html =~ "Draft &#39;#{t}&#39; saved" or html =~ "saved"
+      assert html =~ "updated"
       page = Repo.get_by!(Page, title: t)
       refute page.is_published
       assert page.published_at == nil
@@ -74,7 +74,7 @@ defmodule Bacon8Web.AdminPagesTest do
       t = title()
       html = save(view, %{"title" => t, "content" => ""}, "publish")
 
-      assert html =~ "Failed to save page"
+      assert html =~ "Failed to update page"
       assert Repo.get_by(Page, title: t) == nil
     end
 
@@ -84,7 +84,7 @@ defmodule Bacon8Web.AdminPagesTest do
 
       html = save(view, %{"title" => title(), "slug" => slug, "content" => "<p>x</p>"}, "draft")
 
-      assert html =~ "Failed to save page"
+      assert html =~ "Failed to update page"
       assert Repo.aggregate(from(p in Page, where: p.slug == ^slug), :count) == 1
     end
 

@@ -22,6 +22,7 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
        page_title: "Blog Management",
        show_form: false,
        editing_post: nil,
+       new_draft_id: nil,
        uploaded_media: [],
        show_media_picker: false,
        form: to_form(Post.changeset(%Post{}, %{})),
@@ -35,16 +36,25 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
      )}
   end
 
+  # A new post starts as a saved draft, so the editor has a record to autosave to and to attach
+  # uploads to (Bacon8.Content.create_draft/2).
   def handle_event("new_post", _params, socket) do
-    changeset = Post.changeset(%Post{}, %{})
-    
-    {:noreply, assign(socket,
-      show_form: true,
-      editing_post: nil,
-      form: to_form(changeset),
-      show_share_buttons: true,
-      share_platforms: @default_platforms
-    )}
+    case Content.create_draft(:post, socket.assigns.current_user) do
+      {:ok, post} ->
+        {:noreply,
+         assign(socket,
+           posts: Content.list_posts(),
+           show_form: true,
+           editing_post: post,
+           new_draft_id: post.id,
+           form: to_form(Post.changeset(post, %{})),
+           show_share_buttons: true,
+           share_platforms: @default_platforms
+         )}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Couldn't start a new post")}
+    end
   end
 
   def handle_event("edit_post", %{"id" => id}, socket) do
@@ -61,11 +71,32 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
   end
 
   def handle_event("cancel_form", _params, socket) do
+    # A draft nobody wrote anything in goes away, so "New post" then "Cancel" leaves nothing behind
+    post = socket.assigns.editing_post
+
+    if post && post.id == socket.assigns.new_draft_id && Content.untouched_draft?(Content.get_post!(post.id)),
+      do: Content.delete_post(post)
+
     {:noreply, assign(socket,
+      posts: Content.list_posts(),
       show_form: false,
       editing_post: nil,
       form: to_form(Post.changeset(%Post{}, %{}))
     )}
+  end
+
+  # The editor reports every change, and saves a draft's body now and then (ContentEditing.autosave/4);
+  # the form's own hidden field carries the body on Save and Publish.
+  def handle_event("editor-change", _params, socket), do: {:noreply, socket}
+
+  def handle_event("editor-autosave", params, socket) do
+    {:noreply, Bacon8Web.ContentEditing.autosave(socket, :post, :editing_post, params)}
+  end
+
+  # The block editor's media events (shared with the other editing screens)
+  def handle_event(event, params, socket) when event in ["block-media-upload", "block-media-remove", "block-image-upload"] do
+    context = Bacon8Web.ContentEditing.context(:post, socket.assigns.editing_post)
+    {:noreply, Bacon8Web.ContentEditing.media(event, params, socket, context)}
   end
 
   def handle_event("validate", %{"post" => post_params}, socket) do
@@ -179,7 +210,7 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
         
         post ->
           # Update existing post
-          case Content.update_post(post, processed_params) do
+          case Content.update_post(post, Content.slug_for_save(:post, post, processed_params)) do
             {:ok, _post} ->
               posts = Content.list_posts()
               success_msg = if should_publish, do: "Post updated and published successfully!", else: "Draft updated successfully!"
