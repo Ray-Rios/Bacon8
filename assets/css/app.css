@@ -2,6 +2,7 @@
 @import "./block-editor.css";
 @import "./game_card.css";
 @import "./fire_gem.css";
+@import "./sizzle_bacon.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

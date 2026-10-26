@@ -46,11 +46,12 @@ defmodule Bacon8Web.Components.Gem do
     """
   end
 
-  @doc ~S'An icon string, or the gem for `"gem"`.'
+  @doc ~S'An icon string, the gem for `"gem"`, or the bacon (the site icon) for `"bacon"`.'
   attr :icon, :string, required: true
   attr :size, :integer, default: 18
 
   def icon(%{icon: "gem"} = assigns), do: ~H"<.gem size={@size} />"
+  def icon(%{icon: "bacon"} = assigns), do: ~H"<Bacon8Web.Components.Bacon.bacon size={@size} />"
   def icon(assigns), do: ~H"{@icon}"
 
   @doc "1500 -> \"1,500\"."

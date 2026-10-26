@@ -29,8 +29,9 @@ defmodule Bacon8Web.Components.Taskbar do
           <button 
             phx-click="toggle_start_menu"
             phx-target={@target}
+            aria-label="Start"
             class="start-button p-1 hover:glass-dark hover:bg-white/20 rounded transition-colors duration-200">
-            <img src="/images/logo-mark.svg" alt="Start" class="w-6 h-6 object-contain rounded-md" />
+            <Bacon8Web.Components.Bacon.bacon size={26} />
           </button>
           
           <!-- Start Menu -->

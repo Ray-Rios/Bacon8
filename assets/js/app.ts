@@ -41,6 +41,8 @@ import { AudioHook } from "./audio";
 import { GameCard } from "./game_card";
 // <b8-gem>: the Bacon8 Gem (the currency and shop icon), a custom element.
 import "./fire_gem";
+// <b8-bacon>: two strips of bacon, the site icon (Start button, the navbar's Games link).
+import "./sizzle_bacon";
 // LiveView hooks from installed plugins (generated before each build; BACON8.md §9).
 import { PluginHooks } from "./plugins.generated";
 

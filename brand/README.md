@@ -7,7 +7,12 @@ script, commit what it writes.
 | Master | Size | Used for |
 |---|---|---|
 | `bacon8-mark.png` | 1024x1024 PNG, square, transparent corners allowed | favicon.ico, app icons, web manifest icons |
-| `bacon8-mark.svg` | square SVG, no external fonts (outlines only) | browser tab icon (modern browsers), desktop Start button |
+| `bacon8-mark.svg` | square SVG, no external fonts (outlines only, or an embedded PNG) | browser tab icon (modern browsers) |
+
+Since 2026-10-26 the mark is **two strips of bacon** (BACON8.md, decisions log). Both masters are written
+by `library/pipeline/scripts/bacon_sheets.py` from the Blender render (`bacon_strips.py`), along with the
+animated icon's sprite sheets; the desktop's Start button and the navbar's Games link use the animated
+`<b8-bacon>`, not these files. To change the bacon, re-render and rerun `bacon_sheets.py`, then this build.
 | `og-image.png` | 1200x630 PNG | preview card when a link to the site is shared |
 | `brand.json` | | site name, one-line description, colours |
 | `../RaysSpaceSim/Brand/game-icon.png` | 1024x1024 PNG | game exe icon, launcher icon (in the game repository) |

@@ -31,7 +31,7 @@ defmodule Bacon8Web.Components.Navigation do
                 <span :if={Map.get(item, :badge)} class="ml-1 rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white"><%= item.badge %></span>
               </.link>
               <.link navigate={~p"/games"} class="text-white hover:text-blue-400 transition-colors duration-300 text-sm">
-                🎮 Games
+                <Bacon8Web.Components.Bacon.bacon size={20} /> Games
               </.link>
               <.link navigate={~p"/blog"} class="text-white hover:text-blue-400 transition-colors duration-300 text-sm">
                 🚬 Blog

@@ -1,0 +1,11 @@
+/* <b8-bacon> (assets/js/sizzle_bacon.ts): its box, and a still picture until the script runs. */
+b8-bacon {
+  display: inline-block;
+  width: var(--bacon-size, 1.25em);
+  height: var(--bacon-size, 1.25em);
+  vertical-align: -0.22em;
+  flex: none;
+}
+b8-bacon:not(:defined) {
+  background: url(/images/bacon/bacon.webp) center / contain no-repeat;
+}
