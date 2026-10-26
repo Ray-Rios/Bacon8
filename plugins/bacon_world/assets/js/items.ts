@@ -139,11 +139,12 @@ export function describe(id: string): string[] {
  *    axe's bit faced backward). Double-edged and round heads (swords, mace, morning star,
  *    club) look the same either way. The two-handed swings were refitted to +Z, so the
  *    two-handers need none. Add any new one-hander here when it joins the catalogue.
- *  - `off`: **two-handers only**: where the left hand grips, metres along the haft (+Y,
- *    toward the head) from the right hand's grip. human-factory.ts `twoHandGrip` puts the
- *    left hand there every frame (2026-10-24: taking it from the clips put the male's left
- *    hand off the end of the axe and at his hip). Every new two-hander needs one: keep it on
- *    the haft (the file's extents, less `y`).
+ *  - `off`: **two-handers only, a fallback**: where the left hand grips, metres along the haft
+ *    (+Y, toward the head) from the right hand's grip, used only when a clip's left hand isn't
+ *    on the haft. human-factory.ts `twoHandGrip` otherwise keeps the clip's own spacing
+ *    (2026-10-25: forcing these values every frame put the male's left hand on the wrong side
+ *    of the right on the axe, maul and greatsword, and out of reach on the spear and halberd).
+ *    Keep one on every new two-hander, on the haft (the file's extents, less `y`).
  */
 export const HOLD: Record<string, { y?: number; roll?: number; off?: number }> = {
   // haft -0.20..0.70 from the hand, head beyond: left hand a third of the way up

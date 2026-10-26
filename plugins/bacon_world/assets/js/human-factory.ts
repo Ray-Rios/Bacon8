@@ -408,6 +408,9 @@ export class HumanInstance {
   private riding = false;
   private rideW = 0;
   private gripW = 0; // the two-handed off-hand grip (twoHandGrip), eased in and out
+  // where this frame's clip put the left grip along the haft, before any correction moved
+  // the arms (readClipGrip); twoHandGrip puts the hand back there
+  private clipGrip: { t: number; miss: number } | null = null;
   private touched = new Set<THREE.Object3D>();
   // posture.arm_out {<what the arm does>: [upper arm, forearm, keep hand?]}: degrees out from
   // the body, per arm, eased toward the entry for what it is doing (armSets: 'free', a gear
@@ -733,6 +736,7 @@ export class HumanInstance {
    */
   postAnimate(dt: number, free: { l: boolean; r: boolean } = { l: true, r: true }, armSets?: { l: string; r: string; two?: boolean }) {
     this.touched.clear();
+    this.clipGrip = armSets?.two ? this.readClipGrip() : null;
     if (this.posture) {
       const pelvis = this.bones.get('pelvis')!;
       this.fromAnimated(pelvis);
@@ -806,10 +810,36 @@ export class HumanInstance {
    * library's mannequin; each body's own proportions (the male's longer clavicles and arms)
    * and its posture put them apart (2026-10-24: the male's spear, maul and staff all missed
    * his left hand). A two-bone IK moves the left wrist so the grip (weapon_l) lands on the
-   * line of the main hand's weapon (weapon_r's +Y) at the weapon's own off-hand grip
-   * (items.ts HOLD.off; the clip's spacing for a weapon without one), then turns the hand so the grip runs along the haft. Blended
-   * in and out by `w`.
+   * line of the main hand's weapon (weapon_r's +Y) where the clip itself had it along the haft
+   * (readClipGrip, measured before the corrections; 2026-10-25), or at the weapon's HOLD.off
+   * when the clip's left hand isn't on the haft, then turns the hand so the grip runs along
+   * the haft. Blended in and out by `w`.
    */
+  /**
+   * The clip's own two-handed grip: how far along the haft (weapon_r's +Y, scene units) its
+   * left grip sits from the right, and how far off the haft line. Read from the animated pose,
+   * before the posture, shoulder and arm corrections move the arms apart (2026-10-25: the
+   * male's clips hold every two-hander with the left grip within 1 mm of the haft; the
+   * corrections then put it 10-20 cm off, and a fixed HOLD.off put it on the wrong side of
+   * the right hand or out of reach).
+   */
+  private readClipGrip(): { t: number; miss: number } | null {
+    const wl = this.bones.get('weapon_l'), wr = this.bones.get('weapon_r');
+    if (!wl || !wr) return null;
+    // the arms and everything above them as the clip left them (fromAnimated also marks them,
+    // so the corrections below start from the same values)
+    for (const b of [wl, wr]) {
+      for (let p: THREE.Object3D | null = b.parent; p && p !== this.root; p = p.parent) if ((p as any).isBone) this.fromAnimated(p);
+    }
+    wl.updateWorldMatrix(true, false);
+    wr.updateWorldMatrix(true, false);
+    const O = new THREE.Vector3().setFromMatrixPosition(wr.matrixWorld);
+    const D = new THREE.Vector3().setFromMatrixColumn(wr.matrixWorld, 1).normalize();
+    const rel = new THREE.Vector3().setFromMatrixPosition(wl.matrixWorld).sub(O);
+    const t = rel.dot(D);
+    return { t, miss: rel.addScaledVector(D, -t).length() };
+  }
+
   private twoHandGrip(w: number) {
     const ua = this.bones.get('upperarm_l'), la = this.bones.get('lowerarm_l'), hand = this.bones.get('hand_l');
     const wl = this.bones.get('weapon_l'), wr = this.bones.get('weapon_r');
@@ -833,8 +863,11 @@ export class HumanInstance {
     // far from the main hand as the clip had the hands apart
     const perMetre = _w1.setFromMatrixColumn(wr.matrixWorld, 1).length();
     const off = wr.userData.b8OffGrip;
+    const clip = this.clipGrip;
     let t: number;
-    if (typeof off === 'number') t = off * perMetre;
+    // the clip's spacing when its left hand is on the haft; the weapon's HOLD.off otherwise
+    if (clip && clip.miss < 0.08 * perMetre) t = clip.t;
+    else if (typeof off === 'number') t = off * perMetre;
     else {
       const rel = _w1.subVectors(G, O);
       t = (rel.dot(D) < 0 ? -1 : 1) * Math.min(Math.max(rel.length(), 0.42 * l2), 2.4 * l2);

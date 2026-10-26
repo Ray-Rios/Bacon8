@@ -73,6 +73,21 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
+**Delivered 2026-10-25 (c), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-25c.md`): **two-handed grips,
+fourth time, found by measuring instead of tuning.** The owner: the male "STILL does not hold ANY 2 handed
+weapon correctly". Rendered in the harness and measured: **the male's clips already hold every two-hander
+with the left grip within 1 mm of the haft.** What broke it was `twoHandGrip` itself: after the posture
+and shoulder corrections moved the arms, it forced the left hand to the fixed `HOLD.off`, which on the
+axe, maul and greatsword is on the wrong side of the right hand (+0.32 m where the clip has -0.16 m: the
+arms crossed, the left reaching past the right) and on the spear and halberd beyond his reach (0.45 m
+asked, 0.37 m reached: the left arm locked straight across the chest). Now `readClipGrip` measures where
+the clip puts the left grip along the haft before any correction, and the IK puts it back there;
+`HOLD.off` is only the fallback for a clip whose left hand isn't on the haft (more than 8 cm off).
+Checked on both bodies, all six two-handers, idle and every swing: the left grip stays within about
+1 cm of the haft at the clip's spacing. 72 JS tests pass.
+**Lesson:** the earlier rounds checked "is the hand on the haft line" and passed; nobody checked *where*
+on the haft. Check spacing and both arms, from three sides, before calling a grip fixed.
+
 **Delivered 2026-10-25, uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`): **the sound pass.**
 The owner: *"multiple ambient sound tracks ... a wide range of sound effects ... sound immersion
 needs to be world-class, but not overdone, loud or jarring."* Placed sound (pan, distance,
