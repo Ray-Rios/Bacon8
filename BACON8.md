@@ -1106,8 +1106,8 @@ Ordered roughly by how much it hurts.
 - **RaysSpaceSim's half of the 2026-10-25 sound delivery is uncommitted** in its repository
   (a C++ audio subsystem, 352 sounds, FLAC sources; `handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`).
   It has not been compiled or verified by Claude Code.
-- **Chat Channels still has leftovers** (`docs/chat-channels-plugin.md`): `ChatLive` is still ~2,750 lines
-  (its `render/1` holds the sidebar, composer and dialogs) and voice/video/stream channels have no tests.
+- **Chat Channels still has leftovers** (`docs/chat-channels-plugin.md`): `ChatLive` is still ~2,400 lines
+  (its `render/1` still holds the channel header, pinned messages and the composer forms).
   The store's own channel-pass tests need chat installed.
 - **Comments on the blog have no moderation UI**, and nothing calls `approve_comment`.
 - **RaysSpaceSim's settings still live in the hub's prod configmap** (`HOLOSIM_*`,

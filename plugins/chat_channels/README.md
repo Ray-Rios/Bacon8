@@ -58,8 +58,8 @@ agrees (rows saved before 2026-10-25 may hold anything; until then the create fo
 
 ## Known gaps
 
-- `ChatLive` is still ~2,750 lines (the message and emoji components moved to `ChatComponents`; the sidebar,
-  composer and member/invite dialogs are still inside `render/1`).
+- `ChatLive` is ~2,400 lines: the message, emoji, sidebar and dialog components are in `ChatComponents`; the
+  channel header, pinned messages and the edit/reply/composer forms are still inside `render/1`.
 - Voice, video and stream channels exist but have no tests.
 
 ## Turning it off

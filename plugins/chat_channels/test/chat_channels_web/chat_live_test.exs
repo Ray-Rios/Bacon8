@@ -121,4 +121,75 @@ defmodule ChatChannelsWeb.ChatLiveTest do
     view |> element("#allow-invites input") |> render_click()
     assert ChatChannels.allow_invites?(me.id)
   end
+
+  describe "the dialogs" do
+    setup do
+      owner = verified()
+      {:ok, club} = ChatChannels.create_user_channel(owner, %{"name" => "club-#{System.unique_integer([:positive])}", "is_private" => "true"})
+      friend = verified()
+      member_fixture(club, friend)
+      %{owner: owner, club: club, friend: friend}
+    end
+
+    test "the members dialog lists the members, for the owner", %{owner: owner, club: club, friend: friend} do
+      {:ok, view, html} = live(signed_in(owner), "/chat/#{club.id}")
+      refute html =~ friend.name
+
+      html = render_hook(view, "open_members_modal", %{"channel_id" => club.id})
+      assert html =~ friend.name
+      assert html =~ owner.name
+
+      html = render_hook(view, "hide_members_modal", %{})
+      refute html =~ friend.name
+    end
+
+    test "the invite dialog offers a person and a code, and creating a code reports it", %{owner: owner, club: club} do
+      {:ok, view, _} = live(signed_in(owner), "/chat/#{club.id}")
+
+      html = render_hook(view, "show_invite_modal", %{})
+      assert html =~ "Invite a specific user"
+      assert html =~ "Create invite code"
+
+      html = render_hook(view, "create_channel_invite", %{"max_uses" => "3", "expires_at" => ""})
+      assert html =~ "Invite code: "
+      assert %{max_uses: 3} = Bacon8.Repo.get_by!(ChatChannels.ChannelInvite, channel_id: club.id, max_uses: 3)
+
+      html = render_hook(view, "hide_invite_modal", %{})
+      refute html =~ "Create invite code"
+    end
+
+    test "the create-channel dialog opens and closes", %{owner: owner} do
+      {:ok, view, _} = live(signed_in(owner), "/chat")
+
+      assert render_hook(view, "show_create_user_channel", %{}) =~ "Create Private Channel"
+      refute render_hook(view, "hide_create_channel", %{}) =~ "Create Private Channel"
+    end
+  end
+
+  describe "streams" do
+    setup do
+      streamer = verified()
+      channel = channel_fixture(%{name: "live-#{System.unique_integer([:positive])}", channel_type: "video"})
+      %{streamer: streamer, channel: channel}
+    end
+
+    test "starting and ending a stream from the page", %{streamer: streamer, channel: channel} do
+      {:ok, view, _} = live(signed_in(streamer), "/chat/#{channel.id}")
+
+      render_hook(view, "start_stream", %{"type" => "video"})
+      session = ChatChannels.get_active_stream(channel.id)
+      assert session.streamer_id == streamer.id
+      assert :sys.get_state(view.pid).socket.assigns.active_stream.id == session.id
+
+      render_hook(view, "end_stream", %{"session_id" => session.id})
+      assert ChatChannels.get_active_stream(channel.id) == nil
+      assert :sys.get_state(view.pid).socket.assigns.active_stream == nil
+    end
+
+    test "a stream type the schema doesn't know is refused with a message", %{streamer: streamer, channel: channel} do
+      {:ok, view, _} = live(signed_in(streamer), "/chat/#{channel.id}")
+      assert render_hook(view, "start_stream", %{"type" => "smell"}) =~ "Failed to start stream"
+      assert ChatChannels.get_active_stream(channel.id) == nil
+    end
+  end
 end

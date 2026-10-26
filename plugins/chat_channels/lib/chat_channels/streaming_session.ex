@@ -29,7 +29,7 @@ defmodule ChatChannels.StreamingSession do
 
   defp maybe_set_started_at(changeset) do
     if is_nil(get_field(changeset, :started_at)) do
-      put_change(changeset, :started_at, DateTime.utc_now())
+      put_change(changeset, :started_at, DateTime.truncate(DateTime.utc_now(), :second))
     else
       changeset
     end

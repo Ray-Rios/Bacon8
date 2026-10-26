@@ -1395,7 +1395,7 @@ defmodule ChatChannels do
       nil -> {:error, :not_found}
       session ->
         session
-        |> StreamingSession.changeset(%{is_active: false, ended_at: DateTime.utc_now()})
+        |> StreamingSession.changeset(%{is_active: false, ended_at: DateTime.truncate(DateTime.utc_now(), :second)})
         |> Repo.update()
         |> case do
           {:ok, updated_session} ->
