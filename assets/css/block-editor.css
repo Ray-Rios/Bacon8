@@ -501,6 +501,24 @@
   @apply mt-2;
 }
 
+.image-alt {
+  @apply mt-1 flex items-center gap-3 text-sm;
+}
+
+.alt-input {
+  @apply flex-1 bg-transparent border-0 border-b border-gray-700 text-gray-300 text-sm;
+  @apply placeholder-gray-600 focus:outline-none focus:ring-0 focus:border-cyan-500;
+}
+
+/* An image with no alt text and not marked decorative is flagged until it has one. */
+.image-alt.missing-alt .alt-input {
+  @apply border-amber-500;
+}
+
+.alt-decorative {
+  @apply flex items-center gap-1 text-gray-400 whitespace-nowrap;
+}
+
 .caption-input {
   @apply w-full bg-transparent border-0 text-gray-400 text-sm text-center;
   @apply placeholder-gray-600 focus:outline-none focus:ring-0;

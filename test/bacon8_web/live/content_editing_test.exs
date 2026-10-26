@@ -213,4 +213,29 @@ defmodule Bacon8Web.ContentEditingTest do
       assert Process.alive?(view.pid)
     end
   end
+
+  describe "alt text" do
+    @img ~s({"rows":[{"columns":[{"blocks":[{"type":"image","content":"/a.png"},{"type":"image","content":"/b.png","settings":{"alt":"A ship"}}]}]}]})
+
+    test "the page list flags pictures without alt text, and a clean page isn't flagged" do
+      {:ok, _} = Content.create_page(%{title: "Needs alt", slug: "needs-alt-#{System.unique_integer([:positive])}", content: @img})
+      {:ok, _} = Content.create_page(%{title: "Has alt", slug: "has-alt-#{System.unique_integer([:positive])}", content: "<p>text only</p>"})
+
+      {:ok, _view, html} = live(signed_in(person("admin")), "/admin/pages")
+      assert html =~ "1 image without alt text"
+      assert length(Regex.scan(~r/alt-warning/, html)) == 1
+    end
+
+    test "the post list flags them too" do
+      {:ok, _} = Content.create_post(person("admin"), %{title: "Pic post", content: @img})
+      {:ok, _view, html} = live(signed_in(person("admin")), "/admin/blog-management")
+      assert html =~ "1 image without alt text"
+    end
+
+    test "a published page renders the alt text it was given" do
+      {:ok, page} = Content.create_page(%{title: "Shown", slug: "shown-#{System.unique_integer([:positive])}", content: @img, is_published: true})
+      {:ok, _view, html} = live(build_conn(), "/pages/#{page.slug}")
+      assert html =~ ~s(alt="A ship")
+    end
+  end
 end

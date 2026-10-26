@@ -567,6 +567,10 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
                                        end]}>
                             <%= if post.is_published, do: "Published", else: "Draft" %>
                           </span>
+                          <% missing_alt = Bacon8.Content.Audit.images_missing_alt(post.content) %>
+                          <span :if={missing_alt > 0} class="alt-warning px-2 py-1 text-xs rounded-full bg-amber-600 text-white" title="Open the post and describe these pictures in the alt text field under each">
+                            ⚠ <%= missing_alt %> <%= if missing_alt == 1, do: "image", else: "images" %> without alt text
+                          </span>
                         </div>
                         
                         <div class="text-sm text-gray-400 mb-2">

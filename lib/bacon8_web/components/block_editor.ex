@@ -206,7 +206,8 @@ defmodule Bacon8Web.Components.BlockEditor do
   defp render_block(%{"type" => "image", "content" => url, "settings" => settings}) do
     alt = settings["alt"] || ""
     caption = settings["caption"] || ""
-    ~s(<figure><img src="#{escape_html(url || "")}" alt="#{escape_html(alt)}" loading="lazy"><figcaption>#{escape_html(caption)}</figcaption></figure>)
+    figcaption = if caption == "", do: "", else: "<figcaption>#{escape_html(caption)}</figcaption>"
+    ~s(<figure><img src="#{escape_html(url || "")}" alt="#{escape_html(alt)}" loading="lazy">#{figcaption}</figure>)
   end
   defp render_block(%{"type" => "image", "content" => url}) do
     ~s(<figure><img src="#{escape_html(url || "")}" alt="" loading="lazy"></figure>)

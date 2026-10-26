@@ -395,9 +395,13 @@ const BlockEditorHook = {
         return `
           <div class="image-block">
             ${block.content ? `
-              <img src="${block.content}" alt="${block.settings?.alt || ''}" class="block-image">
+              <img src="${this.escapeHtml(block.content)}" alt="${this.escapeHtml(block.settings?.alt || '')}" class="block-image">
               <div class="image-caption">
-                <input type="text" placeholder="Add caption..." value="${block.settings?.caption || ''}" data-block-id="${block.id}" class="caption-input">
+                <input type="text" placeholder="Add caption..." value="${this.escapeHtml(block.settings?.caption || '')}" data-block-id="${block.id}" class="caption-input">
+              </div>
+              <div class="image-alt${block.settings?.alt || block.settings?.decorative ? '' : ' missing-alt'}">
+                <input type="text" placeholder="Alt text: describe the image for people who can't see it" value="${this.escapeHtml(block.settings?.alt || '')}" data-block-id="${block.id}" class="alt-input"${block.settings?.decorative ? ' disabled' : ''}>
+                <label class="alt-decorative"><input type="checkbox" class="alt-decorative-input" data-block-id="${block.id}"${block.settings?.decorative ? ' checked' : ''}> Decorative</label>
               </div>
             ` : `
               <div class="image-upload-area" data-block-id="${block.id}">
@@ -1161,6 +1165,9 @@ const BlockEditorHook = {
         this.updateBlockContent(blockId, 'callout', target.value);
       } else if (target.classList.contains('caption-input')) {
         this.updateBlockSettings(blockId, { caption: target.value });
+      } else if (target.classList.contains('alt-input')) {
+        this.updateBlockSettings(blockId, { alt: target.value });
+        target.closest('.image-alt')?.classList.toggle('missing-alt', target.value.trim() === '');
       } else if (target.classList.contains('quote-author')) {
         this.updateBlockSettings(blockId, { author: target.value });
       } else if (target.classList.contains('html-textarea')) {
@@ -1195,6 +1202,14 @@ const BlockEditorHook = {
         this.render();
       } else if (target.classList.contains('api-method')) {
         this.updateBlockSettings(blockId, { method: target.value });
+      } else if (target.classList.contains('alt-decorative-input')) {
+        // A decorative image has empty alt text on purpose; the field is switched off, not flagged.
+        const decorative = (target as unknown as HTMLInputElement).checked;
+        this.updateBlockSettings(blockId, { decorative });
+        const box = target.closest('.image-alt');
+        const field = box?.querySelector('.alt-input') as HTMLInputElement | null;
+        if (field) field.disabled = decorative;
+        box?.classList.toggle('missing-alt', !decorative && !(field?.value || '').trim());
       }
       
       this.scheduleAutosave();
@@ -2527,9 +2542,9 @@ const BlockEditorHook = {
         return `<h${level}>${block.content || ''}</h${level}>`;
       
       case 'image':
-        const alt = block.settings?.alt || '';
+        const alt = block.settings?.decorative ? '' : (block.settings?.alt || '');
         const caption = block.settings?.caption || '';
-        return `<figure><img src="${block.content}" alt="${alt}"><figcaption>${caption}</figcaption></figure>`;
+        return `<figure><img src="${this.escapeHtml(block.content)}" alt="${this.escapeHtml(alt)}">${caption ? `<figcaption>${this.escapeHtml(caption)}</figcaption>` : ''}</figure>`;
       
       case 'gallery':
         const items = block.media || [];

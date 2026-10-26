@@ -285,6 +285,10 @@ defmodule Bacon8Web.AdminLive.Pages do
                             <span class={["px-2 py-1 text-xs rounded-full", if(page.is_published, do: "bg-green-600 text-white", else: "bg-gray-600 text-gray-300")]}>
                               <%= if page.is_published, do: "✓ Published", else: "📝 Draft" %>
                             </span>
+                            <% missing_alt = Bacon8.Content.Audit.images_missing_alt(page.content) %>
+                            <span :if={missing_alt > 0} class="alt-warning px-2 py-1 text-xs rounded-full bg-amber-600 text-white" title="Open the page and describe these pictures in the alt text field under each">
+                              ⚠ <%= missing_alt %> <%= if missing_alt == 1, do: "image", else: "images" %> without alt text
+                            </span>
                             <%= if page.template_type != "default" do %>
                               <span class="px-2 py-1 text-xs rounded-full bg-purple-600 text-white">
                                 <%= String.capitalize(page.template_type) %>
