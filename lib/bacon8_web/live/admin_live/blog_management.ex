@@ -5,6 +5,7 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
   alias Bacon8.Content.Media
   alias Bacon8Web.Components.AdminSidebar
   alias Bacon8Web.Components.BlockEditor
+  alias Bacon8Web.Components.ContentExtras
   alias Bacon8Web.Components.SocialShare
 
   on_mount {Bacon8Web.UserAuth, {:require_area, :content}}
@@ -23,6 +24,8 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
        show_form: false,
        editing_post: nil,
        new_draft_id: nil,
+       revisions: [],
+       editor_key: 0,
        uploaded_media: [],
        show_media_picker: false,
        form: to_form(Post.changeset(%Post{}, %{})),
@@ -47,6 +50,7 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
            show_form: true,
            editing_post: post,
            new_draft_id: post.id,
+           revisions: [],
            form: to_form(Post.changeset(post, %{})),
            show_share_buttons: true,
            share_platforms: @default_platforms
@@ -64,10 +68,32 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
     {:noreply, assign(socket,
       show_form: true,
       editing_post: post,
+      revisions: Bacon8.Content.Revisions.list(:post, post.id),
       form: to_form(changeset),
       show_share_buttons: Map.get(post, :show_share_buttons, true),
       share_platforms: Map.get(post, :share_platforms) || @default_platforms
     )}
+  end
+
+  # Puts an earlier version back; the editor is rebuilt (a new id) so it shows the restored body
+  def handle_event("restore_revision", %{"id" => id}, socket) do
+    post = socket.assigns.editing_post
+
+    case post && Bacon8.Content.Revisions.restore(post, id, socket.assigns.current_user.id) do
+      {:ok, restored} ->
+        {:noreply,
+         socket
+         |> assign(
+           editing_post: restored,
+           form: to_form(Post.changeset(restored, %{})),
+           revisions: Bacon8.Content.Revisions.list(:post, restored.id),
+           editor_key: socket.assigns.editor_key + 1
+         )
+         |> put_flash(:info, "Earlier version restored")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That version is no longer there")}
+    end
   end
 
   def handle_event("cancel_form", _params, socket) do
@@ -443,7 +469,7 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
                   </div>
                   
                   <BlockEditor.block_editor
-                    id="blog-post-editor"
+                    id={"blog-post-editor-#{@editor_key}"}
                     value={Phoenix.HTML.Form.input_value(@form, :content)}
                     field={@form[:content]}
                     placeholder="Build your blog post content..."
@@ -510,6 +536,9 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
                     on_platform_toggle="toggle_share_platform"
                   />
                 </div>
+
+                <ContentExtras.schedule_input name="post[scheduled_at]" value={@form[:scheduled_at].value} />
+                <ContentExtras.history revisions={@revisions} />
 
                 <div class="mt-6">
                   <input type="hidden" name="action_type" value="draft" id="blog-action-type" />
@@ -578,6 +607,9 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
                           <%= Calendar.strftime(post.inserted_at, "%B %d, %Y") %>
                           <%= if post.published_at do %>
                             • Published <%= Calendar.strftime(post.published_at, "%B %d, %Y") %>
+                          <% end %>
+                          <%= if post.scheduled_at && !post.is_published do %>
+                            • <span class="text-blue-300">⏰ Goes live <%= Calendar.strftime(post.scheduled_at, "%b %d, %Y %H:%M") %> UTC</span>
                           <% end %>
                         </div>
 

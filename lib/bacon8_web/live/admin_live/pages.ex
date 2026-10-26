@@ -4,6 +4,7 @@ defmodule Bacon8Web.AdminLive.Pages do
   alias Bacon8.Content.Page
   alias Bacon8Web.Components.AdminSidebar
   alias Bacon8Web.Components.BlockEditor
+  alias Bacon8Web.Components.ContentExtras
   alias Bacon8Web.Components.SocialShare
 
   on_mount {Bacon8Web.UserAuth, {:require_area, :content}}
@@ -19,6 +20,8 @@ defmodule Bacon8Web.AdminLive.Pages do
        show_form: false,
        editing_page: nil,
        new_draft_id: nil,
+       revisions: [],
+       editor_key: 0,
        form: to_form(Page.changeset(%Page{}, %{})),
        show_share_buttons: true,
        share_platforms: @default_platforms,
@@ -37,6 +40,7 @@ defmodule Bacon8Web.AdminLive.Pages do
            show_form: true,
            editing_page: page,
            new_draft_id: page.id,
+           revisions: [],
            form: to_form(Page.changeset(page, %{})),
            show_share_buttons: true,
            share_platforms: @default_platforms,
@@ -52,12 +56,34 @@ defmodule Bacon8Web.AdminLive.Pages do
     page = Content.get_page!(id)
     {:noreply, assign(socket, 
       show_form: true, 
-      editing_page: page, 
+      editing_page: page,
+      revisions: Bacon8.Content.Revisions.list(:page, page.id),
       form: to_form(Page.changeset(page, %{})),
       show_share_buttons: Map.get(page, :show_share_buttons, true),
       share_platforms: Map.get(page, :share_platforms) || @default_platforms,
       share_buttons_colored: Map.get(page, :share_buttons_colored, false)
     )}
+  end
+
+  # Puts an earlier version back; the editor is rebuilt (a new id) so it shows the restored body
+  def handle_event("restore_revision", %{"id" => id}, socket) do
+    page = socket.assigns.editing_page
+
+    case page && Bacon8.Content.Revisions.restore(page, id, socket.assigns.current_user.id) do
+      {:ok, restored} ->
+        {:noreply,
+         socket
+         |> assign(
+           editing_page: restored,
+           form: to_form(Page.changeset(restored, %{})),
+           revisions: Bacon8.Content.Revisions.list(:page, restored.id),
+           editor_key: socket.assigns.editor_key + 1
+         )
+         |> put_flash(:info, "Earlier version restored")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "That version is no longer there")}
+    end
   end
 
   def handle_event("cancel_form", _params, socket) do
@@ -197,7 +223,7 @@ defmodule Bacon8Web.AdminLive.Pages do
                 <div class="glass-dark p-6 rounded-lg space-y-4">
                   <h3 class="text-lg font-semibold text-white mb-4">Content</h3>
                   <BlockEditor.block_editor
-                    id="page-content-editor"
+                    id={"page-content-editor-#{@editor_key}"}
                     value={Phoenix.HTML.Form.input_value(@form, :content)}
                     field={@form[:content]}
                     placeholder="Build your page content..."
@@ -258,6 +284,9 @@ defmodule Bacon8Web.AdminLive.Pages do
                   />
                 </div>
 
+                <ContentExtras.schedule_input name="page[scheduled_at]" value={@form[:scheduled_at].value} />
+                <ContentExtras.history revisions={@revisions} />
+
                 <input type="hidden" name="action_type" value="draft" id="page-action-type" />
                 <div class="flex space-x-4">
                   <button type="submit" onclick="document.getElementById('page-action-type').value='draft'" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors font-medium">💾 Save Draft</button>
@@ -284,6 +313,9 @@ defmodule Bacon8Web.AdminLive.Pages do
                             <h3 class="text-lg font-medium text-white truncate"><%= page.title %></h3>
                             <span class={["px-2 py-1 text-xs rounded-full", if(page.is_published, do: "bg-green-600 text-white", else: "bg-gray-600 text-gray-300")]}>
                               <%= if page.is_published, do: "✓ Published", else: "📝 Draft" %>
+                            </span>
+                            <span :if={page.scheduled_at && !page.is_published} class="px-2 py-1 text-xs rounded-full bg-blue-600 text-white">
+                              ⏰ Goes live <%= Calendar.strftime(page.scheduled_at, "%b %d, %Y %H:%M") %> UTC
                             </span>
                             <% missing_alt = Bacon8.Content.Audit.images_missing_alt(page.content) %>
                             <span :if={missing_alt > 0} class="alt-warning px-2 py-1 text-xs rounded-full bg-amber-600 text-white" title="Open the page and describe these pictures in the alt text field under each">

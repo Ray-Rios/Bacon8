@@ -55,7 +55,7 @@ defmodule Bacon8Web.BlogLive do
     socket
     |> assign(Bacon8Web.Seo.for_post(post))
     |> assign(
-      comments: Content.list_approved_comments(post.id),
+      comments: Content.list_comments_for(post.id, socket.assigns[:current_user]),
       comment_notice: nil,
       comment_reply: nil,
       comment_edit: nil,
@@ -198,7 +198,7 @@ defmodule Bacon8Web.BlogLive do
         {:error, _changeset} -> "That comment can't be posted. Check its length."
       end
 
-    {:noreply, assign(socket, comments: Content.list_approved_comments(post.id), comment_notice: notice, comment_reply: nil)}
+    {:noreply, assign(socket, comments: Content.list_comments_for(post.id, socket.assigns[:current_user]), comment_notice: notice, comment_reply: nil)}
   end
 
   def handle_event("post_comment", _params, socket), do: {:noreply, socket}
@@ -241,7 +241,7 @@ defmodule Bacon8Web.BlogLive do
     end
   end
 
-  defp reload_comments(socket), do: assign(socket, comments: Content.list_approved_comments(socket.assigns.post.id))
+  defp reload_comments(socket), do: assign(socket, comments: Content.list_comments_for(socket.assigns.post.id, socket.assigns[:current_user]))
 
   # Helper to get featured image URL - handles both Arc files and plain URLs
   defp get_featured_image_url(post, _version) do

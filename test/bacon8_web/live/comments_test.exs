@@ -26,15 +26,19 @@ defmodule Bacon8Web.CommentsTest do
       refute html =~ ~s(id="comment-form")
     end
 
-    test "a member's first comment is held, with a message, and not shown", %{post: post} do
+    test "a member's first comment is held, with a message, and shown only to them", %{post: post} do
       {:ok, view, html} = live(signed_in(person("member")), "/blog/#{post.slug}")
       assert html =~ ~s(id="comment-form")
 
       html = view |> form("#comment-form", %{"comment" => "My first thoughts"}) |> render_submit()
 
       assert html =~ "once a moderator has checked it"
-      refute html =~ "My first thoughts"
+      assert html =~ "My first thoughts"
+      assert html =~ "Only you can see it"
       assert Content.count_comments_by_status(:pending) == 1
+
+      {:ok, _view, other_html} = live(signed_in(person("member")), "/blog/#{post.slug}")
+      refute other_html =~ "My first thoughts"
     end
 
     test "a staff member's comment appears at once", %{post: post} do

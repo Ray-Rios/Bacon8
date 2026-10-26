@@ -12,6 +12,7 @@ defmodule Bacon8.Content.Post do
     field :excerpt, :string
     field :is_published, :boolean, default: false
     field :published_at, :utc_datetime
+    field :scheduled_at, :utc_datetime
     field :featured_image, :string
     field :meta_description, :string
     field :tags, {:array, :string}, default: []
@@ -29,7 +30,7 @@ defmodule Bacon8.Content.Post do
   def changeset(post, attrs) do
     post
     |> cast(attrs, [
-      :title, :slug, :content, :excerpt, :is_published, :published_at, 
+      :title, :slug, :content, :excerpt, :is_published, :published_at, :scheduled_at, 
       :meta_description, :tags, :featured_image, :show_share_buttons, :share_platforms, :share_buttons_colored
     ])
     |> validate_required_if_published()
@@ -40,6 +41,7 @@ defmodule Bacon8.Content.Post do
     |> validate_inclusion(:is_published, [true, false])
     |> maybe_generate_slug()
     |> maybe_set_published_at()
+    |> drop_schedule_when_published()
     |> unique_constraint(:slug)
   end
 
@@ -90,6 +92,11 @@ defmodule Bacon8.Content.Post do
       true ->
         changeset
     end
+  end
+
+  # A published record has nothing left to wait for
+  defp drop_schedule_when_published(changeset) do
+    if get_field(changeset, :is_published), do: put_change(changeset, :scheduled_at, nil), else: changeset
   end
 
   # Helper functions

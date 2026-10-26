@@ -163,6 +163,20 @@ Chosen from the list: SEO, image alt text, RSS and comment moderation. All built
   goes through the rules again; `comments.edited_at`). Deleting a comment deletes its replies. Not done: replies
   by email, a member seeing their own held comment.
 
+## Scheduling, earlier versions, own held comments (2026-10-26)
+
+- **Scheduled publishing.** `posts.scheduled_at` / `pages.scheduled_at`: a draft with a time goes live by itself.
+  The editors have a "Schedule" box (UTC); *Save* keeps the draft until then, *Publish* publishes at once and clears
+  the time. `Bacon8.Content.Publisher` (a GenServer, every node, guarded by a Postgres advisory lock) calls
+  `Content.publish_due/0` each minute; a scheduled record that can't be published (no body) is left a draft with the
+  time cleared. Disabled in tests (`config :bacon8, Bacon8.Content.Publisher, enabled: false`). Lists show "Goes live ...".
+- **Earlier versions.** `content_revisions` (`Content.Revisions`): `update_page/2` and `update_post/2` keep the
+  version *before* a save that changed the title, excerpt or body, at most one per record per five minutes (the editors
+  autosave every few seconds), at most 50 per record, none for an empty body. The editors list them under "Earlier
+  versions"; Restore keeps the current version first, so a restore can be undone. Deleting a record deletes its versions.
+  Not done: comparing two versions side by side; restoring the schedule/featured image/tags (words only).
+- **Own held comments.** A member sees their own comment that still waits for a moderator, marked "Only you can see it".
+
 ## Posts from plugins and games
 
 `Bacon8.Content.post_from_plugin(plugin_slug, %{title:, body: [...], excerpt:, tags:}, publish: true, author: user)`

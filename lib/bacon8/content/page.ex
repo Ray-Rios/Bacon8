@@ -12,6 +12,7 @@ defmodule Bacon8.Content.Page do
     field :template_type, :string, default: "default"
     field :is_published, :boolean, default: false
     field :published_at, :utc_datetime
+    field :scheduled_at, :utc_datetime
     field :meta_description, :string
     field :meta_keywords, :string
     field :featured_image, :string
@@ -28,7 +29,7 @@ defmodule Bacon8.Content.Page do
 
   def changeset(page, attrs) do
     page
-    |> cast(attrs, [:title, :slug, :content, :excerpt, :template_type, :is_published, :published_at, 
+    |> cast(attrs, [:title, :slug, :content, :excerpt, :template_type, :is_published, :published_at, :scheduled_at, 
                     :meta_description, :meta_keywords, :featured_image, :category, :order, :author_id,
                     :show_share_buttons, :share_platforms, :share_buttons_colored])
     |> validate_required_if_published()
@@ -40,6 +41,7 @@ defmodule Bacon8.Content.Page do
     |> validate_inclusion(:template_type, ["default", "landing", "full-width", "sidebar", "custom"])
     |> maybe_generate_slug()
     |> maybe_set_published_at()
+    |> drop_schedule_when_published()
     |> unique_constraint(:slug)
   end
 
@@ -76,6 +78,11 @@ defmodule Bacon8.Content.Page do
   end
 
   defp blank?(value), do: is_nil(value) or String.trim(value) == ""
+
+  # A published record has nothing left to wait for
+  defp drop_schedule_when_published(changeset) do
+    if get_field(changeset, :is_published), do: put_change(changeset, :scheduled_at, nil), else: changeset
+  end
 
   defp maybe_set_published_at(changeset) do
     is_published = get_change(changeset, :is_published)

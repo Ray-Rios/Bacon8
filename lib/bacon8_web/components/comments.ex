@@ -96,6 +96,7 @@ defmodule Bacon8Web.Components.Comments do
         <span class="font-medium text-gray-200"><%= author(@comment) %></span>
         · <%= Calendar.strftime(@comment.inserted_at, "%B %d, %Y") %>
         <span :if={@comment.edited_at} class="text-gray-500">(edited)</span>
+        <span :if={!@comment.is_approved} class="ml-1 px-2 py-0.5 rounded-full bg-amber-700/60 text-amber-100 text-xs">Waiting for a moderator. Only you can see it.</span>
       </div>
 
       <form :if={@edit == @comment.id and @own?} id={"edit-form-#{@comment.id}"} phx-submit="save_comment" class="space-y-2">

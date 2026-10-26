@@ -69,10 +69,53 @@ defmodule Bacon8.Content do
     post
     |> Post.changeset(attrs)
     |> Repo.update()
+    |> keep_revision(post)
   end
 
   def delete_post(%Post{} = post) do
-    Repo.delete(post)
+    with {:ok, deleted} <- Repo.delete(post) do
+      Bacon8.Content.Revisions.delete_for(post)
+      {:ok, deleted}
+    end
+  end
+
+  # (after a save that changed the words, the version before it is kept: Bacon8.Content.Revisions)
+  defp keep_revision({:ok, new} = result, old) do
+    Bacon8.Content.Revisions.record_before_update(old, new)
+    result
+  end
+
+  defp keep_revision(error, _old), do: error
+
+  @doc """
+  Publishes every page and post whose `scheduled_at` has passed (`Bacon8.Content.Publisher` calls
+  this every minute). Returns how many were published.
+  """
+  def publish_due do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    posts = Repo.all(from p in Post, where: p.is_published == false and not is_nil(p.scheduled_at) and p.scheduled_at <= ^now)
+    pages = Repo.all(from p in Page, where: p.is_published == false and not is_nil(p.scheduled_at) and p.scheduled_at <= ^now)
+
+    results =
+      Enum.map(posts, &publish_scheduled(&1, &1.scheduled_at, :post)) ++
+        Enum.map(pages, &publish_scheduled(&1, &1.scheduled_at, :page))
+
+    Enum.count(results, &(&1 == :ok))
+  end
+
+  # (a scheduled record without a title or body can't be published: it is left a draft, unscheduled)
+  defp publish_scheduled(record, at, kind) do
+    update = if kind == :post, do: &update_post/2, else: &update_page/2
+
+    case update.(record, %{is_published: true, published_at: at}) do
+      {:ok, _} ->
+        :ok
+
+      {:error, _} ->
+        update.(record, %{scheduled_at: nil})
+        :skipped
+    end
   end
 
   # Pages
@@ -130,10 +173,14 @@ defmodule Bacon8.Content do
     page
     |> Page.changeset(attrs)
     |> Repo.update()
+    |> keep_revision(page)
   end
 
   def delete_page(%Page{} = page) do
-    Repo.delete(page)
+    with {:ok, deleted} <- Repo.delete(page) do
+      Bacon8.Content.Revisions.delete_for(page)
+      {:ok, deleted}
+    end
   end
 
   # CMS-style functions
@@ -202,6 +249,18 @@ defmodule Bacon8.Content do
   def list_approved_comments(post_id) do
     from(c in Comment, 
       where: c.post_id == ^post_id and c.is_approved == true and c.is_spam == false,
+      order_by: [asc: c.inserted_at]
+    )
+    |> Repo.all()
+    |> Repo.preload(:user)
+  end
+
+  @doc "What a viewer sees under a post: the approved comments, and their own that still wait for a moderator."
+  def list_comments_for(post_id, nil), do: list_approved_comments(post_id)
+
+  def list_comments_for(post_id, %{id: user_id}) do
+    from(c in Comment,
+      where: c.post_id == ^post_id and c.is_spam == false and (c.is_approved == true or c.user_id == ^user_id),
       order_by: [asc: c.inserted_at]
     )
     |> Repo.all()

@@ -26,6 +26,7 @@ config :logger, level: :warning
 
 # Drive: no background janitor in tests; bodies go to a throwaway directory.
 config :bacon8, Bacon8.Drive.Janitor, enabled: false
+config :bacon8, Bacon8.Content.Publisher, enabled: false
 config :bacon8, BaconStore.Store.Sweeper, enabled: false
 
 # Plugins: tests drive activation themselves; no background runtime, a fixture
