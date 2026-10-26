@@ -1141,8 +1141,8 @@ Ordered roughly by how much it hurts.
   It has not been compiled or verified by Claude Code.
 - **Chat Channels is finished** (`docs/chat-channels-plugin.md`, all four phases). `ChatLive` is ~2,050 lines of
   handlers; splitting those by feature is optional. The store's own channel-pass tests need chat installed.
-- **Comments** (2026-10-26) exist and are moderated (`/admin/comments`), but have no replies, no notification
-  to staff of pending ones and no way for a member to edit or delete their own.
+- **Comments** (2026-10-26) exist, are moderated (`/admin/comments`), have one-level replies, notify staff and
+  the person replied to, and let a member edit or delete their own.
 - **RaysSpaceSim's settings still live in the hub's prod configmap** (`HOLOSIM_*`,
   `WORLD_*`, and `deploy-game.sh` writes `HOLOSIM_IMAGE` there), so a game deploy edits a
   hub file. Move them to a configmap the plugin's `k3s/` owns and have the hub deployment

@@ -57,6 +57,8 @@ defmodule Bacon8Web.BlogLive do
     |> assign(
       comments: Content.list_approved_comments(post.id),
       comment_notice: nil,
+      comment_reply: nil,
+      comment_edit: nil,
       post: post,
       page_title: post.title,
       view: :post_detail,
@@ -182,21 +184,47 @@ defmodule Bacon8Web.BlogLive do
   end
 
   # A member's comment: shown at once or held for a moderator (Bacon8.Content.Moderation)
-  def handle_event("post_comment", %{"comment" => text}, %{assigns: %{view: :post_detail, post: post}} = socket) do
+  def handle_event("post_comment", %{"comment" => text} = params, %{assigns: %{view: :post_detail, post: post}} = socket) do
+    parent_id = if params["parent_id"] in [nil, ""], do: nil, else: params["parent_id"]
+
     notice =
-      case Content.submit_comment(socket.assigns[:current_user], post, text) do
+      case Content.submit_comment(socket.assigns[:current_user], post, text, parent_id) do
         {:ok, %{is_approved: true}} -> nil
         {:ok, _held} -> "Thanks. Your comment will appear once a moderator has checked it."
+        {:error, :not_found} -> "That comment is no longer there to reply to."
         {:error, :rate_limited} -> "You're commenting too fast. Please wait a little."
         {:error, :duplicate} -> "You already posted that."
         {:error, :not_allowed} -> "Sign in with a verified email to comment."
         {:error, _changeset} -> "That comment can't be posted. Check its length."
       end
 
-    {:noreply, assign(socket, comments: Content.list_approved_comments(post.id), comment_notice: notice)}
+    {:noreply, assign(socket, comments: Content.list_approved_comments(post.id), comment_notice: notice, comment_reply: nil)}
   end
 
   def handle_event("post_comment", _params, socket), do: {:noreply, socket}
+
+  # Replying to, editing and deleting a comment (only the member's own can be edited or deleted)
+  def handle_event("reply_to", %{"id" => id}, socket), do: {:noreply, assign(socket, comment_reply: id, comment_edit: nil)}
+  def handle_event("cancel_reply", _params, socket), do: {:noreply, assign(socket, comment_reply: nil)}
+  def handle_event("edit_comment", %{"id" => id}, socket), do: {:noreply, assign(socket, comment_edit: id, comment_reply: nil)}
+  def handle_event("cancel_edit", _params, socket), do: {:noreply, assign(socket, comment_edit: nil)}
+
+  def handle_event("save_comment", %{"comment_id" => id, "comment" => text}, %{assigns: %{view: :post_detail}} = socket) do
+    notice =
+      case Content.edit_own_comment(socket.assigns[:current_user], id, text) do
+        {:ok, %{is_approved: true}} -> nil
+        {:ok, _held} -> "Saved. Your comment will appear again once a moderator has checked it."
+        {:error, %Ecto.Changeset{}} -> "That comment can't be saved. Check its length."
+        {:error, _} -> "That comment can't be changed."
+      end
+
+    {:noreply, socket |> assign(comment_edit: nil, comment_notice: notice) |> reload_comments()}
+  end
+
+  def handle_event("delete_comment", %{"id" => id}, %{assigns: %{view: :post_detail}} = socket) do
+    Content.delete_own_comment(socket.assigns[:current_user], id)
+    {:noreply, socket |> assign(comment_notice: nil) |> reload_comments()}
+  end
 
   # Desktop UI sometimes pushes update_window_position globally; ignore in BlogLive
   def handle_event("update_window_position", _params, socket) do
@@ -212,6 +240,8 @@ defmodule Bacon8Web.BlogLive do
       {:noreply, socket}
     end
   end
+
+  defp reload_comments(socket), do: assign(socket, comments: Content.list_approved_comments(socket.assigns.post.id))
 
   # Helper to get featured image URL - handles both Arc files and plain URLs
   defp get_featured_image_url(post, _version) do
@@ -496,7 +526,7 @@ defmodule Bacon8Web.BlogLive do
                 <%= BlockEditor.render_blocks(@post.content) %>
               </div>
               
-              <Bacon8Web.Components.Comments.comments comments={@comments} current_user={@current_user} notice={@comment_notice} />
+              <Bacon8Web.Components.Comments.comments comments={@comments} current_user={@current_user} notice={@comment_notice} reply={@comment_reply} edit={@comment_edit} />
 
               <!-- Social Share Buttons -->
               <div class="mt-8 pt-6 border-t border-gray-700">

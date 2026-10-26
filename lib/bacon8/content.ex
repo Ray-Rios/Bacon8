@@ -231,7 +231,13 @@ defmodule Bacon8.Content do
   # A comment is approved (shown), pending (waiting for a moderator) or spam (kept on record,
   # shown nowhere): is_approved and is_spam say which.
   def approve_comment(%Comment{} = comment) do
-    update_comment(comment, %{is_approved: true, is_spam: false})
+    newly? = not comment.is_approved
+
+    with {:ok, approved} <- update_comment(comment, %{is_approved: true, is_spam: false}) do
+      # (a reply tells the person it answers, when it first becomes visible)
+      if newly?, do: Bacon8.Content.CommentNotices.reply(approved)
+      {:ok, approved}
+    end
   end
 
   def mark_spam(%Comment{} = comment) do
@@ -244,7 +250,9 @@ defmodule Bacon8.Content do
   `{:error, :not_allowed}` (no verified email), `{:error, :rate_limited}`, `{:error, :duplicate}`,
   `{:error, changeset}`.
   """
-  def submit_comment(user, %Post{id: post_id, is_published: true}, text) do
+  def submit_comment(user, post, text, parent_id \\ nil)
+
+  def submit_comment(user, %Post{id: post_id, is_published: true}, text, parent_id) do
     text = String.trim(to_string(text))
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     hour_ago = DateTime.add(now, -3600, :second)
@@ -264,11 +272,75 @@ defmodule Bacon8.Content do
         approved_before = Repo.aggregate(from(c in Comment, where: c.user_id == ^user.id and c.is_approved == true and c.is_spam == false), :count)
         approved? = Bacon8.Content.Moderation.decide(user, text, approved_before) == :approved
 
-        create_comment(%{content: text, post_id: post_id, user_id: user.id, is_approved: approved?})
+        with {:ok, parent} <- reply_target(parent_id, post_id),
+             {:ok, comment} <-
+               create_comment(%{content: text, post_id: post_id, user_id: user.id, is_approved: approved?, parent_id: parent && parent.id}) do
+          if approved?,
+            do: Bacon8.Content.CommentNotices.reply(comment),
+            else: Bacon8.Content.CommentNotices.pending(comment)
+
+          {:ok, comment}
+        end
     end
   end
 
-  def submit_comment(_user, _post, _text), do: {:error, :not_allowed}
+  def submit_comment(_user, _post, _text, _parent_id), do: {:error, :not_allowed}
+
+  # A reply answers a visible comment of the same post. Replies are one level deep: answering a
+  # reply answers the comment it hangs from.
+  defp reply_target(nil, _post_id), do: {:ok, nil}
+
+  defp reply_target(parent_id, post_id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(parent_id),
+         %Comment{} = parent <-
+           Repo.one(from c in Comment, where: c.id == ^uuid and c.post_id == ^post_id and c.is_approved == true and c.is_spam == false) do
+      {:ok, if(parent.parent_id, do: Repo.get!(Comment, parent.parent_id), else: parent)}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  A member changes their own comment. Staff comments stay shown; anyone else's goes through the
+  rules again (an edit can't smuggle in links after approval) and may go back to waiting.
+  `{:error, :not_found}` when the comment isn't theirs (or is spam).
+  """
+  def edit_own_comment(user, comment_id, text) do
+    text = String.trim(to_string(text))
+
+    with %Comment{} = comment <- own_comment(user, comment_id),
+         false <- comment.is_spam do
+      approved_before =
+        Repo.aggregate(from(c in Comment, where: c.user_id == ^user.id and c.is_approved == true and c.is_spam == false), :count)
+
+      approved? = Bacon8.Content.Moderation.decide(user, text, approved_before) == :approved
+
+      with {:ok, updated} <-
+             update_comment(comment, %{content: text, is_approved: approved?, edited_at: DateTime.utc_now() |> DateTime.truncate(:second)}) do
+        if comment.is_approved and not approved?, do: Bacon8.Content.CommentNotices.pending(updated)
+        {:ok, updated}
+      end
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  @doc "A member deletes their own comment (replies to it go with it)."
+  def delete_own_comment(user, comment_id) do
+    case own_comment(user, comment_id) do
+      %Comment{} = comment -> delete_comment(comment)
+      nil -> {:error, :not_found}
+    end
+  end
+
+  defp own_comment(nil, _id), do: nil
+
+  defp own_comment(user, id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> Repo.one(from c in Comment, where: c.id == ^uuid and c.user_id == ^user.id)
+      :error -> nil
+    end
+  end
 
   @doc "Comments for the moderation screen: `:pending`, `:approved` or `:spam`, newest first."
   def list_comments_by_status(status) when status in [:pending, :approved, :spam] do

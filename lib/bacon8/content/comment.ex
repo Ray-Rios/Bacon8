@@ -10,6 +10,7 @@ defmodule Bacon8.Content.Comment do
     field :author_email, :string
     field :is_approved, :boolean, default: false
     field :is_spam, :boolean, default: false
+    field :edited_at, :utc_datetime
 
     belongs_to :post, Bacon8.Content.Post
     belongs_to :user, Bacon8.Accounts.User
@@ -22,7 +23,7 @@ defmodule Bacon8.Content.Comment do
   def changeset(comment, attrs) do
     comment
     |> cast(attrs, [
-      :content, :author_name, :author_email, :is_approved, :is_spam, :post_id, :user_id, :parent_id
+      :content, :author_name, :author_email, :is_approved, :is_spam, :post_id, :user_id, :parent_id, :edited_at
     ])
     |> validate_required([:content, :post_id])
     |> validate_length(:content, min: 1, max: 5000)

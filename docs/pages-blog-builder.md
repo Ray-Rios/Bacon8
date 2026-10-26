@@ -158,7 +158,10 @@ Chosen from the list: SEO, image alt text, RSS and comment moderation. All built
   at once; everyone else's first comment waits. At most 5 comments an hour and no immediate repeats. Comments are
   plain text. `/admin/comments` (admins, GMs, editors) has Waiting / Approved / Spam tabs, approve, spam, delete,
   approve all and delete all spam. `comments.is_spam` is new (spam is kept on record, shown nowhere).
-  Not done: replies, notifying staff of new pending comments, edit/delete of one's own comment.
+  Replies (one level deep; the person answered is notified once the reply shows), one unread "comment waiting"
+  notice for staff at a time (`Content.CommentNotices`), and members can edit or delete their own comment (an edit
+  goes through the rules again; `comments.edited_at`). Deleting a comment deletes its replies. Not done: replies
+  by email, a member seeing their own held comment.
 
 ## Posts from plugins and games
 
