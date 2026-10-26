@@ -10,6 +10,8 @@
  * - Integration with Phoenix LiveView uploads
  */
 
+import { shrinkColumns } from './block_editor_columns';
+
 // Block types supported by the editor
 type BlockType = 
   | 'text' 
@@ -2005,19 +2007,9 @@ const BlockEditorHook = {
       // Update widths of existing columns to equal distribution
       row.columns.forEach((col: Column) => col.width = `${widthPercent}%`);
     } else {
-      // Collect blocks ONLY from columns that will be removed
-      const blocksFromRemovedColumns: Block[] = [];
-      for (let i = newColCount; i < currentCount; i++) {
-        blocksFromRemovedColumns.push(...row.columns[i].blocks);
-      }
-      
-      // Keep only the first newColCount columns
-      row.columns = row.columns.slice(0, newColCount);
-      
-      // Add the collected blocks from removed columns to the first column
-      if (blocksFromRemovedColumns.length > 0) {
-        row.columns[0].blocks.push(...blocksFromRemovedColumns);
-      }
+      // Only blocks that hold something move to the first column; the empty cells that were
+      // created for typing go with their columns (block_editor_columns.ts).
+      row.columns = shrinkColumns(row.columns, newColCount, generateId);
       
       // Set equal widths for remaining columns
       row.columns.forEach((col: Column) => col.width = `${widthPercent}%`);
