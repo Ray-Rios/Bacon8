@@ -114,3 +114,12 @@ The editors and public pages:
    one block editor today but not one save path), keeping the block model.
 4. Fix what the owner listed, then add the production-grade items they pick, one at a time, each with
    tests and a deploy.
+
+## Posts from plugins and games
+
+`Bacon8.Content.post_from_plugin(plugin_slug, %{title:, body: [...], excerpt:, tags:}, publish: true, author: user)`
+(`lib/bacon8/content/plugin_posts.ex`). The owner approved this on 2026-10-25 (patch notes, announcements).
+The body is a list of `{:heading, text}`, `{:paragraph, text}` and `{:list, [text]}`; all text is HTML-escaped,
+so a game can put player names in a post safely. It makes a **draft** unless `publish: true`, authored by the
+given user or the oldest admin, tagged with the plugin's slug, with a numbered slug if the title is taken.
+Staff edit it afterwards in the block editor like any post. Tests: `test/bacon8/content/plugin_posts_test.exs`.

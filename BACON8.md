@@ -84,7 +84,7 @@ On 2026-10-25:
    Consider capping columns (4-6) / stacking on narrow widths. Then collapse the four editing surfaces into
    one builder. The path-handling review is done and committed (`69f6f43`); the production icon query found
    nothing (0 of 8 channel icons out of place). **Owner decided: plugins and games may post to the blog**
-   (e.g. patch notes): build a small `Bacon8.Content` function for it (author, draft or published).
+   (e.g. patch notes): done, `Content.post_from_plugin/3` (see `docs/pages-blog-builder.md`); no plugin calls it yet.
 3. **Chat, phase 4: done 2026-10-26** (chat tables are the plugin's own migration; settings in
    `chat_user_settings`; `user_notifications.channel_id` dropped). Next: after the owner checks the copy in
    production, a core migration drops `users.channel_allowance/channel_order/allow_channel_invites`.

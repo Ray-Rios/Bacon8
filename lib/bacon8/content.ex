@@ -59,6 +59,12 @@ defmodule Bacon8.Content do
     |> Repo.insert()
   end
 
+  @doc """
+  A blog post written by a plugin or game, as a draft unless `publish: true`
+  (see `Bacon8.Content.PluginPosts`).
+  """
+  defdelegate post_from_plugin(plugin_slug, attrs, opts \\ []), to: Bacon8.Content.PluginPosts, as: :create
+
   def update_post(%Post{} = post, attrs) do
     post
     |> Post.changeset(attrs)
