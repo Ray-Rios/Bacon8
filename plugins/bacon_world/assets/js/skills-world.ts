@@ -78,11 +78,21 @@ export const SkillsWorld = {
   applySkills(this: any, data: SkillsData) {
     const before: string[] = this.skillsData?.abilities || [];
     this.skillsData = data;
+    // what setupSkills reads next time (it was the state from login, stale after a level)
+    const cp = this.state?.currentPlayer;
+    if (cp) cp.skills = data;
     this.skillsUI?.set(data);
     this.gameUI?.refreshHotbar();
     for (const id of data.abilities) {
       if (before.length && !before.includes(id)) this.combatLog(`You have learned ${data.catalog[id]?.name || id}!`, '#9FD8FF');
     }
+  },
+
+  /** Asks the server for the skill state again (after a level: a new point to spend). */
+  refreshSkills(this: any) {
+    void reply(this, 'skills_fetch', {}).then((res: any) => {
+      if (res?.ok) this.applySkills(res);
+    });
   },
 
   toggleSkills(this: any) {

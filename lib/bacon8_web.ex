@@ -40,6 +40,9 @@ defmodule Bacon8Web do
       use Phoenix.LiveView,
         layout: {Bacon8Web.Layouts, :app}
 
+      # a page still running the scripts of an earlier deploy reloads itself (Bacon8Web.StaticReload)
+      on_mount Bacon8Web.StaticReload
+
       unquote(html_helpers())
     end
   end

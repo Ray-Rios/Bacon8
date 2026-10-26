@@ -118,7 +118,10 @@ export const GameWorld = {
       if (!this.mobsView) return;
       this.mobsView.setAll(res.mobs || []);
       this.camps = res.camps || [];
-      const people = () => [...(this.dressing ? this.dressing.colliders() : this.worldColliders.filter((c: any) => !c.npc)), ...(this.npcsView?.colliders() || []).map((c: any) => ({ ...c, npc: true }))];
+      // the sea and the lakes (water.ts, fishing-world.ts)
+      if (res.water) this.initWater(res.water);
+      const people = () => [...(this.dressing ? this.dressing.colliders() : this.worldColliders.filter((c: any) => !c.npc && c.kind !== 'ellipse')), ...(this.npcsView?.colliders() || []).map((c: any) => ({ ...c, npc: true })), ...this.waterColliders()];
+      this.worldColliders = people();
       void this.npcsView?.setAll(res.merchants || []).then(() => (this.worldColliders = people()));
       if (this.dressing && this.camps.length) void this.dressing.addCamps(this.camps).then(() => {
         if (this.dressing) this.worldColliders = people();
@@ -130,6 +133,7 @@ export const GameWorld = {
   teardownGame(this: any) {
     this.mounts?.clearAll();
     this.teardownSkills?.();
+    this.teardownFishing?.();
     this.stable?.close();
     if (this.lootingId) this.closeLoot();
     this.gameUI?.closeMerchant(false);
@@ -148,6 +152,7 @@ export const GameWorld = {
   // ---------------------------------------------------------------- per frame
 
   tickGame(this: any, dt: number) {
+    this.tickFishing?.(dt);
     this.mobsView?.update(dt);
     this.npcsView?.update(dt, this.targetId);
     const me = this.localCharacter();
@@ -509,6 +514,8 @@ export const GameWorld = {
         cp.mp = p.max_mp;
         cp.level = p.level;
       }
+      // the new skill point shows at once (2026-10-26: it needed a page reload)
+      this.refreshSkills?.();
     }
     this.updateHUD();
   },
@@ -541,7 +548,11 @@ export const GameWorld = {
         if (m && e.move === 'breath' && dist < 45 * U) this.combatLog(`${capital(m.view.name)} rears back and draws a deep breath!`, '#FFB347');
         break;
     }
-    if (e.id && e.id === this.targetId) this.refreshTarget();
+    // A corpse that has gone, or a creature come back, is a new creature: let go of it
+    // (2026-10-26: a target left on a corpse fastened on to the creature that respawned).
+    const id = e.id ?? e.mob?.id;
+    if (id && id === this.targetId && (e.t === 'gone' || e.t === 'spawn')) this.setTarget(null);
+    else if (e.id && e.id === this.targetId) this.refreshTarget();
   },
 
   // A creature's swing reached its impact frame.
@@ -734,8 +745,12 @@ export const GameWorld = {
 
   // ---------------------------------------------------------------- looting
 
-  /** Opens a corpse (EverQuest: right-click it, or press G near one). */
-  async openLoot(this: any, mobId: string) {
+  /**
+   * Opens a corpse (EverQuest: click it, or press G near one). Its coins are taken at once. A corpse
+   * with no items opens no window. `auto` (G) takes every item too, and shows the window only for
+   * what didn't fit in the bags (2026-10-26, owner's request).
+   */
+  async openLoot(this: any, mobId: string, auto = false) {
     const m = this.mobsView?.get(mobId);
     const me = this.localCharacter();
     if (!m || !me || this.isDead) return;
@@ -749,7 +764,7 @@ export const GameWorld = {
       this.combatLog(res.error || "You can't loot that.", '#B8B8B8');
       return;
     }
-    this.lootingId = mobId;
+    const items = res.items || [];
     this.characterManager?.getAnimator(this.state.currentPlayer.character_id)?.oneShot('PickUp_Table', { upperOnly: true });
     if (res.coins > 0) {
       this.combatLog(`You receive ${moneyWords(res.coins)} from the corpse.`, '#F0D77A');
@@ -759,7 +774,22 @@ export const GameWorld = {
         this.gameUI?.setInventory(this.inventory);
       }
     }
-    this.gameUI?.openLoot(`${m.view.name}'s corpse`, res.items || []);
+    if (!items.length) {
+      if (!(res.coins > 0)) this.combatLog(`You find nothing on ${m.view.name}'s corpse.`, '#B8B8B8');
+      void reply(this, 'loot_close', { mob_id: mobId });
+      return;
+    }
+    this.lootingId = mobId;
+    if (auto) {
+      const all = await reply(this, 'loot_all', { mob_id: mobId });
+      const left = all.items || [];
+      // what was taken, and the bags, without touching a window that isn't open
+      this.afterLoot({ ...all, items: undefined });
+      if (left.length) this.gameUI?.openLoot(`${m.view.name}'s corpse`, left); // what didn't fit (the bags are full)
+      else this.closeLoot();
+      return;
+    }
+    this.gameUI?.openLoot(`${m.view.name}'s corpse`, items);
   },
 
   async lootTake(this: any, index: number) {
@@ -801,7 +831,7 @@ export const GameWorld = {
   lootNearest(this: any) {
     const me = this.localCharacter();
     const c = me ? this.mobsView?.nearestCorpse(me.mesh.position.x, me.mesh.position.z, LOOT_RANGE) : null;
-    if (c) void this.openLoot(c.view.id);
+    if (c) void this.openLoot(c.view.id, true);
     else this.combatLog('There is no corpse close enough to loot.', '#B8B8B8');
   },
 

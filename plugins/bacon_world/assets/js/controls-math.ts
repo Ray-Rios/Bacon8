@@ -224,6 +224,21 @@ export function flightTarget(input: FlightInput, yaw: number, pitch: number, spe
   return { x, y, z };
 }
 
+/** How long after the browser drops the pointer lock to decide whether it was Esc (ms). */
+export const LOCK_LOSS_SETTLE_MS = 160;
+
+/**
+ * Was a pointer lock the browser dropped (not the game) the player's Esc? Not if the window lost
+ * focus or was hidden around then (a screenshot tool such as Win+Shift+S, Alt+Tab, a
+ * notification), or PrintScreen was pressed in the last 1.5 s. Times in ms, performance.now().
+ */
+export function lockLossWasEsc(s: { lostAtMs: number; nowMs: number; lastAwayMs: number; lastPrintMs: number; hidden: boolean; focused: boolean }): boolean {
+  if (s.hidden || !s.focused) return false;
+  if (s.lastAwayMs >= s.lostAtMs - 250) return false;
+  if (s.nowMs - s.lastPrintMs < 1500) return false;
+  return true;
+}
+
 /** Moves `v` toward `target` with a first-order response (rate 1/s). */
 export function approachVelocity(v: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }, rate: number, dt: number) {
   const k = 1 - Math.exp(-rate * dt);

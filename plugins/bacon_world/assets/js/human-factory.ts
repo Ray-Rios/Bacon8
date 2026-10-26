@@ -362,6 +362,53 @@ function rotateWorld(bone: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector
 }
 const RIDE_SPREAD_DEG = 32;
 
+/**
+ * Two-handed guards (2026-10-26): where the right hand's grip (weapon_r) is held and which way the
+ * weapon points, while a two-hander is held and not swinging. The library clips' idles hold
+ * two-handers at the waist, hugging the body: on the male the greatsword, axe and maul lay across
+ * his hips, the staff ran through his legs and the spear folded his left arm. Units: the body's
+ * pelvis-to-neck height (so it fits any body), from the pelvis; x the body's left, y up, z
+ * forward. `dir` is the haft's direction from the grip toward the head (+Y of the weapon). By
+ * weapon model first, then by stance set. The left hand then takes the haft at the clip's spacing
+ * (twoHandGrip).
+ */
+export const TWO_HAND_GUARDS: Record<string, { at: [number, number, number]; dir: [number, number, number] }> = {
+  // a sword's middle guard: hands before the navel, the blade rising toward the foe's throat
+  two_hand: { at: [-0.06, 0.42, 0.62], dir: [0.12, 0.62, 0.78] },
+  // axe and maul at the ready: the haft across the body, the head up by the left shoulder
+  BattleAxe: { at: [-0.16, 0.34, 0.56], dir: [0.5, 0.78, 0.38] },
+  Maul: { at: [-0.16, 0.34, 0.56], dir: [0.5, 0.78, 0.38] },
+  // spear and halberd: the rear hand at the right hip, the point forward and a little up
+  polearm: { at: [-0.42, 0.3, 0.22], dir: [0.14, 0.26, 0.95] },
+  // the staff across the body, clear of it
+  staff: { at: [-0.3, 0.38, 0.6], dir: [0.6, 0.78, 0.0] },
+  // a fishing pole held out over the water, the tip up (2026-10-26)
+  FishingPole: { at: [-0.16, 0.42, 0.62], dir: [0.06, 0.6, 0.8] },
+};
+
+/**
+ * Two-bone IK: turns `ua` and `la` so the wrist (`hand`) reaches `W`, the elbow bending toward
+ * `pole` (a world direction: elbows go down and out, never up through the chest).
+ */
+function ik2(ua: THREE.Object3D, la: THREE.Object3D, hand: THREE.Object3D, W: THREE.Vector3, pole: THREE.Vector3) {
+  const A = ua.getWorldPosition(new THREE.Vector3());
+  const B = la.getWorldPosition(new THREE.Vector3());
+  const C = hand.getWorldPosition(new THREE.Vector3());
+  const l1 = A.distanceTo(B), l2 = B.distanceTo(C);
+  const to = new THREE.Vector3().subVectors(W, A);
+  const d = THREE.MathUtils.clamp(to.length(), Math.abs(l1 - l2) + 1e-4, (l1 + l2) * 0.999);
+  const u = to.normalize();
+  const p = pole.clone().addScaledVector(u, -pole.dot(u));
+  if (p.lengthSq() < 1e-8) p.set(0, -1, 0).addScaledVector(u, -u.y);
+  p.normalize();
+  const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+  const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  const Bn = A.clone().addScaledVector(u, a).addScaledVector(p, h);
+  rotateWorld(ua, new THREE.Vector3().subVectors(B, A).normalize(), Bn.sub(A).normalize());
+  const B2 = la.getWorldPosition(new THREE.Vector3()), C2 = hand.getWorldPosition(new THREE.Vector3());
+  rotateWorld(la, new THREE.Vector3().subVectors(C2, B2).normalize(), new THREE.Vector3().subVectors(W, B2).normalize());
+}
+
 /** Moves `cur` toward `target` (degrees) at `rate` degrees per second. */
 function approachDeg(cur: number, target: number, rate: number, dt: number): number {
   const step = rate * dt;
@@ -408,6 +455,8 @@ export class HumanInstance {
   private riding = false;
   private rideW = 0;
   private gripW = 0; // the two-handed off-hand grip (twoHandGrip), eased in and out
+  private guardW = 0; // the two-handed guard (twoHandGuard), eased in and out
+  private guard: { at: [number, number, number]; dir: [number, number, number] } | null = null;
   // where this frame's clip put the left grip along the haft, before any correction moved
   // the arms (readClipGrip); twoHandGrip puts the hand back there
   private clipGrip: { t: number; miss: number } | null = null;
@@ -734,7 +783,7 @@ export class HumanInstance {
    * After the mixer each frame: the posture correction, and relaxed fingers on the hands
    * that hold nothing (`free.l`, `free.r`; a punch closes them again).
    */
-  postAnimate(dt: number, free: { l: boolean; r: boolean } = { l: true, r: true }, armSets?: { l: string; r: string; two?: boolean }) {
+  postAnimate(dt: number, free: { l: boolean; r: boolean } = { l: true, r: true }, armSets?: { l: string; r: string; two?: boolean; set?: string }) {
     this.touched.clear();
     this.clipGrip = armSets?.two ? this.readClipGrip() : null;
     if (this.posture) {
@@ -787,6 +836,11 @@ export class HumanInstance {
       this.wrote(a.la);
       this.wrote(a.hand);
     }
+    // a two-hander held, not swung: the guard (the swings keep the clip's arms)
+    const guard = armSets?.two && armSets.l !== 'swing' && armSets.r !== 'swing' ? this.guardFor(armSets.set) : null;
+    if (guard) this.guard = guard;
+    this.guardW = approach(this.guardW, guard ? 1 : 0, 6, dt);
+    if (this.guardW > 0.001 && this.guard) this.twoHandGuard(this.guard, this.guardW);
     this.gripW = approach(this.gripW, armSets?.two ? 1 : 0, 8, dt);
     if (this.gripW > 0.001) this.twoHandGrip(this.gripW);
     this.rideW = approach(this.rideW, this.riding ? 1 : 0, 3, dt);
@@ -823,6 +877,54 @@ export class HumanInstance {
    * corrections then put it 10-20 cm off, and a fixed HOLD.off put it on the wrong side of
    * the right hand or out of reach).
    */
+  /** The guard for what the right hand holds: by its weapon model, else by stance set. */
+  private guardFor(set?: string) {
+    const wr = this.bones.get('weapon_r');
+    const model = wr?.children.find((c) => c.userData.b8Weapon)?.userData.b8Weapon as string | undefined;
+    return (model && TWO_HAND_GUARDS[model]) || (set && TWO_HAND_GUARDS[set]) || null;
+  }
+
+  /** A direction in the character's own frame (x its left, y up, z forward) as a world direction. */
+  private bodyDir(x: number, y: number, z: number) {
+    return new THREE.Vector3(x, y, z).normalize().applyQuaternion(this.root.getWorldQuaternion(new THREE.Quaternion()));
+  }
+
+  /**
+   * Puts the right hand's grip where the guard says and the weapon along its direction (the
+   * right arm by IK, the hand turned), blended in by `w`. The left hand follows (twoHandGrip).
+   */
+  private twoHandGuard(g: { at: [number, number, number]; dir: [number, number, number] }, w: number) {
+    const ua = this.bones.get('upperarm_r'), la = this.bones.get('lowerarm_r'), hand = this.bones.get('hand_r');
+    const wr = this.bones.get('weapon_r'), pelvis = this.bones.get('pelvis'), neck = this.bones.get('neck_01');
+    if (!ua || !la || !hand || !wr || !pelvis || !neck) return;
+    this.fromAnimated(ua);
+    this.fromAnimated(la);
+    this.fromAnimated(hand);
+    const q0 = [ua.quaternion.clone(), la.quaternion.clone(), hand.quaternion.clone()];
+    this.root.updateWorldMatrix(true, true);
+    const P = pelvis.getWorldPosition(new THREE.Vector3());
+    const S = neck.getWorldPosition(new THREE.Vector3()).distanceTo(P);
+    const rootQ = this.root.getWorldQuaternion(new THREE.Quaternion());
+    const at = new THREE.Vector3(...g.at).multiplyScalar(S).applyQuaternion(rootQ).add(P);
+    const D = this.bodyDir(...g.dir);
+    const pole = this.bodyDir(-0.55, -1, -0.3); // the right elbow: down, out, a little back
+    const y = new THREE.Vector3();
+    for (let pass = 0; pass < 3; pass++) {
+      rotateWorld(hand, y.setFromMatrixColumn(wr.matrixWorld, 1).normalize(), D);
+      const off = wr.getWorldPosition(new THREE.Vector3()).sub(hand.getWorldPosition(new THREE.Vector3()));
+      ik2(ua, la, hand, at.clone().sub(off), pole);
+    }
+    rotateWorld(hand, y.setFromMatrixColumn(wr.matrixWorld, 1).normalize(), D);
+    if (w < 0.999) {
+      ua.quaternion.copy(q0[0].slerp(ua.quaternion, w));
+      la.quaternion.copy(q0[1].slerp(la.quaternion, w));
+      hand.quaternion.copy(q0[2].slerp(hand.quaternion, w));
+    }
+    this.wrote(ua);
+    this.wrote(la);
+    this.wrote(hand);
+  }
+
   private readClipGrip(): { t: number; miss: number } | null {
     const wl = this.bones.get('weapon_l'), wr = this.bones.get('weapon_r');
     if (!wl || !wr) return null;
@@ -879,7 +981,9 @@ export class HumanInstance {
       const to = _w3.subVectors(W, A);
       const d = THREE.MathUtils.clamp(to.length(), Math.abs(l1 - l2) + 1e-4, (l1 + l2) * 0.999);
       const u = to.normalize();
-      const pole = _w4.subVectors(B, A);
+      // the elbow down, out and a little back (2026-10-26: keeping it in the clip's plane let it
+      // swing up and fold the arm across the chest on the spear)
+      const pole = _w4.copy(this.bodyDir(0.55, -1, -0.3));
       pole.addScaledVector(u, -pole.dot(u));
       if (pole.lengthSq() < 1e-10) pole.set(0, -1, 0).addScaledVector(u, -u.y);
       pole.normalize();

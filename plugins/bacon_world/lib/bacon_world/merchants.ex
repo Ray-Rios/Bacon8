@@ -84,6 +84,36 @@ defmodule BaconWorld.Merchants do
       sells: ~w(linen_bikini_top linen_bikini_bottom athletic_top athletic_bottom rose_lace_top rose_lace_bottom
                 coral_top coral_bottom polka_dot_top polka_dot_bottom emerald_top emerald_bottom
                 cloth_tunic blue_dyed_tunic cloth_tank wool_sweater cloth_shorts cloth_trousers cloth_shoes leather_boots)
+    },
+    # The angler (2026-10-26): on the Millpond's east bank (BaconWorld.Water), facing the water.
+    # Sells fishing poles; like every merchant, buys what you bring (the catch included).
+    %{
+      kind: "trader",
+      id: "bram",
+      name: "Old Bram",
+      title: "Angler",
+      zone: "lobby",
+      x: -16.5,
+      z: -39.0,
+      face: {-31.0, -40.0},
+      look: %{
+        "v" => 1,
+        "body" => "male",
+        "height" => 0.98,
+        "shape" => %{"weight" => 0.35, "muscle" => 0.15, "shoulders" => 0.0, "chest" => 0.0, "belly" => 0.45, "hips" => 0.1, "glutes" => 0.0, "face" => 0.4, "jaw" => 0.3, "nose" => 0.4},
+        "skin" => "#D9A17E",
+        "eyes" => "#4F6A7A",
+        "brows" => nil,
+        "hair" => %{"style" => "Short", "color" => "#B9B2A6"},
+        "facial" => %{"style" => "FullBeard", "color" => "#B9B2A6"}
+      },
+      gear: %{
+        "under_bottom" => "linen_bikini_bottom",
+        "chest" => "wool_sweater",
+        "legs" => "cloth_trousers",
+        "feet" => "leather_boots"
+      },
+      sells: ~w(fishing_pole)
     }
   ]
 

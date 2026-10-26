@@ -29,6 +29,8 @@ defmodule BaconWorld.Items do
     * `dmg`, `dly`, `reach` (metres, from the grip), `ac` (shields)
     * `stack` - how many fit in one slot; `value` - in copper
     * `model` - the weapon model, or nil (the icon then comes from `icon`)
+    * `icon_url` - an icon of its own (the plugin's `priv/static/icons`), for items without a model
+      or weapon icon on the models volume (fishing, 2026-10-26)
     * `wear`, `colors` - how a worn item is drawn (above)
   """
 
@@ -73,7 +75,22 @@ defmodule BaconWorld.Items do
     %{id: "baconator_fang", name: "Baconator's Fang", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 5, model: nil, icon: "DragonFang", value: 1500},
     %{id: "emberforged_longsword", name: "Emberforged Longsword", kind: "weapon", slots: ["main", "off"], hands: 1, set: "sword_1h", skill: "1H Slashing", dmg: 15, dly: 13, reach: 1.15, model: "Longsword", value: 2400},
     %{id: "dragonbone_greataxe", name: "Dragonbone Greataxe", kind: "weapon", slots: ["main"], hands: 2, set: "two_hand", skill: "2H Slashing", dmg: 24, dly: 21, reach: 1.3, model: "BattleAxe", value: 3200},
-    %{id: "scaleplate_shield", name: "Scaleplate Shield", kind: "shield", slots: ["off"], hands: 1, set: "shield", skill: "Bash", dmg: 5, dly: 14, reach: 0.6, ac: 11, model: "KiteShield", value: 2000}
+    %{id: "scaleplate_shield", name: "Scaleplate Shield", kind: "shield", slots: ["off"], hands: 1, set: "shield", skill: "Bash", dmg: 5, dly: 14, reach: 0.6, ac: 11, model: "KiteShield", value: 2000},
+
+    # Fishing (2026-10-26, BaconWorld.Water): the pole is held two-handed and cast at the water
+    # (BaconWorldWeb.FishingEvents); what bites goes in the bags and sells to any merchant. Icons
+    # are the plugin's own (priv/static/icons, rendered by library/pipeline/scripts/fishing_icons.py).
+    %{id: "fishing_pole", name: "Fishing Pole", kind: "weapon", slots: ["main"], hands: 2, set: "staff", skill: "Fishing", dmg: 1, dly: 30, reach: 1.0, model: "FishingPole", value: 30, icon_url: "/plugins/bacon_world/icons/fishing_pole.png"},
+    %{id: "pond_perch", name: "Pond Perch", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/pond_perch.png", value: 3},
+    %{id: "brook_trout", name: "Brook Trout", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/brook_trout.png", value: 6},
+    %{id: "mud_carp", name: "Mud Carp", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/mud_carp.png", value: 4},
+    %{id: "golden_carp", name: "Golden Carp", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/golden_carp.png", value: 120},
+    %{id: "old_boot", name: "Old Boot", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/old_boot.png", value: 1},
+    %{id: "sea_mackerel", name: "Sea Mackerel", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/sea_mackerel.png", value: 4},
+    %{id: "striped_bass", name: "Striped Bass", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/striped_bass.png", value: 8},
+    %{id: "red_snapper", name: "Red Snapper", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/red_snapper.png", value: 12},
+    %{id: "silver_tuna", name: "Silver Tuna", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/silver_tuna.png", value: 90},
+    %{id: "tangle_of_kelp", name: "Tangle of Kelp", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/tangle_of_kelp.png", value: 1}
   ]
 
   # What can be worn. Underwear: six sets (top and bottom are separate items), the
@@ -127,9 +144,9 @@ defmodule BaconWorld.Items do
 
   @wear_slots ~w(under_top under_bottom chest legs feet)
 
-  @armor_defaults %{hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, ac: 0, stack: 1, model: nil, icon: nil}
+  @armor_defaults %{hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, ac: 0, stack: 1, model: nil, icon: nil, icon_url: nil}
 
-  @defaults %{ac: 0, stack: 1, icon: nil, wear: nil, colors: nil}
+  @defaults %{ac: 0, stack: 1, icon: nil, icon_url: nil, wear: nil, colors: nil}
   @by_id Map.new(@items, fn i -> {i.id, Map.merge(@defaults, i)} end)
          |> Map.merge(Map.new(@wearables, fn i -> {i.id, @defaults |> Map.merge(@armor_defaults) |> Map.merge(i)} end))
 
@@ -195,6 +212,8 @@ defmodule BaconWorld.Items do
          model: i.model,
          icon: i.model || i.icon,
          icon_path: icon_path(i),
+         # a picture of its own (the plugin's static files), instead of the models volume's
+         icon_url: i.icon_url,
          wear: i.wear,
          colors: i.colors
        }}

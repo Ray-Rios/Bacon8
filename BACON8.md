@@ -33,6 +33,15 @@ On 2026-10-26:
   `Bacon8Web.Components.Bacon`: `<.bacon size={26} />`; the icon string `"bacon"` works wherever `"gem"`
   does. It is the desktop's **Start button** (was the B8 mark) and the navbar's **Games** link (was 🎮).
   Uncommitted: `handoff/CLAUDE_CODE_PROMPT_2026-10-26a.md`.
+- **Open pages pick up a deploy by themselves** (`handoff/CLAUDE_CODE_PROMPT_2026-10-26b.md`). Players had
+  to hard-refresh Bacon World after every deploy: no LiveView asked `static_changed?`, and plain static
+  files (the game's sounds, pictures and plugin files, asked for without `?vsn=`) were cached for a year.
+  Now every LiveView mounts `Bacon8Web.StaticReload` (`use Bacon8Web, :live_view`), which reloads the
+  page on reconnect when `app.js`/`app.css` changed, and the `/` `Plug.Static` keeps unversioned files an
+  hour, then revalidates them by ETag (digested files stay immutable for a year). Invariant 18.
+- **Bacon World**: two-handers held in proper guard poses, an island in a sea with a fishing pond and
+  fishing, spells no longer freeze the game, screenshots no longer open the menu, and the owner's other
+  bug reports (same handoff). Details in **`BACON_WORLD.md`** §2.
 
 On 2026-10-25:
 
@@ -485,6 +494,14 @@ Each of these has already cost a build, an outage, or a security hole.
     isn't a format a 3D client loads (`.gltf`, `.glb`, `.bin`, `.fbx`, textures...). The
     volume also holds `.blend` scenes and `.zip` downloads, which many asset licences do
     not allow redistributing. Keep the guard directly before that `Plug.Static`.
+
+18. **A page must notice a deploy itself.** LiveView reconnects an open tab to new code but keeps
+    the old JavaScript, so every root LiveView mounts `Bacon8Web.StaticReload` (through
+    `use Bacon8Web, :live_view`), which reloads when `static_changed?/1` says the tracked assets
+    (`phx-track-static` on `app.js` and `app.css` in the root layout) changed. Keep those
+    attributes, and don't give unversioned static files a long cache: the `/` `Plug.Static` keeps
+    them an hour (`cache_control_for_etags`). Before 2026-10-26 it was a year, and Bacon World's
+    players had to hard-refresh after every deploy.
 
 ---
 

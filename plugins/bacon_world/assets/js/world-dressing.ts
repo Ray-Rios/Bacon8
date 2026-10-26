@@ -18,7 +18,9 @@ export const WORLD_BASE = '/models/World';
 
 export type Collider =
   | { kind: 'circle'; x: number; z: number; r: number }
-  | { kind: 'box'; x: number; z: number; hx: number; hz: number; rot: number };
+  | { kind: 'box'; x: number; z: number; hx: number; hz: number; rot: number }
+  // a lake (water.ts): an axis-aligned ellipse
+  | { kind: 'ellipse'; x: number; z: number; rx: number; rz: number };
 
 type Placement = { name: string; m: THREE.Matrix4 };
 
@@ -111,7 +113,10 @@ export class WorldDressing {
 
   colliders(): Collider[] {
     const U = UNITS_PER_METRE;
-    return this.cols.map((c) => (c.kind === 'circle' ? { ...c, x: c.x * U, z: c.z * U, r: c.r * U } : { ...c, x: c.x * U, z: c.z * U, hx: c.hx * U, hz: c.hz * U }));
+    return this.cols.map((c) =>
+      c.kind === 'circle' ? { ...c, x: c.x * U, z: c.z * U, r: c.r * U }
+      : c.kind === 'ellipse' ? { ...c, x: c.x * U, z: c.z * U, rx: c.rx * U, rz: c.rz * U }
+      : { ...c, x: c.x * U, z: c.z * U, hx: c.hx * U, hz: c.hz * U });
   }
 
   /** Keeps a point (world units) of radius r out of the colliders; returns the corrected x/z. */
@@ -126,6 +131,15 @@ export class WorldDressing {
             const d = Math.sqrt(d2) || 1e-6;
             x = c.x + (dx / d) * min;
             z = c.z + (dz / d) * min;
+          }
+        } else if (c.kind === 'ellipse') {
+          // out along the line from its middle, to its edge grown by r
+          const dx = x - c.x, dz = z - c.z;
+          const f = Math.hypot(dx / (c.rx + r), dz / (c.rz + r));
+          if (f < 1) {
+            const k = 1 / Math.max(f, 1e-6);
+            x = c.x + dx * k;
+            z = c.z + dz * k;
           }
         } else {
           // into the box's frame (three.js rotation about +Y by rot), push out along
@@ -656,7 +670,9 @@ export class WorldDressing {
   private ground(): THREE.Object3D {
     const g = new THREE.Group();
     g.name = 'Ground';
-    const grass = new THREE.Mesh(new THREE.CircleGeometry(150, 96), groundMaterial('#5E7F3F', 7, 60, { set: 'grass', scale: 3, strength: 0.75, antiTile: true }, { roughness: 0.95 }));
+    // the grass ends 9 m inside the waterline (BaconWorld.Water's shore, 150 m): the beach is
+    // water.ts's, from there down under the sea
+    const grass = new THREE.Mesh(new THREE.CircleGeometry(141, 96), groundMaterial('#5E7F3F', 7, 60, { set: 'grass', scale: 3, strength: 0.75, antiTile: true }, { roughness: 0.95 }));
     grass.rotation.x = -Math.PI / 2;
     grass.receiveShadow = true;
     g.add(grass);

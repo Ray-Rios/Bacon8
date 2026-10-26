@@ -24,7 +24,9 @@ renamed its tables, its game row and its `plugin_states` row.
 | `lib/bacon_world/combat.ex` | HP/MP, PvP flags, respawn (server-authoritative); spells later (Throw Stone is retired) |
 | `lib/bacon_world/items.ex` | The item catalogue: weapons with EverQuest-style DMG/DLY, shields, a torch, junk, underwear and cloth armour |
 | `lib/bacon_world/inventory.ex`, `inventory_item.ex` | What a character carries: two hands, five worn slots, 24 bag slots, coins |
-| `lib/bacon_world/merchants.ex` | NPC traders: Tilda the clothier, her stock, reach and prices |
+| `lib/bacon_world/merchants.ex` | NPC traders: Tilda the clothier, Old Bram the angler (fishing poles), their stock, reach and prices |
+| `lib/bacon_world/water.ex` | The sea (past 150 m) and the lakes (the Millpond): where water is, casting rules, the walkable radius, what each water's catches are |
+| `lib/bacon_world_web/fishing_events.ex` | PlayLive's fishing events (`fish_cast`, `fish_reel`, `fish_stop`): the server-timed bite, the reel window, the catch |
 | `lib/bacon_world/progression.ex` | Levels, experience, con colours, skill points banked for the tree |
 | `lib/bacon_world/melee.ex` | Swing numbers: reach and arc, hit chance, damage, delay |
 | `lib/bacon_world/mobs.ex`, `mobs/` | Creatures: spawns and kinds, the rules (`Brain`, pure), the zone process, its keeper |
@@ -49,7 +51,9 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/front-ui.ts`, `character-stage.ts` | Character select and creator (HTML) over a lit 3D stage |
 | `assets/js/appearance.ts`, `human-factory.ts` | The look model, and building a human from a look |
 | `assets/js/character-controller.ts`, `controls-math.ts`, `mouse-filter.ts` | Third-person controls (below), mounted movement and flight (double-tap Space); `mouse-filter.ts` repairs remote-desktop mouse-look |
-| `assets/js/world-dressing.ts` | The lobby village and its colliders |
+| `assets/js/world-dressing.ts` | The lobby village and its colliders (circles, boxes, ellipses) |
+| `assets/js/water.ts` | The water's rules (same as `water.ex`), the sea, beach, foam and lakes (`WaterView`), the bobber and line (`FishingView`) |
+| `assets/js/fishing-world.ts` | The hook's fishing (`FishingWorld` mixin): R to cast and reel, bites, catches, keeping the player on the island |
 | `assets/js/surface-textures.ts` | CC0 surface textures on the untextured models, by material name (triplanar, no UVs) |
 | `assets/js/model-manager.ts` | Characters in the scene: loading, their animators, what they hold |
 | `assets/js/anim-driver.ts` | The animator: four body channels, strafes, stances, swings with either hand (mirrored) |
@@ -61,10 +65,11 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/skills-ui.ts`, `skills-world.ts` | The skill tree window (K), the spell bar (2x10, bottom right), Q-X skill slots, casting on the client |
 | `assets/js/skill-tree-canvas.ts` | The tree drawn in SVG (pan, zoom), icons, ability dragging; shared by the game and the editor |
 | `assets/js/skill-tree-editor.ts` | The `BaconWorldSkillTreeEditor` hook (the admin editor) |
-| `assets/js/spell-fx.ts` | Spell effects: casting glow, fireball, heal, roots, recall, spin |
+| `assets/js/spell-fx.ts` | Spell effects: casting glow, fireball, heal, roots, recall, spin. Lights are pooled and materials shared: adding or removing a light recompiles every shader (a multi-second freeze) |
 | `assets/js/npcs-view.ts` | Merchants on the client: built as humans, picked by proxy cylinders, face you while trading |
 | `assets/js/wardrobe.ts` | Gear slots, what each worn item puts on the body and hides, and the bone corrections (joint offsets, relaxed fingers) |
-| `assets/js/items.ts`, `nameplates.ts`, `asset-url.ts` | Weapon models and icons; names over heads; versioned model URLs |
+| `assets/js/items.ts`, `nameplates.ts`, `asset-url.ts` | Weapon models (and procedural ones: the fishing pole) and icons (an item's `icon_url` wins); names over heads; versioned model URLs |
+| `priv/static/icons/` | Plugin-shipped item icons (the fishing pole, fish and junk; `library/pipeline/scripts/fishing_icons.py`), served at `/plugins/bacon_world/icons/` |
 | `assets/js/lobby-audio.ts` | Sound: recorded effects, placed in the world (pan, distance, low-pass), nature beds, music by mood, the UI's roll-over and click |
 | `assets/js/audio-mix.ts` | Sound logic with no browser: playlists and rests, `placeSound`, repeat gaps, which ambient details fit where you are (tested in `__tests__/audio-mix.test.ts`) |
 | `assets/js/__tests__/` | JS unit tests: `sh __tests__/run.sh` in a node container (esbuild + `node --test`) |
@@ -202,6 +207,19 @@ pattern, normals, roughness and occlusion. Pieces are merged per family and mate
 and the props share names but not textures). The Esc menu's Textures button turns it off
 (after a reload).
 
+## Water and fishing
+
+The village stands on an island (`BaconWorld.Water`, `water.ts`; the same rules on both sides,
+tested on both). The sea begins at 150 m from the square and runs to the horizon; a sand beach
+slopes into it and nobody walks past 151.5 m. The Millpond (24 x 16 m) lies 50 m north-west of
+the square; Old Bram the angler stands on its east bank and sells fishing poles.
+
+With a pole in hand, face the water from the bank or the beach (within 3 m) and press R: the
+bobber lands up to 10 m out. The server times the bite (3.5 to 12 s), and the client gets
+`fish_bite`; R within 1.8 s reels in, with an 80% chance of a catch rolled from that water's
+table. Moving more than 1.2 m, dying or putting the pole away ends it. Fish stack to 20 and sell
+to any merchant.
+
 ## Controls
 
 RaysSpaceSim's on-foot movement, EverQuest's mouse with the cursor free, and Black
@@ -216,12 +234,12 @@ Desert's mouse buttons with mouse-look on (`character-controller.ts`; numbers in
 | Hold right button (cursor free) | steer: the character faces the camera; W runs, S backpedals (slower), A/D strafe, diagonals turn the body 45° |
 | Right-click (cursor free) | a corpse: loot it; a creature: target it; a merchant: trade |
 | Q E F Z X | special attacks, earned in the skill tree (locked for now) |
-| I / G / Tab | inventory / loot the nearest corpse / next target (creatures first) |
-| R | interact: the targeted or nearest person in reach (a merchant opens her wares). Reserved for interactions (doors and the like later) |
+| I / G / Tab | inventory / take everything from the nearest corpse (the loot window opens only for what doesn't fit) / next target (creatures first) |
+| R | interact: the targeted or nearest person in reach (a merchant opens her wares). Reserved for interactions (doors and the like later). Holding a fishing pole at the water: cast, and reel in on a bite |
 | WASD / arrows | move relative to the camera; Shift sprints, C crouches, Space jumps |
 | Wheel | zoom (1.5 to 9 m) |
 | Ctrl | free the cursor; press again for mouse-look (Ctrl with a movement key never reaches the browser, so no Ctrl+A select-all) |
-| Esc | close a window, or the game menu (mouse, sound, effects / nature / music volume, resolution, log out) |
+| Esc | close a window, clear the target, or the game menu (mouse, sound, effects / nature / music volume, resolution, log out) |
 | Enter / `/` | chat / a slash command |
 
 A slow frame moves the character its full distance (in 50 ms steps), so a machine or

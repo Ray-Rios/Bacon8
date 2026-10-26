@@ -64,7 +64,11 @@ defmodule Bacon8Web.Endpoint do
     from: :bacon8,
     gzip: true,
     brotli: true,
-    cache_control_for_etags: "public, max-age=31536000",
+    # Files asked for without a digest (`?vsn=`) are kept an hour, then revalidated by ETag: the game's
+    # sounds (/audio/world) and pictures its scripts and styles name were kept a year, so a deploy
+    # that changed one needed a hard refresh (2026-10-26). Digested assets (app.js, app.css) stay
+    # immutable for a year (Plug.Static's `cache_control_for_vsn_requests`).
+    cache_control_for_etags: "public, max-age=3600",
     only: ~w(assets audio css js fonts images favicon.ico robots.txt sitemap.xml site.webmanifest .well-known terrain heightmaps)
 
   if code_reloading? do

@@ -91,7 +91,9 @@ defmodule BaconWorldWeb.GameEvents do
        mobs: Mobs.snapshot(slug),
        camps: Spawns.camps_payload(Brain.u()),
        safe_radius: Spawns.safe_radius() * Brain.u(),
-       merchants: Merchants.payload(slug)
+       merchants: Merchants.payload(slug),
+       # the sea and the lakes (BaconWorld.Water): the client draws them and fishes in them
+       water: BaconWorld.Water.layout(Brain.u())
      }, socket}
   end
 

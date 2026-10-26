@@ -37,6 +37,8 @@ defmodule BaconWorldWeb.PlayLive do
   @mount_events ~w(mounts_fetch mount_summon mount_dismount stable_open stable_choose)
   # The skill tree and casting (BaconWorldWeb.SkillEvents).
   @skill_events ~w(skills_fetch skill_learn hotbar_set cast cast_cancel)
+  # Fishing (BaconWorldWeb.FishingEvents, BaconWorld.Water).
+  @fishing_events ~w(fish_cast fish_reel fish_stop)
 
   on_mount {Bacon8Web.UserAuth, :require_authenticated_user}
 
@@ -373,6 +375,10 @@ defmodule BaconWorldWeb.PlayLive do
     BaconWorldWeb.SkillEvents.handle_event(event, params, socket)
   end
 
+  def handle_event(event, params, socket) when event in @fishing_events do
+    BaconWorldWeb.FishingEvents.handle_event(event, params, socket)
+  end
+
   def handle_event("world_position_update", params, socket) do
     with %{"x" => raw_x, "y" => raw_y, "z" => raw_z, "heading" => raw_heading} <- stringify_keys(params),
          {:ok, x} <- to_float(raw_x),
@@ -384,6 +390,7 @@ defmodule BaconWorldWeb.PlayLive do
          # the mount ridden, or the one just left (a fall from the saddle)
          mount = BaconWorldWeb.MountEvents.move_mount(socket),
          :ok <- validate_ground_bounds(y, mount),
+         :ok <- validate_on_island(current_character.position, x, z),
          :ok <- validate_move_speed(socket, current_character.position, x, y, z, mount),
          :ok <- if(mount, do: :ok, else: validate_player_collision(socket.assigns.zone_online_characters || [], current_character.character_id, current_character.position, x, z)) do
       topic = socket.assigns.current_zone_topic
@@ -580,6 +587,8 @@ defmodule BaconWorldWeb.PlayLive do
   def handle_info({:spell_land, landing}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.spell_land(landing, socket)}
   def handle_info({:zone_cast, payload}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.zone_cast(payload, socket)}
   def handle_info({:player_heal, heal}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.player_heal(heal, socket)}
+  def handle_info({:fish_bite, token}, socket), do: {:noreply, BaconWorldWeb.FishingEvents.bite(token, socket)}
+  def handle_info({:fish_escape, token}, socket), do: {:noreply, BaconWorldWeb.FishingEvents.escape(token, socket)}
 
   def handle_info(:characters_updated, socket) do
     characters = World.list_user_characters(socket.assigns.current_user.id)
@@ -798,6 +807,16 @@ defmodule BaconWorldWeb.PlayLive do
       dz = (character.z || 0.0) - cz
       :math.sqrt(dx * dx + dz * dz) <= @interest_radius
     end)
+  end
+
+  # Nobody goes out to sea (2026-10-26, BaconWorld.Water): a move that ends beyond the shallows
+  # and further out than it began is refused. Coming back in is always allowed, so anyone who
+  # was out there before this rule can walk home.
+  defp validate_on_island(from, x, z) do
+    u = BaconWorld.Mobs.Brain.u()
+    r = :math.sqrt(x * x + z * z) / u
+    r0 = :math.sqrt((from.x || 0.0) * (from.x || 0.0) + (from.z || 0.0) * (from.z || 0.0)) / u
+    if r > BaconWorld.Water.walk_radius() and r > r0, do: {:error, :invalid_move}, else: :ok
   end
 
   defp validate_ground_bounds(y, mount) do

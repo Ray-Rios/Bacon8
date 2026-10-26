@@ -25,6 +25,18 @@ function dot(): THREE.Texture {
   return dotTexture;
 }
 
+// Materials are made once and kept, never disposed: disposing the last material of a kind makes
+// three.js drop its shader, which is then built again, mid-game, the next time a spell lands.
+const _sparkMats = new Map<number, THREE.PointsMaterial>();
+function sparkMaterial(size: number): THREE.PointsMaterial {
+  let m = _sparkMats.get(size);
+  if (!m) {
+    m = new THREE.PointsMaterial({ size: size * U, map: dot(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true });
+    _sparkMats.set(size, m);
+  }
+  return m;
+}
+
 /** A pool of additive particles: each has a position, velocity, life and colour. */
 class Sparks {
   readonly points: THREE.Points;
@@ -46,8 +58,7 @@ class Sparks {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
-    const mat = new THREE.PointsMaterial({ size: size * U, map: dot(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true });
-    this.points = new THREE.Points(geo, mat);
+    this.points = new THREE.Points(geo, sparkMaterial(size));
     this.points.frustumCulled = false;
   }
 
@@ -86,18 +97,57 @@ class Sparks {
   }
 
   dispose() {
+    // the material is shared and kept (sparkMaterial): disposing it threw its shader away
     this.points.geometry.dispose();
-    (this.points.material as THREE.Material).dispose();
   }
 }
 
 const rnd = (a: number) => (Math.random() * 2 - 1) * a;
+
+// The roots' vines share one lit material, made once and kept (a new one each cast was a new
+// shader to build when the spell landed).
+let _roots: THREE.MeshStandardMaterial | null = null;
+const rootsMaterial = () => (_roots ||= new THREE.MeshStandardMaterial({ color: '#3f7a2a', roughness: 0.8, emissive: '#16300c' }));
 const tmp = new THREE.Vector3();
+
+// THE LIGHTS ARE POOLED, AND NEVER LEAVE THE SCENE. three.js builds every lit material's shader for
+// the number of lights in the scene, so adding a light (a fireball's glow, a burst) and removing it
+// again made every material in the village and on every character recompile, twice: the game froze
+// for 2-5 s as each spell landed, Recall included (2026-10-26). These lights are always there, at
+// intensity 0 when nobody is using them, so the count never changes. (`visible = false` would
+// change it too.)
+const POOLED_LIGHTS = 3;
 
 export class SpellFx {
   private live: Fx[] = [];
+  private lights: THREE.PointLight[] = [];
+  private lightBusy = new Set<THREE.PointLight>();
 
-  constructor(private scene: THREE.Scene) {}
+  constructor(private scene: THREE.Scene) {
+    for (let i = 0; i < POOLED_LIGHTS; i++) {
+      const l = new THREE.PointLight(0xffffff, 0, 1, 1.6);
+      l.name = `SpellFxLight${i}`;
+      this.lights.push(l);
+      scene.add(l);
+    }
+  }
+
+  /** A pooled light, lit (null when all are busy: the effect goes without one). */
+  private takeLight(color: THREE.Color, intensity: number, distance: number): THREE.PointLight | null {
+    const l = this.lights.find((x) => !this.lightBusy.has(x));
+    if (!l) return null;
+    this.lightBusy.add(l);
+    l.color.copy(color);
+    l.intensity = intensity;
+    l.distance = distance;
+    return l;
+  }
+
+  private giveLight(l: THREE.PointLight | null) {
+    if (!l) return;
+    l.intensity = 0;
+    this.lightBusy.delete(l);
+  }
 
   update(dt: number) {
     this.live = this.live.filter((f) => {
@@ -110,6 +160,7 @@ export class SpellFx {
   clear() {
     this.live.forEach((f) => f.dispose());
     this.live = [];
+    for (const l of this.lights) this.giveLight(l);
   }
 
   /** Sparks circling the caster's hands while a spell is cast. Stop it with the handle. */
@@ -148,8 +199,8 @@ export class SpellFx {
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: dot(), color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     halo.scale.setScalar(0.9 * U);
     core.add(halo);
-    const light = new THREE.PointLight(c, 6, 8 * U, 1.6);
-    core.add(light);
+    const light = this.takeLight(c, 6, 8 * U);
+    light?.position.copy(from);
     const trail = new Sparks(160, 0.22, 0.86);
     this.scene.add(core, trail.points);
     core.position.copy(from);
@@ -165,10 +216,12 @@ export class SpellFx {
           const k = Math.min(1, t);
           core.position.lerpVectors(from, dest, k);
           core.position.y += Math.sin(k * Math.PI) * 0.5 * U;
+          light?.position.copy(core.position);
           for (let i = 0; i < 4; i++) trail.emit(core.position.clone().add(new THREE.Vector3(rnd(0.06 * U), rnd(0.06 * U), rnd(0.06 * U))), new THREE.Vector3(rnd(0.3 * U), rnd(0.3 * U) + 0.2 * U, rnd(0.3 * U)), 0.35 + Math.random() * 0.2, i % 2 ? c : new THREE.Color('#ffd27a'));
           if (k >= 1) {
             arrived = true;
             core.visible = false;
+            this.giveLight(light);
             this.burst(core.position.clone(), color, 70, 3.2);
             onArrive?.(core.position.clone());
           }
@@ -176,11 +229,11 @@ export class SpellFx {
         return trail.update(dt) || !arrived;
       },
       dispose: () => {
+        this.giveLight(light);
         this.scene.remove(core, trail.points);
         core.geometry.dispose();
-        (core.material as THREE.Material).dispose();
-        (halo.material as THREE.Material).dispose();
         trail.dispose();
+        // (core and halo materials are left to the garbage collector, their shaders kept)
       },
     });
   }
@@ -193,18 +246,19 @@ export class SpellFx {
       const v = new THREE.Vector3(rnd(1), rnd(1), rnd(1)).normalize().multiplyScalar(speed * U * (0.4 + Math.random() * 0.6));
       sp.emit(at, v, 0.45 + Math.random() * 0.35, i % 3 ? c : new THREE.Color('#fff2c0'));
     }
-    const light = new THREE.PointLight(c, 10, 9 * U, 1.6);
-    light.position.copy(at);
-    this.scene.add(sp.points, light);
+    const light = this.takeLight(c, 10, 9 * U);
+    light?.position.copy(at);
+    this.scene.add(sp.points);
     let t = 0;
     this.live.push({
       update: (dt) => {
         t += dt;
-        light.intensity = Math.max(0, 10 * (1 - t / 0.35));
+        if (light) light.intensity = Math.max(0, 10 * (1 - t / 0.35));
         return sp.update(dt);
       },
       dispose: () => {
-        this.scene.remove(sp.points, light);
+        this.giveLight(light);
+        this.scene.remove(sp.points);
         sp.dispose();
       },
     });
@@ -238,7 +292,7 @@ export class SpellFx {
   /** Roots: thorny vines out of the ground around a creature for `ms`. */
   root(target: THREE.Object3D, ms: number, radius = 0.7) {
     const group = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: '#3f7a2a', roughness: 0.8, emissive: '#16300c' });
+    const mat = rootsMaterial();
     const n = 9;
     const vines: THREE.Mesh[] = [];
     for (let i = 0; i < n; i++) {
@@ -273,8 +327,7 @@ export class SpellFx {
         this.scene.remove(group);
         for (const v of vines) v.geometry.dispose();
         ring.geometry.dispose();
-        mat.dispose();
-        (ring.material as THREE.Material).dispose();
+        // (the shared roots material, and the ring's, are kept: see sparkMaterial)
       },
     });
   }
@@ -283,9 +336,9 @@ export class SpellFx {
   recall(at: THREE.Vector3) {
     const sp = new Sparks(220, 0.18, 0.96);
     const c = new THREE.Color('#7ab8ff');
-    const light = new THREE.PointLight(c, 8, 10 * U, 1.6);
-    light.position.copy(at).add(new THREE.Vector3(0, 1.2 * U, 0));
-    this.scene.add(sp.points, light);
+    const light = this.takeLight(c, 8, 10 * U);
+    light?.position.copy(at).add(new THREE.Vector3(0, 1.2 * U, 0));
+    this.scene.add(sp.points);
     let t = 0;
     this.live.push({
       update: (dt) => {
@@ -296,11 +349,12 @@ export class SpellFx {
             sp.emit(new THREE.Vector3(at.x + Math.cos(a) * r, at.y + Math.random() * 0.3 * U, at.z + Math.sin(a) * r), new THREE.Vector3(-Math.sin(a) * 0.6 * U, (1.6 + Math.random()) * U, Math.cos(a) * 0.6 * U), 1.0, i % 2 ? c : new THREE.Color('#e8f4ff'));
           }
         }
-        light.intensity = Math.max(0, 8 * (1 - t / 1.6));
+        if (light) light.intensity = Math.max(0, 8 * (1 - t / 1.6));
         return sp.update(dt) || t < 1.1;
       },
       dispose: () => {
-        this.scene.remove(sp.points, light);
+        this.giveLight(light);
+        this.scene.remove(sp.points);
         sp.dispose();
       },
     });
@@ -326,7 +380,7 @@ export class SpellFx {
       dispose: () => {
         this.scene.remove(ring);
         geo.dispose();
-        mat.dispose();
+        // (the material is left to the garbage collector, its shader kept: see sparkMaterial)
       },
     });
   }

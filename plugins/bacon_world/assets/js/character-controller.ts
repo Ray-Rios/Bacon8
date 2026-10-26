@@ -38,6 +38,8 @@ import {
   flightTarget,
   isDoubleTap,
   facingYaw,
+  LOCK_LOSS_SETTLE_MS,
+  lockLossWasEsc,
   moveDirection,
   stepVelocity,
   turnToward,
@@ -164,6 +166,11 @@ export class CharacterController {
   private skipNextMouseMove = false;
   private releasingLock = false; // we asked for the lock to go (Ctrl, chat, menu, death)
   private wasLocked = false; // the lock state the last pointerlockchange saw
+  // When the window last lost focus or was hidden, and when PrintScreen was last pressed (ms,
+  // performance.now): a lock lost then was a screenshot tool or another window, not Esc.
+  private lastAwayMs = -1e9;
+  private lastPrintMs = -1e9;
+  private disposed = false;
   // Mouse-look with the pointer locked goes through the remote-desktop filter.
   private mouseFilter = new MouseFilter(page);
   private cursor: Move | null = null; // the free cursor's last position, from the page's middle
@@ -171,8 +178,15 @@ export class CharacterController {
   // Bound once, so dispose() removes the same functions it added.
   private readonly handleKeyDown = (e: KeyboardEvent) => this.onKeyDown(e);
   private readonly handleKeyUp = (e: KeyboardEvent) => this.onKeyUp(e);
-  private readonly handleBlur = () => this.clearInput();
-  private readonly handleVisibility = () => { if (document.hidden) this.clearInput(); };
+  private readonly handleBlur = () => {
+    this.lastAwayMs = performance.now();
+    this.clearInput();
+  };
+  private readonly handleVisibility = () => {
+    if (!document.hidden) return;
+    this.lastAwayMs = performance.now();
+    this.clearInput();
+  };
   private readonly handleMouseDown = (e: MouseEvent) => this.onMouseDown(e);
   private readonly handleWindowMouseUp = (e: MouseEvent) => this.onMouseUp(e);
   private readonly handlePointerMove = (e: PointerEvent) => this.onPointerMove(e);
@@ -214,6 +228,10 @@ export class CharacterController {
   // ---------------------------------------------------------------------------
 
   private onKeyDown(event: KeyboardEvent): void {
+    if (event.code === 'PrintScreen') {
+      this.lastPrintMs = performance.now();
+      return;
+    }
     if (isEditable(event.target)) return;
 
     if (event.code === 'ControlLeft' || event.code === 'ControlRight') {
@@ -251,6 +269,8 @@ export class CharacterController {
   }
 
   private onKeyUp(event: KeyboardEvent): void {
+    // Windows hands the page only the key-up of PrintScreen
+    if (event.code === 'PrintScreen') this.lastPrintMs = performance.now();
     // Always clear, even from an input: a key held when focus moved must not stick.
     this.keys.delete(event.code);
   }
@@ -410,10 +430,24 @@ export class CharacterController {
     // The locked cursor starts where the free one was.
     this.mouseFilter.reset(locked ? this.cursor : null);
     if (!locked && !this.releasingLock) {
-      // We didn't let go: the browser did, on Esc (it keeps that key to itself
-      // while locked). Treat it as Esc.
+      // We didn't let go: the browser did. On Esc (it keeps that key to itself while locked)
+      // that is the menu; but a screenshot tool (Win+Shift+S, PrintScreen) or another window
+      // taking focus drops the lock too (2026-10-26: every screenshot opened the menu). Look
+      // again a moment later, when the window has lost focus if that is what happened.
       this.clearInput();
-      this.options.onEscape?.('lock-lost');
+      const lostAt = performance.now();
+      setTimeout(() => {
+        if (this.disposed || this.isPointerLocked()) return;
+        const esc = lockLossWasEsc({
+          lostAtMs: lostAt,
+          nowMs: performance.now(),
+          lastAwayMs: this.lastAwayMs,
+          lastPrintMs: this.lastPrintMs,
+          hidden: document.hidden,
+          focused: document.hasFocus(),
+        });
+        if (esc) this.options.onEscape?.('lock-lost');
+      }, LOCK_LOSS_SETTLE_MS);
     }
     this.releasingLock = false;
     this.options.onPointerLockChange?.(locked);
@@ -768,6 +802,7 @@ export class CharacterController {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.releasePointerLock();
     document.removeEventListener('keydown', this.handleKeyDown);
     document.removeEventListener('keyup', this.handleKeyUp);

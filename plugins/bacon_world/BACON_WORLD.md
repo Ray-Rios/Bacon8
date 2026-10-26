@@ -18,7 +18,7 @@ Related documents:
   deployment.
 - Facts dated. The owner's decisions are recorded, not re-argued.
 
-Last update: **2026-10-24**.
+Last update: **2026-10-26**.
 
 ---
 
@@ -45,7 +45,7 @@ It is also the template other Bacon8 games copy.
 All of it uses our own or CC0 art. Every 3D asset is built by scripts in the game repository,
 so it can be rebuilt and changed.
 
-## 2. State on 2026-10-24
+## 2. State on 2026-10-26
 
 > **Hub note from Claude Code, 2026-10-25.** Everything listed below up to and including the
 > 24f delivery (skill tree, stable, game cards, the Gem) is **committed and deployed**, and
@@ -72,6 +72,63 @@ so it can be rebuilt and changed.
 
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
+
+**Delivered 2026-10-26 (b), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-26b.md`): **guard poses for
+two-handers, the owner's bug list, and the sea, the Millpond and fishing.**
+
+- **Two-handers held like weapons, not hugged.** The 25c fix put the left hand back on the haft, but the
+  owner was right that the *poses* were wrong: the clips' idles hold the greatsword, maul and battle axe
+  inside the waist, bend the spear arm until the elbow breaks, and run the staff through his legs. Now,
+  while a two-hander is drawn and neither hand is swinging, `human-factory.ts` blends (over ~0.2 s) into
+  a guard pose from `TWO_HAND_GUARDS`: where the right hand goes and where the weapon points, in units of
+  the body's own pelvis-to-neck height (so it fits both bodies and every slider). Greatsword: forward
+  and up at chest height. Axe and maul: across the body, head high on the left. Spear and halberd:
+  levelled forward at the hip, elbows down. Staff: across the body at chest height, clear of the legs.
+  The arm is solved by two-bone IK (`ik2`) with the elbow pole down, out and back, then `twoHandGrip`
+  places the left hand as before. Swings still play the clips untouched. Checked in the harness on
+  both bodies from the front, the side and three-quarters: no clipping.
+- **Screenshots no longer open the Esc menu.** Taking a screenshot (PrintScreen, Snipping Tool, Game Bar)
+  takes the browser's focus, which drops the pointer lock, and the game read every lost lock as Esc. A
+  lost lock now waits 160 ms and opens the menu only if the window still has focus, wasn't hidden or
+  blurred around then, and PrintScreen wasn't pressed in the last 1.5 s (`lockLossWasEsc`, 4 tests).
+- **Esc clears the target first**, then (pressed again) opens the menu. A target that dies, despawns or
+  **respawns** is dropped, so a respawned creature is no longer quietly re-targeted.
+- **Skill points update on level-up** without a refresh (`refreshSkills`).
+- **The skill window drags smoothly**: it moves by its title bar only (a drag anywhere used to move the
+  window *and* pan the tree, which read as snapping to a grid), with compositing hints.
+- **Casting no longer freezes the game.** Every spell added a PointLight on impact and removed it after;
+  in three.js a change in the number of lights recompiles every lit material in the scene, which was
+  the 2-5 s stall (Recall too). Three pooled lights are now added once at intensity 0 and borrowed; the
+  spark and roots materials are shared and no longer disposed (disposing the last user of a shader
+  also forces a recompile next time).
+- **Looting the EverQuest way:** an empty corpse says "You find nothing on X's corpse." and opens no
+  window. **G takes everything** from the nearest corpse without a window; the window opens only for
+  what didn't fit (inventory full). Left-click still opens the window for a corpse with items.
+- **No more hard refreshes after a deploy.** No LiveView ever asked `static_changed?`, and the game's
+  unfingerprinted files (sounds, pictures, plugin scripts) were cached for a year. A hub `on_mount`
+  hook (`Bacon8Web.StaticReload`) reloads the page on the next navigation once the static files have
+  changed, and plain static files are kept an hour, then revalidated (digested `app.js`/`app.css` stay
+  immutable). BACON8.md has the hub side.
+- **The sea, the Millpond and fishing.**
+  - **The island ends at 150 m** (`BaconWorld.Water`, mirrored by `water.ts` with the same rules and
+    tests on both sides). A sand beach slopes from under the grass's edge into a sea that runs to the
+    horizon, with a bobbing swell and foam at the waterline; nobody walks past 151.5 m (client clamp;
+    the server refuses a move that ends further out than it started, so anyone already out there can
+    still walk home). The grass disc is now 141 m.
+  - **The Millpond**, a 24 x 16 m pond 50 m north-west of the square (-31, -40), with a mud bank,
+    reeds, lily pads and an angler's gap on its east bank. Its edge is a collider.
+  - **Old Bram, Angler** stands on that bank and sells the **fishing pole** (30 copper; two-handed,
+    a staff-set item with its own guard pose and a procedural model with a cork grip and reel).
+  - **Fishing**: with the pole in hand, face the water from the bank or the beach and press **R** to
+    cast; the bobber flies out up to 10 m. A bite (3.5-12 s later, timed by the server) pulls the
+    bobber under with a splash: press **R** within 1.8 s to reel in (80% chance to land it). Moving,
+    dying or putting the pole away ends it. The pond and the sea have their own catches: perch, brook
+    trout, mud carp, a rare **golden carp** and old boots; mackerel, striped bass, red snapper, a rare
+    **silver tuna** and kelp. Fish stack to 20 and sell to merchants (icons rendered in Blender by
+    `library/pipeline/scripts/fishing_icons.py`, shipped in `priv/static/icons/`).
+  - Sounds reuse the CC0 drip and loot recordings for now; real surf and splash recordings are a
+    follow-up (the CC0 sites are blocked from the build machines).
+- Tests: 676 Elixir (14 new for water and fishing), 80 JS (8 new).
 
 **Delivered 2026-10-25 (c), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-25c.md`): **two-handed grips,
 fourth time, found by measuring instead of tuning.** The owner: the male "STILL does not hold ANY 2 handed
@@ -454,6 +511,9 @@ The first 2026-10-23 delivery:
 | 2026-10-24 | **The skill tree**: Path of Exile style, starting in the middle and radiating out in six directions; **Recall** (to the bind point) is everyone's level-1 skill; the first six nodes are a heal, a fireball, +10 HP, +10 MP, a root and a spin attack; one node a level, joined to what you have. The owner extends it on an admin page by dragging spells, skills and buffs onto nodes. |
 | 2026-10-24 | **Skills go on Q E F Z X; spells on their own bar, two rows of ten, bottom right** by default. |
 | 2026-10-24 | **A stablemaster NPC** chooses which of the account's mounts M summons. |
+| 2026-10-26 | **Esc clears the selected target first**; with no target it opens the menu. A target that dies or respawns is dropped. |
+| 2026-10-26 | **Looting: G takes everything** from the nearest corpse with no window, unless the inventory is full. An empty corpse opens no window (G or click). |
+| 2026-10-26 | **The world is an island in an ocean** that covers everything that isn't land, with **a small fishing lake near the town** (the Millpond). **Fishing is in the game.** |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 
 ## 4. How it fits together
@@ -615,6 +675,16 @@ the development PC it sits in `C:\Bacon8\tmp\b8work\harness`):
 ## 7. Known issues and next steps
 
 In rough priority order.
+
+**Water and fishing (2026-10-26, b):**
+
+- The owner to try the guard poses, the sea, the Millpond and fishing in game; tune the poses in
+  `TWO_HAND_GUARDS` (human-factory.ts) and the catches in `BaconWorld.Water` from what he says.
+- Real CC0 recordings for surf, a cast, a splash and a reel (they reuse `sw_drip` and `loot` now).
+- Catching is flat (80% on a timely reel): no fishing skill, bait or rod tiers yet. Cooking the fish.
+- The sea is a wall: no swimming or boats. The lake's edge is a client-side collider, like the village's.
+- Spell lights are pooled (three): a fourth effect at once just goes without a light. New effects should use
+  `takeLight`/`giveLight` and shared materials, never add or remove lights or dispose shared materials.
 
 **The skill tree (2026-10-24, sixth):**
 

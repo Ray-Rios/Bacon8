@@ -36,6 +36,8 @@ import { Nameplates, playerColor, plateHeight } from './nameplates';
 import { setAssetVersions } from './asset-url';
 import { GameWorld } from './game-world';
 import { SkillsWorld } from './skills-world';
+import { FishingWorld } from './fishing-world';
+import { clampToIsland } from './water';
 import type { GameUI } from './game-ui';
 import type { MobsView } from './mobs-view';
 import type { NpcsView } from './npcs-view';
@@ -290,6 +292,9 @@ export const WorldCharacterUIScene = {
     // Casting (BaconWorldWeb.SkillEvents): how ours went, everyone's for the look, heals.
     this.handleEvent('cast_result', (payload: any) => this.onCastResult(payload));
     this.handleEvent('zone_cast', (payload: any) => this.onZoneCast(payload));
+    // fishing (fishing-world.ts): the server says when a fish bites, and when it gets away
+    this.handleEvent('fish_bite', () => this.onFishBite());
+    this.handleEvent('fish_escaped', () => this.onFishEscaped());
     this.handleEvent('healed', (payload: any) => this.combatLog(`${payload.from} heals you for ${payload.amount} hit points.`, '#7DFF8F'));
 
     // The server took you off your mount (you died, or left the world).
@@ -872,8 +877,11 @@ export const WorldCharacterUIScene = {
         // Mouse-look on: the left button swings the left hand, the right button the right.
         onAttack: (hand: 'left' | 'right') => this.meleeAttack(hand),
         // The village's colliders (world-dressing.ts); empty until it has loaded.
-        collide: (x: number, z: number) =>
-          this.worldColliders.length ? WorldDressing.pushOut(this.worldColliders, x, z, 0.32 * UNITS_PER_METRE) : { x, z },
+        // Then the island's edge: nobody walks out to sea (water.ts, BaconWorld.Water).
+        collide: (x: number, z: number) => {
+          const p = this.worldColliders.length ? WorldDressing.pushOut(this.worldColliders, x, z, 0.32 * UNITS_PER_METRE) : { x, z };
+          return this.water ? clampToIsland(this.water, p.x, p.z) : p;
+        },
       });
       this.controller.setMouseSettings(
         Number(readSetting(MOUSE_SENS_KEY)) || SENSITIVITY.default,
@@ -1396,6 +1404,14 @@ export const WorldCharacterUIScene = {
       this.skillsUI.close();
       return;
     }
+    // Esc lets go of the target first; the next Esc opens the menu (2026-10-26)
+    // (one Esc can arrive twice, as a lost lock and as the key: the second does nothing)
+    if (performance.now() - (this.escClearedTargetAtMs || 0) < 250) return;
+    if (this.targetId && !this.isGameMenuOpen()) {
+      this.setTarget(null);
+      this.escClearedTargetAtMs = performance.now();
+      return;
+    }
     if (reason === 'lock-lost') {
       this.openGameMenu();
       return;
@@ -1604,7 +1620,7 @@ export const WorldCharacterUIScene = {
       'Mouse-look on: <b class="text-slate-300">left / right button</b> swing your left / right hand (hold to keep swinging)',
       'Cursor free: <b class="text-slate-300">drag with the left button</b> to turn the camera · <b class="text-slate-300">hold right button</b> to steer · <b class="text-slate-300">right-click</b> a corpse to loot it, a merchant to trade',
       '<b class="text-slate-300">WASD</b> move · <b class="text-slate-300">Shift</b> sprint · <b class="text-slate-300">C</b> crouch · <b class="text-slate-300">Space</b> jump · <b class="text-slate-300">Wheel</b> zoom',
-      '<b class="text-slate-300">I</b> inventory · <b class="text-slate-300">G</b> loot nearest corpse · <b class="text-slate-300">R</b> interact (trade) · <b class="text-slate-300">Tab</b> next target',
+      '<b class="text-slate-300">I</b> inventory · <b class="text-slate-300">G</b> loot everything from the nearest corpse · <b class="text-slate-300">R</b> interact (trade) · <b class="text-slate-300">Tab</b> next target',
       '<b class="text-slate-300">K</b> skill tree · <b class="text-slate-300">Q E F Z X</b> skills · <b class="text-slate-300">1-0</b>, <b class="text-slate-300">Shift+1-0</b> spells · <b class="text-slate-300">M</b> mount (double-tap <b class="text-slate-300">Space</b> to fly)',
       '<b class="text-slate-300">Enter</b> chat · <b class="text-slate-300">Esc</b> this menu',
     ].join('<br>');
@@ -1830,6 +1846,8 @@ export const WorldCharacterUIScene = {
     }
     // R: interact (merchants now; doors and the like later). Reserved for interactions.
     if ((event.key === 'r' || event.key === 'R') && !event.ctrlKey && !event.metaKey && !this.isGameMenuOpen() && !this.isDead) {
+      // a fishing pole by the water casts (or reels in); otherwise R talks to people
+      if (this.fishKey?.()) return;
       this.interact();
       return;
     }
@@ -2702,4 +2720,6 @@ export const WorldCharacterUIScene = {
   // Fighting, creatures, looting, the inventory and the windows (game-world.ts).
   ...GameWorld,
   ...SkillsWorld,
+  // Fishing and the water (fishing-world.ts, water.ts).
+  ...FishingWorld,
 };

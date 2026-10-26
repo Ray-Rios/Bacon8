@@ -41,7 +41,8 @@ export const SPELL_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
 const CSS = `
 ${TREE_CSS}
-.bwg .skw{left:50%;top:50%;transform:translate(-50%,-50%);width:640px;height:560px;max-width:calc(100% - 24px);max-height:calc(100% - 24px);display:none;flex-direction:column}
+.bwg .skw > .t{cursor:move}
+.bwg .skw{will-change:transform;contain:layout paint;left:50%;top:50%;transform:translate(-50%,-50%);width:640px;height:560px;max-width:calc(100% - 24px);max-height:calc(100% - 24px);display:none;flex-direction:column}
 .bwg .skw .cv{flex:1;position:relative;background:radial-gradient(circle at 50% 50%,#1b1712,#0b0a08 70%);overflow:hidden}
 .bwg .skw .ft{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;font-size:11px;color:#a8997a;border-top:1px solid #4b3f2b}
 .bwg .skw .pts{color:#7be08a;font-weight:700}
@@ -75,6 +76,7 @@ export class SkillsUI {
   private canvasHost: HTMLElement;
   private footer: HTMLElement;
   private title: HTMLElement;
+  private titleBar!: HTMLElement;
   private bar: HTMLElement;
   private castBar: HTMLElement;
   private tip: HTMLElement;
@@ -90,8 +92,9 @@ export class SkillsUI {
     this.style.textContent = CSS;
     document.head.appendChild(this.style);
     this.title = h('span', {}, 'Skills');
-    this.win = h('div', { class: 'w skw' },
-      h('div', { class: 't' }, this.title, h('span', { class: 'x', title: 'Close (K)', onclick: () => this.close() }, '✕')));
+    const titleBar = h('div', { class: 't' }, this.title, h('span', { class: 'x', title: 'Close (K)', onclick: () => this.close() }, '✕'));
+    this.titleBar = titleBar;
+    this.win = h('div', { class: 'w skw' }, titleBar);
     this.canvasHost = h('div', { class: 'cv' });
     this.footer = h('div', { class: 'ft' });
     this.win.append(this.canvasHost, this.footer);
@@ -99,7 +102,9 @@ export class SkillsUI {
     this.castBar = h('div', { class: 'w cbar' });
     this.tip = h('div', { class: 'tip' });
     root.append(this.win, this.bar, this.castBar, this.tip);
-    this.unmovable = [makeMovable(this.win, 'skills'), makeMovable(this.bar, 'spellbar')];
+    // The window moves by its title bar only: a drag on the tree pans the tree (2026-10-26: a drag
+    // anywhere moved the window and panned the tree at once, and it stuttered along)
+    this.unmovable = [makeMovable(this.win, 'skills', this.titleBar), makeMovable(this.bar, 'spellbar')];
     this.canvas = new TreeCanvas(this.canvasHost, {
       ring: 96,
       state: (n) => this.stateOf(n),

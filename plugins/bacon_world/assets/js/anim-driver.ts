@@ -365,7 +365,7 @@ export class CharacterAnimator {
    * 'free' (empty), the set of what it holds ('torch', 'sword_1h', ...), 'two_hand' for both
    * arms on a two-handed weapon, or 'swing' while that arm swings (no correction then).
    */
-  armSets(): { l: string; r: string; two: boolean } {
+  armSets(): { l: string; r: string; two: boolean; set?: string } {
     const two = this.main?.hands === 2;
     let l = two ? 'two_hand' : this.off ? this.off.set : 'free';
     let r = two ? 'two_hand' : this.main ? this.main.set : 'free';
@@ -374,7 +374,8 @@ export class CharacterAnimator {
       if (o.channels.has('armL')) l = 'swing';
       if (o.channels.has('armR')) r = 'swing';
     }
-    return { l, r, two };
+    // the stance set rides along for a two-hander (human-factory.ts picks its guard by it)
+    return two ? { l, r, two, set: this.main?.set } : { l, r, two };
   }
 
   /** What the hands hold (null: empty). A two-handed main weapon empties the off hand. */

@@ -30,6 +30,8 @@ export interface ItemDef {
   icon: string | null;
   /** The icon file under /models (weapons: Weapons/icons/W_<model>.png; clothes: Humans/Wardrobe/icons/<id>.png). */
   icon_path?: string | null;
+  /** An icon of the plugin's own (/plugins/bacon_world/icons/...), for items with none on the models volume. */
+  icon_url?: string | null;
   /** How a worn item is drawn on each body (wardrobe.ts), and its colours. */
   wear?: Record<string, { garment: string; design?: string } | null> | null;
   colors?: Record<string, string> | null;
@@ -49,6 +51,7 @@ export function item(id: string | null | undefined): ItemDef | null {
 
 export function iconUrl(id: string | null | undefined): string | null {
   const it = item(id);
+  if (it?.icon_url) return it.icon_url;
   if (it?.icon_path) return modelUrl(`/models/${it.icon_path}`);
   return it?.icon ? modelUrl(`${ICONS_BASE}/W_${it.icon}.png`) : null;
 }
@@ -167,6 +170,43 @@ export const HOLD: Record<string, { y?: number; roll?: number; off?: number }> =
   BuilderHammer: { roll: 180 },
 };
 
+/**
+ * Things held like weapons but drawn in code, not in the weapons file (the same space: metres,
+ * +Y from the grip toward the tip). A child named `RodTip` marks where a fishing line hangs.
+ */
+const PROCEDURAL: Record<string, () => THREE.Object3D> = {
+  // 2026-10-26: fishing (water.ts, fishing-world.ts)
+  FishingPole: () => {
+    const g = new THREE.Group();
+    const cork = new THREE.MeshStandardMaterial({ color: '#B58E5E', roughness: 0.95 });
+    const blank = new THREE.MeshStandardMaterial({ color: '#3B2A1D', roughness: 0.45 });
+    const metal = new THREE.MeshStandardMaterial({ color: '#A2A8AE', roughness: 0.35, metalness: 0.8 });
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.02, 0.36, 10), cork);
+    grip.position.y = -0.02;
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.0032, 0.0115, 1.95, 8), blank);
+    rod.position.y = 0.16 + 1.95 / 2;
+    const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.026, 16), metal);
+    reel.rotation.z = Math.PI / 2;
+    reel.position.set(0, 0.03, 0.05);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.05, 0.03), metal);
+    foot.position.set(0, 0.03, 0.025);
+    g.add(grip, rod, reel, foot);
+    for (const y of [0.62, 1.08, 1.48, 1.82, 2.08]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.007, 0.0016, 4, 10), metal);
+      ring.position.set(0, y, 0.012);
+      g.add(ring);
+    }
+    const tip = new THREE.Object3D();
+    tip.name = 'RodTip';
+    tip.position.y = 2.11;
+    g.add(tip);
+    g.traverse((o: any) => {
+      if (o.isMesh) o.castShadow = true;
+    });
+    return g;
+  },
+};
+
 /** Loads the weapons file once and hands out clones of its nodes. */
 export class WeaponModels {
   private loader: GLTFLoader;
@@ -205,10 +245,11 @@ export class WeaponModels {
 
   /** A copy of weapon `model` (shares geometry and materials with the template). */
   async create(model: string): Promise<THREE.Object3D | null> {
-    const scene = await this.load();
-    const tpl = scene?.getObjectByName(`W_${model}`);
-    if (!tpl) return null;
-    const copy = tpl.clone(true);
+    const make = PROCEDURAL[model] as (() => THREE.Object3D) | undefined;
+    const scene = make ? null : await this.load();
+    const tpl = make ? null : scene?.getObjectByName(`W_${model}`);
+    if (!make && !tpl) return null;
+    const copy = make ? make() : tpl!.clone(true);
     const hold = HOLD[model] || {};
     copy.position.set(0, hold.y || 0, 0);
     copy.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(hold.roll || 0));
