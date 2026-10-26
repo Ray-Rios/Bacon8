@@ -108,4 +108,17 @@ defmodule ChatChannelsWeb.ChatLiveTest do
       refute ChatChannels.is_channel_member?(club.id, invitee.id)
     end
   end
+
+  test "the invitations switch is the plugin's own setting" do
+    me = verified()
+    {:ok, view, html} = live(signed_in(me), "/chat")
+    assert html =~ "Let people invite me to channels"
+    assert ChatChannels.allow_invites?(me.id)
+
+    view |> element("#allow-invites input") |> render_click()
+    refute ChatChannels.allow_invites?(me.id)
+
+    view |> element("#allow-invites input") |> render_click()
+    assert ChatChannels.allow_invites?(me.id)
+  end
 end

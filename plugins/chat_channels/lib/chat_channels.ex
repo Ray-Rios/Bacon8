@@ -5,7 +5,7 @@ defmodule ChatChannels do
 
   import Ecto.Query, warn: false
   alias Bacon8.Repo
-  alias ChatChannels.{Channel, Message, Reaction, Thread, ChannelMember, ChannelInvite}
+  alias ChatChannels.{Channel, Message, Reaction, Thread, ChannelMember, ChannelInvite, UserSettings}
 
   @default_channel_allowance 5
 
@@ -18,7 +18,7 @@ defmodule ChatChannels do
   limit. The default is wrong in the least damaging direction.
   """
   def channel_allowance(user_id) when is_binary(user_id) do
-    case Repo.get(Bacon8.Accounts.User, user_id) do
+    case Repo.get(UserSettings, user_id) do
       %{channel_allowance: n} when is_integer(n) -> n
       _ -> @default_channel_allowance
     end
@@ -27,6 +27,72 @@ defmodule ChatChannels do
   def channel_allowance(_), do: @default_channel_allowance
 
   def default_channel_allowance, do: @default_channel_allowance
+
+  @doc "Sets a user's allowance outright (admin use). Returns `{:ok, n}` or `{:error, :out_of_range}`."
+  def set_channel_allowance(user_id, n) when is_binary(user_id) and is_integer(n) and n >= 0 and n <= 1000 do
+    upsert_settings(user_id, %{channel_allowance: n}, [:channel_allowance])
+    {:ok, n}
+  end
+
+  def set_channel_allowance(_user_id, _n), do: {:error, :out_of_range}
+
+  @doc """
+  Adds `n` (negative to take away) to a user's allowance, never below zero. The store calls this
+  when a channel-slot pass is bought, restored or ends. Starts from the default for a user
+  without settings.
+  """
+  def add_channel_allowance(user_id, n) when is_binary(user_id) and is_integer(n) do
+    {:ok, uuid} = Ecto.UUID.dump(user_id)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    %{rows: [[total]]} =
+      Repo.query!(
+        """
+        INSERT INTO chat_user_settings (user_id, channel_allowance, inserted_at, updated_at)
+        VALUES ($1, GREATEST($2::integer + $3::integer, 0), $4, $4)
+        ON CONFLICT (user_id) DO UPDATE
+          SET channel_allowance = GREATEST(chat_user_settings.channel_allowance + $3::integer, 0), updated_at = $4
+        RETURNING channel_allowance
+        """,
+        [uuid, @default_channel_allowance, n, now]
+      )
+
+    {:ok, total}
+  end
+
+  @doc "The order a user keeps their channel list in (channel ids; empty when they never sorted it)."
+  def channel_order(user_id) when is_binary(user_id) do
+    case Repo.get(UserSettings, user_id) do
+      %{channel_order: order} when is_list(order) -> order
+      _ -> []
+    end
+  end
+
+  def channel_order(_), do: []
+
+  @doc "True unless the user switched channel invitations off."
+  def allow_invites?(user_id) when is_binary(user_id) do
+    case Repo.get(UserSettings, user_id) do
+      %{allow_invites: false} -> false
+      _ -> true
+    end
+  end
+
+  def allow_invites?(_), do: true
+
+  @doc "Switches channel invitations on or off for a user."
+  def set_allow_invites(user_id, allow?) when is_binary(user_id) and is_boolean(allow?) do
+    upsert_settings(user_id, %{allow_invites: allow?}, [:allow_invites])
+    {:ok, allow?}
+  end
+
+  defp upsert_settings(user_id, changes, fields) do
+    Repo.insert!(
+      struct(UserSettings, Map.put(changes, :user_id, user_id)),
+      on_conflict: {:replace, fields ++ [:updated_at]},
+      conflict_target: :user_id
+    )
+  end
 
   @doc """
   Channels this user owns. Games use it to offer a player their own channels
@@ -256,9 +322,7 @@ defmodule ChatChannels do
       end
     end)
 
-    user
-    |> Bacon8.Accounts.User.channel_order_changeset(%{channel_order: valid_ids})
-    |> Repo.update()
+    {:ok, upsert_settings(user.id, %{channel_order: valid_ids}, [:channel_order])}
   end
 
   def reorder_channels(ids) do
@@ -1503,7 +1567,7 @@ defmodule ChatChannels do
   @doc "Check if a user can be invited (not blocked, has invites enabled)"
   def can_receive_invite?(invitee, inviter_id) do
     # Check if invites are enabled
-    invites_enabled = Map.get(invitee, :allow_channel_invites, true)
+    invites_enabled = allow_invites?(Map.get(invitee, :id))
     
     # Check if inviter is blocked
     blocked_ids = Map.get(invitee, :blocked_user_ids, [])

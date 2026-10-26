@@ -639,7 +639,6 @@ defmodule Bacon8.Accounts do
       two_factor_backup_codes: [],
       background_custom_data: %{},
       blocked_user_ids: [],
-      channel_order: [],
       email_verification_token: nil,
       password_reset_token: nil,
       registration_ip: nil,
@@ -892,15 +891,6 @@ defmodule Bacon8.Accounts do
   # User Preferences
   # ---------------------
   
-  @doc "Update user invite preferences"
-  def update_invite_preferences(user_id, attrs) do
-    user = get_user!(user_id)
-    
-    user
-    |> Ecto.Changeset.cast(attrs, [:allow_channel_invites])
-    |> Repo.update()
-  end
-
   @doc "Update user audio preferences"
   def update_audio_preferences(%User{} = user, attrs) do
     user

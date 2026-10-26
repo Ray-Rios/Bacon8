@@ -62,12 +62,12 @@ defmodule ChatChannels.ChannelsTest do
       assert ChatChannels.channel_allowance(nil) == 5
     end
 
-    test "lives on the user row" do
-      assert ChatChannels.channel_allowance(user(%{channel_allowance: 12}).id) == 12
+    test "lives in the plugin's own settings table" do
+      assert ChatChannels.channel_allowance(user_with_allowance(12).id) == 12
     end
 
     test "stops a user creating channels past it, naming the numbers" do
-      u = user(%{channel_allowance: 2})
+      u = user_with_allowance(2)
       for n <- 1..2, do: assert({:ok, _} = ChatChannels.create_user_channel(u, %{"name" => "mine-#{n}-#{u.id}"}))
 
       assert {:error, cs} = ChatChannels.create_user_channel(u, %{"name" => "mine-3-#{u.id}"})
@@ -76,7 +76,7 @@ defmodule ChatChannels.ChannelsTest do
     end
 
     test "never stops an owner at the limit from editing what they have" do
-      u = user(%{channel_allowance: 1})
+      u = user_with_allowance(1)
       {:ok, channel} = ChatChannels.create_user_channel(u, %{"name" => "only-#{u.id}"})
       new_name = "renamed-#{u.id}"
       assert {:ok, %{name: ^new_name}} = ChatChannels.update_channel(channel, %{name: new_name})
@@ -164,6 +164,7 @@ defmodule ChatChannels.ChannelsTest do
       assert {:ok, updated} = ChatChannels.reorder_channels(u, [a.id, "junk", Ecto.UUID.generate()])
       assert a.id in updated.channel_order
       refute "junk" in updated.channel_order
+      assert ChatChannels.channel_order(u.id) == updated.channel_order
     end
 
     test "get_or_create_default_channel/0 makes general once" do

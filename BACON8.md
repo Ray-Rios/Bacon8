@@ -82,12 +82,13 @@ On 2026-10-25:
    editor now has one docked sticky toolbar (many columns no longer squeeze it).
 2. **Pages and blog**: read `docs/pages-blog-builder.md`. Ask the owner: may games/plugins post to the blog?
    Consider capping columns (4-6) / stacking on narrow widths. Then collapse the four editing surfaces into
-   one builder. The path-handling change has been reviewed (2026-10-25, above); verify and commit the review's
-   fixes first (`handoff/CLAUDE_CODE_PROMPT_2026-10-25b.md`), then run its production query with the owner's OK.
-3. **Chat, phase 4 (owner said yes: chat must be self-contained)**: move the chat tables out of the core
-   baseline migration into idempotent plugin migrations, move `users.channel_allowance/channel_order` to plugin
-   storage (copy before dropping), drop `user_notifications.channel_id`. Back up first. Phase 3: delete dead
-   code, split `ChatLive`, invite-redeem page.
+   one builder. The path-handling review is done and committed (`69f6f43`); the production icon query found
+   nothing (0 of 8 channel icons out of place). **Owner decided: plugins and games may post to the blog**
+   (e.g. patch notes): build a small `Bacon8.Content` function for it (author, draft or published).
+3. **Chat, phase 4: done 2026-10-26** (chat tables are the plugin's own migration; settings in
+   `chat_user_settings`; `user_notifications.channel_id` dropped). Next: after the owner checks the copy in
+   production, a core migration drops `users.channel_allowance/channel_order/allow_channel_invites`.
+   Phase 3 remains: delete dead code, split `ChatLive`, invite-redeem page.
    RaysSpaceSim audio compiles and is committed (`9cc6ec3`) but has not been played in the editor or cooked.
 4. The standing rules are in `BACON_WORLD.md` §6 and the owner's notes: build and test only in
    Docker; commit with explicit file lists; **the deploy builds from the working tree, so check
@@ -1108,8 +1109,9 @@ Ordered roughly by how much it hurts.
   dead code to delete (`list_user_channels/1`, `list_messages_by_room/2`, `create_message/1`,
   `list_public_user_channels/0`, `list_channel_streams/2`), `ChatLive` is 3,100 lines, invite
   codes can be created but no page redeems one, voice/video/stream channels have no tests, and
-  the tables are still created by the core baseline migration (with `users.channel_allowance`
-  and `channel_order` on the user row). The store's own channel-pass tests need chat installed.
+  and the three old `users` columns (`channel_allowance`, `channel_order`, `allow_channel_invites`) are
+  still in production, unread, until the owner checks `chat_user_settings` and a migration drops them.
+  The store's own channel-pass tests need chat installed.
 - **Comments on the blog have no moderation UI**, and nothing calls `approve_comment`.
 - **RaysSpaceSim's settings still live in the hub's prod configmap** (`HOLOSIM_*`,
   `WORLD_*`, and `deploy-game.sh` writes `HOLOSIM_IMAGE` there), so a game deploy edits a

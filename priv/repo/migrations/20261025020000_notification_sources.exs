@@ -20,14 +20,20 @@ defmodule Bacon8.Repo.Migrations.NotificationSources do
       ON user_notifications (source_kind, source_id)
     """
 
+    # (A database made after the chat tables left the baseline has no channel_id to read.)
     execute """
-    UPDATE user_notifications
-       SET source_kind = 'chat_channel',
-           source_id = channel_id,
-           metadata = COALESCE(metadata, '{}'::jsonb)
-                      || jsonb_build_object('path', '/chat/' || channel_id::text,
-                                            'source_name', COALESCE(metadata->>'channel_name', ''))
-     WHERE channel_id IS NOT NULL AND source_kind IS NULL
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_schema = 'public' AND table_name = 'user_notifications' AND column_name = 'channel_id') THEN
+        UPDATE user_notifications
+           SET source_kind = 'chat_channel',
+               source_id = channel_id,
+               metadata = COALESCE(metadata, '{}'::jsonb)
+                          || jsonb_build_object('path', '/chat/' || channel_id::text,
+                                                'source_name', COALESCE(metadata->>'channel_name', ''))
+         WHERE channel_id IS NOT NULL AND source_kind IS NULL;
+      END IF;
+    END $$
     """
   end
 

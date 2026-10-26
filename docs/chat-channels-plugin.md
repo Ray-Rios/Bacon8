@@ -25,8 +25,8 @@ Status: **phases 1 and 2 done 2026-10-25**; phases 3 and 4 open. Written 2026-10
 |---|---|
 | Context | `Bacon8.Forum` (`lib/bacon8/forum.ex`, 1,557 lines) and 9 schema modules in `lib/bacon8/forum/` |
 | Tables | `chat_channels`, `chat_messages`, `chat_message_attachments`, `chat_reactions`, `chat_threads`, `channel_members`, `channel_invites`, `streaming_sessions`, `custom_emojis` |
-| Where they are created | **all in core's baseline migration** (`20250101000001_site_baseline.exs`); no later core migration touches them |
-| User-row columns | `users.channel_allowance` (default 5), `users.channel_order` |
+| Where they are created | **Phase 4 done (2026-10-26):** the plugin's own migration `plugins/chat_channels/priv/repo/migrations/20261026000000_create_chat_tables.exs` (idempotent: a no-op on production, builds a fresh database). They used to be in core's baseline |
+| Per-user settings | `chat_user_settings` (`ChatChannels.UserSettings`): `channel_allowance` (default 5), `channel_order`, `allow_invites`. Copied from the old `users` columns by `20261026000100_create_chat_user_settings.exs` |
 | UI | `ForumLive` (3,085 lines), `EmojiPickerComponent`, admin `CustomEmojis`; routes `/forum` and `/forum/:channel_id`; the `ChatInput` hook and forum sidebar code in `assets/js/app.ts` |
 | Links | hard-coded "Forum" in `components/navigation.ex` and `components/taskbar.ex`; `forum` is a reserved mount in `plugin_router.ex` |
 | PubSub topics | `chat:channels` and `channel:<id>` (kept as they are) |
@@ -81,8 +81,14 @@ and taskbar read `nav_links/1` ("Chat"); `forum` leaves the reserved mounts list
 message list, the composer, the member list and the invite dialogs. This is the risky,
 rewarding part, and it is easier once the tests and the plugin boundary exist.
 
-**Phase 4: finish the separation.** Move the baseline DDL into plugin migrations, move the
-two user columns, and make `user_notifications` source-generic if that was not done in 1.
+**Phase 4: finish the separation (done 2026-10-26).** The chat DDL left the site baseline for an idempotent
+plugin migration; `channel_allowance`, `channel_order` and the invite switch moved to `chat_user_settings`
+(the store adds slots through `BaconStore.Chat.add_channel_allowance/2`; the invite switch is on the Chat
+page, not the profile); `user_notifications.channel_id` and its foreign key were dropped (core migration
+`20261026000200`). **Left on purpose:** `users.channel_allowance`, `channel_order` and `allow_channel_invites`
+still exist in production, unread, until the owner has checked the copy; then a core migration drops them.
+The baseline was edited (against its own "don't edit" note) because it is the only way a fresh database
+stops creating chat tables; it never runs on production.
 
 ## Operational notes (the things that bite)
 
@@ -143,16 +149,15 @@ counted as a mention of "example".
 - **Phase 3, tidy:** delete the dead functions (README lists them); split `ChatLive` (sidebar,
   message list, composer, member list, invite dialogs); add the page that redeems an invite code
   (`/chat/invite/:code`; `ChatChannels.get_invite_link/1` already returns that address).
-- **Phase 4, finish the separation (owner's call):** move the baseline DDL into plugin migrations
-  (idempotent), move `users.channel_allowance` and `channel_order` out of the user row, drop
-  `user_notifications.channel_id` and its foreign key.
+- **Phase 4: done** (see above). Still to do: drop the three unread `users` columns once the owner has
+  checked `chat_user_settings` against them in production.
 - Test the voice, video and stream channels.
 
 ## Decisions (owner, 2026-10-25)
 
 1. **Mention notifications:** generic source columns (done).
 2. **Pending invites:** a badge on the Chat nav link, with the list on the Chat page (done).
-3. **Phase 4:** still open.
+3. **Phase 4:** yes, chat is self-contained (done 2026-10-26).
 
 ## Not in this plan
 

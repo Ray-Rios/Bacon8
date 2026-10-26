@@ -54,7 +54,7 @@ defmodule ChatChannels.Channel do
   # THE LIMIT IS PER USER AND LIVES ON THE USER ROW.
   #
   # Was a literal 5. /shop will sell channel slots, so the number has to be
-  # something a purchase can increment - see users.channel_allowance.
+  # something a purchase can increment - see ChatChannels.UserSettings.
   #
   # Games that build one thing per channel (a world, say) use this as their
   # limit too, rather than keeping a second counter: two limits on one thing

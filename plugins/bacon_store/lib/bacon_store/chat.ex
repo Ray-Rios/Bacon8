@@ -19,6 +19,9 @@ defmodule BaconStore.Chat do
   @doc "True when the chat_channels plugin is installed."
   def available?, do: Code.ensure_loaded?(@chat)
 
+  @doc "Adds `n` (negative to take away) to a user's channel allowance; nothing happens without chat."
+  def add_channel_allowance(user_id, n), do: call(:add_channel_allowance, [user_id, n], {:ok, nil})
+
   @doc "A user's membership row in a channel, or nil."
   def get_member(channel_id, user_id), do: call(:get_channel_member, [channel_id, user_id], nil)
 

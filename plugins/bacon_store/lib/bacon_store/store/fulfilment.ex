@@ -193,7 +193,7 @@ defmodule BaconStore.Store.Fulfilment do
     n = p.grant_quantity || 1
 
     with {:ok, events} <- entitlement(user, order, %{kind: @channel_slots, key: "slots", quantity: n}) do
-      Repo.update_all(from(u in User, where: u.id == ^user.id), inc: [channel_allowance: n])
+      BaconStore.Chat.add_channel_allowance(user.id, n)
       {:ok, events}
     end
   end
@@ -313,7 +313,7 @@ defmodule BaconStore.Store.Fulfilment do
         if running? and Catalog.channel_name(e.key), do: ensure_member(e.key, e.user_id)
 
       @channel_slots ->
-        Repo.update_all(from(u in User, where: u.id == ^e.user_id), inc: [channel_allowance: e.quantity || 1])
+        BaconStore.Chat.add_channel_allowance(e.user_id, e.quantity || 1)
 
       _ ->
         :ok
@@ -348,11 +348,7 @@ defmodule BaconStore.Store.Fulfilment do
       @channel_slots ->
         n = e.quantity || 1
 
-        from(u in User,
-          where: u.id == ^e.user_id,
-          update: [set: [channel_allowance: fragment("GREATEST(? - ?, 0)", u.channel_allowance, ^n)]]
-        )
-        |> Repo.update_all([])
+        BaconStore.Chat.add_channel_allowance(e.user_id, -n)
 
       _ ->
         :ok

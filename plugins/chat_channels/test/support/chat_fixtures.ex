@@ -12,6 +12,13 @@ defmodule ChatChannels.Fixtures do
 
   def user(attrs \\ %{}), do: Bacon8.DataCase.user_fixture(attrs)
 
+  @doc "A user whose channel allowance is `n`."
+  def user_with_allowance(n, attrs \\ %{}) do
+    user = user(attrs)
+    {:ok, _} = ChatChannels.set_channel_allowance(user.id, n)
+    user
+  end
+
   def admin(attrs \\ %{}), do: user(Map.merge(%{role: "admin"}, Map.new(attrs)))
 
   def channel_fixture(attrs \\ %{}) do

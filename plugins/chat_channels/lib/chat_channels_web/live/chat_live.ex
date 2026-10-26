@@ -43,6 +43,7 @@ defmodule ChatChannelsWeb.ChatLive do
         current_message: "",
         online_users: [],
         pending_invites: ChatChannels.list_pending_invites_for_user(user.id),
+        allow_invites: ChatChannels.allow_invites?(user.id),
         last_read_message_id: nil,
         last_seen_at: nil,
         typing_users: MapSet.new(),
@@ -596,6 +597,11 @@ defmodule ChatChannelsWeb.ChatLive do
   end
 
   @impl true
+  def handle_event("toggle_invites", _params, socket) do
+    {:ok, allow?} = ChatChannels.set_allow_invites(socket.assigns.current_user.id, !socket.assigns.allow_invites)
+    {:noreply, assign(socket, allow_invites: allow?)}
+  end
+
   def handle_event("toggle_auto_scroll", %{"enabled" => enabled}, socket) do
     new_state = enabled == "true"
     {:noreply, assign(socket, auto_scroll_enabled: new_state)}
@@ -722,13 +728,10 @@ defmodule ChatChannelsWeb.ChatLive do
     
     try do
       # Update user preference instead of global order
-      {:ok, updated_user} = ChatChannels.reorder_channels(user, ids)
-      
-      # Update current user in socket
-      socket = assign(socket, current_user: updated_user)
-      
+      {:ok, _settings} = ChatChannels.reorder_channels(user, ids)
+
       # Re-sort channels based on new user preference
-      {public_channels, private_channels} = sort_channels(socket.assigns.public_channels, socket.assigns.private_channels, updated_user)
+      {public_channels, private_channels} = sort_channels(socket.assigns.public_channels, socket.assigns.private_channels, user)
       
       {:noreply, assign(socket, public_channels: public_channels, private_channels: private_channels)}
     rescue
@@ -1821,6 +1824,11 @@ defmodule ChatChannelsWeb.ChatLive do
           class="dark-glass border-r border-cyan-500/30 flex flex-col flex-none overflow-hidden z-40 relative"
         >
           <div class="flex-1 overflow-y-auto p-4 overflow-x-hidden sidebar-content">
+            <label id="allow-invites" class="mb-4 flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+              <input type="checkbox" phx-click="toggle_invites" checked={@allow_invites} class="rounded" />
+              Let people invite me to channels
+            </label>
+
             <%!-- Invitations (they used to be in the desktop's notification panel) --%>
             <%= if @pending_invites != [] do %>
               <div class="mb-6" id="pending-invites">
@@ -3119,7 +3127,7 @@ defmodule ChatChannelsWeb.ChatLive do
   end
 
   defp sort_channels(public_channels, private_channels, user) do
-    order = user.channel_order || []
+    order = ChatChannels.channel_order(user.id)
     
     # Helper to get sort index
     get_sort_index = fn channel ->

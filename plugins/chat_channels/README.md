@@ -47,8 +47,8 @@ only through plugin hooks. The navigation link says "Chat".
 
 The tables keep their names (`chat_channels`, `chat_messages`, `chat_message_attachments`,
 `chat_reactions`, `chat_threads`, `channel_members`, `channel_invites`, `streaming_sessions`,
-`custom_emojis`) and are still created by the core baseline migration. A user's channel
-allowance and order stay on the `users` row. Moving both is the plan's last phase.
+`custom_emojis`) and are created by this plugin's own migration (`priv/repo/migrations`). A user's channel
+allowance, list order and invite switch live in `chat_user_settings` (`ChatChannels.UserSettings`).
 Uploads still go to `uploads/.../forum/...` (a documented exception, BACON8.md §7).
 
 A channel's icon lives in `uploads/<uploader>/channel_icons/<channel id>/`, and only the server sets
