@@ -7,6 +7,7 @@ defmodule ChatChannelsWeb.Routes do
 
   site do
     live "/", ChatLive, :index
+    live "/invite/:code", InviteLive, :show
     live "/:channel_id", ChatLive, :channel
   end
 

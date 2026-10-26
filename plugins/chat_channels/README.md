@@ -58,11 +58,9 @@ agrees (rows saved before 2026-10-25 may hold anything; until then the create fo
 
 ## Known gaps
 
-- Invite *codes* can be created, but no page redeems one (`join_channel_with_invite` has no
-  form, and `/chat/invite/:code` doesn't exist).
+- `ChatLive` is still ~2,750 lines (the message and emoji components moved to `ChatComponents`; the sidebar,
+  composer and member/invite dialogs are still inside `render/1`).
 - Voice, video and stream channels exist but have no tests.
-- `list_user_channels/1`, `list_messages_by_room/2`, `create_message/1`,
-  `list_public_user_channels/0` and `list_channel_streams/2` have no callers (phase 3 deletes them).
 
 ## Turning it off
 

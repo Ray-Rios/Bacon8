@@ -146,11 +146,13 @@ counted as a mention of "example".
 
 ## What is left
 
-- **Phase 3, tidy:** delete the dead functions (README lists them); split `ChatLive` (sidebar,
-  message list, composer, member list, invite dialogs); add the page that redeems an invite code
-  (`/chat/invite/:code`; `ChatChannels.get_invite_link/1` already returns that address).
-- **Phase 4: done** (see above). Still to do: drop the three unread `users` columns once the owner has
-  checked `chat_user_settings` against them in production.
+- **Phase 3, tidy (2026-10-26):** done: the five dead functions are deleted; the message and emoji components
+  moved to `ChatChannelsWeb.ChatComponents` (`ChatLive` 3,158 -> ~2,750 lines); `/chat/invite/:code` is
+  `InviteLive` (shows the channel, joins on a button press, one plain answer for any unusable code). Still open:
+  split the rest of `render/1` (sidebar, composer, member and invite dialogs) into components, and test voice/
+  video/stream channels.
+- **Phase 4: done** (see above), including dropping the three unread `users` columns (2026-10-26, after the
+  owner's OK and a production comparison: 3 non-default users, 3 settings rows, 0 differences).
 - Test the voice, video and stream channels.
 
 ## Decisions (owner, 2026-10-25)

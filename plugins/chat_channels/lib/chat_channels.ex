@@ -362,17 +362,6 @@ defmodule ChatChannels do
     end
   end
 
-  def list_user_channels(_user_id) do
-    # Temporarily return empty list until created_by_id migration is applied
-    # TODO: Restore original query after running migration:
-    # from(c in Channel,
-    #   where: c.created_by_id == ^user_id,
-    #   order_by: [asc: c.position, asc: c.name]
-    # )
-    # |> Repo.all()
-    []
-  end
-
   def list_public_channels do
     from(c in Channel,
       where: c.is_private == false,
@@ -518,28 +507,6 @@ defmodule ChatChannels do
     filter_banned_content(results)
   end
 
-  def list_messages_by_room(room_id, limit \\ 50) do
-    from(m in Message,
-      where: m.room_id == ^room_id,
-      order_by: [desc: m.inserted_at],
-      limit: ^limit,
-      preload: [:user, :reactions, :thread, attachments: :user]
-    )
-    |> Enum.map(fn m ->
-      filtered_attachments = Enum.filter(m.attachments || [], fn att ->
-        case att do
-          %{user_id: nil} -> true
-          %{user: u} when not is_nil(u) -> is_nil(u.role) or u.role != "banned"
-          _ -> true
-        end
-      end)
-
-      %{m | attachments: filtered_attachments}
-    end)
-    # Ensure chronological order (oldest -> newest)
-    |> Enum.map(& &1)
-  end
-
   def get_message!(id) do
     Repo.get!(Message, id) |> Repo.preload([
       :user, reactions: :user, thread: [], attachments: :user,
@@ -620,21 +587,6 @@ defmodule ChatChannels do
         error ->
           error
       end
-    end
-  end
-
-  @doc """
-  Creates a message with attributes directly (for Social Hubs with room_id)
-  """
-  def create_message(attrs) when is_map(attrs) do
-    %Message{}
-    |> Message.changeset(attrs)
-    |> Repo.insert()
-    |> case do
-      {:ok, message} ->
-        message = Repo.preload(message, [:user, :reactions, :attachments])
-        {:ok, message}
-      error -> error
     end
   end
 
@@ -962,15 +914,6 @@ defmodule ChatChannels do
     )
     |> Repo.all()
     |> Enum.map(& &1.channel)
-  end
-
-  def list_public_user_channels do
-    from(c in Channel,
-      where: c.is_public == true and c.is_user_created == true,
-      order_by: [desc: c.inserted_at],
-      preload: [:owner, :members]
-    )
-    |> Repo.all()
   end
 
   # Note: use create_user_channel(user, attrs) which creates the channel and owner membership
@@ -1482,16 +1425,6 @@ defmodule ChatChannels do
     end
   end
 
-  def list_channel_streams(channel_id, limit \\ 10) do
-    from(s in StreamingSession,
-      where: s.channel_id == ^channel_id,
-      order_by: [desc: s.started_at],
-      limit: ^limit,
-      preload: [:streamer]
-    )
-    |> Repo.all()
-  end
-
   # Wrapper to broadcast locally (Phoenix.PubSub) and to Redis-based pubsub when enabled
   defp pubsub_broadcast(topic, message) do
     Phoenix.PubSub.broadcast(Bacon8.PubSub, topic, message)
@@ -1578,7 +1511,7 @@ defmodule ChatChannels do
 
   @doc "Get shareable invite link for a channel invite code"
   def get_invite_link(code) do
-    # (There is no page at this address yet: codes are redeemed with the join_channel_with_invite event.)
+    # (ChatChannelsWeb.InviteLive is the page at this address.)
     "/chat/invite/#{code}"
   end
 

@@ -88,7 +88,8 @@ On 2026-10-25:
 3. **Chat, phase 4: done 2026-10-26** (chat tables are the plugin's own migration; settings in
    `chat_user_settings`; `user_notifications.channel_id` dropped). Next: after the owner checks the copy in
    production, a core migration drops `users.channel_allowance/channel_order/allow_channel_invites`.
-   Phase 3 remains: delete dead code, split `ChatLive`, invite-redeem page.
+   (Dropped 2026-10-26 after the owner's OK and a clean comparison.) Phase 3 is mostly done (dead code gone,
+   `/chat/invite/:code` exists, components split out); what remains is splitting `render/1` and testing voice/video/stream.
    RaysSpaceSim audio compiles and is committed (`9cc6ec3`) but has not been played in the editor or cooked.
 4. The standing rules are in `BACON_WORLD.md` §6 and the owner's notes: build and test only in
    Docker; commit with explicit file lists; **the deploy builds from the working tree, so check
@@ -1105,12 +1106,8 @@ Ordered roughly by how much it hurts.
 - **RaysSpaceSim's half of the 2026-10-25 sound delivery is uncommitted** in its repository
   (a C++ audio subsystem, 352 sounds, FLAC sources; `handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`).
   It has not been compiled or verified by Claude Code.
-- **Chat Channels still has leftovers** (`docs/chat-channels-plugin.md`, phases 3 and 4):
-  dead code to delete (`list_user_channels/1`, `list_messages_by_room/2`, `create_message/1`,
-  `list_public_user_channels/0`, `list_channel_streams/2`), `ChatLive` is 3,100 lines, invite
-  codes can be created but no page redeems one, voice/video/stream channels have no tests, and
-  and the three old `users` columns (`channel_allowance`, `channel_order`, `allow_channel_invites`) are
-  still in production, unread, until the owner checks `chat_user_settings` and a migration drops them.
+- **Chat Channels still has leftovers** (`docs/chat-channels-plugin.md`): `ChatLive` is still ~2,750 lines
+  (its `render/1` holds the sidebar, composer and dialogs) and voice/video/stream channels have no tests.
   The store's own channel-pass tests need chat installed.
 - **Comments on the blog have no moderation UI**, and nothing calls `approve_comment`.
 - **RaysSpaceSim's settings still live in the hub's prod configmap** (`HOLOSIM_*`,
