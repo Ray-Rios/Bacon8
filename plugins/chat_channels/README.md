@@ -51,6 +51,11 @@ The tables keep their names (`chat_channels`, `chat_messages`, `chat_message_att
 allowance and order stay on the `users` row. Moving both is the plan's last phase.
 Uploads still go to `uploads/.../forum/...` (a documented exception, BACON8.md §7).
 
+A channel's icon lives in `uploads/<uploader>/channel_icons/<channel id>/`, and only the server sets
+`icon_path`: `Channel.changeset/2` doesn't cast it, `Channel.put_icon/2` accepts nil or a file in that
+folder, and changing the icon or deleting the channel deletes files only when `Channel.icon_path?/2`
+agrees (rows saved before 2026-10-25 may hold anything; until then the create form could set it).
+
 ## Known gaps
 
 - Invite *codes* can be created, but no page redeems one (`join_channel_with_invite` has no

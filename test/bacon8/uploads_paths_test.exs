@@ -59,6 +59,49 @@ defmodule Bacon8.UploadsPathsTest do
       refute File.exists?(outside)
     end
 
+    # Review of 2026-10-25: the drive's blob bodies are never deleted by URL, and only
+    # /uploads/ URLs are taken at all.
+    test "refuses the drive's blob store, wherever it is configured" do
+      n = System.unique_integer([:positive])
+
+      for root <- [Path.join(Uploads.base_dir(), "_drive"), Bacon8.Storage.Local.root()] do
+        dir = Path.join(root, "zz-paths-test-#{n}")
+        File.mkdir_p!(dir)
+        on_exit(fn -> File.rm_rf(dir) end)
+        body = Path.join(dir, "body")
+        File.write!(body, "someone's file")
+
+        if Bacon8.SafePath.inside?(body, Uploads.base_dir()) do
+          url = "/uploads/" <> Path.relative_to(body, Path.expand(Uploads.base_dir()))
+          assert {:error, :invalid_path} = Uploads.delete_file(url), url
+        end
+
+        assert File.exists?(body)
+      end
+    end
+
+    test "refuses anything that isn't an /uploads/ URL", %{dir: dir} do
+      File.write!(Path.join(dir, "a.txt"), "x")
+      rel = "#{Path.basename(dir)}/a.txt"
+
+      for url <- [rel, "/" <> rel, "uploads/" <> rel, "https://example.com/uploads/" <> rel] do
+        assert {:error, :invalid_path} = Uploads.delete_file(url), url
+      end
+
+      assert File.exists?(Path.join(dir, "a.txt"))
+    end
+
+    test "never removes the uploads folder or public/ when they end up empty" do
+      # it can't empty the real ones in a test, so check the guard by name: a file straight in
+      # public/ is deleted and public/ itself is left alone
+      File.mkdir_p!(Uploads.public_dir())
+      name = "paths-test-#{System.unique_integer([:positive])}.txt"
+      File.write!(Path.join(Uploads.public_dir(), name), "x")
+
+      assert :ok = Uploads.delete_file("/uploads/public/#{name}")
+      assert File.dir?(Uploads.public_dir())
+    end
+
     test "says so when there is nothing to delete, or no path", %{rel: rel} do
       assert {:error, :enoent} = Uploads.delete_file("#{rel}/missing.txt")
       assert {:error, :invalid_path} = Uploads.delete_file(nil)

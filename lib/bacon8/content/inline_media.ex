@@ -12,11 +12,19 @@ defmodule Bacon8.Content.InlineMedia do
 
   A `context` is `"pages/<id>"` or `"blog/<id>"`: files live in `uploads/public/<context>/`,
   and a page can only remove its own.
+
+  File types a browser would run (HTML, SVG, XML, JavaScript; `SafePath.active_content?/1`) are
+  refused, as BACON8.md invariant 4 requires of every upload (reviewed 2026-10-25: this module
+  used to accept them and rely on `UploadsGuard` alone).
   """
   alias Bacon8.{SafePath, Uploads}
 
   # What the Drive allows a member to upload at once; a block editor has no business with more.
   @max_bytes 25 * 1024 * 1024
+
+  # Base64 spends 4 bytes for every 3. Anything longer than this cannot decode to @max_bytes or
+  # less, so it is refused before decoding (which would hold both copies in memory).
+  @max_encoded div(@max_bytes + 2, 3) * 4
 
   @doc """
   Stores an upload from the block editor's event (`"data"` is base64, `"filename"` and
@@ -25,7 +33,8 @@ defmodule Bacon8.Content.InlineMedia do
   """
   def store(context, %{"data" => data} = params) when is_binary(data) do
     with {:ok, bytes} <- decode(data),
-         {:ok, name} <- clean_name(params["filename"]) do
+         {:ok, name} <- clean_name(params["filename"]),
+         :ok <- allowed_type(name) do
       temp = Path.join(System.tmp_dir!(), "b8_inline_#{System.unique_integer([:positive])}#{Path.extname(name)}")
 
       try do
@@ -69,6 +78,8 @@ defmodule Bacon8.Content.InlineMedia do
 
   def remove(_context, _url), do: :ignored
 
+  defp decode(data) when byte_size(data) > @max_encoded, do: {:error, "File too large"}
+
   defp decode(data) do
     case Base.decode64(data) do
       {:ok, bytes} when byte_size(bytes) > @max_bytes -> {:error, "File too large"}
@@ -84,6 +95,11 @@ defmodule Bacon8.Content.InlineMedia do
       nil -> {:error, "Invalid file name"}
       clean -> {:ok, clean}
     end
+  end
+
+  # BACON8.md invariant 4: a type a browser would run is never accepted from a client.
+  defp allowed_type(name) do
+    if SafePath.active_content?(name), do: {:error, "That type of file can't be added here"}, else: :ok
   end
 
   defp mime(type) when is_binary(type) and type != "", do: type

@@ -80,7 +80,12 @@ defmodule Bacon8.SafePath do
   # Extensions a browser will execute as active content if served inline from our
   # origin. Uploads with these are refused; anything already on disk with them is
   # served with a sandbox CSP + attachment disposition by UploadsGuard.
-  @active_content_exts ~w(.html .htm .xhtml .shtml .svg .svgz .xml .xsl .xslt .js .mjs .swf .hta .php .phtml)
+  #
+  # Any XML type can run script, not only SVG: `.rss` and `.atom` were served inline as
+  # application/rss+xml and application/atom+xml until 2026-10-25. The rest of the second
+  # line are XML types the MIME library may learn later (today they download).
+  @active_content_exts ~w(.html .htm .xhtml .shtml .svg .svgz .xml .xsl .xslt .js .mjs .swf .hta .php .phtml
+                          .rss .atom .rdf .xht .mathml .mml .xsd .dtd .mht .mhtml)
 
   @doc "True for file types that run script when rendered by a browser."
   def active_content?(name) when is_binary(name) do

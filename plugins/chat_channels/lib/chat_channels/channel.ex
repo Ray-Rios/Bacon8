@@ -36,7 +36,8 @@ defmodule ChatChannels.Channel do
 
   def changeset(channel, attrs) do
     channel
-    |> cast(attrs, [:name, :description, :topic, :is_private, :position, :channel_type, :created_by_id, :owner_id, :is_public, :is_user_created, :max_participants, :invite_code, :settings, :icon_path])
+    # Not :icon_path: an icon is set only through put_icon/2 (see there).
+    |> cast(attrs, [:name, :description, :topic, :is_private, :position, :channel_type, :created_by_id, :owner_id, :is_public, :is_user_created, :max_participants, :invite_code, :settings])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 100)
     |> validate_inclusion(:channel_type, ["text", "voice", "video", "stream"])
@@ -111,5 +112,58 @@ defmodule ChatChannels.Channel do
 
   defp generate_invite_code do
     :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false) |> binary_part(0, 10)
+  end
+
+  @doc """
+  Applies an icon change from `attrs` (`:icon_path` or `"icon_path"`), when it has one: nil, or a
+  file in this channel's own icon folder (`icon_path?/2`); anything else is a changeset error.
+
+  The icon is never cast from a form. Until 2026-10-25 it was, so a member creating a channel
+  could name any file under uploads/, and deleting the channel then removed that file's whole
+  folder (and changing the icon removed the file).
+  """
+  def put_icon(changeset, attrs) when is_map(attrs) do
+    case fetch_icon(attrs) do
+      :none ->
+        changeset
+
+      {:ok, nil} ->
+        put_change(changeset, :icon_path, nil)
+
+      {:ok, path} ->
+        if icon_path?(changeset.data, path),
+          do: put_change(changeset, :icon_path, path),
+          else: add_error(changeset, :icon_path, "is not this channel's icon")
+    end
+  end
+
+  defp fetch_icon(attrs) do
+    cond do
+      Map.has_key?(attrs, :icon_path) -> {:ok, Map.get(attrs, :icon_path)}
+      Map.has_key?(attrs, "icon_path") -> {:ok, Map.get(attrs, "icon_path")}
+      true -> :none
+    end
+  end
+
+  @doc """
+  True when `path` is a file in the channel's own icon folder, the way
+  `Bacon8.Uploads.upload_file/4` names it: `/uploads/<uploader id>/channel_icons/<channel id>/<file>`.
+  Checked before an icon is saved, and again before one is deleted, because a row saved before
+  this check existed may hold any string.
+  """
+  def icon_path?(%{id: id}, "/uploads/" <> rest) when is_binary(id) do
+    case String.split(rest, "/") do
+      [uploader, "channel_icons", ^id, file] -> plain_segment?(uploader) and plain_segment?(file)
+      _ -> false
+    end
+  end
+
+  def icon_path?(_channel, _path), do: false
+
+  # One path segment: letters, digits, dot, dash, underscore; not . or .., and not a reserved
+  # folder such as _drive.
+  defp plain_segment?(segment) do
+    segment not in [".", ".."] and not String.starts_with?(segment, "_") and
+      Regex.match?(~r/\A[A-Za-z0-9._-]+\z/, segment)
   end
 end

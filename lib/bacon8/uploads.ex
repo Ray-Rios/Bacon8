@@ -275,16 +275,17 @@ defmodule Bacon8.Uploads do
   Returns `:ok` on success or `{:error, reason}` on failure.
   """
   def delete_file(url_path) when is_binary(url_path) do
-    # Convert URL path to filesystem path, confined to base_dir(): nil when it climbs out
-    file_path = url_to_path(url_path)
+    # Convert URL path to filesystem path, confined to base_dir(): nil when it climbs out, when
+    # it isn't an /uploads/ URL, or when it points into the drive's blob store
+    file_path = deletable_path(url_path)
 
     case (if file_path, do: File.rm(file_path), else: {:error, :invalid_path}) do
       :ok ->
         Logger.info("Deleted file: #{url_path}")
 
-        # Attempt to remove parent directory if empty
+        # Attempt to remove parent directory if empty (never the uploads root or public/)
         parent_dir = Path.dirname(file_path)
-        case File.ls(parent_dir) do
+        case parent_dir not in [Path.expand(base_dir()), Path.expand(public_dir())] && File.ls(parent_dir) do
           {:ok, []} -> 
             case File.rmdir(parent_dir) do
               :ok -> Logger.info("Removed empty directory: #{parent_dir}")
@@ -302,6 +303,25 @@ defmodule Bacon8.Uploads do
   end
 
   def delete_file(_), do: {:error, :invalid_path}
+
+  # Blob bodies belong to the drive (Bacon8.Storage.Local), which deletes them itself after its
+  # reference checks; a URL never may (UploadsGuard refuses to serve them for the same reason).
+  # This keeps delete_file/1 inside uploads/, but anywhere inside it: a caller handling a URL
+  # from a client must still check the file is one it may delete (2026-10-25 review).
+  defp deletable_path("/uploads/" <> _ = url_path) do
+    case url_to_path(url_path) do
+      nil -> nil
+      path -> if drive_blob?(path), do: nil, else: path
+    end
+  end
+
+  defp deletable_path(_), do: nil
+
+  # The configured blob root (DRIVE_STORAGE_ROOT may move it) and the default one on the volume.
+  defp drive_blob?(path) do
+    Bacon8.SafePath.inside?(path, Bacon8.Storage.Local.root()) or
+      Bacon8.SafePath.inside?(path, Path.join(base_dir(), "_drive"))
+  end
 
   @doc """
   Checks if a file exists at the given URL path.

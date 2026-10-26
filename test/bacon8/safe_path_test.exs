@@ -93,7 +93,7 @@ defmodule Bacon8.SafePathTest do
 
   describe "active_content?/1" do
     test "is true for what a browser runs, whatever the case" do
-      for name <- ~w(a.html a.HTM b.svg c.JS d.php e.xml f.xhtml g.mjs h.swf) do
+      for name <- ~w(a.html a.HTM b.svg c.JS d.php e.xml f.xhtml g.mjs h.swf i.rss j.ATOM k.rdf l.xht) do
         assert SafePath.active_content?(name), name
       end
     end

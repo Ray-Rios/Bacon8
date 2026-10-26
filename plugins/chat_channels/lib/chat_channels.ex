@@ -100,11 +100,14 @@ defmodule ChatChannels do
 
     current
     |> Channel.changeset(attrs)
+    |> Channel.put_icon(attrs)
     |> Repo.update()
     |> case do
       {:ok, updated_channel} ->
-        # If icon_path changed, delete the old icon file
-        if current.icon_path && current.icon_path != updated_channel.icon_path do
+        # If icon_path changed, delete the old icon file (only if it really is this channel's:
+        # a row saved before Channel.icon_path?/2 existed may name any file)
+        if current.icon_path && current.icon_path != updated_channel.icon_path &&
+             Channel.icon_path?(current, current.icon_path) do
           Bacon8.Uploads.delete_file(current.icon_path)
         end
 
@@ -176,11 +179,14 @@ defmodule ChatChannels do
               # Delete the channel icon and its containing directory (only one
               # icon should ever exist at a time, so wipe the whole dir rather
               # than just the referenced filename in case stray files remain)
-              if deleted_channel.icon_path do
-                deleted_channel.icon_path
-                |> Bacon8.Uploads.url_to_path()
-                |> Path.dirname()
-                |> File.rm_rf()
+              #
+              # Only the channel's own icon folder: icon_path is a stored string, and a row
+              # saved before Channel.icon_path?/2 existed may name any file under uploads/.
+              if Channel.icon_path?(deleted_channel, deleted_channel.icon_path) do
+                case Bacon8.Uploads.url_to_path(deleted_channel.icon_path) do
+                  nil -> :ok
+                  path -> File.rm_rf(Path.dirname(path))
+                end
               end
 
               # Delete individual attachment files

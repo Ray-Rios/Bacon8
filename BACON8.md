@@ -51,9 +51,22 @@ On 2026-10-25:
   **path-traversal holes** (staff-reachable), now `Bacon8.Content.InlineMedia` on `Bacon8.SafePath`
   (`Uploads.delete_file/1` and `file_exists?/1` confined too); GMs and editors couldn't open drafts of
   pages they may edit. Two dead editors (`PageEditorLive`, `BlogEditorLive`, 1,300 lines) were
-  deleted. 511 tests pass. **The path fix is security-sensitive and was reviewed by no one but its
-  author: see §14.** The owner's answers (2026-10-25): tests first; only admins, GMs and editors write
-  content; keep the rows, columns and blocks model.
+  deleted. 511 tests pass. The path fix was then reviewed by a second session (next item). The owner's
+  answers (2026-10-25): tests first; only admins, GMs and editors write content; keep the rows, columns
+  and blocks model.
+- **Second review of the upload and delete paths** (cloud session; uncommitted, for Claude Code to verify
+  and commit: `handoff/CLAUDE_CODE_PROMPT_2026-10-25b.md`). `InlineMedia.remove/2` and `SafePath` held up
+  under attack (home-directory, encoded, doubled-slash, backslash and NUL URLs, a folder whose name starts
+  another's, a symlink). It found four gaps elsewhere, now fixed: **any member could delete other people's
+  uploads** through /profile's "delete previous avatar" (a browser-sent URL went straight to
+  `Uploads.delete_file/1`; "select" saved any string), now only the user's own avatar files; **a member
+  creating a chat channel could set its `icon_path`**, and deleting the channel then removed that path's
+  whole folder anywhere under uploads/, now never cast, only the channel's own icon folder accepted
+  (`Channel.put_icon/2`, `icon_path?/2`) and re-checked before deleting; **`.rss` and `.atom` were served
+  inline** as XML a browser runs, and `InlineMedia` accepted active content at all (staff-reachable), both
+  closed; and `Uploads.delete_file/1` now takes only `/uploads/` URLs and never the drive's blobs. 26 new
+  tests (15 fail on the old code); 554 pass. The fixes need their own second reader: Claude Code, via the
+  handoff. A production query in the handoff checks whether any channel row already names a foreign file.
 - **Glass** (`1fbeae7`): menus and popups are frosted (`.glass-menu`), palette swatches and the
   tint picker are textured glass, and the personal glass colour reaches Bacon World's windows
   (`--bwg-*`). The decisions-log row below has the detail. A follow-up fixed **preset buttons
@@ -69,7 +82,8 @@ On 2026-10-25:
    editor now has one docked sticky toolbar (many columns no longer squeeze it).
 2. **Pages and blog**: read `docs/pages-blog-builder.md`. Ask the owner: may games/plugins post to the blog?
    Consider capping columns (4-6) / stacking on narrow widths. Then collapse the four editing surfaces into
-   one builder. Have the path-handling change (`Content.InlineMedia`, `Uploads`) reviewed by someone else.
+   one builder. The path-handling change has been reviewed (2026-10-25, above); verify and commit the review's
+   fixes first (`handoff/CLAUDE_CODE_PROMPT_2026-10-25b.md`), then run its production query with the owner's OK.
 3. **Chat, phase 4 (owner said yes: chat must be self-contained)**: move the chat tables out of the core
    baseline migration into idempotent plugin migrations, move `users.channel_allowance/channel_order` to plugin
    storage (copy before dropping), drop `user_notifications.channel_id`. Back up first. Phase 3: delete dead
@@ -358,6 +372,14 @@ Each of these has already cost a build, an outage, or a security hole.
    names). Before 2026-10-15 the file explorer let any signed-in user list, upload into,
    and delete files outside their folder this way.
 
+   **SafePath confines; it does not decide ownership.** `Uploads.delete_file/1` deletes anything
+   under uploads/ except the drive's blobs, so a URL or path that came from a browser, or from a
+   column a form can set, must first be checked against what that user may touch: compare it with
+   the user's own listing (`ProfileLive.own_avatar?/2`), or match the exact folder it must be in
+   (`ChatChannels.Channel.icon_path?/2`, `Content.InlineMedia.remove/2`). Never cast a stored file
+   path from form params. Until 2026-10-25 any member could delete others' uploads through the
+   avatar buttons, and a channel's icon path came from the create form.
+
 2. **`UploadsGuard` sits directly before the `/uploads` `Plug.Static` in `endpoint.ex`.**
    It is what keeps `users/<id>/` and `<id>/files/` private and what adds
    `nosniff` / sandbox headers. Moving it after `Plug.Static`, or adding another static
@@ -372,7 +394,9 @@ Each of these has already cost a build, an outage, or a security hole.
    refused (`SafePath.active_content?/1`), and anything already on disk with those
    extensions is served with `Content-Security-Policy: sandbox` and
    `Content-Disposition: attachment`. A user-uploaded `.svg` rendered inline can steal
-   sessions.
+   sessions. **Any XML type can run script**, not only SVG: `.rss` and `.atom` were served
+   inline as feed XML until 2026-10-25. The list is a denylist; when the MIME library learns a
+   new XML or HTML type, add its extension (`safe_path_test.exs` checks the list).
 
 5. **Signed URLs carry their lifetime inside the token.** `Uploads.signed_url_for/2`
    signs `max_age` into the token, capped at one day; the controller verifies without
@@ -1128,6 +1152,13 @@ Ordered roughly by how much it hurts.
   Elixir 1.15. It works (and now normalises the `:warn` level it is still handed), but should
   become an Erlang `:logger` handler.
 - **Forum attachments are public by URL** (§7), which blocks VIP channels.
+- **`UploadsGuard` decides inline or download with a denylist** (`SafePath.active_content?/1`,
+  invariant 4). An allowlist of types safe to show inline (pictures, video, audio, PDF), with
+  everything else sent as a sandboxed download the way the drive's `Sniff` works, would not need
+  updating when browsers or the MIME library learn a new type. Found in the 2026-10-25 review.
+- `Content.MediaContext.delete_user_media/2` joins a stored `file_path` onto `priv/static` without
+  `SafePath` (and the paths it stores are absolute, so it never finds the file). It has no callers:
+  delete it rather than fix it.
 
 - **The legacy file system is dead code.** Production's `user_files` / `user_folders` are
   empty (checked 2026-10-15), so `Bacon8.Files` (`UserFile`, `UserFolder`),

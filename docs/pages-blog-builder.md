@@ -49,8 +49,11 @@ The editors and public pages:
   through `Bacon8.Content.InlineMedia` and `Bacon8.SafePath`; a page can remove only its own
   uploads, and an upload over 25 MB is refused. `Uploads.delete_file/1` and `file_exists?/1` had the
   same flaw (their callers pass trusted URLs, but they are now confined too).
-  **This is security-sensitive code, written and tested by the same session; BACON8.md §14 asks for
-  a second reviewer.**
+  **Reviewed 2026-10-25 by a second session** (`handoff/CLAUDE_CODE_PROMPT_2026-10-25b.md`): `remove/2`
+  held under attack. The review added six tests here, made `store/2` refuse types a browser runs
+  (BACON8.md invariant 4) and refuse oversized base64 before decoding, and found gaps outside this
+  module (the avatar buttons on /profile, chat channel icons, `.rss`/`.atom` served inline; BACON8.md,
+  2026-10-25).
 
 ## Tests that exist now
 
@@ -58,8 +61,9 @@ The editors and public pages:
 |---|---|---|
 | `test/bacon8/content_test.exs` | 34 | the context: slugs, publishing, drafts, listing, comments |
 | `test/bacon8/safe_path_test.exs` | 16 | `SafePath`: resolve, inside?, filename, active content (it guards every upload) |
-| `test/bacon8/content/inline_media_test.exs` | 14 | storing and removing inline media, with hostile names and URLs |
-| `test/bacon8/uploads_paths_test.exs` | 8 | URL to path, delete, exists, all confined |
+| `test/bacon8/content/inline_media_test.exs` | 20 | storing and removing inline media, with hostile names and URLs; refused types; size |
+| `test/bacon8/uploads_paths_test.exs` | 11 | URL to path, delete, exists, all confined; never the drive's blobs; `/uploads/` URLs only |
+| `test/bacon8_web/plugs/uploads_guard_test.exs` | 3 | what `/uploads` serves inline and what it sandboxes (2026-10-25 review) |
 | `test/bacon8_web/live/page_live_test.exs` | 20 | who sees a page; the edit button; editing in place; media events |
 | `test/bacon8_web/live/blog_live_test.exs` | 16 | the list, a post, drafts, editing in place, media events |
 | `test/bacon8_web/live/admin_pages_test.exs` | 13 | access; making, changing, publishing, deleting a page |

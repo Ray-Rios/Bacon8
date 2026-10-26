@@ -82,6 +82,28 @@ defmodule Bacon8.Content.InlineMediaTest do
       assert {:error, "File too large"} = InlineMedia.store(ctx, upload("big.bin", big))
     end
 
+    # Review of 2026-10-25 (a second reader, as BACON8.md section 14 asks)
+
+    test "refuses file types a browser would run (invariant 4), and writes nothing", %{ctx: ctx} do
+      for name <- ~w(page.html page.HTM pic.svg pic.SVGZ doc.xhtml feed.xml app.js ../../x.svg) do
+        assert {:error, "That type of file can't be added here"} = InlineMedia.store(ctx, upload(name)), name
+      end
+
+      refute File.exists?(Path.join(Uploads.public_dir(), ctx))
+    end
+
+    test "refuses oversized data before decoding it", %{ctx: ctx} do
+      # Not base64 at all: decoded first, the answer would have been "Invalid file data".
+      too_long = :binary.copy("!", div(25 * 1024 * 1024 + 2, 3) * 4 + 1)
+      assert {:error, "File too large"} = InlineMedia.store(ctx, upload("big.bin", "", %{"data" => too_long}))
+    end
+
+    test "a file of exactly 25 MB is still accepted (the early size check is not too strict)", %{ctx: ctx} do
+      exact = :binary.copy("a", 25 * 1024 * 1024)
+      assert {:ok, %{url: url}} = InlineMedia.store(ctx, upload("exact.bin", exact))
+      assert File.stat!(stored_path(url)).size == 25 * 1024 * 1024
+    end
+
     test "a missing mime type is fine", %{ctx: ctx} do
       assert {:ok, _} = InlineMedia.store(ctx, %{"data" => Base.encode64("x"), "filename" => "a.txt"})
     end
@@ -141,6 +163,53 @@ defmodule Bacon8.Content.InlineMediaTest do
       assert :ignored = InlineMedia.remove(ctx, "https://example.com/uploads/public/#{ctx}/a.txt")
       assert :ignored = InlineMedia.remove(ctx, nil)
       assert File.exists?(canary)
+    end
+
+    # Review of 2026-10-25
+
+    test "a page whose folder name starts another's can't reach the other", %{ctx: ctx} do
+      longer = ctx <> "0"
+      on_exit(fn -> File.rm_rf(Path.join(Uploads.public_dir(), longer)) end)
+      {:ok, %{url: url}} = InlineMedia.store(longer, upload("theirs.txt"))
+
+      assert :ignored = InlineMedia.remove(ctx, url)
+      assert File.exists?(stored_path(url))
+    end
+
+    test "home-directory, encoded and doubled-slash URLs are ignored", %{ctx: ctx, canary: canary} do
+      name = Path.basename(canary)
+
+      for url <- [
+            "/uploads/public/~/#{name}",
+            "/uploads/public/~",
+            "/uploads/public/%2e%2e/#{name}",
+            "/uploads/public/#{ctx}/%2e%2e/%2e%2e/%2e%2e/#{name}",
+            "/uploads/public//../#{name}",
+            "/uploads/public/#{ctx}//../../../#{name}",
+            "/uploads/public/#{ctx}/\\..\\..\\..\\#{name}",
+            "/uploads/public/#{ctx}/x\0/../../../#{name}"
+          ] do
+        assert :ignored = InlineMedia.remove(ctx, url), inspect(url)
+      end
+
+      assert File.exists?(canary)
+    end
+
+    test "a link in the page's folder is removed as a link; what it points to stays", %{ctx: ctx, canary: canary} do
+      dir = Path.join(Uploads.public_dir(), ctx)
+      File.mkdir_p!(dir)
+      link = Path.join(dir, "link.txt")
+
+      case File.ln_s(canary, link) do
+        :ok ->
+          assert :ok = InlineMedia.remove(ctx, "/uploads/public/#{ctx}/link.txt")
+          assert {:error, :enoent} = File.lstat(link)
+          assert File.read!(canary) == "keep me"
+
+        {:error, _} ->
+          # A folder that can't hold links (a Windows folder mounted into Docker) has nothing to test.
+          :ok
+      end
     end
 
     test "a file that is already gone is not an error", %{ctx: ctx} do

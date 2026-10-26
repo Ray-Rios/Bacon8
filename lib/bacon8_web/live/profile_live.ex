@@ -484,21 +484,25 @@ defmodule Bacon8Web.ProfileLive do
 
   @impl true
   def handle_event("select_previous_avatar", %{"url" => url}, socket) do
-    case Accounts.update_user_profile(socket.assigns.user, %{avatar_url: url}) do
-      {:ok, updated_user} ->
-        {:noreply,
-         socket
-         |> assign(user: updated_user)
-         |> put_flash(:info, "Avatar updated successfully!")}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to update avatar")}
+    with true <- own_avatar?(socket.assigns.user, url),
+         {:ok, updated_user} <- Accounts.update_user_profile(socket.assigns.user, %{avatar_url: url}) do
+      {:noreply,
+       socket
+       |> assign(user: updated_user)
+       |> put_flash(:info, "Avatar updated successfully!")}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Failed to update avatar")}
     end
   end
 
   @impl true
   def handle_event("delete_previous_avatar", %{"url" => url}, socket) do
-    case Bacon8.Uploads.delete_file(url) do
+    # The URL comes from the browser, and Uploads.delete_file/1 deletes anything under uploads/,
+    # so only one of this user's own avatars may go (2026-10-25 review: any signed-in user could
+    # delete other people's uploads through this event).
+    result = if own_avatar?(socket.assigns.user, url), do: Bacon8.Uploads.delete_file(url), else: {:error, :not_yours}
+
+    case result do
       :ok ->
         # If current avatar is the deleted one, remove it from profile
         socket = 
@@ -521,6 +525,14 @@ defmodule Bacon8Web.ProfileLive do
         {:noreply, put_flash(socket, :error, "Failed to delete file")}
     end
   end
+
+  # The browser sends an avatar's URL back; it must name a file in this user's own avatar folder,
+  # exactly as list_user_uploads/2 lists it.
+  defp own_avatar?(user, url) when is_binary(url) do
+    Enum.any?(Bacon8.Uploads.list_user_uploads(user.id, "avatar"), &(&1.url == url))
+  end
+
+  defp own_avatar?(_user, _url), do: false
 
   # Handle progress updates from auto-upload
   def handle_progress(:avatar, entry, socket) when entry.done? do
