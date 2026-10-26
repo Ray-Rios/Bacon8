@@ -55,6 +55,8 @@ defmodule Bacon8Web.BlogLive do
     socket
     |> assign(Bacon8Web.Seo.for_post(post))
     |> assign(
+      comments: Content.list_approved_comments(post.id),
+      comment_notice: nil,
       post: post,
       page_title: post.title,
       view: :post_detail,
@@ -178,6 +180,23 @@ defmodule Bacon8Web.BlogLive do
     slide = String.to_integer(slide_str)
     {:noreply, assign(socket, current_slide: slide)}
   end
+
+  # A member's comment: shown at once or held for a moderator (Bacon8.Content.Moderation)
+  def handle_event("post_comment", %{"comment" => text}, %{assigns: %{view: :post_detail, post: post}} = socket) do
+    notice =
+      case Content.submit_comment(socket.assigns[:current_user], post, text) do
+        {:ok, %{is_approved: true}} -> nil
+        {:ok, _held} -> "Thanks. Your comment will appear once a moderator has checked it."
+        {:error, :rate_limited} -> "You're commenting too fast. Please wait a little."
+        {:error, :duplicate} -> "You already posted that."
+        {:error, :not_allowed} -> "Sign in with a verified email to comment."
+        {:error, _changeset} -> "That comment can't be posted. Check its length."
+      end
+
+    {:noreply, assign(socket, comments: Content.list_approved_comments(post.id), comment_notice: notice)}
+  end
+
+  def handle_event("post_comment", _params, socket), do: {:noreply, socket}
 
   # Desktop UI sometimes pushes update_window_position globally; ignore in BlogLive
   def handle_event("update_window_position", _params, socket) do
@@ -477,6 +496,8 @@ defmodule Bacon8Web.BlogLive do
                 <%= BlockEditor.render_blocks(@post.content) %>
               </div>
               
+              <Bacon8Web.Components.Comments.comments comments={@comments} current_user={@current_user} notice={@comment_notice} />
+
               <!-- Social Share Buttons -->
               <div class="mt-8 pt-6 border-t border-gray-700">
                 <SocialShare.social_share

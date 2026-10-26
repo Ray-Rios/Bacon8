@@ -69,6 +69,12 @@ defmodule Bacon8Web.Components.AdminSidebar do
             active={String.starts_with?(@current_path, "/admin/pages")}
           />
           <.sidebar_link
+            href="/admin/comments"
+            icon="💬"
+            label="Comments"
+            active={String.starts_with?(@current_path, "/admin/comments")}
+          />
+          <.sidebar_link
             :if={@full}
             href="/admin/uploads"
             icon="📤"

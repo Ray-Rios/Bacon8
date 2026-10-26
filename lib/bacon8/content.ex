@@ -201,7 +201,7 @@ defmodule Bacon8.Content do
 
   def list_approved_comments(post_id) do
     from(c in Comment, 
-      where: c.post_id == ^post_id and c.is_approved == true,
+      where: c.post_id == ^post_id and c.is_approved == true and c.is_spam == false,
       order_by: [asc: c.inserted_at]
     )
     |> Repo.all()
@@ -228,11 +228,58 @@ defmodule Bacon8.Content do
     Repo.delete(comment)
   end
 
-  # Comments have is_approved, not a status. There is no spam state: a "spam" function used to
-  # pass a status the schema ignores, so it did nothing and nothing called it.
+  # A comment is approved (shown), pending (waiting for a moderator) or spam (kept on record,
+  # shown nowhere): is_approved and is_spam say which.
   def approve_comment(%Comment{} = comment) do
-    update_comment(comment, %{is_approved: true})
+    update_comment(comment, %{is_approved: true, is_spam: false})
   end
+
+  def mark_spam(%Comment{} = comment) do
+    update_comment(comment, %{is_approved: false, is_spam: true})
+  end
+
+  @doc """
+  A signed-in member's comment on a post, held for approval or shown at once by the rules in
+  `Bacon8.Content.Moderation`. Returns `{:ok, comment}` (check `comment.is_approved`), or
+  `{:error, :not_allowed}` (no verified email), `{:error, :rate_limited}`, `{:error, :duplicate}`,
+  `{:error, changeset}`.
+  """
+  def submit_comment(user, %Post{id: post_id, is_published: true}, text) do
+    text = String.trim(to_string(text))
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    hour_ago = DateTime.add(now, -3600, :second)
+
+    cond do
+      is_nil(user) or is_nil(user.email_verified_at) ->
+        {:error, :not_allowed}
+
+      Repo.aggregate(from(c in Comment, where: c.user_id == ^user.id and c.inserted_at > ^hour_ago), :count) >=
+          Bacon8.Content.Moderation.rate_limit() ->
+        {:error, :rate_limited}
+
+      Repo.exists?(from c in Comment, where: c.user_id == ^user.id and c.post_id == ^post_id and c.content == ^text and c.inserted_at > ^hour_ago) ->
+        {:error, :duplicate}
+
+      true ->
+        approved_before = Repo.aggregate(from(c in Comment, where: c.user_id == ^user.id and c.is_approved == true and c.is_spam == false), :count)
+        approved? = Bacon8.Content.Moderation.decide(user, text, approved_before) == :approved
+
+        create_comment(%{content: text, post_id: post_id, user_id: user.id, is_approved: approved?})
+    end
+  end
+
+  def submit_comment(_user, _post, _text), do: {:error, :not_allowed}
+
+  @doc "Comments for the moderation screen: `:pending`, `:approved` or `:spam`, newest first."
+  def list_comments_by_status(status) when status in [:pending, :approved, :spam] do
+    from(c in Comment, where: ^status_filter(status), order_by: [desc: c.inserted_at], limit: 200)
+    |> Repo.all()
+    |> Repo.preload([:user, :post])
+  end
+
+  defp status_filter(:pending), do: dynamic([c], c.is_approved == false and c.is_spam == false)
+  defp status_filter(:approved), do: dynamic([c], c.is_approved == true and c.is_spam == false)
+  defp status_filter(:spam), do: dynamic([c], c.is_spam == true)
 
   # Admin functions
 
@@ -253,12 +300,8 @@ defmodule Bacon8.Content do
     Repo.aggregate(Comment, :count)
   end
 
-  def count_comments_by_status(status) when status in [:approved, :pending] do
-    is_approved = case status do
-      :approved -> true
-      :pending -> false
-    end
-    from(c in Comment, where: c.is_approved == ^is_approved)
+  def count_comments_by_status(status) when status in [:approved, :pending, :spam] do
+    from(c in Comment, where: ^status_filter(status))
     |> Repo.aggregate(:count)
   end
 

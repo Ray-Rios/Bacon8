@@ -11,7 +11,7 @@ defmodule Bacon8Web.AdminAccessTest do
 
   @endpoint Bacon8Web.Endpoint
 
-  @content_routes ["/admin/pages", "/admin/blog-management"]
+  @content_routes ["/admin/pages", "/admin/blog-management", "/admin/comments"]
 
   # Every other admin page: core, then the plugins' (activated below).
   @admin_only_routes [

@@ -138,6 +138,28 @@ Tests: `test/bacon8_web/live/content_editing_test.exs`.
 **Still separate:** the admin screens' list-plus-form UI versus the public pages' edit-in-place (two UIs, one
 engine now); the blog's featured image, media picker and tags; the production-grade list below.
 
+## Production-grade items the owner picked (2026-10-26)
+
+Chosen from the list: SEO, image alt text, RSS and comment moderation. All built and tested.
+
+- **Image alt text.** Each image block has an alt text field (amber until filled in) and a *Decorative* switch
+  (empty alt on purpose). `Bacon8.Content.Audit.images_missing_alt/1` counts pictures without alt text (blocks,
+  galleries, old HTML); `/admin/pages` and `/admin/blog-management` show "N images without alt text" on each row.
+- **SEO.** `Bacon8Web.Seo` gives every page and post a description (meta description, else excerpt, else the
+  body's first words, at most 160 characters), a canonical address, a preview image (featured image, else the
+  first picture) and `noindex` for drafts. The root layout turns those into canonical, Open Graph and Twitter
+  tags; before this every page said "The kitchen sink." `/sitemap.xml` is built from published pages and posts
+  (`SeoController`; the hand-written file is gone). Not done: structured data (JSON-LD), per-page keywords UI.
+- **RSS.** `/blog/feed.xml`: the 20 newest published posts, escaped, the author's display name only, the body
+  in CDATA; advertised in every page's head.
+- **Comments.** The blog had no way to comment at all. Now signed-in members with a verified email can comment
+  under a post (`Bacon8Web.Components.Comments`, `Content.submit_comment/3`). Rules in `Content.Moderation`:
+  staff are approved at once; more than two links holds a comment; a member with an approved comment is approved
+  at once; everyone else's first comment waits. At most 5 comments an hour and no immediate repeats. Comments are
+  plain text. `/admin/comments` (admins, GMs, editors) has Waiting / Approved / Spam tabs, approve, spam, delete,
+  approve all and delete all spam. `comments.is_spam` is new (spam is kept on record, shown nowhere).
+  Not done: replies, notifying staff of new pending comments, edit/delete of one's own comment.
+
 ## Posts from plugins and games
 
 `Bacon8.Content.post_from_plugin(plugin_slug, %{title:, body: [...], excerpt:, tags:}, publish: true, author: user)`

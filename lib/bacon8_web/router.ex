@@ -150,6 +150,7 @@ defmodule Bacon8Web.Router do
     live "/admin/blog-management", AdminLive.BlogManagement, :index
     live "/admin/blog-management/:id", AdminLive.BlogManagement, :edit
     live "/admin/pages", AdminLive.Pages, :index
+    live "/admin/comments", AdminLive.Comments, :index
     live "/admin/pages/:id", AdminLive.Pages, :edit
     live "/admin/projects", AdminLive.Projects, :index
     live "/admin/scheduler", AdminLive.Scheduler, :index

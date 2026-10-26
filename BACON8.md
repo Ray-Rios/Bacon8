@@ -16,7 +16,23 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-25**.
+Last substantive update: **2026-10-26**.
+
+On 2026-10-26:
+
+- **The site icon is two strips of bacon** (owner's request, from a reference picture; the model is
+  original). Modelled and rendered in Blender (`library/pipeline/scripts/bacon_strips.py`: procedural
+  strips at 45 degrees, lengthwise fat stripes, crisp rippled edges, a curled end; Cycles), as a 48-frame
+  loop in which the strips sizzle (ripples run along them, the edges tremble) rather than a turntable.
+  `bacon_sheets.py` makes the sprite sheets (`priv/static/images/bacon/bacon-64/160/288.webp`, the still
+  `bacon.webp`) and the brand masters `brand/bacon8-mark.png` and `.svg` (the SVG wraps the PNG), from
+  which `scripts/brand/build_brand_assets.py` (`build_hub()` only) rebuilt the favicon and app icons.
+  On pages it is `<b8-bacon>` (`assets/js/sizzle_bacon.ts`, the `<b8-gem>` pattern): it sizzles slowly
+  and bobs, and hovering makes it react a different way each time (a spatter of grease, wisps of steam, a
+  hop in the pan, crackling fat with a heat flare, a sizzling shiver). Templates use
+  `Bacon8Web.Components.Bacon`: `<.bacon size={26} />`; the icon string `"bacon"` works wherever `"gem"`
+  does. It is the desktop's **Start button** (was the B8 mark) and the navbar's **Games** link (was 🎮).
+  Uncommitted: `handoff/CLAUDE_CODE_PROMPT_2026-10-26a.md`.
 
 On 2026-10-25:
 
@@ -82,7 +98,9 @@ On 2026-10-25:
    editor now has one docked sticky toolbar (many columns no longer squeeze it).
 2. **Pages and blog**: read `docs/pages-blog-builder.md`. The four editing surfaces now share one engine
    (`Bacon8Web.ContentEditing`, 2026-10-26; new pages/posts start as drafts; admin editors handle media and autosave).
-   Next: one UI (admin list+form vs edit-in-place), then the production-grade list. Plugins and games may post to the blog: `Content.post_from_plugin/3` exists, and
+   Done 2026-10-26 from the production-grade list: SEO, image alt text, RSS and comment moderation (see
+   `docs/pages-blog-builder.md`); the column-shrink bug is fixed. Next: one UI (admin list+form vs
+   edit-in-place), and the rest of the list (revisions, scheduled publishing, preview, image library). Plugins and games may post to the blog: `Content.post_from_plugin/3` exists, and
    no plugin calls it yet (RaysSpaceSim patch notes would). The editor's column squeeze is solved by the docked
    toolbar, so no column cap. The path-handling review is done (`69f6f43`).
 3. **Chat is finished** (2026-10-26): self-contained plugin, own tables and settings, dead code gone,
@@ -229,7 +247,8 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-20 | **The move is finished**: production has run under the new names since 2026-10-18, the game and launcher are rebuilt against them, and the old deployment, its volumes and the old working copy are deleted. The legacy wire names it kept alive (`holo_sim_id`, `PUT .../holo_location`) and the game's CoreRedirects for the old plugin are removed. | Every client and server in use was rebuilt, so nothing sends the old names. |
 | 2026-10-20 | **Removed: the GraphQL API, `POST /api/auth/authenticate` and `GET /api/auth/users`.** Nothing used them. The GraphQL `login` and `/authenticate` checked passwords without the lockout, rate limit or banned/unverified checks the real login applies (and `/authenticate` said which of email or password was wrong); `/users` listed every account's email to anyone. | Security: they were open doors with no callers. |
 | 2026-10-20 | **Brand assets come from masters in `brand/`** (and the game's `RaysSpaceSim/Brand/`), turned into every icon, favicon, manifest and splash by `scripts/brand/build_brand_assets.py`. The masters are placeholders until the real artwork exists. The Phoenix favicon and the Start button image are gone. | One drop-in point for the artwork; and the old images were other companies' marks. |
-| 2026-10-20 | **Brand:** the logo is the "B8" monogram. The colours are blue `#247DF1`, cream `#E7F1FD` and near-black `#14100F`. The one-line description is "The kitchen sink." | Owner's decision. |
+| 2026-10-20 | **Brand:** ~~the logo is the "B8" monogram~~ (the icon became bacon, 2026-10-26, below; the wordmark "Bacon8" in the navbar is unchanged). The colours are blue `#247DF1`, cream `#E7F1FD` and near-black `#14100F`. The one-line description is "The kitchen sink." | Owner's decision. |
+| 2026-10-26 | **The site icon is two strips of bacon at 45 degrees**, rendered in 3D: the favicon and app icons, the desktop's Start button and the navbar's Games link. On pages it sizzles and reacts to hovering like the Gem (`<b8-bacon>`). Supersedes the B8 monogram as the icon. | Owner's request. |
 | 2026-10-20 | **All flagged third-party material is removed** and replaced with our own or CC0 work: synthesized sound effects and music (`scripts/audio/`), an original default avatar, no third-party fonts, and new character models (next row). The removed files wait in a gitignored holding folder until the owner deletes them. | Owner's decision; it was placeholder content. |
 | 2026-10-20 | **Characters use our own skeleton, "B8 skeleton v1".** It has Unreal-style names, which Unreal's IK Retargeter, Unity's Humanoid and Godot's BoneMap all map. It has 3 spine bones, twist bones, breast and glute jiggle bones on every body, and `weapon_l`/`weapon_r` grip bones. Male and female share it. The bodies are Blender Studio's CC0 base meshes; the animations are Quaternius' CC0 Universal Animation Library, baked onto the skeleton. Built by the asset pipeline (`library/pipeline/Characters/B8Human`, originally in the game repository). | Owner's decision. Epic's skeleton and animations may only be used in Unreal, and the web, Unity and Godot versions must look the same as the Unreal game. |
 | 2026-10-20 | **Legal pages are CMS pages:** `/pages/terms`, `privacy`, `refunds`, `copyright`, `contact`, `credits` and `gems`. They are seeded unpublished as placeholders to be reviewed with a lawyer, and the store's small print links to them. | Owner's decision. They can be edited in `/admin/pages` without a deploy. |
@@ -1105,7 +1124,8 @@ Ordered roughly by how much it hurts.
   It has not been compiled or verified by Claude Code.
 - **Chat Channels is finished** (`docs/chat-channels-plugin.md`, all four phases). `ChatLive` is ~2,050 lines of
   handlers; splitting those by feature is optional. The store's own channel-pass tests need chat installed.
-- **Comments on the blog have no moderation UI**, and nothing calls `approve_comment`.
+- **Comments** (2026-10-26) exist and are moderated (`/admin/comments`), but have no replies, no notification
+  to staff of pending ones and no way for a member to edit or delete their own.
 - **RaysSpaceSim's settings still live in the hub's prod configmap** (`HOLOSIM_*`,
   `WORLD_*`, and `deploy-game.sh` writes `HOLOSIM_IMAGE` there), so a game deploy edits a
   hub file. Move them to a configmap the plugin's `k3s/` owns and have the hub deployment

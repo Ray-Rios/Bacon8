@@ -9,6 +9,7 @@ defmodule Bacon8.Content.Comment do
     field :author_name, :string
     field :author_email, :string
     field :is_approved, :boolean, default: false
+    field :is_spam, :boolean, default: false
 
     belongs_to :post, Bacon8.Content.Post
     belongs_to :user, Bacon8.Accounts.User
@@ -21,12 +22,13 @@ defmodule Bacon8.Content.Comment do
   def changeset(comment, attrs) do
     comment
     |> cast(attrs, [
-      :content, :author_name, :author_email, :is_approved, :post_id, :user_id, :parent_id
+      :content, :author_name, :author_email, :is_approved, :is_spam, :post_id, :user_id, :parent_id
     ])
     |> validate_required([:content, :post_id])
     |> validate_length(:content, min: 1, max: 5000)
     |> validate_format(:author_email, ~r/@/, message: "must be a valid email")
     |> validate_inclusion(:is_approved, [true, false])
+    |> validate_inclusion(:is_spam, [true, false])
     |> foreign_key_constraint(:post_id)
     |> foreign_key_constraint(:user_id)
     |> foreign_key_constraint(:parent_id)
@@ -34,5 +36,6 @@ defmodule Bacon8.Content.Comment do
 
   # Helper functions
   def approved?(comment), do: comment.is_approved == true
-  def pending?(comment), do: comment.is_approved == false
+  def pending?(comment), do: comment.is_approved == false and comment.is_spam == false
+  def spam?(comment), do: comment.is_spam == true
 end
