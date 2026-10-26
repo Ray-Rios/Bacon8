@@ -826,4 +826,422 @@ defmodule ChatChannelsWeb.ChatComponents do
       "text-gray-600 dark:text-gray-400"
     end
   end
+
+  @doc """
+  The channel header: icon (with upload), name, topic and the buttons.
+  """
+  attr :can_moderate, :any, required: true
+  attr :current_channel, :any, required: true
+  attr :current_user, :any, required: true
+  attr :uploads, :any, required: true
+  def channel_header(assigns) do
+    ~H"""
+          <div class="p-2 border-b border-cyan-500/30 flex items-center justify-between dark-glass shadow-sm h-14 relative z-30">
+            <div class="flex items-center gap-3 flex-1 min-w-0">
+              <form phx-change="validate_channel_icon" phx-drop-target={@uploads.channel_icon.ref} class="flex items-center relative group/icon-upload">
+                <.live_file_input upload={@uploads.channel_icon} class="hidden" id="channel-icon-input" />
+                
+                <%= if @current_channel.icon_path do %>
+                  <div class="relative">
+                    <button type="button" phx-click="toggle_sidebar" class="relative" title="Toggle Sidebar (Drag & Drop to change icon)">
+                       <img src={@current_channel.icon_path} class="w-10 h-10 rounded-full object-cover" />
+                    </button>
+                    <%= if ChatChannels.can_manage_channel?(@current_user, @current_channel) do %>
+                      <button type="button" phx-click="remove_channel_icon" class="absolute -top-1 -right-1 w-5 h-5 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center text-white text-xs opacity-0 group-hover/icon-upload:opacity-100 transition-opacity" title="Remove icon">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                      </button>
+                    <% end %>
+                  </div>
+                <% else %>
+                  <%= if ChatChannels.can_manage_channel?(@current_user, @current_channel) do %>
+                    <button type="button" onclick="this.parentElement.querySelector('input[type=file]').click()" class="cursor-pointer w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center border border-gray-600 hover:border-blue-500 transition-colors text-gray-400 hover:text-blue-400" title="Click or Drag & Drop to Upload Channel Icon">
+                       <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    </button>
+                  <% else %>
+                    <button type="button" phx-click="toggle_sidebar" class="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center border border-gray-600 text-gray-400" title="Toggle Sidebar">
+                      <span class="text-lg font-bold">#</span>
+                    </button>
+                  <% end %>
+                <% end %>
+              </form>
+
+              <div class="min-w-0">
+                <h1 class="text-lg font-bold text-gray-800 dark:text-gray-200 truncate flex items-center gap-2">
+                  #<%= @current_channel.name %>
+                  <%= if @current_channel.description do %>
+                    <span class="text-xs font-normal text-gray-500 dark:text-gray-400 truncate hidden sm:inline-block border-l border-gray-600 pl-2 ml-2"><%= @current_channel.description %></span>
+                  <% end %>
+                </h1>
+              </div>
+            </div>
+            
+            <div class="flex items-center space-x-4 ml-4">
+              <%!-- Online Users --%>
+              <div class="flex items-center space-x-3 text-xs text-gray-500 dark:text-gray-400 border-r border-gray-700 pr-4">
+                <div class="flex items-center gap-2">
+                  <svg class="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" /></svg>
+                  <span class="hidden sm:inline"><%= Enum.count(assigns[:online_users] || []) %> online</span>
+                </div>
+                <div class="flex items-center -space-x-1">
+                  <%= for user <- Enum.take(assigns[:online_users] || [], 5) do %>
+                    <div class="relative group/avatar z-0 hover:z-10">
+                      <%= avatar_tag(user, size_class: "w-6 h-6 cursor-pointer transition-transform hover:scale-110") %>
+                      
+                      <!-- User Hover Card -->
+                      <div class="absolute right-0 top-full mt-2 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 opacity-0 invisible group-hover/avatar:opacity-100 group-hover/avatar:visible transition-all duration-200 p-4 pointer-events-none group-hover/avatar:pointer-events-auto text-left">
+                        <div class="flex items-start space-x-4 mb-3">
+                          <%= avatar_tag(user, size_class: "w-20 h-20") %>
+                          <div class="flex-1 min-w-0">
+                            <div class="font-bold text-white text-lg truncate"><%= Map.get(user, :name) || Map.get(user, :email) || "Unknown" %></div>
+                            <%= if Map.get(user, :inserted_at) do %>
+                              <div class="text-xs text-gray-400">Joined <%= Calendar.strftime(user.inserted_at, "%b %Y") %></div>
+                            <% end %>
+                            <%= if Map.get(user, :role) do %>
+                              <div class={[
+                                "mt-1 inline-block px-2 py-0.5 rounded text-xs font-bold border",
+                                case user.role do
+                                  "admin" -> "bg-red-900 text-red-200 border-red-700"
+                                  "gm" -> "bg-purple-900 text-purple-200 border-purple-700"
+                                  "editor" -> "bg-blue-900 text-blue-200 border-blue-700"
+                                  "moderator" -> "bg-green-900 text-green-200 border-green-700"
+                                  "member" -> "bg-gray-700 text-gray-200 border-gray-600"
+                                  _ -> "bg-gray-700 text-gray-300 border-gray-600"
+                                end
+                              ]}>
+                                <%= String.upcase(user.role) %>
+                              </div>
+                            <% end %>
+                          </div>
+                        </div>
+                        
+                        <%= if Map.get(user, :bio) do %>
+                          <div class="text-sm text-gray-300 border-t border-gray-700 pt-2 break-words">
+                            <%= user.bio %>
+                          </div>
+                        <% end %>
+                      </div>
+                    </div>
+                  <% end %>
+                  <%= if Enum.count(assigns[:online_users] || []) > 5 do %>
+                    <div class="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 border border-white text-[10px] flex items-center justify-center text-gray-800 dark:text-gray-200 z-0 relative">+<%= Enum.count(assigns[:online_users] || []) - 5 %></div>
+                  <% end %>
+                </div>
+              </div>
+
+              <%!-- Invite button for private channels --%>
+                  <%= if @current_channel.is_private && (@current_user.is_admin || @current_user.role in ["admin", "gm", "editor"] || 
+                    (@current_channel.owner_id && @current_channel.owner_id == @current_user.id) || @can_moderate) do %>
+                <button phx-click="show_invite_modal" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs rounded transition-colors flex items-center gap-1.5">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3H4"></path>
+                  </svg>
+                  Invite
+                </button>
+              <% end %>
+              
+              <%!-- Members button - visible to all channel members/moderators --%>
+              <%= if @current_user && @current_channel.is_private do %>
+                <button phx-click="open_members_modal" phx-value-channel_id={@current_channel.id} class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded transition-colors flex items-center gap-1.5" title="View Members">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                  </svg>
+                  Members
+                </button>
+              <% end %>
+              
+              <%!-- Delete button - only for admins and channel owners --%>
+              <%= if @current_user && String.downcase(@current_channel.name) != "general" && (
+                    Map.get(@current_user, :is_admin, false) || @current_user.role == "admin" ||
+                    ( @current_channel.is_private && ((Map.has_key?(@current_channel, :owner_id) && @current_channel.owner_id == @current_user.id) || (Map.has_key?(@current_channel, :created_by_id) && @current_channel.created_by_id == @current_user.id)) )
+                  ) do %>
+                <button 
+                  phx-click="show_delete_channel_confirm" 
+                  class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors flex items-center gap-1.5"
+                  title="Delete Channel"
+                >
+                  <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </button>
+              <% end %>
+            </div>
+          </div>
+    """
+  end
+
+  @doc """
+  Pinned messages, above the message list.
+  """
+  attr :can_moderate, :any, required: true
+  attr :current_user, :any, required: true
+  attr :editing_message_content, :any, required: true
+  attr :editing_message_id, :any, required: true
+  attr :last_read_message_id, :any, required: true
+  attr :pinned_messages, :any, required: true
+  attr :reply_message_content, :any, required: true
+  attr :replying_to_message_id, :any, required: true
+  attr :uploads, :any, required: true
+  def pinned_messages_panel(assigns) do
+    ~H"""
+            <%= if length(@pinned_messages) > 0 do %>
+              <div class="dark-glass border border-yellow-500/30 p-3 mb-4 rounded-lg shadow-lg">
+                <div class="text-xs font-bold text-yellow-400 mb-3 flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                  PINNED MESSAGES
+                </div>
+                <div class="space-y-3">
+                  <%= for message <- @pinned_messages do %>
+                    <div class="bg-black/20 rounded-lg p-3 border border-yellow-500/10 hover:border-yellow-500/30 transition-colors">
+                      <%!-- Show context if this is a pinned reply --%>
+                      <%= if message.reply_to_id do %>
+                        <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
+                          Reply to a message
+                        </div>
+                      <% end %>
+                      <.message_item 
+                        message={message} 
+                        current_user={@current_user} 
+                        can_moderate={@can_moderate} 
+                        replying_to_message_id={@replying_to_message_id} 
+                        editing_message_id={@editing_message_id} 
+                        editing_message_content={@editing_message_content}
+                        reply_message_content={@reply_message_content}
+                        last_read_message_id={@last_read_message_id}
+                        uploads={@uploads}
+                      />
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+    """
+  end
+
+  @doc """
+  The edit box, shown while editing a message.
+  """
+  attr :editing_message_content, :any, required: true
+  attr :editing_message_id, :any, required: true
+  attr :uploads, :any, required: true
+  def edit_form(assigns) do
+    ~H"""
+        <%= if @editing_message_id do %>
+          <div class="p-3 border-t border-cyan-500/30 dark-glass bg-gray-800/90">
+            <div class="text-xs text-gray-400 mb-2 flex items-center justify-between">
+              <span>Editing message</span>
+              <button type="button" phx-click="cancel_edit" class="text-gray-500 hover:text-gray-300">✕</button>
+            </div>
+            <.form for={%{}} phx-submit="apply_edit_message" phx-change="validate_edit" phx-drop-target={@uploads.edit_attachment.ref} class="mb-0">
+              <input type="hidden" name="message_id" value={@editing_message_id} />
+              
+              <%!-- File upload previews for Edit --%>
+              <%= if length(@uploads.edit_attachment.entries) > 0 do %>
+                <div class="mb-2 flex flex-wrap gap-2">
+                  <%= for entry <- @uploads.edit_attachment.entries do %>
+                    <div class="relative group">
+                      <.live_img_preview entry={entry} class="h-16 w-16 object-cover rounded border border-gray-300 dark:border-gray-600" />
+                      <button type="button" phx-click="cancel-upload" phx-value-ref={entry.ref} phx-value-upload_config="edit_attachment" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                      <div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200 rounded-b">
+                        <div class="h-full bg-blue-500 rounded-b transition-all" style={"width: #{entry.progress}%"}></div>
+                      </div>
+                      <%= for err <- upload_errors(@uploads.edit_attachment, entry) do %>
+                        <div class="absolute top-0 left-0 w-full h-full bg-red-500/50 flex items-center justify-center rounded">
+                          <span class="text-white text-xs font-bold"><%= error_to_string(err) %></span>
+                        </div>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+
+              <div class="relative">
+                <textarea 
+                  id="edit-message-textarea"
+                  name="content" 
+                  class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 pr-10" 
+                  rows="2"
+                  phx-hook="ChatInput"
+                ><%= @editing_message_content %></textarea>
+                <div class="absolute bottom-2 right-2 flex items-center space-x-2">
+                  <label class="cursor-pointer text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Attach file">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+                    </svg>
+                    <.live_file_input upload={@uploads.edit_attachment} class="sr-only" />
+                  </label>
+                  <.emoji_picker target="#edit-message-textarea" id="edit-emoji-picker" />
+                </div>
+              </div>
+              <div class="mt-2 flex space-x-2 justify-end">
+                <button type="button" phx-click="cancel_edit" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Cancel</button>
+                <% is_uploading = Enum.any?(@uploads.edit_attachment.entries, fn entry -> entry.progress < 100 end) %>
+                <button type="submit" phx-disable-with="Saving..." disabled={is_uploading} class={"px-3 py-1 text-sm rounded text-white " <> if(is_uploading, do: "bg-blue-400 cursor-not-allowed", else: "bg-blue-600 hover:bg-blue-700")}>
+                  <%= if is_uploading, do: "Uploading...", else: "Save" %>
+                </button>
+              </div>
+            </.form>
+          </div>
+        <% end %>
+    """
+  end
+
+  @doc """
+  The reply box, shown while replying to a message.
+  """
+  attr :reply_message_content, :any, required: true
+  attr :replying_to_message_id, :any, required: true
+  attr :uploads, :any, required: true
+  def reply_form(assigns) do
+    ~H"""
+        <%= if @replying_to_message_id do %>
+          <div class="p-3 border-t border-cyan-500/30 dark-glass bg-gray-800/90">
+            <div class="text-xs text-gray-400 mb-2 flex items-center justify-between">
+              <span>Replying to message</span>
+              <button type="button" phx-click="cancel_reply" class="text-gray-500 hover:text-gray-300">✕</button>
+            </div>
+            <.form for={%{}} phx-submit="send_reply" phx-change="validate_reply" phx-drop-target={@uploads.reply_attachment.ref} class="mb-0">
+              <input type="hidden" name="reply_to_id" value={@replying_to_message_id} />
+              
+              <%!-- File upload previews for Reply --%>
+              <%= if length(@uploads.reply_attachment.entries) > 0 do %>
+                <div class="mb-2 flex flex-wrap gap-2">
+                  <%= for entry <- @uploads.reply_attachment.entries do %>
+                    <div class="relative group">
+                      <.live_img_preview entry={entry} class="h-16 w-16 object-cover rounded border border-gray-300 dark:border-gray-600" />
+                      <button type="button" phx-click="cancel-upload" phx-value-ref={entry.ref} phx-value-upload_config="reply_attachment" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                      <div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200 rounded-b">
+                        <div class="h-full bg-blue-500 rounded-b transition-all" style={"width: #{entry.progress}%"}></div>
+                      </div>
+                      <%= for err <- upload_errors(@uploads.reply_attachment, entry) do %>
+                        <div class="absolute top-0 left-0 w-full h-full bg-red-500/50 flex items-center justify-center rounded">
+                          <span class="text-white text-xs font-bold"><%= error_to_string(err) %></span>
+                        </div>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+
+              <div class="relative">
+                <textarea 
+                  id="reply-message-textarea"
+                  name="content" 
+                  class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 pr-10" 
+                  rows="2" 
+                  placeholder="Write a reply..."
+                  phx-hook="ChatInput"
+                ><%= @reply_message_content %></textarea>
+                <div class="absolute bottom-2 right-2 flex items-center space-x-2">
+                  <label class="cursor-pointer text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="Attach file">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+                    </svg>
+                    <.live_file_input upload={@uploads.reply_attachment} class="sr-only" />
+                  </label>
+                  <.emoji_picker target="#reply-message-textarea" id="reply-emoji-picker" />
+                </div>
+              </div>
+              <div class="mt-2 flex space-x-2 justify-end">
+                <button type="button" phx-click="cancel_reply" class="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">Cancel</button>
+                <% is_uploading = Enum.any?(@uploads.reply_attachment.entries, fn entry -> entry.progress < 100 end) %>
+                <button type="submit" phx-disable-with="Sending..." disabled={is_uploading} class={"px-3 py-1 text-sm rounded text-white " <> if(is_uploading, do: "bg-blue-400 cursor-not-allowed", else: "bg-green-600 hover:bg-green-700")}>
+                  <%= if is_uploading, do: "Uploading...", else: "Reply" %>
+                </button>
+              </div>
+            </.form>
+          </div>
+        <% end %>
+    """
+  end
+
+  @doc """
+  The message box: attachments in progress, the text field, the buttons.
+  """
+  attr :current_message, :any, required: true
+  attr :uploads, :any, required: true
+  def composer(assigns) do
+    ~H"""
+        <div class="p-2 border-t border-cyan-500/30 dark-glass">
+          <form phx-submit="send_message" phx-change="validate_message" phx-drop-target={@uploads.forum_attachment.ref} onsubmit="return false;">
+            <%!-- File upload previews --%>
+            <%= if length(@uploads.forum_attachment.entries) > 0 do %>
+              <div class="mb-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <div class="text-xs text-gray-600 dark:text-gray-400 mb-1 font-medium">
+                  Attachments (<%= length(@uploads.forum_attachment.entries) %>/5)
+                </div>
+                <div class="space-y-2">
+                  <%= for entry <- @uploads.forum_attachment.entries do %>
+                    <div class="flex items-center justify-between p-2 bg-white dark:bg-gray-600 rounded">
+                      <div class="flex items-center flex-1 min-w-0 mr-2">
+                        <svg class="w-4 h-4 text-gray-500 dark:text-gray-300 flex-shrink-0 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+                        </svg>
+                        <span class="text-sm text-gray-700 dark:text-gray-200 truncate"><%= entry.client_name %></span>
+                      </div>
+                      <div class="flex items-center space-x-2 flex-shrink-0">
+                        <div class="w-16 bg-gray-200 dark:bg-gray-500 rounded-full h-1.5">
+                          <div class="bg-blue-500 h-1.5 rounded-full transition-all" style={"width: #{entry.progress}%"}></div>
+                        </div>
+                        <button type="button" phx-click="cancel-upload" phx-value-ref={entry.ref} class="text-red-500 hover:text-red-700 text-xs">✕</button>
+                      </div>
+                    </div>
+                    <%= for err <- upload_errors(@uploads.forum_attachment, entry) do %>
+                      <p class="text-xs text-red-500 mt-1"><%= error_to_string(err) %></p>
+                    <% end %>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+            
+            <div class="flex items-end space-x-2">
+              <div class="flex-1 relative">
+                <textarea 
+                  id="chat-input-textarea"
+                  name="message" 
+                  value={@current_message}
+                  placeholder="Type a message..." 
+                  class="w-full py-1 px-3 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none pr-20 leading-5"
+                  rows="1"
+                  phx-hook="ChatInput"
+                  phx-keydown="typing"
+                  phx-debounce="300"
+                ></textarea>
+                <div class="absolute bottom-1.5 right-2 flex items-center gap-1">
+                  <label for={@uploads.forum_attachment.ref} class="cursor-pointer text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded transition-colors" title="Attach files">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+                    </svg>
+                    <.live_file_input upload={@uploads.forum_attachment} class="sr-only" />
+                  </label>
+                  <.emoji_picker target="#chat-input-textarea" id="main-chat-emoji" />
+                </div>
+              </div>
+              <div class="flex flex-col space-y-1">
+                <% is_uploading = Enum.any?(@uploads.forum_attachment.entries, fn entry -> entry.progress < 100 end) %>
+                <button type="submit" disabled={is_uploading} class={"flex items-center justify-center h-[30px] w-[30px] rounded-md transition-colors border border-transparent " <> if(is_uploading, do: "bg-gray-400 cursor-not-allowed", else: "bg-blue-500 text-white hover:bg-blue-600")}>
+                  <%= if is_uploading do %>
+                    <svg class="animate-spin w-4 h-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  <% else %>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                    </svg>
+                  <% end %>
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+    """
+  end
+
+  # Helper for upload errors
+  defp error_to_string(:too_large), do: "File is too large (max 100MB)"
+  defp error_to_string(:not_accepted), do: "File type not accepted"
+  defp error_to_string(:too_many_files), do: "Too many files (max 5)"
+  defp error_to_string(error), do: "Upload error: #{inspect(error)}"
 end

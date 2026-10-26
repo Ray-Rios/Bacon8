@@ -150,8 +150,10 @@ counted as a mention of "example".
   moved to `ChatChannelsWeb.ChatComponents` (`ChatLive` 3,158 -> ~2,750 lines); `/chat/invite/:code` is
   `InviteLive` (shows the channel, joins on a button press, one plain answer for any unusable code). Then (same day): the sidebar and the four dialogs (members, create channel, image viewer, invite) became
   components too (`ChatLive` ~2,400 lines), and voice/video/stream channels got tests, which found that
-  **starting a stream always crashed** (microseconds in `started_at`/`ended_at`; fixed). Still open: the channel
-  header, pinned messages and the edit/reply/composer forms are inside `render/1`.
+  **starting a stream always crashed** (microseconds in `started_at`/`ended_at`; fixed). Last, the channel header, pinned messages
+  and the edit, reply and composer forms moved too (`ChatLive` ~2,050 lines, all handlers), with tests for sending,
+  replying, editing and pinned messages. **The plan is finished**; what's left is optional (splitting the
+  handlers by feature).
 - **Phase 4: done** (see above), including dropping the three unread `users` columns (2026-10-26, after the
   owner's OK and a production comparison: 3 non-default users, 3 settings rows, 0 differences).
 - Test the voice, video and stream channels.

@@ -80,16 +80,12 @@ On 2026-10-25:
    `Bacon8.Permissions` maps roles to areas; pages mount with `{UserAuth, {:require_area, :content}}`;
    sidebar/navbar filter by area (`admin_access_test.exs` guards every other admin route). The block
    editor now has one docked sticky toolbar (many columns no longer squeeze it).
-2. **Pages and blog**: read `docs/pages-blog-builder.md`. Ask the owner: may games/plugins post to the blog?
-   Consider capping columns (4-6) / stacking on narrow widths. Then collapse the four editing surfaces into
-   one builder. The path-handling review is done and committed (`69f6f43`); the production icon query found
-   nothing (0 of 8 channel icons out of place). **Owner decided: plugins and games may post to the blog**
-   (e.g. patch notes): done, `Content.post_from_plugin/3` (see `docs/pages-blog-builder.md`); no plugin calls it yet.
-3. **Chat, phase 4: done 2026-10-26** (chat tables are the plugin's own migration; settings in
-   `chat_user_settings`; `user_notifications.channel_id` dropped). Next: after the owner checks the copy in
-   production, a core migration drops `users.channel_allowance/channel_order/allow_channel_invites`.
-   (Dropped 2026-10-26 after the owner's OK and a clean comparison.) Phase 3 is mostly done (dead code gone,
-   `/chat/invite/:code` exists, components split out); what remains is splitting `render/1` and testing voice/video/stream.
+2. **Pages and blog**: read `docs/pages-blog-builder.md`. Collapse the four editing surfaces into one builder
+   (the owner's biggest ask). Plugins and games may post to the blog: `Content.post_from_plugin/3` exists, and
+   no plugin calls it yet (RaysSpaceSim patch notes would). The editor's column squeeze is solved by the docked
+   toolbar, so no column cap. The path-handling review is done (`69f6f43`).
+3. **Chat is finished** (2026-10-26): self-contained plugin, own tables and settings, dead code gone,
+   components split out, `/chat/invite/:code`, voice/video/stream tested. Optional: split `ChatLive`'s handlers.
    RaysSpaceSim audio compiles and is committed (`9cc6ec3`) but has not been played in the editor or cooked.
 4. The standing rules are in `BACON_WORLD.md` §6 and the owner's notes: build and test only in
    Docker; commit with explicit file lists; **the deploy builds from the working tree, so check
@@ -1106,9 +1102,8 @@ Ordered roughly by how much it hurts.
 - **RaysSpaceSim's half of the 2026-10-25 sound delivery is uncommitted** in its repository
   (a C++ audio subsystem, 352 sounds, FLAC sources; `handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`).
   It has not been compiled or verified by Claude Code.
-- **Chat Channels still has leftovers** (`docs/chat-channels-plugin.md`): `ChatLive` is still ~2,400 lines
-  (its `render/1` still holds the channel header, pinned messages and the composer forms).
-  The store's own channel-pass tests need chat installed.
+- **Chat Channels is finished** (`docs/chat-channels-plugin.md`, all four phases). `ChatLive` is ~2,050 lines of
+  handlers; splitting those by feature is optional. The store's own channel-pass tests need chat installed.
 - **Comments on the blog have no moderation UI**, and nothing calls `approve_comment`.
 - **RaysSpaceSim's settings still live in the hub's prod configmap** (`HOLOSIM_*`,
   `WORLD_*`, and `deploy-game.sh` writes `HOLOSIM_IMAGE` there), so a game deploy edits a

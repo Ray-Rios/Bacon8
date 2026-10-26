@@ -58,8 +58,8 @@ agrees (rows saved before 2026-10-25 may hold anything; until then the create fo
 
 ## Known gaps
 
-- `ChatLive` is ~2,400 lines: the message, emoji, sidebar and dialog components are in `ChatComponents`; the
-  channel header, pinned messages and the edit/reply/composer forms are still inside `render/1`.
+- `ChatLive` (~2,050 lines) is now the page's state and event handlers; everything it draws (messages, emoji
+  pickers, sidebar, header, pinned messages, edit/reply/composer forms, dialogs) is in `ChatComponents`.
 - Voice, video and stream channels exist but have no tests.
 
 ## Turning it off

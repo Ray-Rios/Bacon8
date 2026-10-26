@@ -192,4 +192,74 @@ defmodule ChatChannelsWeb.ChatLiveTest do
       assert ChatChannels.get_active_stream(channel.id) == nil
     end
   end
+
+  describe "the message box, replies and edits" do
+    setup do
+      me = verified()
+      channel = channel_fixture(%{name: "talk-#{System.unique_integer([:positive])}"})
+      member_fixture(channel, me)
+      %{me: me, channel: channel}
+    end
+
+    test "the page shows the channel's header and message box", %{me: me, channel: channel} do
+      {:ok, _view, html} = live(signed_in(me), "/chat/#{channel.id}")
+      assert html =~ channel.name
+      assert html =~ ~s(phx-submit="send_message")
+      refute html =~ ~s(phx-submit="send_reply")
+      refute html =~ ~s(phx-submit="apply_edit_message")
+    end
+
+    test "sending a message stores it and shows it", %{me: me, channel: channel} do
+      {:ok, view, _} = live(signed_in(me), "/chat/#{channel.id}")
+
+      render_hook(view, "send_message", %{"message" => "hello there"})
+      assert Bacon8.Repo.get_by!(ChatChannels.Message, channel_id: channel.id, content: "hello there")
+      assert render(view) =~ "hello there"
+    end
+
+    test "replying opens the reply box, and sending it stores a reply", %{me: me, channel: channel} do
+      parent = message_fixture(channel, me, "the question")
+      {:ok, view, _} = live(signed_in(me), "/chat/#{channel.id}")
+
+      html = render_hook(view, "start_reply", %{"message_id" => parent.id})
+      assert html =~ ~s(phx-submit="send_reply")
+
+      render_hook(view, "send_reply", %{"content" => "the answer", "reply_to_id" => parent.id})
+      assert %{reply_to_id: reply_to} = Bacon8.Repo.get_by!(ChatChannels.Message, channel_id: channel.id, content: "the answer")
+      assert reply_to == parent.id
+
+      html = render_hook(view, "cancel_reply", %{})
+      refute html =~ ~s(phx-submit="send_reply")
+    end
+
+    test "editing opens the edit box, and applying it changes the message", %{me: me, channel: channel} do
+      msg = message_fixture(channel, me, "typo")
+      {:ok, view, _} = live(signed_in(me), "/chat/#{channel.id}")
+
+      html = render_hook(view, "start_edit_message", %{"message_id" => msg.id})
+      assert html =~ ~s(phx-submit="apply_edit_message")
+
+      render_hook(view, "apply_edit_message", %{"message_id" => msg.id, "content" => "fixed"})
+      assert ChatChannels.get_message(msg.id).content == "fixed"
+      refute render(view) =~ ~s(phx-submit="apply_edit_message")
+    end
+
+    test "someone else's message can't be edited", %{me: me, channel: channel} do
+      other = verified()
+      member_fixture(channel, other)
+      msg = message_fixture(channel, other, "mine, not yours")
+      {:ok, view, _} = live(signed_in(me), "/chat/#{channel.id}")
+
+      render_hook(view, "apply_edit_message", %{"message_id" => msg.id, "content" => "hacked"})
+      assert ChatChannels.get_message(msg.id).content == "mine, not yours"
+    end
+
+    test "pinned messages show above the list for everyone in the channel", %{me: me, channel: channel} do
+      msg = message_fixture(channel, me, "read me first", 0, %{is_pinned: true})
+      {:ok, _view, html} = live(signed_in(me), "/chat/#{channel.id}")
+      assert html =~ "read me first"
+      assert html =~ "Pinned"
+      assert ChatChannels.get_message(msg.id).is_pinned
+    end
+  end
 end
