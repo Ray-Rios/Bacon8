@@ -291,6 +291,7 @@ defmodule Bacon8Web.AdminLive.Pages do
                 <div class="flex space-x-4">
                   <button type="submit" onclick="document.getElementById('page-action-type').value='draft'" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors font-medium">💾 Save Draft</button>
                   <button type="submit" onclick="document.getElementById('page-action-type').value='publish'" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition-colors font-medium">🚀 Publish</button>
+                  <.link :if={@editing_page} id="preview-link" href={"/pages/#{@editing_page.slug}"} target="_blank" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition-colors font-medium" title="Opens the saved version; staff can see drafts, nobody else can">👁 Preview saved version</.link>
                   <button type="button" phx-click="cancel_form" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg transition-colors font-medium">✖ Cancel</button>
                 </div>
               </.form>

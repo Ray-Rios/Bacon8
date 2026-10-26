@@ -556,6 +556,9 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
                       class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition-colors font-medium">
                       <%= if @editing_post, do: "Update & Publish", else: "Publish Now" %>
                     </button>
+                    <.link :if={@editing_post} id="preview-link" href={"/blog/#{@editing_post.slug}"} target="_blank" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition-colors font-medium" title="Opens the saved version; staff can see drafts, nobody else can">
+                      Preview saved version
+                    </.link>
                     <button type="button" phx-click="cancel_form" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg transition-colors font-medium">
                       Cancel
                     </button>
@@ -633,6 +636,9 @@ defmodule Bacon8Web.AdminLive.BlogManagement do
                       </div>
 
                       <div class="flex space-x-2 ml-4">
+                        <.link href={"/blog/#{post.slug}"} target="_blank" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 text-sm rounded transition-colors">
+                          <%= if post.is_published, do: "View", else: "Preview" %>
+                        </.link>
                         <button type="button" phx-click="toggle_publish" phx-value-id={post.id}
                                 class={["px-3 py-1 text-sm rounded transition-colors",
                                        if(post.is_published, do: "bg-orange-600 hover:bg-orange-700 text-white", else: "bg-green-600 hover:bg-green-700 text-white")]}>

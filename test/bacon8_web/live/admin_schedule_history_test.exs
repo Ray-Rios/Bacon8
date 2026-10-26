@@ -55,6 +55,16 @@ defmodule Bacon8Web.AdminScheduleHistoryTest do
       assert Content.get_page!(page.id).content == "<p>one</p>"
     end
 
+    test "a saved draft can be previewed by staff, and not by the public", %{page: page, view: view} do
+      html = render_click(view, "edit_page", %{"id" => page.id})
+      assert html =~ ~s(id="preview-link")
+      assert html =~ "/pages/history-page"
+
+      {:ok, _view, shown} = live(signed_in(person("editor")), "/pages/history-page")
+      assert shown =~ "two"
+      assert {:error, _} = live(build_conn(), "/pages/history-page")
+    end
+
     test "a version that isn't this page's is refused", %{page: page, view: view} do
       render_click(view, "edit_page", %{"id" => page.id})
       html = render_hook(view, "restore_revision", %{"id" => Ecto.UUID.generate()})
