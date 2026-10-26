@@ -88,7 +88,6 @@
             COPY priv/static/images ./priv/static/images
             COPY priv/static/audio ./priv/static/audio
             COPY priv/static/robots.txt ./priv/static/
-            COPY priv/static/sitemap.xml ./priv/static/
             COPY priv/static/.well-known ./priv/static/.well-known
             COPY priv/static/maps ./priv/static/maps
             COPY priv/static/models ./priv/static/models
