@@ -100,6 +100,14 @@ defmodule Bacon8Web.Router do
   plugin_pipelines()
 
   # --------------------
+  # Feed and sitemap (built from what is published; before /blog/:slug so "feed.xml" isn't a slug)
+  # --------------------
+  scope "/", Bacon8Web do
+    get "/blog/feed.xml", SeoController, :feed
+    get "/sitemap.xml", SeoController, :sitemap
+  end
+
+  # --------------------
   # Public LiveViews
   # --------------------
   scope "/", Bacon8Web do

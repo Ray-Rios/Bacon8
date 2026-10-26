@@ -52,7 +52,9 @@ defmodule Bacon8Web.BlogLive do
   end
 
   defp show_post(socket, post) do
-    assign(socket,
+    socket
+    |> assign(Bacon8Web.Seo.for_post(post))
+    |> assign(
       post: post,
       page_title: post.title,
       view: :post_detail,

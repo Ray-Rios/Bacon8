@@ -20,7 +20,7 @@ defmodule Bacon8Web.PageLive do
       page ->
         # Drafts are for staff (admins, GMs and editors: whoever may edit the page)
         if page.is_published or can_edit?(socket.assigns) do
-          {:ok, assign(socket,
+          {:ok, assign(socket, Bacon8Web.Seo.for_page(page)) |> assign(
             page: page,
             page_title: page.title,
             editing: false,
