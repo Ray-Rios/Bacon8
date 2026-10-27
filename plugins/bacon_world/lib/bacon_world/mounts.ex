@@ -86,7 +86,7 @@ defmodule BaconWorld.Mounts do
       model: "kraken",
       name: "Abyssal Kraken",
       summary: "A kraken of the Crater Lake's brood. Can't fly; swims very fast. Slow on land.",
-      scale: 0.3,
+      scale: 0.4,
       ground_speed: 4.0,
       fly_speed: 0.0,
       swim_speed: 22.0,

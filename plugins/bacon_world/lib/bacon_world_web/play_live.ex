@@ -843,8 +843,11 @@ defmodule BaconWorldWeb.PlayLive do
     top = if mount && mount.flies, do: @max_flying_y, else: 25.0
     rising = y > (from.y || 0.0) + 0.01
 
+    # under water, as deep as the bottom (swimmers dive, 2026-10-27)
+    floor = min(ground, BaconWorld.Terrain.bottom_units(x, z, BaconWorld.Mobs.Brain.u()))
+
     cond do
-      y < ground - 2.5 -> {:error, :invalid_move}
+      y < floor - 2.5 -> {:error, :invalid_move}
       y > ground + top and rising -> {:error, :invalid_move}
       true -> :ok
     end

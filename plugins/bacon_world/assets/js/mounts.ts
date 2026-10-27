@@ -43,6 +43,10 @@ const KRAKEN_MOVES: Record<string, { clip: string; hitIn: number }> = { lash: { 
 // The sitting clip's seat (the pelvis) is this high above the feet: the rider's root goes
 // that far below the saddle.
 const SEAT_DROP_M = 0.52;
+// On the Kraken's head the rider sits up on top of it, not in it (2026-10-27).
+const KRAKEN_SEAT_LIFT_M = 0.18;
+// How far a swimming drake sinks, per unit of its scale (its body stands ~5.6 m tall at full size).
+const DRAGON_SWIM_SINK_M = 3.2;
 
 interface Ridden {
   mountId: string;
@@ -187,14 +191,21 @@ export class MountSystem {
       const k = ch.mesh.scale.x || 1;
       rig.root.scale.setScalar(1 / k);
       rig.flying = flying(id);
-      if (rig instanceof KrakenRig) rig.inWater = !!deep?.(ch.mesh.position.x, ch.mesh.position.z);
+      const wet = !rig.flying && !!deep?.(ch.mesh.position.x, ch.mesh.position.z);
+      if (rig instanceof KrakenRig) rig.inWater = wet;
+      else {
+        // a drake in deep water swims low, its back at the waterline (2026-10-27: it walked on it)
+        const want = wet ? -DRAGON_SWIM_SINK_M * (this.spec(r.mountId)?.scale ?? 0.38) * UNITS_PER_METRE : 0;
+        const y = rig.root.position.y * k;
+        rig.root.position.y = (y + (want - y) * Math.min(1, dt * 4)) / k;
+      }
       rig.update(dt);
       r.fire?.update(dt);
       r.whirl?.update(dt);
       const human = cm?.getHuman(id);
       if (human && rig.saddle) {
         rig.saddle.getWorldPosition(this.seat);
-        this.seat.y -= SEAT_DROP_M * UNITS_PER_METRE;
+        this.seat.y -= (SEAT_DROP_M - (rig instanceof KrakenRig ? KRAKEN_SEAT_LIFT_M : 0)) * UNITS_PER_METRE;
         ch.mesh.worldToLocal(this.seat);
         human.setSeat(this.seat);
       }

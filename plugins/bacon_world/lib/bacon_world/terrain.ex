@@ -209,6 +209,17 @@ defmodule BaconWorld.Terrain do
     end
   end
 
+  @doc """
+  The bottom under a point, in scene units (`u` per metre, scene-unit coordinates): the ground,
+  under the water too (a swimmer may dive to it); 0 without terrain.
+  """
+  def bottom_units(x, z, u) do
+    case loaded() do
+      nil -> 0.0
+      t -> height(t, x / u, z / u) * u
+    end
+  end
+
   @doc "Inside the map, `margin` metres from its edges."
   def inside?(t, x, z) do
     x >= t.x0 + t.margin and z >= t.z0 + t.margin and x <= t.x0 + t.size_m - t.margin and z <= t.z0 + t.size_m - t.margin

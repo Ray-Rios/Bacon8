@@ -19,6 +19,7 @@
 //
 // Clip names are the B8 animation packs' (anims.json). Until the packs load, the 20
 // clips in the body file stand in.
+import { TWO_HAND_SETS, twoHandDuration } from './two-hand';
 import * as THREE from '../../../../assets/js/vendor/three';
 
 export type Channel = 'lower' | 'torso' | 'armL' | 'armR';
@@ -323,6 +324,8 @@ export class CharacterAnimator {
   private off: Gear | null = null;
   private overrides: Override[] = [];
   private combo: Record<Hand, { n: number; at: number }> = { left: { n: 0, at: -9 }, right: { n: 0, at: -9 } };
+  // a two-handed swing under way (two-hand.ts drives it): which, when it started, how long
+  private twoSwing: { name: string; start: number; duration: number } | null = null;
   private airborneFor = 0;
   private dead = false;
   // On a mount (mounts.ts): the whole body sits (RIDE_CLIP) whatever the legs would do.
@@ -371,10 +374,11 @@ export class CharacterAnimator {
    * 'free' (empty), the set of what it holds ('torch', 'sword_1h', ...), 'two_hand' for both
    * arms on a two-handed weapon, or 'swing' while that arm swings (no correction then).
    */
-  armSets(): { l: string; r: string; two: boolean; set?: string } {
+  armSets(): { l: string; r: string; two: boolean; set?: string; twoSwing?: { name: string; x: number } | null } {
     // swimming: both arms stroke (no weapon poses, no two-handed guard)
     if (this.motion.swim && !this.riding) return { l: 'swim', r: 'swim', two: false };
-    const two = this.main?.hands === 2;
+    // the dead let go of the guard (the death clip has the arms)
+    const two = this.main?.hands === 2 && !this.dead;
     let l = two ? 'two_hand' : this.off ? this.off.set : 'free';
     let r = two ? 'two_hand' : this.main ? this.main.set : 'free';
     for (const o of this.overrides) {
@@ -382,8 +386,14 @@ export class CharacterAnimator {
       if (o.channels.has('armL')) l = 'swing';
       if (o.channels.has('armR')) r = 'swing';
     }
-    // the stance set rides along for a two-hander (human-factory.ts picks its guard by it)
-    return two ? { l, r, two, set: this.main?.set } : { l, r, two };
+    // the stance set rides along for a two-hander, and the swing under way (human-factory.ts
+    // drives both arms from two-hand.ts: no clip moves them)
+    if (two) {
+      const ts = this.twoSwing;
+      const x = ts ? (this.time - ts.start) / ts.duration : 1;
+      return { l, r, two, set: this.main?.set, twoSwing: ts && x < 1 ? { name: ts.name, x } : null };
+    }
+    return { l, r, two };
   }
 
   /** What the hands hold (null: empty). A two-handed main weapon empties the off hand. */
@@ -407,6 +417,27 @@ export class CharacterAnimator {
     const gear = hand === 'right' || twoHanded ? this.main : this.off;
     const set: GearSet = gear?.set ?? 'unarmed';
     const def = STANCES[set];
+    // a two-hander: the swing is two-hand.ts's (the arms and torso); the old clip only lends its
+    // footwork when standing
+    const tset = twoHanded ? TWO_HAND_SETS[set] : undefined;
+    if (tset) {
+      const c = this.combo.right;
+      c.n = this.time - c.at < 1.6 ? c.n + 1 : 0;
+      c.at = this.time;
+      const tname = heavy ? tset.heavy : tset.light[c.n % tset.light.length];
+      const duration = twoHandDuration(delay, heavy);
+      this.twoSwing = { name: tname, start: this.time, duration };
+      const moving = this.motion.speed >= IDLE_BELOW || !this.motion.grounded;
+      const feet = heavy && def.heavy ? def.heavy : def.light[c.n % def.light.length];
+      const fname = feet ? this.resolve(feet.clip) : null;
+      if (!moving && fname) {
+        const fclip = this.clips.get(fname)!;
+        const channels = new Set<Channel>(['lower']);
+        this.overrides = this.overrides.filter((o) => o.hold || !o.channels.has('lower'));
+        this.overrides.push({ clip: fname, mirror: false, channels, start: this.time, duration, rate: fclip.duration / duration, fadeIn: 0.08 });
+      }
+      return { hitIn: tset.swings[tname].hit * duration, duration, clip: tname };
+    }
     let swings = hand === 'left' && set === 'unarmed' ? UNARMED_LEFT : def.light;
     if (heavy && def.heavy) swings = [def.heavy];
     // Successive swings within 1.6 s walk through the set (a combo), then start over.
@@ -464,6 +495,7 @@ export class CharacterAnimator {
   }
 
   die() {
+    this.twoSwing = null;
     if (this.dead) return;
     this.dead = true;
     const name = this.resolve(LOCO.death);
@@ -475,6 +507,7 @@ export class CharacterAnimator {
 
   /** Lies dead at once (a corpse seen on arrival). */
   dieInstantly() {
+    this.twoSwing = null;
     this.die();
     const o = this.overrides[0];
     if (o) {

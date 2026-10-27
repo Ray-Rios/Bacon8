@@ -87,3 +87,14 @@ test('one-shots: each move has a length, a lash lands mid-swing, death sinks and
   rig.update(1 / 30);
   assert.ok(Math.abs(rig.model.position.y) < 0.5);
 });
+
+test('the lash moves an upper arm (2026-10-27: it picked arms that did not exist)', () => {
+  const still = new KrakenRig(template(), 1);
+  const lash = new KrakenRig(template(), 1);
+  lash.play('lash');
+  for (let i = 0; i < 18; i++) {
+    still.update(1 / 30);
+    lash.update(1 / 30);
+  }
+  assert.ok(tipOf(lash, 'arm_1').distanceTo(tipOf(still, 'arm_1')) > 0.5);
+});

@@ -23,6 +23,8 @@ defmodule BaconWorld.Mobs.Spawns do
     * `boss`, `scale` - for the client (nameplate, model size)
     * `aquatic` - lives in deep water and never leaves it (the Kraken); it reaches swimmers,
       and anyone on the shore within its reach, but not riders in the air
+    * `roam` - wanders on its own, anywhere within this many metres of its spawn point (where it
+      can go: for an aquatic kind, deep water), instead of milling about the spot
     * `specials` - big moves it winds up (the client shows the windup, `{:cast, id, move}`), one
       every `special_every_ms`, picked by weight among those whose `range` (m) reaches the target:
       `shape` `:target` (its chase target only), `:cone` (`half_arc_deg`) or `:ring` (all
@@ -126,32 +128,34 @@ defmodule BaconWorld.Mobs.Spawns do
     },
     # The second boss (2026-10-27): the Kraken, in the deep middle of Crater Lake. It doesn't leave
     # the deep water; swim out to it, or fight it from a boat... or from the shore, if it follows you
-    # there. At 1.4 times the model's size its mantle towers 15 m over the water; its arms lash and slam
-    # whatever is in reach (11 m), and every 9-13 s it does something
+    # there. At 2.1 times the model's size (2026-10-27: half as big again) its mantle towers 23 m over the
+    # water; it roams the deep water on its own; its arms lash and slam whatever is in reach (16 m), and every 9-13 s it does something
     # worse: snatches its target with a hunting tentacle (held fast and squeezed), sprays ink (a
     # cone: blind), or churns the lake into a maelstrom (everyone round it is battered and dragged
     # in - the long windup is the time to swim clear).
     "kraken" => %{
       name: "the Kraken",
       boss: true,
-      scale: 1.4,
+      scale: 2.1,
       aquatic: true,
       levels: 16..16,
       hp: {2600, 80},
       dmg: {16, 28},
       dly_ms: 3100,
-      walk: 3.0,
-      run: 9.0,
-      aggro: 60.0,
-      reach: 11.0,
-      radius: 6.5,
+      walk: 4.0,
+      run: 11.0,
+      aggro: 80.0,
+      reach: 16.0,
+      radius: 9.5,
       leash: 320.0,
+      # it roams the deep water on its own, anywhere within this of where it spawned (m)
+      roam: 300.0,
       moves: [{"lash", 5}, {"slam", 3}],
       special_every_ms: 9_000..13_000,
       specials: [
-        %{move: "grab", weight: 4, shape: :target, range: 22.0, windup_ms: 700, busy_ms: 1_200, dmg: {10, 16}, root_ms: 3_500, squeeze: {3, {8, 14}}},
-        %{move: "ink", weight: 3, shape: :cone, range: 26.0, half_arc_deg: 38.0, windup_ms: 650, busy_ms: 900, dmg: {4, 8}, blind_ms: 5_000},
-        %{move: "maelstrom", weight: 3, shape: :ring, range: 24.0, windup_ms: 1_900, busy_ms: 2_600, dmg: {20, 34}, pull_m: 6.0}
+        %{move: "grab", weight: 4, shape: :target, range: 33.0, windup_ms: 700, busy_ms: 1_200, dmg: {10, 16}, root_ms: 3_500, squeeze: {3, {8, 14}}},
+        %{move: "ink", weight: 3, shape: :cone, range: 39.0, half_arc_deg: 38.0, windup_ms: 650, busy_ms: 900, dmg: {4, 8}, blind_ms: 5_000},
+        %{move: "maelstrom", weight: 3, shape: :ring, range: 36.0, windup_ms: 1_900, busy_ms: 2_600, dmg: {20, 34}, pull_m: 9.0}
       ],
       weapons: [{nil, 1}],
       offhand: [{nil, 1}],

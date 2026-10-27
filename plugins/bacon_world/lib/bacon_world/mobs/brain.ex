@@ -71,6 +71,8 @@ defmodule BaconWorld.Mobs.Brain do
       z: z,
       h: :rand.uniform() * 2 * :math.pi() - :math.pi(),
       home: {x, z},
+      # where it spawned: a roaming kind (Spawns `roam`) wanders anywhere near it
+      origin: {x, z},
       state: :idle,
       target: nil,
       goal: nil,
@@ -179,14 +181,32 @@ defmodule BaconWorld.Mobs.Brain do
     |> Enum.min_by(fn {_id, p} -> dist({m.x, m.z}, {p.x, p.z}) end, fn -> nil end)
     |> case do
       nil -> {m, []}
-      {id, _p} -> {%{m | state: :chase, target: id, goal: nil}, [{:aggro, m.id, id}]}
+      {id, _p} -> {%{chase_from_here(m) | state: :chase, target: id, goal: nil}, [{:aggro, m.id, id}]}
     end
   end
 
   defp maybe_aggro(m, _players, _kind), do: {m, []}
 
+  # A roamer's chase is measured (and ends) where it began, not at its spawn point.
+  defp chase_from_here(m) do
+    if Map.has_key?(Spawns.kinds(), m.kind) and Spawns.kind(m.kind)[:roam], do: %{m | home: {m.x, m.z}}, else: m
+  end
+
   # EverQuest: creatures leave alone players they con grey to (far above them).
   defp aggressive_to?(mob_level, player_level), do: Progression.con(mob_level, player_level) != :grey
+
+  defp act(%{state: :idle} = m, _players, %{roam: roam} = kind, now, _dt) when is_number(roam) do
+    m = %{m | vx: 0.0, vz: 0.0}
+
+    if now >= m.next_think do
+      case roam_goal(m, kind, roam) do
+        nil -> {%{m | next_think: now + Enum.random(1_000..3_000)}, []}
+        goal -> {%{m | state: :wander, goal: goal, home: {m.x, m.z}}, []}
+      end
+    else
+      {m, []}
+    end
+  end
 
   defp act(%{state: :idle} = m, _players, _kind, now, _dt) do
     m = %{m | vx: 0.0, vz: 0.0}
@@ -202,9 +222,12 @@ defmodule BaconWorld.Mobs.Brain do
   end
 
   defp act(%{state: :wander, goal: goal} = m, _players, kind, now, dt) do
+    m0 = m
     m = move(m, goal, kind.walk * @u, dt, 0.05)
+    # a roamer that can't go on (the deep water ends that way) picks somewhere else
+    stuck = is_number(kind[:roam]) and dt > 0 and m.x == m0.x and m.z == m0.z
 
-    if dist({m.x, m.z}, goal) < 0.2 * @u,
+    if stuck or dist({m.x, m.z}, goal) < 0.2 * @u,
       do: {%{m | state: :idle, goal: nil, vx: 0.0, vz: 0.0, next_think: now + Enum.random(4_000..11_000)}, []},
       else: {m, []}
   end
@@ -373,6 +396,22 @@ defmodule BaconWorld.Mobs.Brain do
     end
   end
 
+  # Somewhere to roam to: a few tries at a random point within `roam` metres of its spawn point,
+  # 40 m or more away, where it may go (deep water for an aquatic kind); nil when none was found.
+  defp roam_goal(m, kind, roam) do
+    {ox, oz} = Map.get(m, :origin, m.home)
+
+    Enum.find_value(1..12, fn _ ->
+      a = :rand.uniform() * 2 * :math.pi()
+      r = :math.sqrt(:rand.uniform()) * roam * @u
+      {gx, gz} = {ox + r * :math.cos(a), oz + r * :math.sin(a)}
+      deep = BaconWorld.Terrain.deep?(gx / @u, gz / @u)
+      ok = if kind[:aquatic], do: deep, else: not deep
+
+      if ok and dist({gx, gz}, {m.x, m.z}) > 40.0 * @u and not in_safe_zone?(gx, gz), do: {gx, gz}
+    end)
+  end
+
   defp keep_out_of_town(x, z) do
     r = Spawns.safe_radius() * @u
     d = :math.sqrt(x * x + z * z)
@@ -484,7 +523,7 @@ defmodule BaconWorld.Mobs.Brain do
   defp provoke(%{state: :chase, target: t} = mob, _character_id) when not is_nil(t), do: {mob, []}
 
   defp provoke(mob, character_id) do
-    if alive?(mob), do: {%{mob | state: :chase, target: character_id, goal: nil}, [{:aggro, mob.id, character_id}]}, else: {mob, []}
+    if alive?(mob), do: {%{chase_from_here(mob) | state: :chase, target: character_id, goal: nil}, [{:aggro, mob.id, character_id}]}, else: {mob, []}
   end
 
   defp die(mob, now) do

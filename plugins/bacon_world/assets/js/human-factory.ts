@@ -23,6 +23,7 @@ import { Appearance, Body, browColor, morphWeights, normalizeAppearance } from '
 import { UNITS_PER_METRE } from './controls-math';
 import { modelUrl } from './asset-url';
 import { item as catalogItem } from './items';
+import { twoHandPose, type TwoHandPose } from './two-hand';
 import {
   Gear, KEEP_TRANSLATION, WornGarment, approach, boneOffsets, designFiles, gearKey, hiddenFor, relaxedCurl, relaxedSpread, wornGarments,
 } from './wardrobe';
@@ -362,7 +363,106 @@ function rotateWorld(bone: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector
 }
 const RIDE_SPREAD_DEG = 32;
 
+/** Turns a bone about a world axis by `angle` (radians), keeping its children's local poses. */
+function turnWorld(bone: THREE.Object3D, axis: THREE.Vector3, angle: number) {
+  if (!angle) return;
+  if (bone.parent) bone.parent.updateWorldMatrix(true, false);
+  _rq.setFromAxisAngle(axis, angle);
+  bone.getWorldQuaternion(_rw);
+  _rw.premultiply(_rq);
+  if (bone.parent) bone.parent.getWorldQuaternion(_rp);
+  else _rp.identity();
+  bone.quaternion.copy(_rp.invert().multiply(_rw));
+  bone.updateWorldMatrix(false, true);
+}
+
 /**
+ * The off hand's turn on a two-hander's haft relative to the weapon's own frame (about the haft):
+ * weapon_l is the mirror of weapon_r, so a left fist holding the same frame wraps the haft the
+ * other way round (2026-10-27, measured in the harness).
+ */
+const TWO_HAND_LEFT_TURN = new THREE.Quaternion();
+
+/**
+ * An arm onto a wrist position: the elbow toward `pole` (world), the upper arm turned so the elbow
+ * is a true hinge (the forearm bends about the bones' own +X, as the rig's rest pose does), the
+ * hand at world rotation `handQ`, and the forearm's roll shared half with its twist bone.
+ */
+/** Lifts a clavicle (up to 22 degrees) as the hand it carries goes above the shoulder. */
+function shrug(cl: THREE.Object3D, ua: THREE.Object3D, W: THREE.Vector3, up: THREE.Vector3) {
+  cl.updateWorldMatrix(true, false);
+  ua.updateWorldMatrix(false, false);
+  const C = cl.getWorldPosition(new THREE.Vector3());
+  const A = ua.getWorldPosition(new THREE.Vector3());
+  const span = A.distanceTo(C) * 3.2; // about an arm's length
+  const k = THREE.MathUtils.clamp(new THREE.Vector3().subVectors(W, A).dot(up) / span, 0, 1);
+  if (k <= 0) return;
+  const out = new THREE.Vector3().subVectors(A, C).normalize();
+  const axis = new THREE.Vector3().crossVectors(out, up);
+  if (axis.lengthSq() < 1e-8) return;
+  turnWorld(cl, axis.normalize(), THREE.MathUtils.degToRad(22) * k);
+}
+
+function solveArm(
+  ua: THREE.Object3D,
+  la: THREE.Object3D,
+  hand: THREE.Object3D,
+  tw: THREE.Object3D | null,
+  W: THREE.Vector3,
+  pole: THREE.Vector3,
+  handQ: THREE.Quaternion,
+  utw: THREE.Object3D | null = null,
+  uaRest?: THREE.Quaternion
+) {
+  ua.parent?.updateWorldMatrix(true, false);
+  ua.updateWorldMatrix(false, true);
+  const A = ua.getWorldPosition(new THREE.Vector3());
+  const B = la.getWorldPosition(new THREE.Vector3());
+  const C = hand.getWorldPosition(new THREE.Vector3());
+  const l1 = A.distanceTo(B), l2 = B.distanceTo(C);
+  const to = new THREE.Vector3().subVectors(W, A);
+  const d = THREE.MathUtils.clamp(to.length(), Math.abs(l1 - l2) + 1e-4, (l1 + l2) * 0.999);
+  const u = to.normalize();
+  const pl = pole.clone().addScaledVector(u, -pole.dot(u));
+  if (pl.lengthSq() < 1e-8) pl.set(0, -1, 0).addScaledVector(u, -u.y);
+  pl.normalize();
+  const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+  const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  const Bn = A.clone().addScaledVector(u, a).addScaledVector(pl, h);
+  const Wn = A.clone().addScaledVector(u, d);
+  const uy = new THREE.Vector3().subVectors(Bn, A).normalize();
+  const f = new THREE.Vector3().subVectors(Wn, Bn).normalize();
+  const uz = f.clone().addScaledVector(uy, -f.dot(uy));
+  if (uz.lengthSq() < 1e-8) uz.copy(pl).multiplyScalar(-1).addScaledVector(uy, pl.dot(uy));
+  uz.normalize();
+  const ux = new THREE.Vector3().crossVectors(uy, uz).normalize();
+  const upperQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(ux, uy, uz));
+  const parentQ = ua.parent ? ua.parent.getWorldQuaternion(new THREE.Quaternion()) : new THREE.Quaternion();
+  ua.quaternion.copy(parentQ.invert().multiply(upperQ));
+  la.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.acos(THREE.MathUtils.clamp(uy.dot(f), -1, 1)));
+  ua.updateWorldMatrix(false, true);
+  const laQ = la.getWorldQuaternion(new THREE.Quaternion());
+  hand.quaternion.copy(laQ.invert().multiply(handQ));
+  hand.updateWorldMatrix(false, true);
+  if (tw) {
+    const q = hand.quaternion;
+    const roll = new THREE.Quaternion(0, q.y, 0, q.w).normalize();
+    tw.quaternion.identity().slerp(roll, 0.5);
+    tw.updateWorldMatrix(false, true);
+  }
+  // the upper arm's roll away from its rest: the shoulder's twist bone takes half of it back, so
+  // the deltoid doesn't wring
+  if (utw && uaRest) {
+    const d = uaRest.clone().invert().multiply(ua.quaternion);
+    const roll = new THREE.Quaternion(0, d.y, 0, d.w).normalize();
+    utw.quaternion.identity().slerp(roll.invert(), 0.5);
+    utw.updateWorldMatrix(false, true);
+  }
+}
+
+/**
+ * (2026-10-27: only the fishing pole still uses these and twoHandGrip; every other two-hander is
+ * driven by two-hand.ts through twoHandDrive.)
  * Two-handed guards (2026-10-26): where the right hand's grip (weapon_r) is held and which way the
  * weapon points, while a two-hander is held and not swinging. The library clips' idles hold
  * two-handers at the waist, hugging the body: on the male the greatsword, axe and maul lay across
@@ -456,6 +556,8 @@ export class HumanInstance {
   private rideW = 0;
   private gripW = 0; // the two-handed off-hand grip (twoHandGrip), eased in and out
   private guardW = 0; // the two-handed guard (twoHandGuard), eased in and out
+  private twoW = 0; // the two-handed drive (twoHandDrive, two-hand.ts), eased in and out
+  private twoPose: TwoHandPose | null = null;
   private guard: { at: [number, number, number]; dir: [number, number, number] } | null = null;
   // where this frame's clip put the left grip along the haft, before any correction moved
   // the arms (readClipGrip); twoHandGrip puts the hand back there
@@ -783,7 +885,11 @@ export class HumanInstance {
    * After the mixer each frame: the posture correction, and relaxed fingers on the hands
    * that hold nothing (`free.l`, `free.r`; a punch closes them again).
    */
-  postAnimate(dt: number, free: { l: boolean; r: boolean } = { l: true, r: true }, armSets?: { l: string; r: string; two?: boolean; set?: string }) {
+  postAnimate(
+    dt: number,
+    free: { l: boolean; r: boolean } = { l: true, r: true },
+    armSets?: { l: string; r: string; two?: boolean; set?: string; twoSwing?: { name: string; x: number } | null }
+  ) {
     this.touched.clear();
     this.clipGrip = armSets?.two ? this.readClipGrip() : null;
     if (this.posture) {
@@ -836,12 +942,19 @@ export class HumanInstance {
       this.wrote(a.la);
       this.wrote(a.hand);
     }
-    // a two-hander held, not swung: the guard (the swings keep the clip's arms)
-    const guard = armSets?.two && armSets.l !== 'swing' && armSets.r !== 'swing' ? this.guardFor(armSets.set) : null;
+    // A two-hander (2026-10-27): the weapon is placed by two-hand.ts (its guard, or the swing under
+    // way) and both arms are put on it. The fishing pole keeps the older guard and grip.
+    const held = this.bones.get('weapon_r')?.children.find((c) => c.userData.b8Weapon)?.userData.b8Weapon as string | undefined;
+    const fishing = held === 'FishingPole';
+    const drive = armSets?.two && !fishing ? twoHandPose(armSets.set || '', armSets.twoSwing) : null;
+    if (drive) this.twoPose = drive;
+    this.twoW = approach(this.twoW, drive ? 1 : 0, 8, dt);
+    if (this.twoW > 0.001 && this.twoPose) this.twoHandDrive(this.twoPose, this.twoW);
+    const guard = fishing && armSets?.two ? this.guardFor(armSets.set) : null;
     if (guard) this.guard = guard;
     this.guardW = approach(this.guardW, guard ? 1 : 0, 6, dt);
     if (this.guardW > 0.001 && this.guard) this.twoHandGuard(this.guard, this.guardW);
-    this.gripW = approach(this.gripW, armSets?.two ? 1 : 0, 8, dt);
+    this.gripW = approach(this.gripW, fishing && armSets?.two ? 1 : 0, 8, dt);
     if (this.gripW > 0.001) this.twoHandGrip(this.gripW);
     this.rideW = approach(this.rideW, this.riding ? 1 : 0, 3, dt);
     if (this.rideW > 0.001) {
@@ -877,6 +990,67 @@ export class HumanInstance {
    * corrections then put it 10-20 cm off, and a fixed HOLD.off put it on the wrong side of
    * the right hand or out of reach).
    */
+  /**
+   * Puts a two-hander where `p` says (two-hand.ts) and both arms on it, blended in by `w`: the torso
+   * turns and leans, the weapon's frame is built from its haft and edge directions, each hand is
+   * turned so its weapon bone matches that frame (weapon_r at the grip, weapon_l `HOLD.off` up the
+   * haft), and each arm reaches its wrist with solveArm (a true hinge at the elbow, the elbow
+   * toward its pole).
+   */
+  private twoHandDrive(p: TwoHandPose, w: number) {
+    const b = (n: string) => this.bones.get(n);
+    const pelvis = b('pelvis'), neck = b('neck_01'), wr = b('weapon_r'), wl = b('weapon_l');
+    const spine = ['spine_01', 'spine_02', 'spine_03'].map(b).filter(Boolean) as THREE.Object3D[];
+    const R = { cl: b('clavicle_r'), ua: b('upperarm_r'), la: b('lowerarm_r'), hand: b('hand_r'), tw: b('lowerarm_twist_01_r'), utw: b('upperarm_twist_01_r') };
+    const L = { cl: b('clavicle_l'), ua: b('upperarm_l'), la: b('lowerarm_l'), hand: b('hand_l'), tw: b('lowerarm_twist_01_l'), utw: b('upperarm_twist_01_l') };
+    if (!pelvis || !neck || !wr || !wl || !R.ua || !R.la || !R.hand || !L.ua || !L.la || !L.hand) return;
+    const extra = [R.cl, L.cl, R.tw, L.tw, R.utw, L.utw].filter(Boolean) as THREE.Object3D[];
+    const all = [...spine, R.ua, R.la, R.hand, L.ua, L.la, L.hand, ...extra];
+    for (const x of all) this.fromAnimated(x);
+    const q0 = all.map((x) => x.quaternion.clone());
+    this.root.updateWorldMatrix(true, true);
+    const rootQ = this.root.getWorldQuaternion(new THREE.Quaternion());
+    const P = pelvis.getWorldPosition(new THREE.Vector3());
+    const S = neck.getWorldPosition(new THREE.Vector3()).distanceTo(P);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(rootQ);
+    const left = new THREE.Vector3(1, 0, 0).applyQuaternion(rootQ);
+    // the torso: a third of the turn and the lean in each spine bone
+    const twist = THREE.MathUtils.degToRad(p.twist ?? 0);
+    const lean = THREE.MathUtils.degToRad(p.lean ?? 0);
+    for (const sb of spine) {
+      turnWorld(sb, up, twist / spine.length);
+      turnWorld(sb, left, lean / spine.length);
+    }
+    // the body's frame, turned with the torso
+    const frame = new THREE.Quaternion().setFromAxisAngle(up, twist).multiply(rootQ);
+    const v = (a: [number, number, number]) => new THREE.Vector3(a[0], a[1], a[2]).applyQuaternion(frame);
+    const grip = v(p.grip).multiplyScalar(S).add(P);
+    const Y = v(p.dir).normalize();
+    const Z = v(p.edge);
+    Z.addScaledVector(Y, -Z.dot(Y));
+    if (Z.lengthSq() < 1e-8) Z.copy(v([0, 0, 1])).addScaledVector(Y, -v([0, 0, 1]).dot(Y));
+    Z.normalize();
+    const X = new THREE.Vector3().crossVectors(Y, Z).normalize();
+    const Wq = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+    // the right hand: weapon_r on the grip
+    const sR = new THREE.Vector3().setFromMatrixScale(R.hand.matrixWorld).x;
+    const HqR = Wq.clone().multiply(wr.quaternion.clone().invert());
+    const wristR = grip.clone().sub(wr.position.clone().multiplyScalar(sR).applyQuaternion(HqR));
+    if (R.cl) shrug(R.cl, R.ua, wristR, up);
+    solveArm(R.ua, R.la, R.hand, R.tw || null, wristR, v(p.poleR ?? [-0.55, -1, -0.3]), HqR, R.utw || null, this.restQuat.get('upperarm_r'));
+    // the left hand: weapon_l up the haft (HOLD.off metres; the bone's scale turns them into units)
+    const perMetre = new THREE.Vector3().setFromMatrixScale(wr.matrixWorld).y;
+    const off = typeof wr.userData.b8OffGrip === 'number' ? wr.userData.b8OffGrip : 0.3;
+    const gripL = grip.clone().addScaledVector(Y, off * perMetre);
+    const sL = new THREE.Vector3().setFromMatrixScale(L.hand.matrixWorld).x;
+    const HqL = Wq.clone().multiply(TWO_HAND_LEFT_TURN).multiply(wl.quaternion.clone().invert());
+    const wristL = gripL.sub(wl.position.clone().multiplyScalar(sL).applyQuaternion(HqL));
+    if (L.cl) shrug(L.cl, L.ua, wristL, up);
+    solveArm(L.ua, L.la, L.hand, L.tw || null, wristL, v(p.poleL ?? [0.55, -1, -0.3]), HqL, L.utw || null, this.restQuat.get('upperarm_l'));
+    if (w < 0.999) all.forEach((x, i) => x.quaternion.copy(q0[i].slerp(x.quaternion, w)));
+    for (const x of all) this.wrote(x);
+  }
+
   /** The guard for what the right hand holds: by its weapon model, else by stance set. */
   private guardFor(set?: string) {
     const wr = this.bones.get('weapon_r');

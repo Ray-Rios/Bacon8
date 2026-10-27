@@ -311,20 +311,30 @@ export class KrakenRig {
     if (sh) {
       const x = sh.t / sh.dur;
       const upper = (c: Chain) => c.kind === 'arm' && c.up > 0.3;
-      const front = (c: Chain) => c.kind === 'arm' && Math.abs(c.up) < 0.75;
       switch (sh.name) {
         case 'lash': {
-          // two arms wind back, then whip across
-          const wind = env(x, 0.0, 0.3, 0.42, 0.52);
-          const whip = env(x, 0.42, 0.55, 0.7, 1.0);
-          this.chains.forEach((c, ci) => {
-            if (!(front(c) && (ci === 1 || ci === 6 || ci === 2 || ci === 5))) return;
-            c.bones.forEach((_b, k) => {
-              const f = (k + 1) / c.bones.length;
-              c.curl[k] += -0.32 * wind * (0.4 + f) + 0.42 * whip * (0.2 + f);
-              c.sway[k] += 0.25 * (whip - wind) * f * (ci < 4 ? 1 : -1);
-            });
+          // (2026-10-27: the first cut picked arms that didn't exist, so nothing moved.) The two
+          // upper arms rear back and whip down in front; the side arms sweep across.
+          const wind = env(x, 0.0, 0.3, 0.4, 0.5);
+          const whip = env(x, 0.4, 0.55, 0.68, 1.0);
+          this.chains.forEach((c) => {
+            if (c.kind !== 'arm') return;
+            const n = c.bones.length;
+            if (c.up > 0.5) {
+              c.bones.forEach((_b, k) => {
+                const f = (k + 1) / n;
+                c.curl[k] += (-0.2 * wind + 0.3 * whip) * (0.3 + f);
+              });
+            } else if (Math.abs(c.up) <= 0.5) {
+              const side = c.index < 0.5 ? 1 : -1;
+              c.bones.forEach((_b, k) => {
+                const f = (k + 1) / n;
+                c.sway[k] += 0.18 * (whip - wind) * (0.3 + f) * side;
+                c.curl[k] += 0.08 * whip * (0.3 + f);
+              });
+            }
           });
+          mantleBend += -0.05 * wind + 0.08 * whip;
           mawOpen += 0.25 * env(x, 0.3, 0.5, 0.6, 0.9);
           break;
         }

@@ -103,6 +103,8 @@ export type MovementState = {
 
 // Facing the camera, moving backwards is slower (EverQuest and WoW backpedal).
 const BACKPEDAL = 0.6;
+// Diving (2026-10-27): metres per second down (C) and up (Space), and how close to the bottom.
+const SWIM = { diveSpeed: 2.2, riseSpeed: 2.8, clearBottom: 1.2 };
 
 const MOVEMENT_CODES = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD',
@@ -132,6 +134,11 @@ export class CharacterController {
   private groundFn: ((x: number, z: number) => number) | null = null;
   private surfaceFn: ((x: number, z: number) => number) | null = null;
   private swimFn: ((x: number, z: number) => boolean) | null = null;
+  // the bottom under the water (terrain.ts height), and how deep we've dived (m below the surface)
+  private bottomFn: ((x: number, z: number) => number) | null = null;
+  private dive = 0;
+  // Space held since rising to the surface: no jump until it's let go and pressed again
+  private jumpHeld = false;
   private isSwimming = false;
   private raycaster = new THREE.Raycaster();
 
@@ -581,10 +588,14 @@ export class CharacterController {
     const fwd = (input.forward ? 1 : 0) - (input.back ? 1 : 0);
     const facingCamera = this.facingCamera();
 
-    // Swimming (deep water, terrain.ts): afloat at the surface, slower, no crouching or jumping.
+    // Swimming (deep water, terrain.ts): afloat, slower, no crouching. C dives, Space rises, and at
+    // the surface Space jumps (2026-10-27). A mount in deep water swims too (inWater).
+    let inWater = false;
     {
       const p = this.character.position;
-      this.isSwimming = !this.mount && !!this.swimFn?.(p.x, p.z) && p.y <= this.groundHeight(p.x, p.z) + 0.3 * UNITS_PER_METRE;
+      inWater = !this.flying && !!this.swimFn?.(p.x, p.z) && p.y <= this.groundHeight(p.x, p.z) + 0.3 * UNITS_PER_METRE;
+      this.isSwimming = !this.mount && inWater;
+      if (!inWater) this.dive = 0;
     }
     this.isCrouching = this.held('KeyC') && this.isGrounded && !this.mount && !this.isSwimming;
     this.isSprinting = this.held('ShiftLeft', 'ShiftRight') && !this.isCrouching && !(facingCamera && fwd < 0);
@@ -592,11 +603,13 @@ export class CharacterController {
     if (this.isSwimming) maxSpeed = this.isSprinting ? MOVE.swimSprintSpeed : MOVE.swimSpeed;
     // A mount runs at its own pace (sprinting half as fast again); one that swims, at its swimming
     // pace in deep water (a quarter faster sprinting).
-    {
-      const p = this.character.position;
-      this.mountSwimming = !!this.mount?.swimSpeed && !!this.swimFn?.(p.x, p.z);
+    // A mount that can't swim paddles at half its pace.
+    this.mountSwimming = !!this.mount && inWater;
+    if (this.mount) {
+      maxSpeed = this.mountSwimming
+        ? (this.mount.swimSpeed ?? this.mount.groundSpeed * 0.5) * (this.isSprinting ? 1.25 : 1)
+        : this.mount.groundSpeed * (this.isSprinting ? 1.5 : 1);
     }
-    if (this.mount) maxSpeed = this.mountSwimming ? this.mount.swimSpeed! * (this.isSprinting ? 1.25 : 1) : this.mount.groundSpeed * (this.isSprinting ? 1.5 : 1);
     if (facingCamera && fwd < 0) maxSpeed *= BACKPEDAL;
 
     const control = this.isGrounded ? 1 : MOVE.airControl;
@@ -623,8 +636,27 @@ export class CharacterController {
       this.character.rotation.y = turnToward(this.character.rotation.y, facingYaw(dir), MOVE.turnRate * dt);
     }
 
+    // In the water: C dives (to just over the bottom), Space rises; at the surface Space jumps.
+    if (inWater) {
+      const p = this.character.position;
+      const surface = this.groundHeight(p.x, p.z);
+      const bottom = this.bottomFn ? this.bottomFn(p.x, p.z) : surface;
+      const deepest = Math.max(0, (surface - bottom) / UNITS_PER_METRE - SWIM.clearBottom);
+      const down = this.held('KeyC');
+      const upKey = this.held('Space');
+      if (down) this.dive = Math.min(deepest, this.dive + SWIM.diveSpeed * dt);
+      else if (upKey && this.dive > 0.02) this.dive = Math.max(0, this.dive - SWIM.riseSpeed * dt);
+      else if (upKey && this.isGrounded && !this.jumpHeld) {
+        // at the surface: out of the water, a jump
+        this.verticalSpeed = MOVE.jumpSpeed;
+        this.isGrounded = false;
+        this.dive = 0;
+      }
+      this.dive = Math.min(this.dive, deepest);
+    }
+    this.jumpHeld = this.held('Space') && (this.dive > 0.02 || this.jumpHeld);
     // Jump (grounded only), gravity, and the ground.
-    if (this.held('Space') && this.isGrounded && !this.isSwimming) {
+    if (this.held('Space') && this.isGrounded && !inWater) {
       this.verticalSpeed = MOVE.jumpSpeed;
       this.isGrounded = false;
     }
@@ -673,12 +705,16 @@ export class CharacterController {
     }
 
     const ground = this.groundHeight(pos.x, pos.z);
-    // swimming: bob up to the surface rather than snapping to it (stepping off the shelf)
-    if (this.isSwimming && pos.y < ground) {
-      pos.y = Math.min(ground, pos.y + Math.max(0.02, (ground - pos.y) * Math.min(1, dt * 5)));
+    // swimming: toward the depth we dive to (the surface unless C took us down), easing rather
+    // than snapping (stepping off the shelf, diving, rising)
+    const swimY = ground - this.dive * UNITS_PER_METRE;
+    if (inWater && this.verticalSpeed <= 0 && Math.abs(pos.y - swimY) > 1e-4 && pos.y <= ground + 0.01) {
+      const k = Math.min(1, dt * 6);
+      const step = (swimY - pos.y) * k;
+      pos.y += Math.sign(step) * Math.max(Math.abs(step), Math.min(Math.abs(swimY - pos.y), 0.02));
       this.verticalSpeed = 0;
       this.isGrounded = true;
-    } else if (pos.y <= ground) {
+    } else if (pos.y <= ground && !(inWater && this.dive > 0)) {
       pos.y = ground;
       this.verticalSpeed = 0;
       this.isGrounded = true;
@@ -796,7 +832,12 @@ export class CharacterController {
     const pivot = { x: feet.x, y: this.pivotY, z: feet.z };
 
     const cam = cameraPosition(pivot, this.yaw, this.lookPitch, this.distance * UNITS_PER_METRE);
-    const floor = (this.surfaceFn ? this.surfaceFn(cam.x, cam.z) : this.groundHeight(cam.x, cam.z)) + CAMERA.minHeightAboveGround * UNITS_PER_METRE;
+    // over the water the camera stays above the surface, unless we've dived: then it follows us
+    // down, kept off the bottom
+    const diving = this.dive > 0.6 && !!this.bottomFn;
+    const floor =
+      (diving ? this.bottomFn!(cam.x, cam.z) : this.surfaceFn ? this.surfaceFn(cam.x, cam.z) : this.groundHeight(cam.x, cam.z)) +
+      CAMERA.minHeightAboveGround * UNITS_PER_METRE;
     this.camera.position.set(cam.x, Math.max(cam.y, floor), cam.z);
     this.camera.lookAt(pivot.x, pivot.y, pivot.z);
   }
@@ -836,11 +877,18 @@ export class CharacterController {
   setGround(
     ground: ((x: number, z: number) => number) | null,
     surface: ((x: number, z: number) => number) | null = null,
-    swim: ((x: number, z: number) => boolean) | null = null
+    swim: ((x: number, z: number) => boolean) | null = null,
+    bottom: ((x: number, z: number) => number) | null = null
   ): void {
     this.groundFn = ground;
     this.surfaceFn = surface;
     this.swimFn = swim;
+    this.bottomFn = bottom;
+  }
+
+  /** How deep we've dived (metres under the surface; 0 at the top). */
+  get diveDepth(): number {
+    return this.dive;
   }
 
   setPositionCallback(callback: (x: number, y: number, z: number, rotation: number) => void): void {

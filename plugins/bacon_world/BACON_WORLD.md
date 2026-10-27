@@ -73,6 +73,34 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
+**Delivered 2026-10-27 (b), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27b.md`): **from the owner's first ride on
+the Kraken: diving, a roaming boss, and two-handed weapons started over.**
+
+- **Two-handed weapons, from scratch** (`two-hand.ts`, `human-factory.ts` `twoHandDrive`). The owner: the male's
+  two-handed positions were "messed up beyond all repair", his arms twisting and contorting in the swings. The
+  library's two-handed clips no longer move the arms at all. Each two-hander's guard and swings are poses of the
+  *weapon* (where the grip is, which way the haft and the edge point, how far the torso turns and leans), eased
+  between; every frame both hands are put on it: the main hand at the grip, the off hand up the haft (`HOLD.off`),
+  each hand turned by the weapon's own frame (so a wrist can't wring through 180 degrees), each arm by an IK that
+  keeps the elbow a true hinge toward its pole, the forearm's and the upper arm's roll shared with their twist
+  bones, the clavicle lifted when the hands go overhead. Swords, axes and mauls: a middle guard, a falling cut, a
+  rising cut, an overhead; spears and halberds: two thrusts and a sweep; the quarterstaff: a jab and a swing. The
+  legs keep their clips (standing still, the old swing's footwork). The fishing pole keeps its own guard. Both
+  bodies; checked in the harness at rest, walking and through every swing.
+- **Diving**: in deep water **C** swims down (to just over the bottom), **Space** swims up, and at the surface Space
+  jumps out. Under the surface the world turns a murky blue-green and closes in. The server takes positions down
+  to the bottom (`Terrain.bottom_units/3`).
+- **Mounts swim**: any mount in deep water swims (the drakes no longer walk on it): a drake low in the water at
+  half its pace, its back at the waterline; the Kraken at its 22 m/s; both dive with C and rise with Space.
+- **The boss Kraken is half as big again** (2.1 times the model: the mantle stands ~23 m out of the water; reach
+  16 m, specials' ranges 33-39 m, the maelstrom drags 9 m) and **roams the deep water on its own** (`roam`:
+  anywhere deep within 300 m of its spawn, a new heading when the deep water ends; a chase ends back where it
+  began).
+- **The Kraken model**: whole fins (webbed between the rays, no holes or torn fringe), a higher saddle; the mount
+  is a little bigger (0.4) with the rider up on its head, not in it. **The Tentacle Lash animates** (it had picked
+  arms that didn't exist).
+- Tests: 695 Elixir (1 new), 92 JS (4 new).
+
 **Delivered 2026-10-27 (a), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27a.md`): **the Kraken, a second
 boss and a mount, and mounts that fight.** The owner's brief: a kraken in the middle of Crater Lake, "the stuff of
 nightmares", highly detailed like Baconator, sold in the store as a mount that can't fly but swims very fast; and
@@ -615,6 +643,9 @@ The first 2026-10-23 delivery:
 | 2026-10-26 | **Who may place what is set in game by admins, item by item.** Guests may place nothing. There are **no limits** per player and **nothing decays**. **Anyone allowed to place a kind of object may also delete any object of that kind**, whoever placed it. |
 | 2026-10-26 | **Characters swim.** Deep water is open to everyone; creatures don't follow. |
 | 2026-10-27 | **The second boss is the Kraken**, in the middle of Crater Lake: highly detailed, "the stuff of nightmares" (original design; the owner's reference art only sets the mood). **It is also a mount for sale: it can't fly, it swims very fast.** |
+| 2026-10-27 | **Two-handed weapons start over**: no more fitting library clips; the arms follow the weapon (two-hand.ts). |
+| 2026-10-27 | **Diving**: in deep water C swims down, Space swims up, and jumps at the surface. **Mounts swim** too (no walking on water). |
+| 2026-10-27 | **The boss Kraken is 1.5 times its first size and roams the lake freely** (no set path). |
 | 2026-10-27 | **Mounts attack.** The dragons breathe fire and claw; the Kraken's moves were ours to choose (Tentacle Lash, Maelstrom). |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 

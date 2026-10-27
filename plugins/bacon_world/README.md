@@ -63,6 +63,7 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/game-world.ts`, `game-ui.ts` | Fighting, looting, the inventory; the EverQuest-style windows and hotbar |
 | `assets/js/mobs-view.ts` | Creatures on the client: models, weapons, smoothing, corpses; dragons (Baconator: moves, breath, roar) |
 | `assets/js/dragon-view.ts` | The B8 dragon: loading, a rig that picks its own locomotion (ground or air), one-shots, fire breath, the mounts' hue shift |
+| `assets/js/two-hand.ts` | Two-handed weapons (2026-10-27): the guard and swings as poses of the weapon (grip, haft, edge, torso turn), which `human-factory.ts` (`twoHandDrive`) puts both arms on |
 | `assets/js/kraken-view.ts` | The B8 Kraken (2026-10-27): a rig animated in code (writhing arms, swimming, one-shots for its moves, eyes that follow their target, pulsing photophores), the ink cloud and the maelstrom |
 | `assets/js/mounts.ts` | Mounts on the client: the dragon or the Kraken under its rider, the rider seated on the saddle bone, the mount's moves (`playMove`) |
 | `assets/js/stable-ui.ts` | The stable window (the stablemaster): choose which owned mount M summons |
