@@ -212,6 +212,11 @@ function loadSet(set: string): Promise<Maps | null> {
   return p;
 }
 
+/** A texture set's three maps (colour, normal, roughness/AO), loaded once (terrain.ts paints with them). */
+export function loadSurfaceSet(set: string): Promise<Maps | null> {
+  return loadSet(set);
+}
+
 const VERT_HEAD = 'varying vec3 vB8Pos;\nvarying vec3 vB8Nrm;\n';
 const FRAG_HEAD = `varying vec3 vB8Pos;
 varying vec3 vB8Nrm;

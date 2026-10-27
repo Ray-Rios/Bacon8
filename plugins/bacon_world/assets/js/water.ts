@@ -7,6 +7,12 @@
 // Drawn: a sand beach sloping into the sea all round the grass, the sea out to the horizon
 // with moving ripples and a line of foam, and each lake with a muddy bank, reeds and lily pads.
 // The bobber and the line (FishingView) float on the same water.
+//
+// With a terrain (terrain.ts, BaconWorld.Terrain; 2026-10-26) the server sends the sea's level
+// (`sea`) and the layout gets the loaded heightfield (`terrain`): the sea, the crater lake and the
+// ponds are wherever the ground is below that level, one water plane draws them all, the terrain
+// makes its own beaches, and the walkable world is the map, no deeper than wading. The Millpond
+// (an ellipse in `lakes`) stays as it was.
 import * as THREE from '../../../../assets/js/vendor/three';
 import { UNITS_PER_METRE } from './controls-math';
 import { applySurface, surfacesEnabled } from './surface-textures';
@@ -14,7 +20,22 @@ import { applySurface, surfacesEnabled } from './surface-textures';
 const U = UNITS_PER_METRE;
 
 export interface Lake { id: string; name: string; x: number; z: number; rx: number; rz: number }
-export interface WaterLayout { shore: number; walk_radius: number; bank: number; cast_reach: number; lakes: Lake[] }
+/** What the water rules need from a terrain (terrain.ts's Heightfield has it). */
+export interface WaterTerrain {
+  water(x: number, z: number): { kind: WaterKind; name: string } | null;
+  walkable(x: number, z: number): boolean;
+}
+export interface WaterLayout {
+  shore: number;
+  walk_radius: number;
+  bank: number;
+  cast_reach: number;
+  lakes: Lake[];
+  /** The sea's height with a terrain (scene units); null or absent on the old island. */
+  sea?: number | null;
+  /** The loaded terrain (set by the client, never sent). */
+  terrain?: WaterTerrain | null;
+}
 export type WaterKind = 'lake' | 'ocean';
 
 /** 1 on a lake's edge, less inside, more outside. */
@@ -31,13 +52,42 @@ export function lakeDistance(l: Lake, x: number, z: number): number {
 
 /** The water at a point, or null on land. */
 export function waterKindAt(w: WaterLayout, x: number, z: number): WaterKind | null {
-  if (Math.hypot(x, z) > w.shore) return 'ocean';
-  return w.lakes.some((l) => lakeScale(l, x, z) <= 1) ? 'lake' : null;
+  if (w.lakes.some((l) => lakeScale(l, x, z) <= 1)) return 'lake';
+  if (w.terrain) return w.terrain.water(x, z)?.kind ?? null;
+  return Math.hypot(x, z) > w.shore ? 'ocean' : null;
+}
+
+/** The name of the water at a point ("the Millpond", "Crater Lake", "the sea"), or null. */
+export function waterNameAt(w: WaterLayout, x: number, z: number): string | null {
+  const lake = w.lakes.find((l) => lakeScale(l, x, z) <= 1);
+  if (lake) return lake.name;
+  if (w.terrain) return w.terrain.water(x, z)?.name ?? null;
+  return Math.hypot(x, z) > w.shore ? 'the sea' : null;
+}
+
+/** The height of the water's surface at a point on water (scene units). */
+export function waterYAt(w: WaterLayout, x: number, z: number): number {
+  if (w.lakes.some((l) => lakeScale(l, x, z) <= 1)) return 0.03 * U;
+  return w.sea ?? SEA_Y;
+}
+
+// The middle and points round circles of radius r and r / 2 (BaconWorld.Water's ring/3).
+function ring(x: number, z: number, r: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [[x, z]];
+  for (let i = 0; i < 16; i++) for (const rr of [r, r / 2]) out.push([x + rr * Math.cos((i * Math.PI) / 8), z + rr * Math.sin((i * Math.PI) / 8)]);
+  return out;
 }
 
 /** The water within `within` of a point on land (a lake before the sea), or null. */
 export function nearWater(w: WaterLayout, x: number, z: number, within: number): WaterKind | null {
   if (w.lakes.some((l) => lakeDistance(l, x, z) <= within)) return 'lake';
+  if (w.terrain) {
+    for (const [px, pz] of ring(x, z, within)) {
+      const k = w.terrain.water(px, pz)?.kind;
+      if (k) return k;
+    }
+    return null;
+  }
   return Math.hypot(x, z) >= w.shore - within ? 'ocean' : null;
 }
 
@@ -58,6 +108,20 @@ export function castSpot(w: WaterLayout, px: number, pz: number, dirX: number, d
     if (waterKindAt(w, x, z) === kind) return { x, z, kind };
   }
   return null;
+}
+
+/**
+ * Keeps a move from (fromX, fromZ) to (x, z) on land. With a terrain: refused into deep water or
+ * past the map's margin, sliding along it where it can; someone already off it moves freely, so
+ * they can always get back. Without: clamped to the island's shallows.
+ */
+export function keepOnLand(w: WaterLayout, x: number, z: number, fromX: number, fromZ: number): { x: number; z: number } {
+  const t = w.terrain;
+  if (!t) return clampToIsland(w, x, z);
+  if (t.walkable(x, z) || !t.walkable(fromX, fromZ)) return { x, z };
+  if (t.walkable(x, fromZ)) return { x, z: fromZ };
+  if (t.walkable(fromX, z)) return { x: fromX, z };
+  return { x: fromX, z: fromZ };
 }
 
 /** Keeps a point on the island: no further out than the shallows. */
@@ -166,13 +230,28 @@ export class WaterView {
   private sea: THREE.MeshStandardMaterial;
   private lakeMats: THREE.MeshStandardMaterial[] = [];
   private foam: THREE.MeshBasicMaterial;
-  private foamMesh!: THREE.Mesh;
+  private foamMesh: THREE.Mesh | null = null;
   private seaMesh: THREE.Mesh;
+  private seaY = SEA_Y;
   private t = 0;
 
   constructor(private layout: WaterLayout) {
     this.group.name = 'Water';
     const w = layout;
+    if (w.sea != null) {
+      // a terrain: one plane at the sea's level is the sea, the crater lake and the ponds (the
+      // ground hides it everywhere else); the terrain has its own beaches
+      const seaNormals = rippleNormals(7);
+      seaNormals.repeat.set(1100, 1100);
+      this.sea = waterMaterial('#1F5F78', seaNormals, 0.9, 0.55);
+      this.seaMesh = new THREE.Mesh(new THREE.PlaneGeometry(13000 * U, 13000 * U, 1, 1).rotateX(-Math.PI / 2), this.sea);
+      this.seaY = w.sea;
+      this.seaMesh.position.y = w.sea;
+      this.group.add(this.seaMesh);
+      this.foam = new THREE.MeshBasicMaterial({ visible: false });
+      for (const l of w.lakes) this.addLake(l);
+      return;
+    }
     // the beach, from under the grass's edge (world-dressing.ts: grass to 9 m inside the shore)
     const sandMat = new THREE.MeshStandardMaterial({ color: '#CDB892', roughness: 1 });
     // (surfaces tile in the mesh's own space, here scene units)
@@ -267,8 +346,8 @@ export class WaterView {
     this.t += dt;
     const t = this.t;
     if (this.sea.normalMap) this.sea.normalMap.offset.set(t * DRIFT, t * DRIFT * 0.6);
-    this.seaMesh.position.y = SEA_Y + Math.sin(t * 0.55) * 0.018 * U;
-    this.foamMesh.position.y = this.seaMesh.position.y + 0.012 * U; // rides the swell, never under it
+    this.seaMesh.position.y = this.seaY + Math.sin(t * 0.55) * 0.018 * U;
+    if (this.foamMesh) this.foamMesh.position.y = this.seaMesh.position.y + 0.012 * U; // rides the swell, never under it
     this.foam.opacity = 0.26 + 0.14 * (0.5 + 0.5 * Math.sin(t * 0.9));
     for (const m of this.lakeMats) if (m.normalMap) m.normalMap.offset.set(t * DRIFT * 0.35, -t * DRIFT * 0.2);
   }

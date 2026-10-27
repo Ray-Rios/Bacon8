@@ -169,11 +169,23 @@ defmodule BaconWorld.Mobs.Zone do
           acc
 
         id ->
-          Map.put(acc, id, %{x: num(meta[:x]), y: num(meta[:y]), z: num(meta[:z]), dead: meta[:dead] == true, level: meta[:level] || 1})
+          {x, z} = {num(meta[:x]), num(meta[:z])}
+          # y is the height above the ground (Brain.airborne?/1): on a hillside nobody is flying
+          Map.put(acc, id, %{x: x, y: num(meta[:y]) - ground(x, z), z: z, dead: meta[:dead] == true, level: meta[:level] || 1})
       end
     end)
   rescue
     _ -> %{}
+  end
+
+  # The ground under a point, scene units (BaconWorld.Terrain; 0 without terrain).
+  defp ground(x, z) do
+    u = BaconWorld.Mobs.Brain.u()
+
+    case BaconWorld.Terrain.loaded() do
+      nil -> 0.0
+      t -> max(BaconWorld.Terrain.height(t, x / u, z / u), t.sea) * u
+    end
   end
 
   defp num(n) when is_number(n), do: n * 1.0

@@ -105,6 +105,8 @@ defmodule BaconWorldWeb.PlayLive do
      assign(socket,
        page_title: "Bacon World",
        human_assets: Models.human_assets(),
+       # the zone's ground (BaconWorld.Terrain): the hook loads it before building the village
+       terrain: BaconWorld.Terrain.payload(BaconWorld.Mobs.Brain.u()),
        item_catalog: Items.catalog_payload(),
        equipment: %{},
        swing_at: %{},
@@ -389,8 +391,8 @@ defmodule BaconWorldWeb.PlayLive do
          %{} = current_character <- current_character(socket),
          # the mount ridden, or the one just left (a fall from the saddle)
          mount = BaconWorldWeb.MountEvents.move_mount(socket),
-         :ok <- validate_ground_bounds(y, mount),
-         :ok <- validate_on_island(current_character.position, x, z),
+         :ok <- validate_ground_bounds(current_character.position, x, y, z, mount),
+         :ok <- validate_on_island(current_character.position, x, y, z),
          :ok <- validate_move_speed(socket, current_character.position, x, y, z, mount),
          :ok <- if(mount, do: :ok, else: validate_player_collision(socket.assigns.zone_online_characters || [], current_character.character_id, current_character.position, x, z)) do
       topic = socket.assigns.current_zone_topic
@@ -811,17 +813,52 @@ defmodule BaconWorldWeb.PlayLive do
 
   # Nobody goes out to sea (2026-10-26, BaconWorld.Water): a move that ends beyond the shallows
   # and further out than it began is refused. Coming back in is always allowed, so anyone who
-  # was out there before this rule can walk home.
-  defp validate_on_island(from, x, z) do
+  # was out there before this rule can walk home. With terrain (BaconWorld.Terrain) "out" is
+  # deep water or the map's margin, and someone flying (a mount, well above the ground) may cross
+  # water but not the margin.
+  defp validate_on_island(from, x, y, z) do
     u = BaconWorld.Mobs.Brain.u()
-    r = :math.sqrt(x * x + z * z) / u
-    r0 = :math.sqrt((from.x || 0.0) * (from.x || 0.0) + (from.z || 0.0) * (from.z || 0.0)) / u
-    if r > BaconWorld.Water.walk_radius() and r > r0, do: {:error, :invalid_move}, else: :ok
+
+    case BaconWorld.Terrain.loaded() do
+      nil ->
+        r = :math.sqrt(x * x + z * z) / u
+        r0 = :math.sqrt((from.x || 0.0) * (from.x || 0.0) + (from.z || 0.0) * (from.z || 0.0)) / u
+        if r > BaconWorld.Water.walk_radius() and r > r0, do: {:error, :invalid_move}, else: :ok
+
+      t ->
+        {xm, zm} = {x / u, z / u}
+        {fx, fz} = {(from.x || 0.0) / u, (from.z || 0.0) / u}
+        flying = y / u - max(BaconWorld.Terrain.height(t, xm, zm), t.sea) > 3.0
+        ok_now = if flying, do: BaconWorld.Terrain.inside?(t, xm, zm), else: BaconWorld.Water.walkable?(xm, zm)
+        ok_before = BaconWorld.Water.walkable?(fx, fz)
+        if ok_now or not ok_before, do: :ok, else: {:error, :invalid_move}
+    end
   end
 
-  defp validate_ground_bounds(y, mount) do
+  # Height above the ground (scene units): walkers up to a jump's height, fliers to the mount's
+  # ceiling. Over water the ground is the water's surface. Without terrain the ground is 0.
+  # Only climbing is held to it: someone falling (off a cliff, out of the saddle) is lower than a
+  # moment ago and always allowed, or a fall from the crater's rim would snap back to the edge.
+  defp validate_ground_bounds(from, x, y, z, mount) do
+    ground = ground_y(x, z)
     top = if mount && mount.flies, do: @max_flying_y, else: 25.0
-    if y < -1.0 or y > top, do: {:error, :invalid_move}, else: :ok
+    rising = y > (from.y || 0.0) + 0.01
+
+    cond do
+      y < ground - 2.5 -> {:error, :invalid_move}
+      y > ground + top and rising -> {:error, :invalid_move}
+      true -> :ok
+    end
+  end
+
+  # The ground under a point (scene units): the terrain, or the water's surface over water.
+  defp ground_y(x, z) do
+    u = BaconWorld.Mobs.Brain.u()
+
+    case BaconWorld.Terrain.loaded() do
+      nil -> 0.0
+      t -> max(BaconWorld.Terrain.height(t, x / u, z / u), t.sea) * u
+    end
   end
 
   defp validate_move_speed(socket, current_position, x, y, z, mount) do
@@ -830,7 +867,9 @@ defmodule BaconWorldWeb.PlayLive do
     dt = max((now_ms - last_ms) / 1000.0, @min_dt_seconds)
 
     dx = x - (current_position.x || 0.0)
-    dy = y - (current_position.y || 0.0)
+    # Only climbing counts: falling is gravity's business, and climbing out of the ground (a
+    # position saved before the terrain, y = 0 under a hill) is lifted onto it on the first move.
+    dy = max(0.0, y - max(current_position.y || 0.0, ground_y(current_position.x || 0.0, current_position.z || 0.0) - 0.5))
     dz = z - (current_position.z || 0.0)
 
     speed = :math.sqrt(dx * dx + dy * dy + dz * dz) / dt
@@ -1148,6 +1187,7 @@ defmodule BaconWorldWeb.PlayLive do
           data-available-models={Jason.encode!(@available_models)}
           data-current-player={Jason.encode!(@current_character_payload)}
           data-human-assets={Jason.encode!(@human_assets)}
+          data-terrain={Jason.encode!(@terrain)}
           data-item-catalog={Jason.encode!(@item_catalog)}
           phx-update="ignore"
         ></div>

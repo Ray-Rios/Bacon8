@@ -52,6 +52,10 @@ export class WorldDressing {
   private env: THREE.Texture | null = null;
   private built: Promise<void> | null = null;
   private campsDone = false;
+  /** The ground under (x, z), metres in and out (terrain.ts); null: flat at 0 with the grass disc. */
+  private groundAt: ((x: number, z: number) => number) | null = null;
+  /** Fog's start and end (m): close by on the old island, far off over a terrain. */
+  private fog: [number, number] = [70, 190];
 
   constructor(private scene: THREE.Scene, private renderer: THREE.WebGLRenderer) {
     this.loader = new GLTFLoader();
@@ -66,6 +70,23 @@ export class WorldDressing {
       console.warn('[world] could not load', url, err);
       resolve(null);
     }));
+  }
+
+  /**
+   * Stand the village on a terrain (before build): every piece is lifted to the ground under it,
+   * houses as a whole, and the grass disc and its beach give way to the terrain's own ground.
+   */
+  setGround(groundAt: ((x: number, z: number) => number) | null, fog: [number, number] = [450, 2600]) {
+    this.groundAt = groundAt;
+    this.fog = groundAt ? fog : [70, 190];
+    if (this.scene.fog instanceof THREE.Fog) {
+      this.scene.fog.near = this.fog[0] * UNITS_PER_METRE;
+      this.scene.fog.far = this.fog[1] * UNITS_PER_METRE;
+    }
+  }
+
+  private gy(x: number, z: number): number {
+    return this.groundAt ? this.groundAt(x, z) : 0;
   }
 
   /** Builds the village into `parent` (the hook's world group). Safe to call more than once. */
@@ -162,11 +183,19 @@ export class WorldDressing {
     return { x, z };
   }
 
+  /** A flat geometry (in the XZ plane, centred on (cx, cz)) laid over the ground, `lift` above it. */
+  private drape(geo: THREE.BufferGeometry, cx: number, cz: number, lift: number): THREE.BufferGeometry {
+    const P = geo.attributes.position;
+    for (let i = 0; i < P.count; i++) P.setY(i, this.gy(cx + P.getX(i), cz + P.getZ(i)) + lift);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
   /** Per frame: fog and fill light follow the sky; lamps glow at night. */
   tick(daylight: number) {
     const bg = this.scene.background;
     if (bg instanceof THREE.Color) {
-      if (!this.scene.fog) this.scene.fog = new THREE.Fog(bg.clone(), 70 * UNITS_PER_METRE, 190 * UNITS_PER_METRE);
+      if (!this.scene.fog) this.scene.fog = new THREE.Fog(bg.clone(), this.fog[0] * UNITS_PER_METRE, this.fog[1] * UNITS_PER_METRE);
       (this.scene.fog as THREE.Fog).color.copy(bg);
       this.hemi.color.copy(bg).lerp(new THREE.Color('#FFFFFF'), 0.55);
     }
@@ -194,7 +223,7 @@ export class WorldDressing {
   private put(name: string, x: number, z: number, rotDeg = 0, y = 0, sx = 1, sy = 1, sz = 1) {
     const full = name.startsWith('P_') || name.startsWith('K_') ? name : `P_${name}`;
     if (!this.templates.has(full)) return;
-    const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotDeg * D2R), new THREE.Vector3(sx, sy, sz));
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y + this.gy(x, z), z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotDeg * D2R), new THREE.Vector3(sx, sy, sz));
     this.placements.push({ name: full, m });
   }
 
@@ -210,7 +239,9 @@ export class WorldDressing {
   /** A 2 x 2 cell house (6 x 6 m) facing +Z before `rot`, centred at (cx, cz). */
   private house(cx: number, cz: number, rot: number, o: { wall: 'Wood' | 'Stone'; roof: 'Thatch' | 'Tile' | 'Shingle'; chimney?: boolean; seed?: number }) {
     const R = new THREE.Matrix4().makeRotationY(rot * D2R);
-    const T = new THREE.Matrix4().makeTranslation(cx, 0, cz);
+    // on a slope the whole house sits at its lowest corner's height (the plinth fills the rest)
+    const gy = this.groundAt ? Math.min(...[[-3, -3], [3, -3], [-3, 3], [3, 3], [0, 0]].map(([a, b]) => this.gy(cx + a, cz + b))) : 0;
+    const T = new THREE.Matrix4().makeTranslation(cx, gy, cz);
     const base = T.multiply(R);
     const at = (name: string, x: number, y: number, z: number, r = 0, sx = 1) => {
       if (!this.templates.has(name)) return;
@@ -245,7 +276,7 @@ export class WorldDressing {
     if (o.chimney) at('K_Chimney_Stone', 2.2, fl, -1.2);
     // a step and a lantern by the door
     const step = new THREE.Vector3(1.5, 0, 3.6).applyMatrix4(base);
-    this.put('P_LanternProp', step.x, step.z, rot, 0);
+    this.put('P_LanternProp', step.x, step.z, rot, gy - this.gy(step.x, step.z));
     this.box(cx, cz, 3.25, 3.25, rot);
   }
 
@@ -395,9 +426,9 @@ export class WorldDressing {
 
   private patch(cx: number, cz: number, radius: number, color: string, seed: number) {
     const mat = groundMaterial(color, seed, radius / 2, { set: 'earth', scale: 3, antiTile: true }, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    const m = new THREE.Mesh(new THREE.CircleGeometry(radius, 40), mat);
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(cx, 0.012, cz);
+    const geo = new THREE.CircleGeometry(radius, 40, 0, Math.PI * 2).rotateX(-Math.PI / 2);
+    const m = new THREE.Mesh(this.drape(geo, cx, cz, 0.012), mat);
+    m.position.set(cx, 0, cz);
     m.receiveShadow = true;
     this.group.add(m);
   }
@@ -543,7 +574,7 @@ export class WorldDressing {
     const grass = groundMaterial('#4F6A35', 43, 6, { set: 'grass', scale: 2.5, strength: 0.75, antiTile: true }, { roughness: 1 });
     const mound = new THREE.Mesh(new THREE.SphereGeometry(6, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), grass);
     mound.scale.set(1, 0.42, 1);
-    mound.position.set(mx, -0.05, mz);
+    mound.position.set(mx, this.gy(mx, mz) - 0.05, mz);
     mound.castShadow = true;
     mound.receiveShadow = true;
     this.group.add(mound);
@@ -672,10 +703,12 @@ export class WorldDressing {
     g.name = 'Ground';
     // the grass ends 9 m inside the waterline (BaconWorld.Water's shore, 150 m): the beach is
     // water.ts's, from there down under the sea
-    const grass = new THREE.Mesh(new THREE.CircleGeometry(141, 96), groundMaterial('#5E7F3F', 7, 60, { set: 'grass', scale: 3, strength: 0.75, antiTile: true }, { roughness: 0.95 }));
-    grass.rotation.x = -Math.PI / 2;
-    grass.receiveShadow = true;
-    g.add(grass);
+    if (!this.groundAt) {
+      const grass = new THREE.Mesh(new THREE.CircleGeometry(141, 96), groundMaterial('#5E7F3F', 7, 60, { set: 'grass', scale: 3, strength: 0.75, antiTile: true }, { roughness: 0.95 }));
+      grass.rotation.x = -Math.PI / 2;
+      grass.receiveShadow = true;
+      g.add(grass);
+    }
     // dirt paths out of the plaza
     const dirt = groundMaterial('#8A7152', 11, [2, 12], { set: 'forest_ground', scale: 2.5, antiTile: true }, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     for (const a of [0, 90, 180, 270, 45, -45]) {

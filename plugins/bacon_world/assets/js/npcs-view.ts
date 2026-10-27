@@ -47,6 +47,8 @@ export function faceToward(x: number, z: number, tx: number, tz: number): number
 
 export class NpcsView {
   readonly group = new THREE.Group();
+  /** The ground under (x, z), scene units (terrain-world.ts sets it); null: flat at 0. */
+  ground: ((x: number, z: number) => number) | null = null;
   private npcs = new Map<string, NpcEntry>();
   private facing: { id: string; x: number; z: number } | null = null;
 
@@ -120,6 +122,7 @@ export class NpcsView {
       d = Math.atan2(Math.sin(d), Math.cos(d));
       e.yaw += d * Math.min(1, dt * 4);
       e.root.rotation.y = e.yaw;
+      if (this.ground) e.root.position.y = this.ground(e.root.position.x, e.root.position.z);
       e.animator?.update(dt);
       e.mixer?.update(dt);
       e.human?.postAnimate(dt, e.animator ? e.animator.freeHands() : undefined, e.animator ? e.animator.armSets() : undefined);

@@ -74,7 +74,10 @@ export interface ControllerOptions {
    * units), returns where it may. Applied right after moving, before the camera
    * is placed and the position is reported.
    */
-  collide?: (x: number, z: number) => { x: number; z: number };
+  /** Walls and the world's edge: where a move from (fromX, fromZ) to (x, z) ends up. */
+  collide?: (x: number, z: number, fromX: number, fromZ: number) => { x: number; z: number };
+  /** While flying high (no walls): the world's edge only. */
+  bounds?: (x: number, z: number, fromX: number, fromZ: number) => { x: number; z: number };
   /** A mouse button went down with the pointer locked: swing that hand. */
   onAttack?: (hand: 'left' | 'right') => void;
 }
@@ -124,6 +127,8 @@ export class CharacterController {
   private canvas: HTMLCanvasElement;
   private options: ControllerOptions;
   private terrain: THREE.Mesh | null = null;
+  private groundFn: ((x: number, z: number) => number) | null = null;
+  private surfaceFn: ((x: number, z: number) => number) | null = null;
   private raycaster = new THREE.Raycaster();
 
   // Physics, in metres and seconds (converted at the scene boundary).
@@ -599,7 +604,7 @@ export class CharacterController {
     // covered, so running straight into a wall stops the jog instead of
     // animating on the spot.
     if (this.options.collide && dt > 0) {
-      const ok = this.options.collide(pos.x, pos.z);
+      const ok = this.options.collide(pos.x, pos.z, fromX, fromZ);
       if (ok.x !== pos.x || ok.z !== pos.z) {
         pos.x = ok.x;
         pos.z = ok.z;
@@ -654,8 +659,10 @@ export class CharacterController {
     pos.y += this.flyVel.y * UNITS_PER_METRE * dt;
     const ground = this.groundHeight(pos.x, pos.z);
     // near the ground the village's walls still count
-    if (this.options.collide && pos.y - ground < 3 * UNITS_PER_METRE) {
-      const ok = this.options.collide(pos.x, pos.z);
+    const near = pos.y - ground < 3 * UNITS_PER_METRE;
+    const fence = near ? this.options.collide : this.options.bounds;
+    if (fence) {
+      const ok = fence(pos.x, pos.z, fromX, fromZ);
       pos.x = ok.x;
       pos.z = ok.z;
       if (dt > 0) this.velocity = { x: (pos.x - fromX) / UNITS_PER_METRE / dt, z: (pos.z - fromZ) / UNITS_PER_METRE / dt };
@@ -724,12 +731,13 @@ export class CharacterController {
     const pivot = { x: feet.x, y: this.pivotY, z: feet.z };
 
     const cam = cameraPosition(pivot, this.yaw, this.lookPitch, this.distance * UNITS_PER_METRE);
-    const floor = this.groundHeight(cam.x, cam.z) + CAMERA.minHeightAboveGround * UNITS_PER_METRE;
+    const floor = (this.surfaceFn ? this.surfaceFn(cam.x, cam.z) : this.groundHeight(cam.x, cam.z)) + CAMERA.minHeightAboveGround * UNITS_PER_METRE;
     this.camera.position.set(cam.x, Math.max(cam.y, floor), cam.z);
     this.camera.lookAt(pivot.x, pivot.y, pivot.z);
   }
 
   private groundHeight(x: number, z: number): number {
+    if (this.groundFn) return this.groundFn(x, z);
     if (!this.terrain) return 0;
     this.raycaster.set(new THREE.Vector3(x, 1000, z), new THREE.Vector3(0, -1, 0));
     const hits = this.raycaster.intersectObject(this.terrain, false);
@@ -754,6 +762,15 @@ export class CharacterController {
 
   setTerrain(terrain: THREE.Mesh): void {
     this.terrain = terrain;
+  }
+
+  /**
+   * The ground from a heightfield (terrain.ts): `ground` under the feet, `surface` (the ground or
+   * the water's top) under the camera. Null: back to flat.
+   */
+  setGround(ground: ((x: number, z: number) => number) | null, surface: ((x: number, z: number) => number) | null = null): void {
+    this.groundFn = ground;
+    this.surfaceFn = surface;
   }
 
   setPositionCallback(callback: (x: number, y: number, z: number, rotation: number) => void): void {

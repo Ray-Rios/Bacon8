@@ -114,7 +114,7 @@ defmodule BaconWorld.Models do
   end
 
   @versioned_dirs ~w(Humans World Weapons Mobs)
-  @versioned_exts ~w(.glb .gltf .png .jpg .jpeg .webp .ktx2)
+  @versioned_exts ~w(.glb .gltf .png .jpg .jpeg .webp .ktx2 .bin)
 
   @doc """
   A short version for every model, texture and thumbnail the 3D client loads
@@ -180,6 +180,14 @@ defmodule BaconWorld.Models do
   end
 
   defp existing(path), do: if(File.regular?(path), do: path)
+
+  @doc """
+  The full path of a file on the models volume (`rel` is relative to it, e.g.
+  `World/Terrain/crater_lake_h.bin`), or nil when no models folder has it.
+  """
+  def path(rel) when is_binary(rel) do
+    if String.contains?(rel, ".."), do: nil, else: Enum.find_value(roots(), &existing(Path.join(&1, rel)))
+  end
 
   defp supported?(rel) do
     supported = manifest()

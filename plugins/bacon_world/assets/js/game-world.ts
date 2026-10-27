@@ -114,6 +114,7 @@ export const GameWorld = {
       this.mobsView.onSound = (kind: string, at: THREE.Vector3, gain?: number) => this.audio?.playAt(kind, at, gain ?? 1);
       this.scene.add(this.mobsView.group);
     }
+    this.applyGround?.();
     void reply(this, 'fetch_mobs', {}, { mobs: [], camps: [], merchants: [] }).then((res: any) => {
       if (!this.mobsView) return;
       this.mobsView.setAll(res.mobs || []);

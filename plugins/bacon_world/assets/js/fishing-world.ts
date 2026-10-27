@@ -7,7 +7,7 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { UNITS_PER_METRE } from './controls-math';
 import { item } from './items';
-import { FishingView, WaterView, castSpot, lakeColliders, nearWater, waterLevel, type WaterLayout } from './water';
+import { FishingView, WaterView, castSpot, lakeColliders, nearWater, waterNameAt, waterYAt, type WaterLayout } from './water';
 
 const U = UNITS_PER_METRE;
 const POLE = 'fishing_pole';
@@ -40,6 +40,8 @@ export const FishingWorld = {
   initWater(this: any, layout: WaterLayout) {
     if (!layout || !this.scene) return;
     this.water = layout;
+    // the terrain's water (terrain-world.ts sets it again if the terrain loads after this)
+    layout.terrain = this.heightfield || null;
     this.waterView?.dispose();
     this.waterView = new WaterView(layout);
     (this.dressing?.group.parent || this.scene).add(this.waterView.group);
@@ -111,13 +113,13 @@ export const FishingWorld = {
     if (!me) return;
     this.fishing = { from: me.mesh.position.clone(), kind: spot.kind, bite: false };
     this.characterManager?.getAnimator(this.state.currentPlayer.character_id)?.oneShot('Staff_Bonk', { upperOnly: true });
-    const where = spot.kind === 'lake' ? (this.water?.lakes?.[0]?.name || 'the lake') : 'the sea';
+    const where = res.name || (this.water && waterNameAt(this.water, spot.x, spot.z)) || (spot.kind === 'lake' ? 'the lake' : 'the sea');
     this.combatLog(`You cast your line into ${where}.`, '#9FD8FF');
     // the bobber leaves the rod as the swing comes forward
     setTimeout(() => {
       if (!this.fishing) return;
       const tip = this.rodTip();
-      if (tip) this.fishingView?.cast(tip, spot.x, spot.z, waterLevel(spot.kind));
+      if (tip && this.water) this.fishingView?.cast(tip, spot.x, spot.z, waterYAt(this.water, spot.x, spot.z));
     }, 320);
   },
 

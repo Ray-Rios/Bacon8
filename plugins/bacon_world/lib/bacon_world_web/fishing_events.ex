@@ -39,7 +39,7 @@ defmodule BaconWorldWeb.FishingEvents do
          {:ok, kind} <- Water.cast(px, pz, bx / u, bz / u) do
       token = make_ref()
       Process.send_after(self(), {:fish_bite, token}, Enum.random(@bite_ms))
-      {:reply, %{ok: true, water: Atom.to_string(kind)}, assign(socket, :fishing, %{token: token, kind: kind, at: {px, pz}, bite_at: nil})}
+      {:reply, %{ok: true, water: Atom.to_string(kind), name: Water.name_at(bx / u, bz / u)}, assign(socket, :fishing, %{token: token, kind: kind, at: {px, pz}, bite_at: nil})}
     else
       {:error, reason} -> {:reply, %{ok: false, error: message(reason)}, assign(socket, :fishing, nil)}
       _ -> {:reply, %{ok: false, error: "You can't fish right now."}, assign(socket, :fishing, nil)}

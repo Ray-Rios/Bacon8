@@ -42,6 +42,13 @@ On 2026-10-26:
 - **Bacon World**: two-handers held in proper guard poses, an island in a sea with a fishing pond and
   fishing, spells no longer freeze the game, screenshots no longer open the menu, and the owner's other
   bug reports (same handoff). Details in **`BACON_WORLD.md`** §2.
+- **Bacon World's starter zone is a real landscape, Crater Lake** (`handoff/CLAUDE_CODE_PROMPT_2026-10-26c.md`):
+  the owner's World Creator heightfield, made into game files by `library/pipeline/scripts/terrain_build.py`
+  (`World/Terrain/` on the models volume: 3 MB to the browser) and read by both the server and the browser,
+  with the village on a flattened pad by the bay. `/models` now versions `.bin` files too. Production needs
+  the owner's models sync to get it; without the files the game stays on its flat island. The owner's
+  plan to build the world in game (placing and deleting anything, by role; admin-only binding stones with
+  no-build zones) is in **`BACON_WORLD.md`** §3 and §7.
 
 On 2026-10-25:
 

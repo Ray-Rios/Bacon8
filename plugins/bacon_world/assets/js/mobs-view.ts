@@ -94,6 +94,8 @@ const PROXY_MAT = new THREE.MeshBasicMaterial({ visible: false });
 
 export class MobsView {
   readonly group = new THREE.Group();
+  /** The ground under (x, z), scene units (terrain-world.ts sets it); null: flat at 0. */
+  ground: ((x: number, z: number) => number) | null = null;
   readonly nameplateIds = new Set<string>();
   /** Called for every event after the view has applied it (sounds, text, chat). */
   onEvent: ((e: MobEvent, mob: MobEntry | undefined) => void) | null = null;
@@ -278,14 +280,16 @@ export class MobsView {
         }
         e.animator?.setMotion({ speed: e.speed < 0.15 ? 0 : e.speed, dirX, dirZ, grounded: true });
       }
-      // Rising out of the ground, or sinking into it.
+      // On the ground (terrain.ts; 0 while flat), rising out of it, or sinking into it.
+      const base = this.ground ? this.ground(e.root.position.x, e.root.position.z) : 0;
+      e.root.position.y = base;
       if (e.rise > 0) {
         e.rise = Math.max(0, e.rise - dt);
-        e.root.position.y = -1.9 * U * (e.rise / 1.4) ** 2;
+        e.root.position.y = base - 1.9 * U * (e.rise / 1.4) ** 2;
       }
       if (e.sink >= 0) {
         e.sink -= dt;
-        e.root.position.y = -0.9 * U * (1 - Math.max(0, e.sink) / 1.4);
+        e.root.position.y = base - 0.9 * U * (1 - Math.max(0, e.sink) / 1.4);
         if (e.sink <= 0) {
           this.remove(id);
           continue;

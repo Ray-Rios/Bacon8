@@ -25,7 +25,8 @@ renamed its tables, its game row and its `plugin_states` row.
 | `lib/bacon_world/items.ex` | The item catalogue: weapons with EverQuest-style DMG/DLY, shields, a torch, junk, underwear and cloth armour |
 | `lib/bacon_world/inventory.ex`, `inventory_item.ex` | What a character carries: two hands, five worn slots, 24 bag slots, coins |
 | `lib/bacon_world/merchants.ex` | NPC traders: Tilda the clothier, Old Bram the angler (fishing poles), their stock, reach and prices |
-| `lib/bacon_world/water.ex` | The sea (past 150 m) and the lakes (the Millpond): where water is, casting rules, the walkable radius, what each water's catches are |
+| `lib/bacon_world/terrain.ex` | The zone's ground (`BaconWorld.Terrain`): reads the World Creator heightfield and water grids from the models volume (`World/Terrain/`), heights, water bodies, where people may walk, the client's description; flat when the files are missing |
+| `lib/bacon_world/water.ex` | The sea and the lakes (with a terrain: below the sea's level; without: the round island), the Millpond, casting rules, where people may walk, what each water's catches are |
 | `lib/bacon_world_web/fishing_events.ex` | PlayLive's fishing events (`fish_cast`, `fish_reel`, `fish_stop`): the server-timed bite, the reel window, the catch |
 | `lib/bacon_world/progression.ex` | Levels, experience, con colours, skill points banked for the tree |
 | `lib/bacon_world/melee.ex` | Swing numbers: reach and arc, hit chance, damage, delay |
@@ -52,6 +53,8 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/appearance.ts`, `human-factory.ts` | The look model, and building a human from a look |
 | `assets/js/character-controller.ts`, `controls-math.ts`, `mouse-filter.ts` | Third-person controls (below), mounted movement and flight (double-tap Space); `mouse-filter.ts` repairs remote-desktop mouse-look |
 | `assets/js/world-dressing.ts` | The lobby village and its colliders (circles, boxes, ellipses) |
+| `assets/js/terrain.ts` | The heightfield (unpacking, heights on the drawn triangles, water, walkable) and the terrain's drawing (`TerrainView`: 32 x 32 chunks whose detail follows the camera, painted by slope and height) |
+| `assets/js/terrain-world.ts` | The hook's terrain (`TerrainWorld` mixin): loads it before the village, hands the ground to the controller, creatures, merchants and water |
 | `assets/js/water.ts` | The water's rules (same as `water.ex`), the sea, beach, foam and lakes (`WaterView`), the bobber and line (`FishingView`) |
 | `assets/js/fishing-world.ts` | The hook's fishing (`FishingWorld` mixin): R to cast and reel, bites, catches, keeping the player on the island |
 | `assets/js/surface-textures.ts` | CC0 surface textures on the untextured models, by material name (triplanar, no UVs) |
@@ -207,11 +210,28 @@ pattern, normals, roughness and occlusion. Pieces are merged per family and mate
 and the props share names but not textures). The Esc menu's Textures button turns it off
 (after a reload).
 
+## The terrain
+
+Since 2026-10-26 the lobby zone is **Crater Lake**, a World Creator heightfield (4096 m square). The
+owner exports a 16-bit RAW; `library/pipeline/scripts/terrain_build.py` makes the game's files in
+`World/Terrain/` on the models volume (heights for the server, the same packed for the browser,
+water bodies) and puts the town's centre at the origin with its ground at 0, so everything placed
+around the village keeps its coordinates. `BaconWorld.Terrain` (server) and `terrain.ts` (browser)
+read the same heights: feet, creatures, merchants, the village's pieces, the water and the server's
+move checks all follow them. The page carries the terrain's description (`data-terrain`); the hook
+loads it before building the village. Without the files the zone is the old flat island.
+
+To change the map: export the RAW (note World Creator's Min and Max), update `ZONES` in
+`terrain_build.py` and `@zones` in `terrain.ex` if the size, range or town moved, run the script, copy
+`World/Terrain/` to the models volume (and to production with `sync-models-to-k8s.sh`).
+
 ## Water and fishing
 
-The village stands on an island (`BaconWorld.Water`, `water.ts`; the same rules on both sides,
-tested on both). The sea begins at 150 m from the square and runs to the horizon; a sand beach
-slopes into it and nobody walks past 151.5 m. The Millpond (24 x 16 m) lies 50 m north-west of
+The village stood on an island (`BaconWorld.Water`, `water.ts`; the same rules on both sides,
+tested on both): the sea began at 150 m from the square and ran to the horizon; a sand beach
+sloped into it and nobody walked past 151.5 m. On a terrain the water is wherever the ground is
+below the sea's level (the bay, Crater Lake and two ponds on Crater Lake), and the walkable world is
+the map minus a margin, no deeper than wading. The Millpond (24 x 16 m) lies 50 m north-west of
 the square; Old Bram the angler stands on its east bank and sells fishing poles.
 
 With a pole in hand, face the water from the bank or the beach (within 3 m) and press R: the

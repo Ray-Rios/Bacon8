@@ -45,7 +45,7 @@ It is also the template other Bacon8 games copy.
 All of it uses our own or CC0 art. Every 3D asset is built by scripts in the game repository,
 so it can be rebuilt and changed.
 
-## 2. State on 2026-10-26
+## 2. State on 2026-10-26 (evening)
 
 > **Hub note from Claude Code, 2026-10-25.** Everything listed below up to and including the
 > 24f delivery (skill tree, stable, game cards, the Gem) is **committed and deployed**, and
@@ -73,7 +73,41 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-26 (b), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-26b.md`): **guard poses for
+**Delivered 2026-10-26 (c), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-26c.md`): **the starter zone
+is a real landscape: Crater Lake.** The owner made it in World Creator (4096 m square, heights
+-306 to +689 m, sea at 0, exported as a 16-bit RAW) and asked for it in game with the village on the
+flat by the bay.
+
+- **The pipeline**: `library/pipeline/scripts/terrain_build.py <raw> <out>` turns the RAW into the game's
+  files (`World/Terrain/` on the models volume): heights on a 2 m grid for the server
+  (`crater_lake_h.bin`), the same packed small for the browser (`crater_lake_hd.bin`, 2-D differences,
+  3 MB gzipped, `.gz` beside it), and the water bodies on a 4 m grid (`crater_lake_w.bin`: the sea,
+  Crater Lake, two ponds). It moves the map so **the town's centre is the game's origin and its ground
+  is height 0** (the bay flat at map pixel 2456, 3824, 17 m above the sea), flattens the town's pad
+  (flat to 70 m, blending back to the land by 150 m) and carves the Millpond's bowl. So the village, the
+  camps, the merchants and the spawn keep their coordinates; only "how high is the ground" changed.
+  The sea is at -17 m in game; the bay starts 287 m west of the square.
+- **The server** (`BaconWorld.Terrain`) reads the heights and water grids (lazily, once, 7 ms) and
+  answers height, water and walkable questions. `BaconWorld.Water` follows it: the sea, Crater Lake,
+  the Upper Pond and the Little Pond are wherever the ground is below the sea's level (named in the
+  combat log when you cast); the walkable world is the map minus a 40 m margin, no deeper than wading
+  (1.2 m). Moves are checked against the ground under them (climbing is limited, falling never is, so a
+  fall from the crater's rim isn't snapped back), and creatures judge "flying" by height above the
+  ground. **Without the terrain files** (tests, an install that hasn't synced the models) everything
+  falls back to the flat round island.
+- **The browser** (`terrain.ts`, `terrain-world.ts`): the page carries the terrain's description
+  (`data-terrain`), the hook loads the heights before building the village, and every piece of the
+  village stands on the ground (houses as a whole, camp patches draped over it). The ground is drawn as
+  32 x 32 chunks of 128 m whose detail follows the camera (2 m between vertices close by, up to 32 m
+  far off, skirts hiding the seams) and painted by slope and height: grass, dirt on the steeper bits,
+  rock on cliffs, sand where the waves reach, snow above about 480 m, from the CC0 surface sets. One
+  water plane at the sea's level is the sea and every lake. Feet, the camera, creatures, merchants
+  and the target ring follow the ground; the camera sees 5.7 km, fog from 450 m to 2.6 km.
+- Checked in the harness: the village on its pad with the crater behind it, the bay, the ponds, an
+  aerial view. Tests: 682 Elixir (6 new), 84 JS (4 new). **Not checked in a real game** (walking,
+  creatures on slopes, fishing in Crater Lake, a mount over the crater).
+
+**Delivered 2026-10-26 (b), committed** (`67414f8`, `handoff/CLAUDE_CODE_PROMPT_2026-10-26b.md`): **guard poses for
 two-handers, the owner's bug list, and the sea, the Millpond and fishing.**
 
 - **Two-handers held like weapons, not hugged.** The 25c fix put the left hand back on the haft, but the
@@ -513,7 +547,10 @@ The first 2026-10-23 delivery:
 | 2026-10-24 | **A stablemaster NPC** chooses which of the account's mounts M summons. |
 | 2026-10-26 | **Esc clears the selected target first**; with no target it opens the menu. A target that dies or respawns is dropped. |
 | 2026-10-26 | **Looting: G takes everything** from the nearest corpse with no window, unless the inventory is full. An empty corpse opens no window (G or click). |
-| 2026-10-26 | **The world is an island in an ocean** that covers everything that isn't land, with **a small fishing lake near the town** (the Millpond). **Fishing is in the game.** |
+| 2026-10-26 | **The world is an island in an ocean** that covers everything that isn't land, with **a small fishing lake near the town** (the Millpond). **Fishing is in the game.** (On Crater Lake, next row, the sea fills the bay and runs off past the open south edge; the other edges are mountain ridges.) |
+| 2026-10-26 | **The starter zone is Crater Lake**, the owner's World Creator map (4096 m square), with the town on the flat by the bay south of the crater. Zones are World Creator heightfields, exported as 16-bit RAW with their Min/Max, made into game files by `terrain_build.py`. Players reach other zones through zone lines at natural chokepoints (EverQuest style); seamless streaming isn't planned. |
+| 2026-10-26 | **The world is built in game, by people, not by asking Claude.** Players (and the owner) place and delete objects in the world: ground types, building pieces, rocks, trees, bushes, everything, creatures and NPCs included. Claude makes the assets; what each role may place is locked by role (for example, only admins place boss creatures). |
+| 2026-10-26 | **Binding stones** (admins only place them): players set their spawn point at one, and nobody may build within a radius about the size of the town around one. |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 
 ## 4. How it fits together
@@ -675,6 +712,44 @@ the development PC it sits in `C:\Bacon8\tmp\b8work\harness`):
 ## 7. Known issues and next steps
 
 In rough priority order.
+
+**World building in game (the owner's plan, 2026-10-26; decisions log):**
+
+- **Placements are data.** A table (`bacon_world_placements`: zone, asset id, position, rotation, scale,
+  owner, placed at) holds everything put in the world; the server validates and stores each placement,
+  the zone's PubSub broadcasts it, and every client draws it (instanced by asset). The village that
+  `world-dressing.ts` builds in code today becomes the first rows (an import), so it can be edited the
+  same way. Colliders come with each asset.
+- **An asset catalogue** like the item catalogue: each placeable asset's model, footprint, collider,
+  category (ground, building piece, rock, tree, bush, prop, creature spawn, NPC, binding stone) and the
+  roles that may place it (`admin` for boss creatures and binding stones; who else, the owner decides
+  per category). Placing checks the role on the server, never only in the client.
+- **Placing in game**: a build mode (a window listing what you may place), a ghost of the piece on the
+  ground under the cursor (snapped to the terrain, and to the building kit's 3 m grid for building
+  pieces), rotate, place; delete what you placed (admins anything). Undo for a short while.
+- **Ground types** are painted, not placed: a coarse grid over the zone (per 2 m cell: grass, dirt,
+  stone, sand, farmland...) read by the terrain shader instead of its slope rule where painted.
+- **Creatures and NPCs** become placed spawn points (kind, count, radius, respawn), read by
+  `BaconWorld.Mobs.Spawns` from the table instead of its code; merchants the same.
+- **Binding stones**: an admin-only asset. Using one (R) sets `settings["bind"]` (Recall and respawn go
+  there); no placement by anyone else is allowed within its radius (about the town's: 70 m, a setting).
+  The town's stone goes by the plaza.
+- Open questions for the owner: who may place what beyond the admin-only kinds; limits per player (how
+  many pieces, where: own plots?); whether placed things decay; moderation (who may delete others').
+
+**Terrain (2026-10-26, c):**
+
+- The owner to walk it in game, and to confirm the map's orientation (the RAW's first row is taken as
+  north, -z).
+- **Sync `World/Terrain/` to production** with the owner's OK (`sync-models-to-k8s.sh`); until then
+  production stays on the flat island (BaconWorld.Terrain finds no files and falls back).
+- Painting is by rule (slope, height); World Creator's splat and scatter maps (a newer World Creator)
+  would paint and plant it properly. No normal maps on the ground yet; distant chunks are plain.
+- The land outside the village is empty: the in-game placement above is the plan for filling it.
+- Creatures walk through hills (they follow the ground's height but ignore slopes); their camps sit in
+  the pad's blend. Server-side walls still don't exist (the village's colliders are client-side).
+- Crater Lake and the ponds use the lake catch table; Crater Lake could get its own fish.
+- Zone lines (a ferry from the bay, a pass in the ridges) when there's a second zone.
 
 **Water and fishing (2026-10-26, b):**
 

@@ -37,7 +37,8 @@ import { setAssetVersions } from './asset-url';
 import { GameWorld } from './game-world';
 import { SkillsWorld } from './skills-world';
 import { FishingWorld } from './fishing-world';
-import { clampToIsland } from './water';
+import { keepOnLand } from './water';
+import { TerrainWorld } from './terrain-world';
 import type { GameUI } from './game-ui';
 import type { MobsView } from './mobs-view';
 import type { NpcsView } from './npcs-view';
@@ -832,11 +833,17 @@ export const WorldCharacterUIScene = {
       this.scene.add(this.nameplates.group);
     }
 
-    // The village replaces the plain ground and grid once its models have loaded.
+    // The village replaces the plain ground and grid once its models have loaded. With a terrain
+    // (terrain-world.ts) its heights come first, so every piece stands on the ground.
+    const terrainReady = this.initTerrain();
     if (!this.dressing && this.scene && this.renderer) {
       this.dressing = new WorldDressing(this.scene, this.renderer);
       const plain = [...this.worldGroup.children];
-      void this.dressing.build(this.worldGroup).then(() => {
+      void terrainReady.then((hf: any) => {
+        if (!this.dressing) return;
+        if (hf) this.dressing.setGround((x: number, z: number) => hf.height(x * UNITS_PER_METRE, z * UNITS_PER_METRE) / UNITS_PER_METRE);
+        return this.dressing.build(this.worldGroup);
+      }).then(() => {
         if (!this.dressing) return;
         this.worldColliders = this.dressing.colliders();
         if (this.worldColliders.length) plain.forEach((o: THREE.Object3D) => (o.visible = false));
@@ -877,12 +884,16 @@ export const WorldCharacterUIScene = {
         // Mouse-look on: the left button swings the left hand, the right button the right.
         onAttack: (hand: 'left' | 'right') => this.meleeAttack(hand),
         // The village's colliders (world-dressing.ts); empty until it has loaded.
-        // Then the island's edge: nobody walks out to sea (water.ts, BaconWorld.Water).
-        collide: (x: number, z: number) => {
+        // Then the world's edge: nobody walks out to sea or off the map (water.ts, BaconWorld.Water).
+        collide: (x: number, z: number, fromX: number, fromZ: number) => {
           const p = this.worldColliders.length ? WorldDressing.pushOut(this.worldColliders, x, z, 0.32 * UNITS_PER_METRE) : { x, z };
-          return this.water ? clampToIsland(this.water, p.x, p.z) : p;
+          return this.water ? keepOnLand(this.water, p.x, p.z, fromX, fromZ) : p;
         },
+        // flying high: only the map's edge (a terrain's margin)
+        bounds: (x: number, z: number, fromX: number, fromZ: number) =>
+          this.heightfield && !this.heightfield.inside(x, z) && this.heightfield.inside(fromX, fromZ) ? { x: fromX, z: fromZ } : { x, z },
       });
+      this.applyGround();
       this.controller.setMouseSettings(
         Number(readSetting(MOUSE_SENS_KEY)) || SENSITIVITY.default,
         readSetting(INVERT_Y_KEY) === 'on'
@@ -1204,6 +1215,7 @@ export const WorldCharacterUIScene = {
       this.dressing = null;
       this.worldColliders = [];
     }
+    this.teardownTerrain();
 
     if (this.targetRingMesh) {
       this.scene?.remove(this.targetRingMesh);
@@ -2323,6 +2335,7 @@ export const WorldCharacterUIScene = {
       this.tickMounts(deltaSeconds);
       this.tickSkills(deltaSeconds);
       this.tickGame(deltaSeconds);
+      this.tickTerrain();
       this.updateNameplates();
       this.tickTargetRing();
       this.tickProjectiles();
@@ -2529,7 +2542,7 @@ export const WorldCharacterUIScene = {
     }
 
     const pos = targetChar.mesh.position;
-    this.targetRingMesh.position.set(pos.x, 0.02, pos.z);
+    this.targetRingMesh.position.set(pos.x, this.groundAt(pos.x, pos.z) + 0.02, pos.z);
     this.targetRingMesh.visible = true;
     // Pulse alpha
     const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 300);
@@ -2722,4 +2735,5 @@ export const WorldCharacterUIScene = {
   ...SkillsWorld,
   // Fishing and the water (fishing-world.ts, water.ts).
   ...FishingWorld,
+  ...TerrainWorld,
 };
