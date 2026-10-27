@@ -47,6 +47,9 @@ defmodule BaconWorld.Terrain do
   # A walker may stand in water this deep (m), no deeper.
   @wade 1.2
 
+  # how soon to look again for terrain files that were missing
+  @retry_secs 20
+
   @doc "The zone the lobby uses (config `:bacon8, BaconWorld.Terrain, zone:`; nil for none)."
   def zone_id, do: Application.get_env(:bacon8, __MODULE__, []) |> Keyword.get(:zone, "crater_lake")
 
@@ -63,15 +66,26 @@ defmodule BaconWorld.Terrain do
 
       z ->
         key = {__MODULE__, z.id}
+        now = System.monotonic_time(:second)
 
         case :persistent_term.get(key, :unloaded) do
-          :unloaded ->
-            value = load(z)
-            :persistent_term.put(key, value)
-            value
+          {:missing, at} when now - at < @retry_secs ->
+            nil
 
-          value ->
-            value
+          loaded when is_map(loaded) ->
+            loaded
+
+          _ ->
+            case load(z) do
+              nil ->
+                # asked before the files were synced? look again shortly, not only after a restart
+                :persistent_term.put(key, {:missing, now})
+                nil
+
+              value ->
+                :persistent_term.put(key, value)
+                value
+            end
         end
     end
   end
