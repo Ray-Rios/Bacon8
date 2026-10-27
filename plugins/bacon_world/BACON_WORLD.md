@@ -73,6 +73,29 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
+**Delivered 2026-10-27 (c), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27c.md`): **fixes from the owner's
+second try of 27b.** Delivery (b) said the two-handers were checked "walking"; they were not checked running, where
+they failed. This time every two-hander was rendered on both bodies standing, running, and through the swings.
+
+- **Two-handers while moving.** The arms folded and flailed when running (all but the spear): the weapon's pose was
+  held in the upright body frame while the run clip leans and twists the chest, so the hands' targets ran away from
+  the shoulders. The pose is now held in the chest's frame (`human-factory.ts` `twoHandDrive`: `chestRestQ`,
+  `chestRestOff`), aimed half way between the chest and the body; a two-hander standing still takes the neutral
+  idle (the library stances twisted the chest).
+- **Faster swings**: a light swing 0.55-0.95 s (was up to 1.6 s), a heavy one at most 1.2 s.
+- **The spear and halberd** guard is in front of the body (the rear hand sat behind the hip); the sweep and the
+  sword/axe/maul windups are lower, beside the head instead of in front of the face.
+- **The fishing pole** is held like the other two-handers now (`two-hand.ts` ROD: both hands on the cork, the
+  elbows down, for both bodies) and its cast is a pose too: back over the shoulder, a flick forward.
+- **Under water**: the dark murk is gone; it was also what froze the game (switching the fog's kind rebuilds every
+  shader). Now only the existing fog's colour and distances ease toward a light blue-green (`world-dressing.ts`
+  `underwater`), with no rebuild.
+- **The Kraken's head no longer wobbles** when it starts, stops or creeps along: its swimming stroke keeps its own
+  phase (a change of pace no longer jumps it), the swim and land blends ease in and out, small speed changes are
+  ignored, and it turns slowly (`kraken-view.ts`, `mobs-view.ts`).
+- **The mount merchant's window closes** when the player walks away (`game-world.ts`), like the other merchants'.
+- Tests: 695 Elixir, 93 JS (1 new: a jittery Kraken moves no more than a smooth one).
+
 **Delivered 2026-10-27 (b), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27b.md`): **from the owner's first ride on
 the Kraken: diving, a roaming boss, and two-handed weapons started over.**
 
@@ -645,6 +668,7 @@ The first 2026-10-23 delivery:
 | 2026-10-27 | **The second boss is the Kraken**, in the middle of Crater Lake: highly detailed, "the stuff of nightmares" (original design; the owner's reference art only sets the mood). **It is also a mount for sale: it can't fly, it swims very fast.** |
 | 2026-10-27 | **Two-handed weapons start over**: no more fitting library clips; the arms follow the weapon (two-hand.ts). |
 | 2026-10-27 | **Diving**: in deep water C swims down, Space swims up, and jumps at the surface. **Mounts swim** too (no walking on water). |
+| 2026-10-27 | **Under water is only lightly tinted** (the owner: the murk "was a bit much"), and nothing may change the fog's kind at run time (it rebuilds every shader). |
 | 2026-10-27 | **The boss Kraken is 1.5 times its first size and roams the lake freely** (no set path). |
 | 2026-10-27 | **Mounts attack.** The dragons breathe fire and claw; the Kraken's moves were ours to choose (Tentacle Lash, Maelstrom). |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |

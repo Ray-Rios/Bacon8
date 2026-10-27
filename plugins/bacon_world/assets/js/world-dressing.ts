@@ -41,6 +41,9 @@ function face(x: number, z: number, tx = 0, tz = 0) {
   return Math.atan2(tx - x, tz - z) / D2R;
 }
 
+// The haze under water (a dive).
+const UNDERWATER_TINT = new THREE.Color('#2E6E78');
+
 export class WorldDressing {
   readonly group = new THREE.Group();
   private loader: GLTFLoader;
@@ -56,6 +59,9 @@ export class WorldDressing {
   private groundAt: ((x: number, z: number) => number) | null = null;
   /** Fog's start and end (m): close by on the old island, far off over a terrain. */
   private fog: [number, number] = [70, 190];
+  /** 1 while the camera is under water (terrain-world.ts), eased in `uw`. */
+  underwater = 0;
+  private uw = 0;
 
   constructor(private scene: THREE.Scene, private renderer: THREE.WebGLRenderer) {
     this.loader = new GLTFLoader();
@@ -196,7 +202,18 @@ export class WorldDressing {
     const bg = this.scene.background;
     if (bg instanceof THREE.Color) {
       if (!this.scene.fog) this.scene.fog = new THREE.Fog(bg.clone(), this.fog[0] * UNITS_PER_METRE, this.fog[1] * UNITS_PER_METRE);
-      (this.scene.fog as THREE.Fog).color.copy(bg);
+      // under water (a dive): a light blue-green haze drawing in. Only the fog's colour and range
+      // change, never its kind, so no shader is rebuilt (2026-10-27: swapping in FogExp2 recompiled
+      // every material and froze the game)
+      this.uw += (this.underwater - this.uw) * 0.12;
+      if (this.uw < 0.002) this.uw = 0;
+      const fog = this.scene.fog as THREE.Fog;
+      fog.color.copy(bg);
+      if (this.uw > 0) fog.color.lerp(UNDERWATER_TINT, 0.45 * this.uw);
+      if (fog.isFog) {
+        fog.near = THREE.MathUtils.lerp(this.fog[0], 12, this.uw) * UNITS_PER_METRE;
+        fog.far = THREE.MathUtils.lerp(this.fog[1], 220, this.uw) * UNITS_PER_METRE;
+      }
       this.hemi.color.copy(bg).lerp(new THREE.Color('#FFFFFF'), 0.55);
     }
     const d = Math.min(1, Math.max(0, daylight));

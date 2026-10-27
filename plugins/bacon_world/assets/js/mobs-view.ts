@@ -314,7 +314,8 @@ export class MobsView {
         let d = want - e.root.rotation.y;
         while (d > Math.PI) d -= Math.PI * 2;
         while (d < -Math.PI) d += Math.PI * 2;
-        e.root.rotation.y += d * Math.min(1, dt * 10);
+        // a creature the size of the Kraken turns slowly (it snapped round and seemed to wiggle)
+        e.root.rotation.y += d * Math.min(1, dt * (e.kraken ? 1.5 : 10));
         // Movement relative to facing, for strafes and backpedals.
         const sp = Math.hypot(n.vx, n.vz);
         let dirX = 0;

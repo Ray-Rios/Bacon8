@@ -123,6 +123,9 @@ export class KrakenRig {
   private seen = false;
   private speed = 0;
   private strokePhase = 0;
+  private strokeAt = 0;
+  private swimK = 0;
+  private landK = 0;
   private spin = 0;
   private lift = 0;
   private tmpQ = new THREE.Quaternion();
@@ -256,7 +259,7 @@ export class KrakenRig {
     const p = this.root.getWorldPosition(this.tmpV);
     if (this.seen && dt > 0) {
       const v = Math.hypot(p.x - this.last.x, p.z - this.last.z) / dt / U;
-      this.speed += (Math.min(v, 60) - this.speed) * Math.min(1, dt * 4);
+      this.speed += (Math.min(v, 60) - this.speed) * Math.min(1, dt * 2);
     }
     this.last.copy(p);
     this.seen = true;
@@ -268,8 +271,16 @@ export class KrakenRig {
     const t = this.time;
     const s = this.scale;
     // swimming: how fast for its size (a full stride at ~6 body-lengths... about 9 m/s full size)
-    const swim = this.inWater ? Math.min(1, this.speed / (6 * Math.max(s, 0.25))) : 0;
-    const land = this.inWater ? 0 : 1;
+    // (eased slowly, with a dead band: the creature view's small corrections to where it is read as
+    // speed, and the arms and the mantle wobbled with them, 2026-10-27)
+    const fast = Math.max(0, this.speed - 0.4 * Math.max(s, 0.25)) / (6 * Math.max(s, 0.25));
+    const swimWant = this.inWater ? Math.min(1, fast) : 0;
+    this.swimK += (swimWant - this.swimK) * Math.min(1, dt * 1.2);
+    this.landK += ((this.inWater ? 0 : 1) - this.landK) * Math.min(1, dt * 2);
+    const swim = this.swimK;
+    const land = this.landK;
+    // the stroke's phase runs at its own pace (a phase of time x a changing rate jumped wildly)
+    this.strokeAt += dt * (2.2 + 2.5 * swim);
 
     // --- the arms and tentacles ---
     for (const c of this.chains) {
@@ -296,10 +307,10 @@ export class KrakenRig {
     }
     // --- the mantle ---
     let mantleBend = 0.03 * Math.sin(t * 0.6);
-    const stroke = Math.sin(t * (2.2 + 2.5 * swim));
+    const stroke = Math.sin(this.strokeAt);
     mantleBend += swim * 0.05 * stroke;
     // a stroke at the top of each pulse
-    const sp = (t * (2.2 + 2.5 * swim)) / (Math.PI * 2);
+    const sp = this.strokeAt / (Math.PI * 2);
     if (swim > 0.2 && Math.floor(sp) !== Math.floor(this.strokePhase)) this.onCycle?.('stroke', swim);
     this.strokePhase = sp;
     let mawOpen = 0.05 + 0.04 * Math.sin(t * 0.8);
@@ -444,7 +455,7 @@ export class KrakenRig {
     this.spin += spin * dt * 7.5;
     if (!spin) this.spin *= Math.max(0, 1 - dt * 3);
     this.model.rotation.y = this.spin;
-    this.lift += ((land ? 1.1 : 0) - this.lift) * Math.min(1, dt * 3);
+    this.lift += (land * 1.1 - this.lift) * Math.min(1, dt * 3);
     this.model.position.y = (this.lift - sink * 9) * U * s;
     this.model.rotation.z = sink * 0.7;
     this.updateEyes();

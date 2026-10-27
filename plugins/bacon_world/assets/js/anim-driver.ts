@@ -36,6 +36,15 @@ export interface Gear {
   set: GearSet;
   /** Two-handed weapons fill both hands. */
   hands: 1 | 2;
+  /** The weapon model (items.ts), when it matters: the fishing pole has a stance of its own. */
+  model?: string | null;
+}
+
+/** The two-hand.ts set a two-hander is driven by (null: not driven). */
+export function twoHandSetOf(g: Gear | null | undefined): string | null {
+  if (!g || g.hands !== 2) return null;
+  if (g.model === 'FishingPole') return 'fishing';
+  return TWO_HAND_SETS[g.set] ? g.set : null;
 }
 
 export interface MotionInput {
@@ -391,7 +400,7 @@ export class CharacterAnimator {
     if (two) {
       const ts = this.twoSwing;
       const x = ts ? (this.time - ts.start) / ts.duration : 1;
-      return { l, r, two, set: this.main?.set, twoSwing: ts && x < 1 ? { name: ts.name, x } : null };
+      return { l, r, two, set: twoHandSetOf(this.main) ?? this.main?.set, twoSwing: ts && x < 1 ? { name: ts.name, x } : null };
     }
     return { l, r, two };
   }
@@ -419,7 +428,7 @@ export class CharacterAnimator {
     const def = STANCES[set];
     // a two-hander: the swing is two-hand.ts's (the arms and torso); the old clip only lends its
     // footwork when standing
-    const tset = twoHanded ? TWO_HAND_SETS[set] : undefined;
+    const tset = twoHanded ? TWO_HAND_SETS[twoHandSetOf(this.main) ?? ''] : undefined;
     if (tset) {
       const c = this.combo.right;
       c.n = this.time - c.at < 1.6 ? c.n + 1 : 0;
@@ -465,6 +474,17 @@ export class CharacterAnimator {
     const rec = swing.rec && this.clips.has(swing.rec) ? { clip: swing.rec, mirror } : null;
     this.overrides.push({ clip: name, mirror, channels, start: this.time, duration: clip.duration / rate, rate, fadeIn: 0.06, then: rec, hand, swing: true });
     return { hitIn: swing.hit / rate, duration: clip.duration / rate, clip: name };
+  }
+
+  /**
+   * A two-hand.ts move by name on the two-hander held (the fishing pole's "cast"). Its length in
+   * seconds, or 0 when nothing driven is held.
+   */
+  twoHandMove(name: string, duration: number): number {
+    const set = TWO_HAND_SETS[twoHandSetOf(this.main) ?? ''];
+    if (this.dead || !set || !set.swings[name]) return 0;
+    this.twoSwing = { name, start: this.time, duration };
+    return duration;
   }
 
   /** A flinch on the upper body. */
@@ -573,9 +593,11 @@ export class CharacterAnimator {
       armL: { clip: legs, mirror: false },
       armR: { clip: legs, mirror: false },
     };
+    const driven = !!twoHandSetOf(this.main);
     if (!moving && !air && mainDef && !m.crouch) {
-      // Standing with a weapon: its stance, whole body.
-      for (const ch of CHANNELS) base[ch] = { clip: mainDef.idle, mirror: false };
+      // Standing with a weapon: its stance, whole body; a driven two-hander stands relaxed (its
+      // guard is two-hand.ts's: the library stances twisted the chest the weapon is held from)
+      for (const ch of CHANNELS) base[ch] = { clip: driven ? LOCO.idle : mainDef.idle, mirror: false };
     }
     if (mainDef) base.armR = { clip: mainDef.idle, mirror: false };
     if (twoHanded && mainDef) base.armL = { clip: mainDef.idle, mirror: false };

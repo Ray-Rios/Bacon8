@@ -116,7 +116,10 @@ export const FishingWorld = {
     const me = this.localCharacter();
     if (!me) return;
     this.fishing = { from: me.mesh.position.clone(), kind: spot.kind, bite: false };
-    this.characterManager?.getAnimator(this.state.currentPlayer.character_id)?.oneShot('Staff_Bonk', { upperOnly: true });
+    // the cast: the rod's own move (two-hand.ts "cast"), else the old clip
+    const anim = this.characterManager?.getAnimator(this.state.currentPlayer.character_id);
+    const rodMove = anim?.twoHandMove?.('cast', 0.9) || 0;
+    if (!rodMove) anim?.oneShot('Staff_Bonk', { upperOnly: true });
     const where = res.name || (this.water && waterNameAt(this.water, spot.x, spot.z)) || (spot.kind === 'lake' ? 'the lake' : 'the sea');
     this.combatLog(`You cast your line into ${where}.`, '#9FD8FF');
     // the bobber leaves the rod as the swing comes forward
@@ -124,7 +127,7 @@ export const FishingWorld = {
       if (!this.fishing) return;
       const tip = this.rodTip();
       if (tip && this.water) this.fishingView?.cast(tip, spot.x, spot.z, waterYAt(this.water, spot.x, spot.z));
-    }, 320);
+    }, rodMove ? rodMove * 500 : 320);
   },
 
   /** The server: a fish has taken the bait. */

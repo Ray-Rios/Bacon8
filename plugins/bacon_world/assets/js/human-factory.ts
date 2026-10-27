@@ -558,6 +558,8 @@ export class HumanInstance {
   private guardW = 0; // the two-handed guard (twoHandGuard), eased in and out
   private twoW = 0; // the two-handed drive (twoHandDrive, two-hand.ts), eased in and out
   private twoPose: TwoHandPose | null = null;
+  private chestRestQ: THREE.Quaternion | null = null;
+  private chestRestOff: THREE.Vector3 | null = null;
   private guard: { at: [number, number, number]; dir: [number, number, number] } | null = null;
   // where this frame's clip put the left grip along the haft, before any correction moved
   // the arms (readClipGrip); twoHandGrip puts the hand back there
@@ -619,6 +621,18 @@ export class HumanInstance {
   // The skeleton as cloned is at rest: remember it.
   private captureRest() {
     this.model.updateMatrixWorld(true);
+    {
+      // the chest's rest orientation and place in the body's frame (twoHandDrive follows the chest)
+      this.root.updateMatrixWorld(true);
+      const chest = this.bones.get('spine_03'), pelvis = this.bones.get('pelvis'), neck = this.bones.get('neck_01');
+      if (chest && pelvis && neck) {
+        const rqi = this.root.getWorldQuaternion(new THREE.Quaternion()).invert();
+        const P = pelvis.getWorldPosition(new THREE.Vector3());
+        const S = neck.getWorldPosition(new THREE.Vector3()).distanceTo(P) || 1;
+        this.chestRestQ = rqi.clone().multiply(chest.getWorldQuaternion(new THREE.Quaternion()));
+        this.chestRestOff = chest.getWorldPosition(new THREE.Vector3()).sub(P).applyQuaternion(rqi).divideScalar(S);
+      }
+    }
     const inv = new THREE.Matrix4().copy(this.model.matrixWorld).invert();
     const m = new THREE.Matrix4();
     for (const [name, b] of this.bones) {
@@ -943,10 +957,11 @@ export class HumanInstance {
       this.wrote(a.hand);
     }
     // A two-hander (2026-10-27): the weapon is placed by two-hand.ts (its guard, or the swing under
-    // way) and both arms are put on it. The fishing pole keeps the older guard and grip.
-    const held = this.bones.get('weapon_r')?.children.find((c) => c.userData.b8Weapon)?.userData.b8Weapon as string | undefined;
-    const fishing = held === 'FishingPole';
-    const drive = armSets?.two && !fishing ? twoHandPose(armSets.set || '', armSets.twoSwing) : null;
+    // way) and both arms are put on it.
+    // (2026-10-27: the fishing pole too, as anim-driver's "fishing" set: its old guard held the male's
+    // left arm straight out)
+    const fishing = false;
+    const drive = armSets?.two ? twoHandPose(armSets.set || '', armSets.twoSwing) : null;
     if (drive) this.twoPose = drive;
     this.twoW = approach(this.twoW, drive ? 1 : 0, 8, dt);
     if (this.twoW > 0.001 && this.twoPose) this.twoHandDrive(this.twoPose, this.twoW);
@@ -1021,12 +1036,33 @@ export class HumanInstance {
       turnWorld(sb, up, twist / spine.length);
       turnWorld(sb, left, lean / spine.length);
     }
-    // the body's frame, turned with the torso
-    const frame = new THREE.Quaternion().setFromAxisAngle(up, twist).multiply(rootQ);
+    // The frame the weapon is held in: the chest's (2026-10-27: held in the body's upright frame,
+    // the weapon stayed put while a run leaned the torso into it, and the arms folded up against
+    // the chest). The chest's turn away from its rest pose (the run's lean and sway, the swing's
+    // twist just applied) carries the weapon and the elbows with it.
+    const chest = spine[spine.length - 1];
+    let frame: THREE.Quaternion;
+    let origin: THREE.Vector3;
+    // the weapon's direction turns only half as far as the chest (a run's lean would point the
+    // blade at the ground ahead)
+    let aim: THREE.Quaternion;
+    if (chest && this.chestRestQ && this.chestRestOff) {
+      chest.updateWorldMatrix(true, false);
+      const cq = chest.getWorldQuaternion(new THREE.Quaternion());
+      const delta = cq.multiply(rootQ.clone().multiply(this.chestRestQ).invert());
+      aim = new THREE.Quaternion().slerp(delta, 0.5).multiply(rootQ);
+      frame = delta.multiply(rootQ);
+      origin = chest.getWorldPosition(new THREE.Vector3()).sub(this.chestRestOff.clone().multiplyScalar(S).applyQuaternion(frame));
+    } else {
+      frame = new THREE.Quaternion().setFromAxisAngle(up, twist).multiply(rootQ);
+      aim = frame;
+      origin = P;
+    }
     const v = (a: [number, number, number]) => new THREE.Vector3(a[0], a[1], a[2]).applyQuaternion(frame);
-    const grip = v(p.grip).multiplyScalar(S).add(P);
-    const Y = v(p.dir).normalize();
-    const Z = v(p.edge);
+    const va = (a: [number, number, number]) => new THREE.Vector3(a[0], a[1], a[2]).applyQuaternion(aim);
+    const grip = v(p.grip).multiplyScalar(S).add(origin);
+    const Y = va(p.dir).normalize();
+    const Z = va(p.edge);
     Z.addScaledVector(Y, -Z.dot(Y));
     if (Z.lengthSq() < 1e-8) Z.copy(v([0, 0, 1])).addScaledVector(Y, -v([0, 0, 1]).dot(Y));
     Z.normalize();

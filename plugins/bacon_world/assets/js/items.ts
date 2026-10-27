@@ -71,7 +71,7 @@ export function isWearable(id: string | null | undefined): boolean {
 export function gearOf(id: string | null | undefined): Gear | null {
   const it = item(id);
   if (!it || !it.set) return null;
-  return { set: it.set, hands: it.hands };
+  return { set: it.set, hands: it.hands, model: it.model ?? null };
 }
 
 /** Copper as EverQuest money: "1p 2g 3s 4c" (10 copper = 1 silver, ...). */
@@ -159,6 +159,8 @@ export const HOLD: Record<string, { y?: number; roll?: number; off?: number }> =
   Halberd: { off: 0.42 },
   // the staff is held at its middle, hands half a metre apart
   Quarterstaff: { y: 0.25, off: 0.5 },
+  // the rod: right hand at the reel, left on the butt below it (2026-10-27)
+  FishingPole: { off: -0.17 },
   Scimitar: { roll: 180 },
   Cutlass: { roll: 180 },
   Axe: { roll: 180 },

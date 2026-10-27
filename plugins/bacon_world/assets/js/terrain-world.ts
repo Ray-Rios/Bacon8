@@ -10,8 +10,6 @@ import { loadHeightfield, TerrainView, type Heightfield, type TerrainInfo } from
 const U = UNITS_PER_METRE;
 /** The camera's far plane over a terrain (scene units): the far ridges stay in view. */
 const FAR = 7000;
-/** The murk under the water. */
-const UNDERWATER = 0x0b3440;
 
 export const TerrainWorld = {
   /** Starts loading the terrain (once). `terrainReady` resolves to it, or null on flat ground. */
@@ -75,28 +73,14 @@ export const TerrainWorld = {
     this.tickUnderwater();
   },
 
-  /**
-   * The camera under the water's surface (a dive, 2026-10-27): the scene's fog and background turn
-   * a murky blue-green and close in to ~15 m; back as they were when it comes up.
-   */
+  /** The camera under the water's surface (a dive, 2026-10-27): world-dressing.ts hazes the fog. */
   tickUnderwater(this: any) {
     const hf: Heightfield | null = this.heightfield || null;
     const cam = this.camera;
-    const scene = this.scene;
-    if (!cam || !scene) return;
+    if (!cam || !this.dressing) return;
     const p = cam.position;
     const under = !!hf && p.y < hf.surface(p.x, p.z) - 0.05 * U && p.y > hf.height(p.x, p.z);
-    if (under === !!this.underwater) return;
-    this.underwater = under;
-    if (under) {
-      this.aboveWater = { fog: scene.fog, background: scene.background };
-      scene.fog = new THREE.FogExp2(UNDERWATER, 0.065 / U);
-      scene.background = new THREE.Color(UNDERWATER);
-    } else if (this.aboveWater) {
-      scene.fog = this.aboveWater.fog;
-      scene.background = this.aboveWater.background;
-      this.aboveWater = null;
-    }
+    this.dressing.underwater = under ? 1 : 0;
   },
 
   teardownTerrain(this: any) {

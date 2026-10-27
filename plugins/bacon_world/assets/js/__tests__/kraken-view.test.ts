@@ -98,3 +98,26 @@ test('the lash moves an upper arm (2026-10-27: it picked arms that did not exist
   }
   assert.ok(tipOf(lash, 'arm_1').distanceTo(tipOf(still, 'arm_1')) > 0.5);
 });
+
+test('swimming along with a jittery position, long after it appeared, it moves no more than when smooth (no wobble)', () => {
+  const U = 2.2 / 1.8;
+  const run = (jitter: number) => {
+    const rig = new KrakenRig(template(), 1);
+    for (let i = 0; i < 9000; i++) rig.update(1 / 30); // five minutes in
+    let prev: THREE.Vector3 | null = null;
+    let worst = 0;
+    for (let i = 0; i < 240; i++) {
+      // ~5 m/s, each step `jitter` off either way (the creature view's corrections)
+      rig.root.position.z += (5 * U * (1 + (i % 2 ? jitter : -jitter))) / 30;
+      rig.update(1 / 30);
+      rig.root.updateMatrixWorld(true);
+      const tip = rig.root.worldToLocal(tipOf(rig, 'arm_1'));
+      if (prev && i > 120) worst = Math.max(worst, tip.distanceTo(prev));
+      prev = tip;
+    }
+    return worst;
+  };
+  const smooth = run(0);
+  const jittery = run(0.4);
+  assert.ok(jittery < smooth * 1.1, `jittery ${jittery} vs smooth ${smooth}`);
+});

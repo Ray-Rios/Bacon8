@@ -199,7 +199,12 @@ export const GameWorld = {
     // Walking away from a merchant ends the trade.
     if (this.tradingWith) {
       const n = this.npcsView?.get(this.tradingWith);
-      if (!n || Math.hypot(me.mesh.position.x - n.x, me.mesh.position.z - n.z) > TRADE_RANGE * 1.15) this.gameUI?.closeMerchant();
+      if (!n || Math.hypot(me.mesh.position.x - n.x, me.mesh.position.z - n.z) > TRADE_RANGE * 1.15) {
+        this.gameUI?.closeMerchant();
+        // the stablemaster's window too (2026-10-27: it stayed open)
+        this.stable?.close();
+        this.tradingWith = null;
+      }
       else this.npcsView?.faceWhileTrading(this.tradingWith, me.mesh.position.x, me.mesh.position.z);
     }
     // Held mouse buttons keep swinging when the hand is ready.

@@ -46,7 +46,7 @@ const OUT_R: V3 = [-1, -0.2, -0.2];
 const OUT_L: V3 = [1, -0.2, -0.2];
 
 // Swords, axes and mauls: a middle guard; a falling diagonal cut, a rising one, and an overhead.
-const BLADE_GUARD: TwoHandPose = { grip: [-0.06, 0.45, 0.62], dir: [0.1, 0.65, 0.75], edge: [0, -0.75, 0.65] };
+const BLADE_GUARD: TwoHandPose = { grip: [-0.06, 0.55, 0.62], dir: [0.1, 0.65, 0.75], edge: [0, -0.75, 0.65] };
 
 const BLADE: TwoHandSet = {
   guard: BLADE_GUARD,
@@ -58,7 +58,7 @@ const BLADE: TwoHandSet = {
       hit: 0.5,
       keys: [
         { at: 0, pose: BLADE_GUARD },
-        { at: 0.32, pose: { grip: [-0.42, 1.05, 0.22], dir: [-0.35, 0.72, -0.6], edge: [0.55, 0.45, 0.7], twist: -28, lean: -4, poleR: OUT_R, poleL: DOWN_OUT_L } },
+        { at: 0.32, pose: { grip: [-0.55, 0.9, 0.18], dir: [-0.35, 0.72, -0.6], edge: [0.55, 0.45, 0.7], twist: -28, lean: -4, poleR: OUT_R, poleL: DOWN_OUT_L } },
         { at: 0.5, pose: { grip: [-0.04, 0.72, 0.78], dir: [0.55, 0.15, 0.82], edge: [0.6, -0.7, -0.35], twist: 4, lean: 8 } },
         { at: 0.68, pose: { grip: [0.32, 0.3, 0.5], dir: [0.8, -0.5, -0.1], edge: [0.1, -0.35, -0.95], twist: 30, lean: 12 } },
         { at: 1, pose: BLADE_GUARD },
@@ -71,7 +71,7 @@ const BLADE: TwoHandSet = {
         { at: 0, pose: BLADE_GUARD },
         { at: 0.32, pose: { grip: [0.3, 0.3, 0.45], dir: [0.75, -0.55, -0.2], edge: [0.2, -0.3, 0.92], twist: 26, lean: 8 } },
         { at: 0.5, pose: { grip: [0.0, 0.7, 0.78], dir: [-0.55, 0.3, 0.78], edge: [-0.55, 0.75, -0.3], twist: 0, lean: 4 } },
-        { at: 0.68, pose: { grip: [-0.38, 1.0, 0.35], dir: [-0.65, 0.65, -0.3], edge: [-0.2, 0.3, 0.92], twist: -26, lean: -2, poleR: OUT_R } },
+        { at: 0.68, pose: { grip: [-0.5, 0.88, 0.3], dir: [-0.65, 0.65, -0.3], edge: [-0.2, 0.3, 0.92], twist: -26, lean: -2, poleR: OUT_R } },
         { at: 1, pose: BLADE_GUARD },
       ],
     },
@@ -91,7 +91,7 @@ const BLADE: TwoHandSet = {
 };
 
 // Spears and halberds: the rear hand at the right hip, the point forward; two thrusts and a sweep.
-const POLE_GUARD: TwoHandPose = { grip: [-0.36, 0.35, 0.22], dir: [0.12, 0.25, 0.96], edge: [0.96, 0.05, -0.12], twist: -12 };
+const POLE_GUARD: TwoHandPose = { grip: [-0.24, 0.42, 0.42], dir: [0.06, 0.18, 0.98], edge: [0.98, 0.02, -0.06], twist: -8 };
 
 const POLE: TwoHandSet = {
   guard: POLE_GUARD,
@@ -162,13 +162,35 @@ const STAFF: TwoHandSet = {
   },
 };
 
-/** By stance set (anim-driver.ts GearSet). */
-export const TWO_HAND_SETS: Record<string, TwoHandSet> = { two_hand: BLADE, polearm: POLE, staff: STAFF };
+// The fishing pole: held out over the water, the tip up, both elbows down; the cast flicks it back
+// over the right shoulder and out (fishing-world.ts plays "cast").
+const ROD_GUARD: TwoHandPose = { grip: [-0.1, 0.5, 0.6], dir: [0.04, 0.55, 0.83], edge: [0, -0.83, 0.55], poleL: [0.4, -1, -0.1] };
 
-/** How long a swing takes (s) for a weapon's swing time (`delay`, s). */
+const ROD: TwoHandSet = {
+  guard: ROD_GUARD,
+  light: ['cast'],
+  heavy: 'cast',
+  swings: {
+    cast: {
+      hit: 0.5,
+      keys: [
+        { at: 0, pose: ROD_GUARD },
+        { at: 0.35, pose: { grip: [-0.4, 0.95, 0.25], dir: [-0.1, 0.8, -0.58], edge: [0, 0.58, 0.8], twist: -12, lean: -6, poleR: OUT_R, poleL: [0.4, -1, -0.1] } },
+        { at: 0.55, pose: { grip: [-0.12, 0.75, 0.75], dir: [0.04, 0.3, 0.95], edge: [0, -0.95, 0.3], twist: 2, lean: 8, poleL: [0.4, -1, -0.1] } },
+        { at: 1, pose: ROD_GUARD },
+      ],
+    },
+  },
+};
+
+/** By stance set (anim-driver.ts GearSet; "fishing" for the fishing pole, anim-driver twoHandSetOf). */
+export const TWO_HAND_SETS: Record<string, TwoHandSet> = { two_hand: BLADE, polearm: POLE, staff: STAFF, fishing: ROD };
+
+/** How long a swing takes (s) for a weapon's swing time (`delay`, s): brisk; the rest of the
+ * weapon's delay is spent back in the guard (2026-10-27: the owner found them slow). */
 export function twoHandDuration(delay: number | undefined, heavy: boolean): number {
-  const d = Math.min(1.7, Math.max(0.75, (delay ?? 1.6) * 0.85));
-  return heavy ? Math.min(2.0, d * 1.15) : d;
+  const d = Math.min(0.95, Math.max(0.55, (delay ?? 1.6) * 0.5));
+  return heavy ? Math.min(1.2, d * 1.25) : d;
 }
 
 const ease = (t: number) => t * t * (3 - 2 * t);

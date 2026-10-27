@@ -38,5 +38,5 @@ test('the guard when not swinging; swing timing follows the weapon', () => {
   twoHandPose('two_hand', null)!.grip.forEach((g, i) => assert.ok(Math.abs(g - TWO_HAND_SETS.two_hand.guard.grip[i]) < 1e-9));
   assert.equal(twoHandPose('unarmed', null), null);
   assert.ok(twoHandDuration(1.6, true) > twoHandDuration(1.6, false));
-  assert.ok(twoHandDuration(9, false) <= 1.7 && twoHandDuration(0.1, false) >= 0.75);
+  assert.ok(twoHandDuration(9, false) <= 0.95 && twoHandDuration(0.1, false) >= 0.55);
 });
