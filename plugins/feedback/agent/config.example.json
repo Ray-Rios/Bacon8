@@ -1,0 +1,12 @@
+{
+  "site": "https://your-site.example",
+  "repo": "C:\\Bacon8",
+  "tokenFile": "%USERPROFILE%\\.bacon8\\feedback-agent.token",
+  "claude": "claude",
+  "model": "",
+  "workMinutes": 90,
+  "reviewMinutes": 20,
+  "testCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File plugins\\feedback\\agent\\test.ps1",
+  "deployCommand": "\"C:\\Program Files\\Git\\bin\\bash.exe\" -lc ./deploy-prod.sh",
+  "deployMinutes": 45
+}

@@ -16,7 +16,21 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-26**.
+Last substantive update: **2026-10-27**.
+
+On 2026-10-27:
+
+- **Suggestions & Bugs, and a queue that hands work to Claude** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27d.md`):
+  a new site plugin, `plugins/feedback`, at `/feedback`, opened from a 💡 icon in the start menu. Members
+  (never guests) post suggestions and bug reports about the site or a game, with screenshots (picked,
+  dropped or pasted), and vote them up or down. Admins edit, approve, decline or mark duplicates, and
+  **Submit to Claude**. Claude's runner, a PowerShell script on the development PC run every 10 minutes
+  by a scheduled task (`plugins/feedback/agent/`), takes one submitted item at a time over a token-only
+  API, has Claude Code fix it headless, runs the tests itself in Docker, has a second Claude review the
+  diff, commits, and then deploys (auto-deploy on, nothing sensitive) or holds it for an admin's Deploy
+  button, reporting each step on the item. The plugin's README has the whole loop and its safety rules.
+  The start menu now shows plugins' apps (`desktop_apps/1`, which takes the user), the hook milestone 5
+  planned.
 
 On 2026-10-26:
 
@@ -280,6 +294,9 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-21 | **The store is a plugin, `bacon_store`**, mounted at `/store`, with the plugin framework it needs (site, site_api and fixed routes, `requires/0`, hooks). Its tables and migrations keep their names and versions; its admin moves to `/admin/bacon_store`; Stripe's webhook gets `/api/store/webhooks/stripe`, with the old URL kept as a `fixed` route until the dashboard is switched. Phases 2 and 3 shipped in one deploy. | ADR 0001. Core stops knowing about money; the owner chose one deploy for both phases. |
 | 2026-10-21 | **Plugin data hooks ask every installed plugin and fail safe** (a crash means keep the user's data, or delete no blobs). | Switching a plugin off must not let core delete what the plugin still owns. |
 | 2026-10-21 | **The old webhook URL is dropped.** `/api/webhooks/payments/:provider` is no longer routed; Stripe's endpoint was created at `/api/store/webhooks/stripe`. Supersedes the `fixed` route in the row before last. | No Stripe endpoint had ever used the old URL, so there was nothing to keep working. |
+| 2026-10-27 | **Suggestions & Bugs is a plugin, `feedback`**, at `/feedback`, opened from the start menu. Members only: guests (and anyone signed out, banned or inactive) see neither the icon nor the page. Members post (with screenshots) and vote; only admins edit others' items, approve, decline and submit. | Owner's request; a plugin because a site might not want it (2026-10-25). |
+| 2026-10-27 | **Approved suggestions reach Claude by a runner on the development PC that collects them** (the site keeps the queue; nothing can push into a Claude conversation). One item at a time; the runner's token can only read submitted items and report on them, and Claude never sees it. Not GitHub issues: the hub repository is public, so members' reports and screenshots would be public, and the private plugins aren't in it. | Owner's choice of the options offered. The PC already has the code, the private plugins, Docker and the deploy script. |
+| 2026-10-27 | **Feedback fixes may deploy without the owner pressing anything**, when the owner turns on "Deploy on its own" (off by default) on `/admin/feedback/agent`, and only for a change that passed the runner's own test run and a second Claude's review and touches nothing security-sensitive (sign-in, permissions, uploads, storage, payments, webhooks, the router, deploy files, production config, dependencies, secrets, data-dropping migrations, the runner). Everything else waits for an admin's Deploy. Turning the switch on is the owner saying "deploy"; with it off, the rule that deploys happen only when the owner says stands as before. | Owner's decision ("automatic after tests"), with the holds added so a member's text can't steer a sensitive change into production unreviewed. |
 
 ---
 
@@ -361,7 +378,7 @@ k3s/                       kustomize base + overlays (dev, prod)
 config/runtime.exs         all deploy-time configuration via env vars
 ```
 
-**Not part of the hub:** any plugin folder other than `plugins/bacon_world`, `plugins/bacon_store` and `plugins/chat_channels` (gitignored; a
+**Not part of the hub:** any plugin folder other than `plugins/bacon_world`, `plugins/bacon_store`, `plugins/chat_channels` and `plugins/feedback` (gitignored; a
 private plugin is its own repository), and a game repository checked out at the root
 (`/RaysSpaceSim/`, gitignored). RaysSpaceSim's deploy and build scripts, k8s manifests,
 code map, mix task and admin pages moved into its private plugin on 2026-10-16.
@@ -873,7 +890,7 @@ defmodule Bacon8.Plugin do
   @callback requires() :: [String.t()]                 # plugin slugs this one needs
   @callback children() :: [Supervisor.child_spec()]    # under Bacon8.PluginSupervisor
   @callback admin_nav() :: [%{label: String.t(), path: String.t(), icon: String.t()}]
-  @callback desktop_apps() :: [Bacon8.Desktop.App.t()]   # §10
+  @callback desktop_apps(user) :: [%{label, path, icon}]  # §10; start-menu apps for this user (2026-10-27)
   @callback entitlement_kinds() :: [String.t()]           # §8
   @callback on_activate() :: :ok | {:error, term()}
   @callback on_deactivate() :: :ok
@@ -1088,6 +1105,11 @@ Apps are data, not hardcoded `case` branches:
 
 Core apps come from `Bacon8.Desktop.core_apps/0`; plugins add theirs via
 `desktop_apps/0` (§9). Window-layout persistence comes back, debounced.
+
+**Since 2026-10-27** plugins' apps are in the start menu's grid: `desktop_apps/1` takes the user
+(nil when signed out) and returns `%{label, path, icon}` maps, each opened by navigating to its
+path. A plugin leaves out what the user may not open (Suggestions & Bugs gives guests nothing). The
+`%Bacon8.Desktop.App{}` struct above is still the target.
 
 ---
 

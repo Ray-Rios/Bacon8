@@ -119,6 +119,17 @@ defmodule Bacon8Web.Components.Taskbar do
                   <div class="text-2xl mb-1 group-hover:scale-110 transition-transform">⚙️</div>
                   <div class="text-white text-xs text-center">Settings</div>
                 </button>
+
+                <%!-- Apps from active plugins (c:Bacon8.Plugin.desktop_apps/1), e.g. Suggestions & Bugs, which guests don't get --%>
+                <.link
+                  :for={app <- Bacon8.Plugins.desktop_apps(@current_user)}
+                  navigate={app.path}
+                  id={"start-app-" <> String.replace(app.path, ~r/[^a-z0-9]+/, "-")}
+                  class="flex flex-col items-center p-3 rounded-lg hover:bg-gray-700 transition-colors group"
+                >
+                  <div class="text-2xl mb-1 group-hover:scale-110 transition-transform"><Bacon8Web.Components.Gem.icon icon={app.icon} /></div>
+                  <div class="text-white text-xs text-center"><%= app.label %></div>
+                </.link>
               </div>
             </div>
             

@@ -316,8 +316,8 @@ defmodule Bacon8.Plugins do
   @doc "Admin sidebar links from active plugins. A plugin's admin pages live under /admin/<slug>."
   def admin_nav, do: Enum.flat_map(active(), & &1.admin_nav())
 
-  @doc "Start-menu apps from active plugins."
-  def desktop_apps, do: Enum.flat_map(active(), & &1.desktop_apps())
+  @doc "Start-menu apps from active plugins, for this user (nil when signed out)."
+  def desktop_apps(user), do: collect(active(), :desktop_apps, [user])
 
   @doc "Site navigation and taskbar links from active plugins."
   def nav_links(user), do: collect(active(), :nav_links, [user])

@@ -92,6 +92,7 @@ uploads/
 !/plugins/bacon_world/
 !/plugins/bacon_store/
 !/plugins/chat_channels/
+!/plugins/feedback/
 
 # A game's own repository checked out at the root for tooling (its plugin's
 # build scripts look for it there). Same gitlink reason as above.

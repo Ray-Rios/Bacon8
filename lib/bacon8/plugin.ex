@@ -128,8 +128,12 @@ defmodule Bacon8.Plugin do
   @doc "Links added to the admin sidebar while active."
   @callback admin_nav() :: [nav_item()]
 
-  @doc "Start-menu apps added while active (wired up in milestone 5)."
-  @callback desktop_apps() :: [map()]
+  @doc """
+  Apps this plugin adds to the start menu's grid while active, for this user (nil when signed
+  out): `%{label, path, icon}`, opened by navigating to `path`. Leave out what the user may not
+  open (Suggestions & Bugs gives guests nothing).
+  """
+  @callback desktop_apps(user :: struct() | nil) :: [nav_item()]
 
   @doc "Entitlement kinds this plugin grants or checks (BACON8.md §8)."
   @callback entitlement_kinds() :: [String.t()]
@@ -223,7 +227,7 @@ defmodule Bacon8.Plugin do
       @impl true
       def admin_nav, do: []
       @impl true
-      def desktop_apps, do: []
+      def desktop_apps(_user), do: []
       @impl true
       def entitlement_kinds, do: []
       @impl true
@@ -235,7 +239,7 @@ defmodule Bacon8.Plugin do
 
       defoverridable game: 0, routes: 0, previous_slugs: 0, mount: 0, requires: 0, children: 0,
                      retains_user_data?: 1, storage_refs: 0, nav_links: 1, profile_tabs: 1,
-                     raw_body_paths: 0, admin_tools: 0, admin_dashboard: 0, admin_nav: 0, desktop_apps: 0,
+                     raw_body_paths: 0, admin_tools: 0, admin_dashboard: 0, admin_nav: 0, desktop_apps: 1,
                      entitlement_kinds: 0, on_activate: 0, on_deactivate: 0, hub_event: 1
     end
   end
