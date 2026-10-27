@@ -16,7 +16,7 @@ defmodule Bacon8Web.ContentEditing do
   """
   import Phoenix.LiveView, only: [push_event: 3]
 
-  alias Bacon8.Content.InlineMedia
+  alias Bacon8.Content.{InlineMedia, Library}
 
   @doc "The uploads context of a record: `context(:page, page)` is `\"pages/<id>\"`."
   def context(:page, %{id: id}) when is_binary(id), do: "pages/#{id}"
@@ -62,7 +62,7 @@ defmodule Bacon8Web.ContentEditing do
     do: push_event(socket, "block-media-error", %{blockId: block_id, error: "Save a draft first"})
 
   def media("block-media-upload", %{"blockId" => block_id, "mediaType" => media_type} = params, socket, context) do
-    case InlineMedia.store(context, params) do
+    case InlineMedia.store(context, params, user_id: user_id(socket)) do
       {:ok, %{url: url, filename: filename}} ->
         push_event(socket, "block-media-uploaded", %{
           blockId: block_id,
@@ -84,4 +84,107 @@ defmodule Bacon8Web.ContentEditing do
   end
 
   def media(_event, _params, socket, _context), do: socket
+
+  @doc """
+  The image library for the editor's picker (`library-list`): one page of pictures as plain maps
+  (`%{images: [%{url, filename}], more: boolean}`), filtered by the file name in `"query"`.
+  """
+  def library(params) do
+    offset = params |> Map.get("offset", 0) |> to_int()
+    %{images: images, more: more} = Library.list(query: Map.get(params, "query", ""), offset: offset)
+    %{images: Enum.map(images, &%{url: &1.url, filename: &1.filename}), more: more}
+  end
+
+  @doc """
+  `library-use`: puts the library picture `"url"` into block `"blockId"` (an image block, or a
+  gallery with `"mediaType" => "gallery"`). The picture is copied into this record's own uploads
+  (`Library.use_image/3`); the editor answers like an upload.
+  """
+  def library_use(%{"blockId" => block_id, "url" => url} = params, socket, context) when is_binary(context) do
+    case Library.use_image(context, url, user_id(socket)) do
+      {:ok, %{url: new_url, filename: filename}} ->
+        push_event(socket, "block-media-uploaded", %{
+          blockId: block_id,
+          url: new_url,
+          mediaType: if(params["mediaType"] == "gallery", do: "gallery", else: "image"),
+          filename: filename,
+          mediaId: nil
+        })
+
+      {:error, message} ->
+        push_event(socket, "block-media-error", %{blockId: block_id, error: message})
+    end
+  end
+
+  def library_use(%{"blockId" => block_id}, socket, _context),
+    do: push_event(socket, "block-media-error", %{blockId: block_id, error: "Save a draft first"})
+
+  def library_use(_params, socket, _context), do: socket
+
+  @doc "Pictures already shown, then `more` without the ones shown twice."
+  def merge_images(shown, more), do: shown ++ Enum.reject(more, fn image -> Enum.any?(shown, &(&1.url == image.url)) end)
+
+  @common_settings ~w(title slug excerpt meta_description scheduled_at show_share_buttons share_buttons_colored share_platforms)
+  @page_settings ~w(template_type category)
+  @post_settings ~w(tags)
+
+  @doc """
+  The attributes to save from the settings form of an in-place editor (`params` has string
+  keys, as the form sends them): only the fields the form has, tags as a list, no empty share
+  platforms, and a new draft's slug following its title (`Content.slug_for_save/3`).
+  Returns a map with atom keys.
+  """
+  def settings_attrs(kind, record, params) do
+    keys = @common_settings ++ if(kind == :page, do: @page_settings, else: @post_settings)
+
+    params
+    |> Map.take(keys)
+    |> normalise_settings()
+    |> then(&Bacon8.Content.slug_for_save(kind, record, &1))
+    |> Map.new(fn {key, value} -> {String.to_existing_atom(key), value} end)
+  end
+
+  defp normalise_settings(params) do
+    params
+    |> then(fn p -> if is_list(p["share_platforms"]), do: Map.put(p, "share_platforms", Enum.reject(p["share_platforms"], &(&1 in ["", nil]))), else: p end)
+    |> then(fn p ->
+      case p["tags"] do
+        tags when is_binary(tags) -> Map.put(p, "tags", tags |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == "")))
+        _ -> p
+      end
+    end)
+  end
+
+  @doc """
+  Stores the featured image picked in the settings form's file field (the upload `:featured_image`)
+  in the record's own uploads, and returns its URL, or nil when none was chosen or it was refused.
+  """
+  def consume_featured(socket, context, user_id) when is_binary(context) do
+    if Map.has_key?(socket.assigns[:uploads] || %{}, :featured_image) do
+      Phoenix.LiveView.consume_uploaded_entries(socket, :featured_image, fn %{path: path}, entry ->
+        with {:ok, bytes} <- File.read(path),
+             {:ok, %{url: url}} <-
+               InlineMedia.store(context, %{"data" => Base.encode64(bytes), "filename" => entry.client_name, "mimeType" => entry.client_type}, user_id: user_id) do
+          {:ok, url}
+        else
+          _ -> {:ok, nil}
+        end
+      end)
+      |> Enum.find(& &1)
+    end
+  end
+
+  def consume_featured(_socket, _context, _user_id), do: nil
+
+  defp to_int(n) when is_integer(n), do: n
+  defp to_int(s) when is_binary(s) do
+    case Integer.parse(s) do
+      {n, _} -> n
+      :error -> 0
+    end
+  end
+
+  defp to_int(_), do: 0
+
+  defp user_id(socket), do: socket.assigns[:current_user] && socket.assigns.current_user.id
 end

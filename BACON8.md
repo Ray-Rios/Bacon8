@@ -108,8 +108,9 @@ On 2026-10-25:
 2. **Pages and blog**: read `docs/pages-blog-builder.md`. The four editing surfaces now share one engine
    (`Bacon8Web.ContentEditing`, 2026-10-26; new pages/posts start as drafts; admin editors handle media and autosave).
    Done 2026-10-26 from the production-grade list: SEO, image alt text, RSS and comment moderation (see
-   `docs/pages-blog-builder.md`); the column-shrink bug is fixed. Next: one UI (admin list+form vs
-   edit-in-place), and the rest of the list (preview, image library; revisions and scheduled publishing done 2026-10-26). Plugins and games may post to the blog: `Content.post_from_plugin/3` exists, and
+   `docs/pages-blog-builder.md`); the column-shrink bug is fixed. Also done 2026-10-26: revisions,
+   scheduled publishing, preview links, the image library, and **one editing UI: pages and posts are edited in place
+   (`Bacon8Web.InPlaceEditing`); the admin screens only list/create/publish/schedule/delete** (see the docs). Plugins and games may post to the blog: `Content.post_from_plugin/3` exists, and
    no plugin calls it yet (RaysSpaceSim patch notes would). The editor's column squeeze is solved by the docked
    toolbar, so no column cap. The path-handling review is done (`69f6f43`).
 3. **Chat is finished** (2026-10-26): self-contained plugin, own tables and settings, dead code gone,

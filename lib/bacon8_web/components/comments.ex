@@ -104,7 +104,7 @@ defmodule Bacon8Web.Components.Comments do
         <textarea name="comment" rows="3" maxlength="2000" required class="w-full p-3 rounded bg-gray-900 text-white border border-gray-700"><%= @comment.content %></textarea>
         <div class="flex gap-2">
           <button type="submit" class="px-3 py-1 rounded bg-cyan-600 text-white hover:bg-cyan-500 text-sm">Save</button>
-          <button type="button" phx-click="cancel_edit" class="px-3 py-1 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 text-sm">Cancel</button>
+          <button type="button" phx-click="cancel_comment_edit" class="px-3 py-1 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 text-sm">Cancel</button>
         </div>
       </form>
 

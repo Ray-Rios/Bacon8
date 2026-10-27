@@ -88,6 +88,32 @@ defmodule Bacon8.Content do
   defp keep_revision(error, _old), do: error
 
   @doc """
+  Sets (or, with a blank `value`, clears) the time a draft page or post goes live by itself.
+  `value` is what a `datetime-local` field sends ("2026-10-27T09:30", UTC). Returns
+  `{:ok, record}`, or `{:error, :published}` (nothing to wait for), `{:error, :past}` (use Publish
+  for now), `{:error, :invalid}`.
+  """
+  def schedule(%{is_published: true}, _value), do: {:error, :published}
+
+  def schedule(record, value) do
+    update = if match?(%Page{}, record), do: &update_page/2, else: &update_post/2
+
+    case String.trim(to_string(value || "")) do
+      "" ->
+        update.(record, %{scheduled_at: nil})
+
+      text ->
+        case Ecto.Type.cast(:utc_datetime, text) do
+          {:ok, at} ->
+            if DateTime.compare(at, DateTime.utc_now()) == :gt, do: update.(record, %{scheduled_at: at}), else: {:error, :past}
+
+          :error ->
+            {:error, :invalid}
+        end
+    end
+  end
+
+  @doc """
   Publishes every page and post whose `scheduled_at` has passed (`Bacon8.Content.Publisher` calls
   this every minute). Returns how many were published.
   """

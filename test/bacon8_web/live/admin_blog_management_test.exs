@@ -13,10 +13,6 @@ defmodule Bacon8Web.AdminBlogManagementTest do
 
   @endpoint Bacon8Web.Endpoint
 
-  defp save(view, params, action) do
-    render_submit(view, "save", %{"post" => params, "action_type" => action})
-  end
-
   defp title, do: "Admin test post #{System.unique_integer([:positive])}"
 
   describe "who gets in" do
@@ -43,67 +39,27 @@ defmodule Bacon8Web.AdminBlogManagementTest do
     end
   end
 
-  describe "writing a post" do
-    setup do
+  describe "starting a post" do
+    test "New post makes an untitled draft by the admin and opens it on the post itself" do
       admin = person("admin")
-      {:ok, view, _} = live(signed_in(admin), "/admin/blog-management")
-      render_click(view, "new_post")
-      %{view: view, admin: admin}
-    end
+      {:ok, view, _html} = live(signed_in(admin), "/admin/blog-management")
 
-    test "a draft belongs to its author and stays unpublished", %{view: view, admin: admin} do
-      t = title()
-      html = save(view, %{"title" => t, "content" => "<p>words</p>"}, "draft")
+      assert {:error, {:live_redirect, %{to: to}}} = render_click(view, "new_post")
 
-      assert html =~ "Draft updated"
-      post = Repo.get_by!(Post, title: t) |> Repo.preload(:user)
+      [post] = Repo.all(from p in Post, where: p.title == "Untitled", preload: :user)
+      refute post.is_published
       assert post.user.id == admin.id
-      refute post.is_published
-      assert post.published_at == nil
+      assert to == "/blog/#{post.slug}?edit=1"
     end
 
-    test "publishing needs a title and a body, and says so", %{view: view} do
-      html = save(view, %{"title" => "", "content" => "<p>words</p>"}, "publish")
-      assert html =~ "Cannot publish: Post must have a title and content"
-
-      html = save(view, %{"title" => title(), "content" => "  "}, "publish")
-      assert html =~ "Cannot publish: Post must have a title and content"
-
-      assert Repo.aggregate(from(p in Post, where: p.is_published), :count) == 0
-    end
-
-    test "publishing stamps it", %{view: view} do
+    test "the post shows up in the list, with a link to edit it where it lives" do
       t = title()
-      html = save(view, %{"title" => t, "content" => "<p>words</p>"}, "publish")
+      {:ok, post} = Content.create_post(person("admin"), %{title: t, content: "<p>x</p>"})
+      {:ok, _view, html} = live(signed_in(person("gm")), "/admin/blog-management")
 
-      assert html =~ "published successfully"
-      post = Repo.get_by!(Post, title: t)
-      assert post.is_published
-      assert %DateTime{} = post.published_at
-    end
-
-    test "tags typed as a comma list become a list", %{view: view} do
-      t = title()
-      save(view, %{"title" => t, "content" => "<p>x</p>", "tags" => " elixir, , phoenix ,news "}, "draft")
-
-      assert Repo.get_by!(Post, title: t).tags == ["elixir", "phoenix", "news"]
-    end
-
-    test "a draft with no body saves (it can be finished later)", %{view: view} do
-      t = title()
-      save(view, %{"title" => t, "content" => ""}, "draft")
-
-      assert %Post{content: ""} = Repo.get_by!(Post, title: t)
-    end
-
-    test "autosave makes one draft, then keeps updating that one", %{view: view} do
-      t = title()
-      render_hook(view, "autosave_draft", %{"post" => %{"title" => t, "content" => "<p>one</p>"}})
-      render_hook(view, "autosave_draft", %{"post" => %{"title" => t, "content" => "<p>two</p>"}})
-
-      assert [post] = Repo.all(from p in Post, where: p.title == ^t)
-      assert post.content == "<p>two</p>"
-      refute post.is_published
+      assert html =~ t
+      assert html =~ ~s(href="/blog/#{post.slug}?edit=1")
+      refute html =~ ~s(id="blog-post-form")
     end
   end
 
@@ -114,23 +70,6 @@ defmodule Bacon8Web.AdminBlogManagementTest do
       {:ok, view, _} = live(signed_in(admin), "/admin/blog-management")
       on_exit(fn -> File.rm_rf(Path.join(Uploads.public_dir(), "blog/#{post.id}")) end)
       %{view: view, post: post}
-    end
-
-    test "editing keeps the address when the title changes", %{view: view, post: post} do
-      render_click(view, "edit_post", %{"id" => post.id})
-      save(view, %{"title" => "Renamed #{post.id}", "content" => "<p>new</p>", "slug" => post.slug}, "publish")
-
-      reloaded = Content.get_post!(post.id)
-      assert reloaded.title == "Renamed #{post.id}"
-      assert reloaded.slug == post.slug
-      assert reloaded.is_published
-    end
-
-    test "saving a published post as a draft takes it off the blog", %{view: view, post: post} do
-      render_click(view, "edit_post", %{"id" => post.id})
-      save(view, %{"title" => post.title, "content" => post.content, "slug" => post.slug}, "draft")
-
-      refute Content.get_post!(post.id).is_published
     end
 
     test "the publish switch flips it", %{view: view, post: post} do
@@ -160,6 +99,22 @@ defmodule Bacon8Web.AdminBlogManagementTest do
       assert html =~ "Post deleted successfully"
       assert Repo.get(Post, post.id) == nil
       refute File.exists?(folder)
+    end
+
+    test "a draft can be given a time to go live", %{view: view, post: post} do
+      {:ok, draft} = Content.update_post(post, %{is_published: false})
+
+      html = render_submit(view, "set_schedule", %{"record_id" => draft.id, "scheduled_at" => "2031-10-27T09:30"})
+
+      assert html =~ "Goes live"
+      assert Content.get_post!(post.id).scheduled_at == ~U[2031-10-27 09:30:00Z]
+      assert render_submit(view, "set_schedule", %{"record_id" => draft.id, "scheduled_at" => "2001-01-01T00:00"}) =~ "has passed"
+    end
+
+    test "an id that isn't a post is answered, not a crash", %{view: view} do
+      render_click(view, "delete_post", %{"id" => "nonsense"})
+      render_click(view, "toggle_publish", %{"id" => Ecto.UUID.generate()})
+      assert Process.alive?(view.pid)
     end
 
     test "events the page doesn't know are ignored", %{view: view} do

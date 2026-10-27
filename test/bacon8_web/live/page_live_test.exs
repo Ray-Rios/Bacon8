@@ -112,7 +112,11 @@ defmodule Bacon8Web.PageLiveTest do
       page = page!(%{slug: "stays-put-#{System.unique_integer([:positive])}"})
       {:ok, view, _} = live(signed_in(person("editor")), "/pages/#{page.slug}")
 
+      render_click(view, "toggle_edit")
       render_click(view, "update_title", %{"value" => "A Brand New Name"})
+      # (a published page keeps what is typed until Save: nothing is changed behind the editor's back)
+      assert Content.get_page!(page.id).title == page.title
+      render_click(view, "save_content")
 
       reloaded = Content.get_page!(page.id)
       assert reloaded.title == "A Brand New Name"
@@ -131,8 +135,32 @@ defmodule Bacon8Web.PageLiveTest do
       end
     end
 
-    test "autosave stores the content, but only while editing" do
+    test "a published page is only changed when Save is pressed, not by autosave" do
       page = page!()
+      {:ok, view, _} = live(signed_in(person("editor")), "/pages/#{page.slug}")
+      render_click(view, "toggle_edit")
+
+      render_click(view, "editor-change", %{"content" => "<p>Typed, not saved</p>"})
+      render_click(view, "editor-autosave", %{"content" => "<p>Typed, not saved</p>"})
+      assert Content.get_page!(page.id).content == page.content
+      assert render(view) =~ "Not saved yet"
+
+      render_click(view, "save_content")
+      assert Content.get_page!(page.id).content == "<p>Typed, not saved</p>"
+    end
+
+    test "cancel throws away what was typed on a published page" do
+      page = page!()
+      {:ok, view, _} = live(signed_in(person("editor")), "/pages/#{page.slug}")
+      render_click(view, "toggle_edit")
+      render_click(view, "editor-autosave", %{"content" => "<p>Never mind</p>"})
+
+      assert render_click(view, "cancel_edit") =~ "discarded"
+      assert Content.get_page!(page.id).content == page.content
+    end
+
+    test "a draft's autosave stores the content, but only while editing" do
+      page = page!(%{is_published: false})
       {:ok, view, _} = live(signed_in(person("editor")), "/pages/#{page.slug}")
 
       render_click(view, "editor-autosave", %{"content" => "<p>Too early</p>"})
@@ -159,7 +187,7 @@ defmodule Bacon8Web.PageLiveTest do
       {:ok, view, _} = live(signed_in(person("gm")), "/pages/#{page.slug}")
 
       render_click(view, "toggle_edit")
-      assert render_click(view, "save_content") =~ "saved"
+      assert render_click(view, "save_content") =~ "Saved"
       refute assigns(view).editing
 
       render_click(view, "toggle_edit")

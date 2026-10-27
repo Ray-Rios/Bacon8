@@ -16,10 +16,28 @@ defmodule Bacon8Web.Components.ContentExtras do
       <label for="scheduled-at" class="block text-sm text-gray-300">Publish automatically at (UTC)</label>
       <input id="scheduled-at" type="datetime-local" name={@name} value={local_value(@value)} class="px-3 py-2 rounded bg-gray-700 text-white border border-gray-600" />
       <p class="text-xs text-gray-400">
-        Leave empty to publish by hand. Use <strong>Save</strong> (not Publish) to keep it a draft until then;
-        pressing Publish publishes at once and clears the time.
+        Leave empty to publish by hand. <strong>Save settings</strong> keeps it a draft until then;
+        <strong>Publish now</strong> publishes at once and clears the time.
       </p>
     </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :value, :any, default: nil
+
+  @doc "A small form for a list row: sets or clears when a draft goes live (event `set_schedule`)."
+  def schedule_row(assigns) do
+    ~H"""
+    <details class="mt-2">
+      <summary class="cursor-pointer text-xs text-gray-400 hover:text-gray-200">Schedule</summary>
+      <form phx-submit="set_schedule" class="flex flex-wrap items-center gap-2 mt-2">
+        <input type="hidden" name="record_id" value={@id} />
+        <input type="datetime-local" name="scheduled_at" value={local_value(@value)} class="px-2 py-1 rounded bg-gray-700 text-white border border-gray-600 text-sm" />
+        <button type="submit" class="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm">Set time (UTC)</button>
+        <span class="text-xs text-gray-500">Empty clears it.</span>
+      </form>
+    </details>
     """
   end
 

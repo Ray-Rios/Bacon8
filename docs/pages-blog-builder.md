@@ -66,8 +66,10 @@ The editors and public pages:
 | `test/bacon8_web/plugs/uploads_guard_test.exs` | 3 | what `/uploads` serves inline and what it sandboxes (2026-10-25 review) |
 | `test/bacon8_web/live/page_live_test.exs` | 20 | who sees a page; the edit button; editing in place; media events |
 | `test/bacon8_web/live/blog_live_test.exs` | 16 | the list, a post, drafts, editing in place, media events |
-| `test/bacon8_web/live/admin_pages_test.exs` | 13 | access; making, changing, publishing, deleting a page |
-| `test/bacon8_web/live/admin_blog_management_test.exs` | 15 | access; writing, publishing, tags, autosave, deleting a post |
+| `test/bacon8_web/live/admin_pages_test.exs` | access; starting, listing, publishing, scheduling, deleting a page |
+| `test/bacon8_web/live/admin_blog_management_test.exs` | access; starting, listing, publishing, scheduling, deleting a post |
+| `test/bacon8_web/live/in_place_editing_test.exs` | settings, publishing, schedule, versions, deleting, featured image, the library in the editor |
+| `test/bacon8/content/library_test.exs` | the image library |
 
 ## Still not covered or not looked at
 
@@ -135,8 +137,38 @@ To give an upload somewhere to live, **a new page or post is created as a saved 
 screens saves only unpublished records, so a live page changes when its editor presses Save or Publish.
 Tests: `test/bacon8_web/live/content_editing_test.exs`.
 
-**Still separate:** the admin screens' list-plus-form UI versus the public pages' edit-in-place (two UIs, one
-engine now); the blog's featured image, media picker and tags; the production-grade list below.
+**One editing UI (2026-10-26, the owner's choice: edit in place everywhere).** Pages and posts are edited
+where they are shown: `/pages/:slug` and `/blog/:slug`, opened with "Edit Page"/"Edit Post" or `?edit=1`. The
+admin screens (`/admin/pages`, `/admin/blog-management`) only **list, start, publish/unpublish, schedule and
+delete**: their forms are gone; "New page/post" makes a draft and opens it in place; "Edit" is a link to the same.
+`Bacon8Web.InPlaceEditing` holds every editing event for both LiveViews (each has one clause handing the
+`InPlaceEditing.events()` to it); `Components.ContentSettings` draws the toolbar and the settings panel (title,
+address, summary, search description, template/category or tags, featured image, share buttons, schedule,
+Publish now/Unpublish, earlier versions, Delete).
+
+What is saved when: a **draft** autosaves as you type. A **published** page or post is never changed behind the
+editor's back: typing is kept in the session ("Not saved yet. The live page changes when you press Save"), and
+Save & Exit, Save settings or Publish writes it; Cancel throws it away. (Before, the in-place editors autosaved
+straight onto the live page and the toolbar's Cancel said "Changes discarded" while discarding nothing.) A just-
+started draft nobody wrote in is deleted on Cancel. Changing the address reopens the page at the new one.
+
+Retired with the admin forms: the media-picker window and the featured-image upload field of the admin form (the
+settings panel has a file field and the image library instead). `MediaPickerComponent` is no longer used by blog
+management.
+
+## The image library (2026-10-26)
+
+`Bacon8.Content.Library` (+ `content_images`): every picture added to a page or post by `InlineMedia.store/3` is
+recorded (url, name, sha256, size, who). The block editor's empty image block has "Choose from the image library";
+the gallery has "From the library" (several pictures per visit); the settings panel's featured image has the same
+picker. `block_editor_library.ts` draws the window (search by file name, 40 at a time, "Show more") and asks the
+server with `library-list` (a LiveView reply); `library-use` **copies** the chosen picture into this page's own
+folder (`Library.use_image/3`), so deleting the first page, which deletes its folder, never breaks the second.
+The same picture (same sha256) is listed once. `Library.sync_from_disk/0` runs whenever the library is opened: it
+adds pictures that predate the table (scanning `uploads/public/pages|blog/*`, skipping `thumb_*`/`transcoded_*`)
+and forgets rows whose file is gone. Only staff can list or use it. Not done: deleting from the library, alt text
+stored with a picture, the Drive's files (`user_media`) or other contexts (avatars, chat), a picture picker
+for the text block's inline images.
 
 ## Production-grade items the owner picked (2026-10-26)
 

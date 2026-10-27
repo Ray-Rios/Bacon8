@@ -12,10 +12,6 @@ defmodule Bacon8Web.AdminPagesTest do
 
   @endpoint Bacon8Web.Endpoint
 
-  defp save(view, params, action) do
-    render_submit(view, "save", %{"page" => params, "action_type" => action})
-  end
-
   defp title, do: "Admin test page #{System.unique_integer([:positive])}"
 
   describe "who gets in" do
@@ -43,55 +39,26 @@ defmodule Bacon8Web.AdminPagesTest do
     end
   end
 
-  describe "making a page" do
-    setup do
+  describe "starting a page" do
+    test "New page makes an untitled draft and opens it on the page itself" do
       {:ok, view, _html} = live(signed_in(person("admin")), "/admin/pages")
-      render_click(view, "new_page")
-      %{view: view}
-    end
 
-    test "saving as a draft keeps it unpublished", %{view: view} do
-      t = title()
-      html = save(view, %{"title" => t, "content" => "<p>words</p>"}, "draft")
+      assert {:error, {:live_redirect, %{to: to}}} = render_click(view, "new_page")
 
-      assert html =~ "updated"
-      page = Repo.get_by!(Page, title: t)
+      [page] = Repo.all(from p in Page, where: p.title == "Untitled")
       refute page.is_published
-      assert page.published_at == nil
-      assert page.slug == t |> String.downcase() |> String.replace(~r/[^a-z0-9\s]/, "") |> String.replace(~r/\s+/, "-")
+      assert to == "/pages/#{page.slug}?edit=1"
     end
 
-    test "publishing sets it live, stamped", %{view: view} do
+    test "the page shows up in the list, with a link to edit it where it lives" do
       t = title()
-      save(view, %{"title" => t, "content" => "<p>words</p>"}, "publish")
+      {:ok, page} = Content.create_page(%{title: t, slug: "listed-#{System.unique_integer([:positive])}", content: "<p>x</p>"})
+      {:ok, _view, html} = live(signed_in(person("editor")), "/admin/pages")
 
-      page = Repo.get_by!(Page, title: t)
-      assert page.is_published
-      assert %DateTime{} = page.published_at
-    end
-
-    test "a page can't be published without a body", %{view: view} do
-      t = title()
-      html = save(view, %{"title" => t, "content" => ""}, "publish")
-
-      assert html =~ "Failed to update page"
-      assert Repo.get_by(Page, title: t) == nil
-    end
-
-    test "two pages can't share an address", %{view: view} do
-      slug = "taken-#{System.unique_integer([:positive])}"
-      {:ok, _} = Content.create_page(%{title: "First", slug: slug, content: "x"})
-
-      html = save(view, %{"title" => title(), "slug" => slug, "content" => "<p>x</p>"}, "draft")
-
-      assert html =~ "Failed to update page"
-      assert Repo.aggregate(from(p in Page, where: p.slug == ^slug), :count) == 1
-    end
-
-    test "the page shows up in the list", %{view: view} do
-      t = title()
-      html = save(view, %{"title" => t, "content" => "<p>x</p>"}, "draft")
       assert html =~ t
+      assert html =~ ~s(href="/pages/#{page.slug}?edit=1")
+      # (there is no editing form here any more)
+      refute html =~ ~s(id="page-form")
     end
   end
 
@@ -101,26 +68,6 @@ defmodule Bacon8Web.AdminPagesTest do
       {:ok, view, _} = live(signed_in(person("admin")), "/admin/pages")
       on_exit(fn -> File.rm_rf(Path.join(Uploads.public_dir(), "pages/#{page.id}")) end)
       %{view: view, page: page}
-    end
-
-    test "editing keeps the address when the title changes", %{view: view, page: page} do
-      render_click(view, "edit_page", %{"id" => page.id})
-      save(view, %{"title" => "Renamed #{page.id}", "content" => "<p>new</p>", "slug" => page.slug}, "publish")
-
-      reloaded = Content.get_page!(page.id)
-      assert reloaded.title == "Renamed #{page.id}"
-      assert reloaded.content == "<p>new</p>"
-      assert reloaded.slug == page.slug
-      assert reloaded.is_published
-    end
-
-    test "saving a published page as a draft unpublishes it", %{view: view, page: page} do
-      render_click(view, "edit_page", %{"id" => page.id})
-      save(view, %{"title" => page.title, "content" => page.content, "slug" => page.slug}, "draft")
-
-      reloaded = Content.get_page!(page.id)
-      refute reloaded.is_published
-      assert reloaded.published_at == nil
     end
 
     test "the publish switch flips it", %{view: view, page: page} do
@@ -144,12 +91,42 @@ defmodule Bacon8Web.AdminPagesTest do
       refute File.exists?(folder)
     end
 
-    test "cancelling closes the form without saving", %{view: view, page: page} do
-      render_click(view, "edit_page", %{"id" => page.id})
-      render_click(view, "cancel_form")
+    test "a page without a body can't be switched on", %{view: view, page: page} do
+      {:ok, bare} = Content.update_page(page, %{is_published: false, content: ""})
+      html = render_click(view, "toggle_publish", %{"id" => bare.id})
 
-      refute assigns(view).show_form
-      assert Content.get_page!(page.id).title == page.title
+      assert html =~ "Failed to update publish status"
+      refute Content.get_page!(page.id).is_published
+    end
+
+    test "a draft can be given a time to go live, and the list says so", %{view: view, page: page} do
+      {:ok, draft} = Content.update_page(page, %{is_published: false})
+
+      html = render_submit(view, "set_schedule", %{"record_id" => draft.id, "scheduled_at" => "2031-10-27T09:30"})
+
+      assert html =~ "Goes live"
+      assert Content.get_page!(page.id).scheduled_at == ~U[2031-10-27 09:30:00Z]
+
+      render_submit(view, "set_schedule", %{"record_id" => draft.id, "scheduled_at" => ""})
+      assert Content.get_page!(page.id).scheduled_at == nil
+    end
+
+    test "a time that has passed, a garbage time and a published page are refused", %{view: view, page: page} do
+      {:ok, draft} = Content.update_page(page, %{is_published: false})
+
+      assert render_submit(view, "set_schedule", %{"record_id" => draft.id, "scheduled_at" => "2001-01-01T00:00"}) =~ "has passed"
+      assert render_submit(view, "set_schedule", %{"record_id" => draft.id, "scheduled_at" => "banana"}) =~ "isn't a time"
+      assert Content.get_page!(page.id).scheduled_at == nil
+
+      {:ok, live_page} = Content.update_page(draft, %{is_published: true})
+      assert render_submit(view, "set_schedule", %{"record_id" => live_page.id, "scheduled_at" => "2031-10-27T09:30"}) =~ "published already"
+    end
+
+    test "an id that isn't a page is answered, not a crash", %{view: view} do
+      render_click(view, "delete_page", %{"id" => "nonsense"})
+      render_click(view, "toggle_publish", %{"id" => Ecto.UUID.generate()})
+      render_submit(view, "set_schedule", %{"record_id" => "nonsense", "scheduled_at" => ""})
+      assert Process.alive?(view.pid)
     end
   end
 end

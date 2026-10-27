@@ -27,11 +27,13 @@ defmodule Bacon8.Content.InlineMedia do
   @max_encoded div(@max_bytes + 2, 3) * 4
 
   @doc """
-  Stores an upload from the block editor's event (`"data"` is base64, `"filename"` and
+  Stores an upload from the block editor's event (`opts[:user_id]`: who added it, for the image library) (`"data"` is base64, `"filename"` and
   `"mimeType"` are the browser's). Returns `{:ok, %{url: url, filename: name}}`, where `name`
   is the cleaned file name, or `{:error, message}` fit to show the editor.
   """
-  def store(context, %{"data" => data} = params) when is_binary(data) do
+  def store(context, params, opts \\ [])
+
+  def store(context, %{"data" => data} = params, opts) when is_binary(data) do
     with {:ok, bytes} <- decode(data),
          {:ok, name} <- clean_name(params["filename"]),
          :ok <- allowed_type(name) do
@@ -46,6 +48,7 @@ defmodule Bacon8.Content.InlineMedia do
 
         with :ok <- File.write(temp, bytes),
              {:ok, url} <- Uploads.upload_file(nil, temp, entry, context: context, public: true) do
+          Bacon8.Content.Library.record(url, context, name, bytes, mime(params["mimeType"]), opts[:user_id])
           {:ok, %{url: url, filename: name}}
         else
           {:error, reason} -> {:error, "Upload failed: #{inspect(reason)}"}
@@ -56,7 +59,7 @@ defmodule Bacon8.Content.InlineMedia do
     end
   end
 
-  def store(_context, _params), do: {:error, "Invalid file data"}
+  def store(_context, _params, _opts), do: {:error, "Invalid file data"}
 
   @doc """
   Deletes the file at `url` if it is one of this context's own uploads

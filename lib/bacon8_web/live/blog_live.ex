@@ -3,11 +3,13 @@ defmodule Bacon8Web.BlogLive do
   alias Bacon8.Content
   import Bacon8Web.Components.PageContainer
   alias Bacon8Web.Components.BlockEditor
+  alias Bacon8Web.Components.ContentSettings
+  alias Bacon8Web.InPlaceEditing
   alias Bacon8Web.Components.SocialShare
 
   # Note: on_mount :default is handled by router's live_session
 
-  @allowed_roles ["admin", "gm", "editor"]
+  @editing_events InPlaceEditing.events()
 
   def mount(_params, _session, socket) do
     posts = Content.list_published_posts()
@@ -22,19 +24,26 @@ defmodule Bacon8Web.BlogLive do
        view: :post_list,
        editing: false,
        saving: false,
-       last_saved: nil
+       last_saved: nil,
+       pending_content: nil,
+       pending_title: nil,
+       form: nil,
+       revisions: [],
+       featured_library: nil
      )}
   end
 
-  def handle_params(%{"slug" => slug}, _uri, socket) do
+  def handle_params(%{"slug" => slug} = params, _uri, socket) do
+    edit? = params["edit"] == "1"
+
     # A draft is for staff only (it used to be readable by anyone who knew its slug), and a
     # slug nobody has is "not found", not a crash.
     case Content.get_post_by_slug(slug) do
       %{is_published: true} = post ->
-        {:noreply, show_post(socket, post)}
+        {:noreply, show_post(socket, post, edit?)}
 
       %{} = post ->
-        if can_edit?(socket.assigns), do: {:noreply, show_post(socket, post)}, else: post_not_found(socket)
+        if can_edit?(socket.assigns), do: {:noreply, show_post(socket, post, edit?)}, else: post_not_found(socket)
 
       nil ->
         post_not_found(socket)
@@ -51,7 +60,7 @@ defmodule Bacon8Web.BlogLive do
      )}
   end
 
-  defp show_post(socket, post) do
+  defp show_post(socket, post, edit?) do
     socket
     |> assign(Bacon8Web.Seo.for_post(post))
     |> assign(
@@ -61,12 +70,9 @@ defmodule Bacon8Web.BlogLive do
       comment_edit: nil,
       post: post,
       page_title: post.title,
-      view: :post_detail,
-      editing: false,
-      saving: false,
-      last_saved: nil,
-      pending_content: nil
+      view: :post_detail
     )
+    |> InPlaceEditing.init(:post, post, edit?)
   end
 
   # A post's date: when it was published, or (a draft, or one published before dates were
@@ -77,93 +83,11 @@ defmodule Bacon8Web.BlogLive do
     {:noreply, socket |> put_flash(:error, "Post not found") |> push_navigate(to: "/blog")}
   end
 
-  # Check if user can edit content
-  defp can_edit?(%{current_user: nil}), do: false
-  defp can_edit?(%{current_user: user}) do
-    user.role in @allowed_roles or Map.get(user, :is_admin, false)
-  end
-  defp can_edit?(_), do: false
+  defp can_edit?(assigns), do: InPlaceEditing.can_edit?(assigns)
 
-  # Toggle edit mode
-  def handle_event("toggle_edit", _params, socket) do
-    if can_edit?(socket.assigns) do
-      {:noreply, assign(socket, editing: !socket.assigns.editing)}
-    else
-      {:noreply, put_flash(socket, :error, "You don't have permission to edit.")}
-    end
-  end
-
-  # Handle inline title edit
-  def handle_event("update_title", %{"value" => title}, socket) do
-    if can_edit?(socket.assigns) do
-      post = socket.assigns.post
-      case Content.update_post(post, %{title: title}) do
-        {:ok, updated_post} ->
-          {:noreply, assign(socket, post: updated_post, last_saved: DateTime.utc_now())}
-        {:error, _} ->
-          {:noreply, socket}
-      end
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Handle block editor content changes (real-time save)
-  def handle_event("editor-change", params, socket) do
-    if can_edit?(socket.assigns) and socket.assigns.editing do
-      # Store the content (prefer JSON block format, fallback to HTML)
-      content = Bacon8Web.ContentEditing.content(params)
-      {:noreply, assign(socket, pending_content: content)}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Handle auto-save from editor
-  def handle_event("editor-autosave", params, socket) do
-    if can_edit?(socket.assigns) and socket.assigns.editing do
-      socket = assign(socket, saving: true)
-      post = socket.assigns.post
-      # Prefer JSON block format, fallback to HTML
-      content = Bacon8Web.ContentEditing.content(params)
-      
-      case Content.update_post(post, %{content: content}) do
-        {:ok, updated_post} ->
-          {:noreply, 
-           socket
-           |> assign(post: updated_post, saving: false, last_saved: DateTime.utc_now())
-           |> push_event("content-saved", %{})}
-        {:error, _} ->
-          {:noreply, assign(socket, saving: false)}
-      end
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Manual save
-  def handle_event("save_content", _params, socket) do
-    if can_edit?(socket.assigns) and socket.assigns.editing do
-      # The autosave has already saved the content, just exit editing mode
-      {:noreply, 
-       socket
-       |> assign(editing: false, pending_content: nil)
-       |> put_flash(:info, "Content saved!")}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Cancel editing
-  def handle_event("cancel_edit", _params, socket) do
-    # Reload the post to discard any unsaved changes
-    post = Content.get_post!(socket.assigns.post.id)
-    {:noreply, 
-     socket
-     |> assign(editing: false, post: post, pending_content: nil)
-     |> push_event("update-editor-content", %{content: post.content})
-     |> put_flash(:info, "Changes discarded")}
-  end
+  # Everything about editing (settings, saving, publishing, pictures, versions) is in one place
+  def handle_event(event, params, socket) when event in @editing_events,
+    do: InPlaceEditing.handle(event, params, socket, :post)
 
   def handle_event("next_slide", _params, socket) do
     recent_posts = socket.assigns.recent_posts
@@ -207,7 +131,7 @@ defmodule Bacon8Web.BlogLive do
   def handle_event("reply_to", %{"id" => id}, socket), do: {:noreply, assign(socket, comment_reply: id, comment_edit: nil)}
   def handle_event("cancel_reply", _params, socket), do: {:noreply, assign(socket, comment_reply: nil)}
   def handle_event("edit_comment", %{"id" => id}, socket), do: {:noreply, assign(socket, comment_edit: id, comment_reply: nil)}
-  def handle_event("cancel_edit", _params, socket), do: {:noreply, assign(socket, comment_edit: nil)}
+  def handle_event("cancel_comment_edit", _params, socket), do: {:noreply, assign(socket, comment_edit: nil)}
 
   def handle_event("save_comment", %{"comment_id" => id, "comment" => text}, %{assigns: %{view: :post_detail}} = socket) do
     notice =
@@ -229,16 +153,6 @@ defmodule Bacon8Web.BlogLive do
   # Desktop UI sometimes pushes update_window_position globally; ignore in BlogLive
   def handle_event("update_window_position", _params, socket) do
     {:noreply, socket}
-  end
-
-  # Media events from the block editor (one implementation for every editing screen)
-  def handle_event(event, params, socket) when event in ["block-media-upload", "block-media-remove", "block-image-upload"] do
-    if can_edit?(socket.assigns) do
-      context = Bacon8Web.ContentEditing.context(:post, socket.assigns.post)
-      {:noreply, Bacon8Web.ContentEditing.media(event, params, socket, context)}
-    else
-      {:noreply, socket}
-    end
   end
 
   defp reload_comments(socket), do: assign(socket, comments: Content.list_comments_for(socket.assigns.post.id, socket.assigns[:current_user]))
@@ -433,7 +347,7 @@ defmodule Bacon8Web.BlogLive do
               <%= if @editing do %>
                 <input
                   type="text"
-                  value={@post.title}
+                  value={@pending_title || @post.title}
                   phx-blur="update_title"
                   phx-keyup="update_title"
                   phx-key="Enter"
@@ -443,49 +357,11 @@ defmodule Bacon8Web.BlogLive do
               <% else %>
                 <h1 class="text-4xl font-bold text-white"><%= @post.title %></h1>
               <% end %>
-              
-              <!-- Edit/Save/Cancel Buttons for Authorized Users -->
-              <%= if can_edit?(assigns) do %>
-                <%= if @editing do %>
-                  <div class="flex items-center gap-2 ml-4">
-                    <!-- Save Status Indicator -->
-                    <span :if={@saving} class="text-yellow-400 text-sm animate-pulse">Saving...</span>
-                    <span :if={@last_saved && !@saving} class="text-green-400 text-sm">
-                      Saved <%= Calendar.strftime(@last_saved, "%H:%M:%S") %>
-                    </span>
-                    
-                    <button
-                      type="button"
-                      phx-click="save_content"
-                      class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                      </svg>
-                      Save & Exit
-                    </button>
-                    <button
-                      type="button"
-                      phx-click="cancel_edit"
-                      class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                <% else %>
-                  <button
-                    type="button"
-                    phx-click="toggle_edit"
-                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                    </svg>
-                    Edit Post
-                  </button>
-                <% end %>
-              <% end %>
+
+              <ContentSettings.toolbar :if={can_edit?(assigns)} kind={:post} record={@post} editing={@editing} saving={@saving} last_saved={@last_saved} dirty={InPlaceEditing.dirty?(assigns)} />
             </div>
+
+            <ContentSettings.settings :if={@editing && @form} kind={:post} record={@post} form={@form} revisions={@revisions} uploads={@uploads} featured_library={@featured_library} />
 
             <div class="flex items-center text-gray-400 text-sm mb-8">
               <%= if @post.user.avatar_url do %>

@@ -11,6 +11,7 @@
  */
 
 import { shrinkColumns } from './block_editor_columns';
+import { openLibrary } from './block_editor_library';
 
 // Block types supported by the editor
 type BlockType = 
@@ -412,6 +413,7 @@ const BlockEditorHook = {
                   </svg>
                   Click to upload or drag an image
                 </button>
+                <button type="button" class="image-library-btn" data-action="library-image" data-block-id="${block.id}">Choose from the image library</button>
                 <input type="text" placeholder="Or paste image URL..." class="image-url-input" data-block-id="${block.id}">
               </div>
             `}
@@ -582,6 +584,7 @@ const BlockEditorHook = {
                 </svg>
                 Add Images
               </button>
+              <button type="button" class="gallery-add-btn" data-action="library-gallery" data-block-id="${block.id}">From the library</button>
               <input type="file" accept="image/*" multiple class="gallery-file-input" data-block-id="${block.id}" style="display:none">
             </div>
             ${mediaItems.length > 0 ? `
@@ -1068,6 +1071,10 @@ const BlockEditorHook = {
           const imgBlockId = actionBtn.dataset.blockId;
           const imgFileInput = this.el.querySelector(`.image-file-input[data-block-id="${imgBlockId}"]`);
           if (imgFileInput) imgFileInput.click();
+          break;
+        case 'library-image':
+        case 'library-gallery':
+          this.chooseFromLibrary(actionBtn.dataset.blockId!, action === 'library-gallery');
           break;
         case 'embed-video':
           const vidBlockId = actionBtn.dataset.blockId;
@@ -2356,6 +2363,27 @@ const BlockEditorHook = {
       fileSize: this.formatFileSize(file.size)
     });
     this.uploadFileToServer(file, blockId, 'file');
+  },
+
+  // The image library: pictures already added to other pages and posts. The server copies the
+  // chosen one into this page's own folder and answers like an upload (block-media-uploaded).
+  chooseFromLibrary(this: any, blockId: string, gallery: boolean) {
+    openLibrary({
+      title: gallery ? 'Add pictures from the library' : 'Choose a picture',
+      multiple: gallery,
+      fetch: (query, offset) =>
+        new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('timeout')), 15000);
+          this.pushEvent('library-list', { query, offset }, (reply: any) => {
+            clearTimeout(timer);
+            resolve(reply);
+          });
+        }),
+      onPick: (image) => {
+        if (!gallery) this.updateBlockSettings(blockId, { loading: true });
+        this.pushEvent('library-use', { blockId, url: image.url, mediaType: gallery ? 'gallery' : 'image' });
+      }
+    });
   },
 
   uploadFileToServer(this: any, file: File, blockId: string, mediaType: string) {

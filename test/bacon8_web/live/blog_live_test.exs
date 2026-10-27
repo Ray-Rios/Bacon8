@@ -116,7 +116,10 @@ defmodule Bacon8Web.BlogLiveTest do
       post = post!(author, %{slug: "stays-put-#{System.unique_integer([:positive])}"})
       {:ok, view, _} = live(signed_in(person("editor")), "/blog/#{post.slug}")
 
+      render_click(view, "toggle_edit")
       render_click(view, "update_title", %{"value" => "A Brand New Title"})
+      assert Content.get_post!(post.id).title == post.title
+      render_click(view, "save_content")
 
       reloaded = Content.get_post!(post.id)
       assert reloaded.title == "A Brand New Title"
@@ -139,8 +142,20 @@ defmodule Bacon8Web.BlogLiveTest do
       end
     end
 
-    test "autosave stores the content, but only while editing", %{author: author} do
+    test "a published post is only changed when Save is pressed, not by autosave", %{author: author} do
       post = post!(author)
+      {:ok, view, _} = live(signed_in(person("gm")), "/blog/#{post.slug}")
+      render_click(view, "toggle_edit")
+
+      render_click(view, "editor-autosave", %{"content" => "<p>Typed, not saved</p>"})
+      assert Content.get_post!(post.id).content == post.content
+
+      render_click(view, "save_content")
+      assert Content.get_post!(post.id).content == "<p>Typed, not saved</p>"
+    end
+
+    test "a draft's autosave stores the content, but only while editing", %{author: author} do
+      post = post!(author, %{is_published: false})
       {:ok, view, _} = live(signed_in(person("gm")), "/blog/#{post.slug}")
 
       render_click(view, "editor-autosave", %{"content" => "<p>Too early</p>"})
@@ -158,7 +173,7 @@ defmodule Bacon8Web.BlogLiveTest do
       {:ok, view, _} = live(signed_in(person("editor")), "/blog/#{post.slug}")
 
       render_click(view, "toggle_edit")
-      assert render_click(view, "save_content") =~ "saved"
+      assert render_click(view, "save_content") =~ "Saved"
       refute assigns(view).editing
 
       render_click(view, "toggle_edit")
