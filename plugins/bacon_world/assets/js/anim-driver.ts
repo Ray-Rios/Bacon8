@@ -46,6 +46,8 @@ export interface MotionInput {
   grounded: boolean;
   crouch?: boolean;
   sprint?: boolean;
+  /** In deep water: the swim clips, whole body (2026-10-26). */
+  swim?: boolean;
 }
 
 export interface AttackInfo {
@@ -74,6 +76,8 @@ export const LOCO = {
   crouchIdle: 'Crouch_Idle_Loop',
   crouchWalk: 'Crouch_Fwd_Loop',
   jumpAir: 'Jump_Loop',
+  swim: 'Swim_Fwd_Loop',
+  swimIdle: 'Swim_Idle_Loop',
   jumpLand: 'Jump_Land',
   death: 'Death01',
   hit: 'Hit_Chest',
@@ -81,6 +85,7 @@ export const LOCO = {
 
 // The speed (m/s) each locomotion clip was authored at, so playback matches the feet.
 const NOMINAL: Record<string, number> = {
+  Swim_Fwd_Loop: 2.2,
   Walk_Loop: 1.45, Walk_Bwd_Loop: 1.3, Jog_Fwd_Loop: 3.9, Jog_Bwd_Loop: 3.3, Sprint_Loop: 6.2,
   Strafe_L_Walk_Loop: 1.4, Strafe_R_Walk_Loop: 1.4, Strafe_L_Jog_Loop: 3.6, Strafe_R_Jog_Loop: 3.6,
   Crouch_Fwd_Loop: 1.3,
@@ -350,6 +355,7 @@ export class CharacterAnimator {
    * postAnimate); the clips' own fingers (fists, grips) show otherwise.
    */
   freeHands(): { l: boolean; r: boolean } {
+    if (this.motion.swim && !this.riding) return { l: false, r: false };
     let l = !this.off && this.main?.hands !== 2;
     let r = !this.main;
     for (const o of this.overrides) {
@@ -366,6 +372,8 @@ export class CharacterAnimator {
    * arms on a two-handed weapon, or 'swing' while that arm swings (no correction then).
    */
   armSets(): { l: string; r: string; two: boolean; set?: string } {
+    // swimming: both arms stroke (no weapon poses, no two-handed guard)
+    if (this.motion.swim && !this.riding) return { l: 'swim', r: 'swim', two: false };
     const two = this.main?.hands === 2;
     let l = two ? 'two_hand' : this.off ? this.off.set : 'free';
     let r = two ? 'two_hand' : this.main ? this.main.set : 'free';
@@ -545,6 +553,10 @@ export class CharacterAnimator {
     }
 
     if (this.riding && this.resolve(RIDE_CLIP)) for (const ch of CHANNELS) base[ch] = { clip: RIDE_CLIP, mirror: false };
+    if (m.swim && !this.riding) {
+      const clip = m.speed >= IDLE_BELOW ? LOCO.swim : LOCO.swimIdle;
+      if (this.resolve(clip)) for (const ch of CHANNELS) base[ch] = { clip, mirror: false };
+    }
 
     // Overrides win on their channels (latest first).
     const want = { ...base } as Record<Channel, { clip: string; mirror: boolean; o?: Override }>;

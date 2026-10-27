@@ -32,7 +32,7 @@ renamed its tables, its game row and its `plugin_states` row.
 | `lib/bacon_world/melee.ex` | Swing numbers: reach and arc, hit chance, damage, delay |
 | `lib/bacon_world/mobs.ex`, `mobs/` | Creatures: spawns and kinds, the rules (`Brain`, pure), the zone process, its keeper |
 | `lib/bacon_world_web/game_events.ex` | PlayLive's fighting, looting and inventory events |
-| `lib/bacon_world/mounts.ex` | Mounts: the dragon drakes, who owns which (entitlement kind `bacon_world_mount`; admins ride all), their store items (`ensure_store_products/0`) |
+| `lib/bacon_world/mounts.ex` | Mounts: the dragon drakes and the Abyssal Kraken (it swims), who owns which (entitlement kind `bacon_world_mount`; admins ride all), their store items (`ensure_store_products/0`), and each mount's two moves (`attacks`, resolved by `"mount_attack"` in `GameEvents`) |
 | `lib/bacon_world_web/mount_events.ex` | PlayLive's mount events (`mounts_fetch`, `mount_summon`, `mount_dismount`, `stable_open`, `stable_choose`), the presence's `mount`, `zone_mount` |
 | `lib/bacon_world/abilities.ex` | Every spell, skill and buff the tree can hold: costs, cast times, cooldowns, ranges, amounts |
 | `lib/bacon_world/skill_tree.ex`, `skill_tree_record.ex` | The tree (nodes, edges, start): the shipped default, the saved one (`bacon_world_skill_trees`), validation, reachability |
@@ -63,7 +63,8 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/game-world.ts`, `game-ui.ts` | Fighting, looting, the inventory; the EverQuest-style windows and hotbar |
 | `assets/js/mobs-view.ts` | Creatures on the client: models, weapons, smoothing, corpses; dragons (Baconator: moves, breath, roar) |
 | `assets/js/dragon-view.ts` | The B8 dragon: loading, a rig that picks its own locomotion (ground or air), one-shots, fire breath, the mounts' hue shift |
-| `assets/js/mounts.ts` | Mounts on the client: the dragon under its rider, the rider seated on the saddle bone |
+| `assets/js/kraken-view.ts` | The B8 Kraken (2026-10-27): a rig animated in code (writhing arms, swimming, one-shots for its moves, eyes that follow their target, pulsing photophores), the ink cloud and the maelstrom |
+| `assets/js/mounts.ts` | Mounts on the client: the dragon or the Kraken under its rider, the rider seated on the saddle bone, the mount's moves (`playMove`) |
 | `assets/js/stable-ui.ts` | The stable window (the stablemaster): choose which owned mount M summons |
 | `assets/js/skills-ui.ts`, `skills-world.ts` | The skill tree window (K), the spell bar (2x10, bottom right), Q-X skill slots, casting on the client |
 | `assets/js/skill-tree-canvas.ts` | The tree drawn in SVG (pan, zoom), icons, ability dragging; shared by the game and the editor |

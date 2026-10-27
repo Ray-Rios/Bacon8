@@ -12,6 +12,10 @@ defmodule BaconWorldWeb.GameEvents do
       the zone sees the swing (`"zone_swing"`). Players in front of the swing are
       hit too when both are flagged for PvP: `pvp_swing/3` rolls it and the
       target's LiveView applies it (`"pvp_hit"` to everyone).
+    * `"mount_attack"` `%{hand, heading, target_id}` - the mount's move for that hand while riding
+      (`BaconWorld.Mounts` `attacks`: a dragon's claw and fire breath, the Kraken's lash and
+      maelstrom). Its own timer per hand; creatures only. Replies like `"melee_attack"` plus
+      `move`; everyone sees it (`"zone_swing"` with `mount_move`).
     * `"fetch_mobs"` - every creature and corpse, and the camps to dress.
     * `"loot_open"` `%{mob_id}`, `"loot_take"` `%{mob_id, index}`,
       `"loot_all"` `%{mob_id}`, `"loot_close"` `%{mob_id}` - EverQuest looting.
@@ -143,6 +147,64 @@ defmodule BaconWorldWeb.GameEvents do
 
           {:error, _} ->
             {:reply, %{ok: true, hits: [], pvp: pvp, delay_ms: delay, progress: nil}, socket}
+        end
+      end
+    else
+      _ -> {:reply, %{ok: false, reason: "cannot_attack"}, socket}
+    end
+  end
+
+  # A mount's move (BaconWorld.Mounts `attacks`): resolved by the zone like a swing; creatures only.
+  def handle_event("mount_attack", params, socket) do
+    with %{} = me <- current(socket),
+         false <- socket.assigns[:is_dead?] || false,
+         %{} = mount <- BaconWorldWeb.MountEvents.mounted(socket),
+         hand when hand in ["left", "right"] <- params["hand"],
+         %{} = move <- BaconWorld.Mounts.attack(mount, hand),
+         heading when is_number(heading) <- params["heading"] do
+      item = BaconWorld.Mounts.attack_item(move)
+      delay = Melee.delay_ms(item)
+      now = System.monotonic_time(:millisecond)
+      timer = "mount_" <> hand
+      last = Map.get(socket.assigns[:swing_at] || %{}, timer)
+
+      if last && now - last < delay * 0.8 do
+        {:reply, %{ok: false, reason: "cooldown", ready_in: delay - (now - last)}, socket}
+      else
+        socket = assign(socket, swing_at: Map.put(socket.assigns[:swing_at] || %{}, timer, now))
+
+        if topic = socket.assigns[:current_zone_topic] do
+          PubSub.broadcast(Bacon8.PubSub, topic, {:zone_swing, %{character_id: me.character_id, hand: hand, heavy: false, delay_ms: delay, mount_move: move.move}})
+        end
+
+        # reach is from the rider; a big mount's body adds to it (the rider sits over its middle)
+        attack = %{
+          id: me.character_id,
+          level: socket.assigns[:level] || 1,
+          x: me.position.x,
+          z: me.position.z,
+          heading: heading * 1.0,
+          item: item,
+          heavy: false,
+          target: params["target_id"],
+          sweep: {move.targets, move.arc}
+        }
+
+        slug = socket.assigns[:mobs_zone] || "lobby"
+
+        case Mobs.melee(slug, attack) do
+          {:ok, hits} ->
+            if ms = move[:root_ms] do
+              for h <- hits, h.hit and not h.killed do
+                Mobs.root(slug, %{id: me.character_id, target: h.id, ms: ms, x: attack.x, z: attack.z, range: (move.reach + 1.0) * Brain.u()})
+              end
+            end
+
+            {socket, progress} = award_kills(socket, hits)
+            {:reply, %{ok: true, move: move.move, hits: hits, delay_ms: delay, progress: progress}, socket}
+
+          {:error, _} ->
+            {:reply, %{ok: true, move: move.move, hits: [], delay_ms: delay, progress: nil}, socket}
         end
       end
     else

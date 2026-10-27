@@ -24,6 +24,7 @@ export interface Lake { id: string; name: string; x: number; z: number; rx: numb
 export interface WaterTerrain {
   water(x: number, z: number): { kind: WaterKind; name: string } | null;
   walkable(x: number, z: number): boolean;
+  inside(x: number, z: number): boolean;
 }
 export interface WaterLayout {
   shore: number;
@@ -111,16 +112,16 @@ export function castSpot(w: WaterLayout, px: number, pz: number, dirX: number, d
 }
 
 /**
- * Keeps a move from (fromX, fromZ) to (x, z) on land. With a terrain: refused into deep water or
- * past the map's margin, sliding along it where it can; someone already off it moves freely, so
- * they can always get back. Without: clamped to the island's shallows.
+ * Keeps a move from (fromX, fromZ) to (x, z) in the world. With a terrain: people swim, so only
+ * the map's margin stops them (sliding along it where it can; someone already outside moves
+ * freely, so they can always get back). Without: clamped to the island's shallows.
  */
 export function keepOnLand(w: WaterLayout, x: number, z: number, fromX: number, fromZ: number): { x: number; z: number } {
   const t = w.terrain;
   if (!t) return clampToIsland(w, x, z);
-  if (t.walkable(x, z) || !t.walkable(fromX, fromZ)) return { x, z };
-  if (t.walkable(x, fromZ)) return { x, z: fromZ };
-  if (t.walkable(fromX, z)) return { x: fromX, z };
+  if (t.inside(x, z) || !t.inside(fromX, fromZ)) return { x, z };
+  if (t.inside(x, fromZ)) return { x, z: fromZ };
+  if (t.inside(fromX, z)) return { x: fromX, z };
   return { x: fromX, z: fromZ };
 }
 

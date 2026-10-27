@@ -18,7 +18,7 @@ Related documents:
   deployment.
 - Facts dated. The owner's decisions are recorded, not re-argued.
 
-Last update: **2026-10-26**.
+Last update: **2026-10-27**.
 
 ---
 
@@ -45,7 +45,7 @@ It is also the template other Bacon8 games copy.
 All of it uses our own or CC0 art. Every 3D asset is built by scripts in the game repository,
 so it can be rebuilt and changed.
 
-## 2. State on 2026-10-26 (evening)
+## 2. State on 2026-10-27
 
 > **Hub note from Claude Code, 2026-10-25.** Everything listed below up to and including the
 > 24f delivery (skill tree, stable, game cards, the Gem) is **committed and deployed**, and
@@ -73,7 +73,68 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-26 (c), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-26c.md`): **the starter zone
+**Delivered 2026-10-27 (a), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27a.md`): **the Kraken, a second
+boss and a mount, and mounts that fight.** The owner's brief: a kraken in the middle of Crater Lake, "the stuff of
+nightmares", highly detailed like Baconator, sold in the store as a mount that can't fly but swims very fast; and
+every mount should attack (the dragons breathe fire and claw; the Kraken's moves were left to us). His reference
+art only set the mood: the design is ours.
+
+- **The model** (`library/pipeline/scripts/build_kraken.py`, `kraken_shape.py`, `kraken_skin.py`; built headless in
+  Blender like the dragon): a towering, ragged mantle with a crest of spines, thorns, torn bony fins full of holes and
+  old wounds (gashes, claw rakes, sucker-ring scars, barnacle crusts); a head with heavy lids over two great gold eyes
+  with slit pupils (on their own bones: they follow their target) and clusters of small red eyes; a lamprey maw, three
+  rings of hooked teeth round a black beak; eight webbed arms with two zigzag rows of suckers on stalks and hooks at
+  their tips; two 17 m hunting tentacles ending in hooked, serrated clubs with a bone blade and a barb. Bioluminescent
+  spots (lines down the arms and flanks, rings round the eyes, lures round the maw, glowing arm tips) are an emission
+  map the client pulses. About 98k triangles (44k of body, the rest teeth, hooks, spines and fins), 4096/2048/512 maps
+  (WebP in the GLB), 124 bones, no clips:
+  `Mobs/B8_Kraken.glb` on the models volume.
+- **It moves itself** (`kraken-view.ts`, `KrakenRig`, the same API as the dragon's rig): every arm writhes on its own
+  phase; swimming gathers them into a spear and pulses the mantle; one-shots for lash, slam, grab, squeeze, ink,
+  maelstrom, roar, hit and death (it sinks). Effects: an ink cloud and a whirlpool on the water.
+- **The boss** (`BaconWorld.Mobs.Spawns` "kraken", level 16, 1.4 times the model's size, so the mantle stands ~15 m out
+  of the water): it lives in the deep middle of the crater's lake (`kraken_deep`, Crater Lake only) and never leaves
+  deep water (`aquatic`). Unlike every other creature it goes for swimmers (riders in the air are still out of reach).
+  Its arms lash and slam (11 m); every 9-13 s a **special**, wound up so you can see it coming: **grab** (a tentacle
+  seizes its target, holds you fast 3.5 s and squeezes each second), **ink** (a cone: your screen goes black for a few
+  seconds) and **maelstrom** (everyone within 24 m is battered and dragged toward it; the long windup is the time to
+  swim clear). Specials are a new, general mechanism (`specials` on a kind); the client applies their effects to
+  whoever they hit (held, blinded, dragged). Loot: ink sacs, abyssal hooks, its beak (rare), and sometimes an Abyssal
+  Harpoon, a Krakenfang Cutlass or a Barnacled Buckler.
+- **Fighting while swimming is allowed now** (it was refused in (d)): the Kraken is out in the deep water.
+- **The Abyssal Kraken mount** (`BaconWorld.Mounts` "abyssal_kraken", $25, scale 0.3): can't fly; 22 m/s in deep water
+  (a quarter more sprinting), a slow 4 m/s heave on land. `ensure_store_products/0` creates its store product, off.
+- **Mounts fight**: while riding, the attack buttons are the mount's moves (`"mount_attack"`, creatures only):
+  drakes **Claw Swipe** (left) and **Fire Breath** (right: a 10 m cone, up to six creatures); the Kraken **Tentacle
+  Lash** (left, a wide sweep) and **Maelstrom** (right: everything within 7.5 m is battered and held 3 s). Everyone
+  sees the move.
+- Sounds: the Kraken uses the dragon's recordings pitched down. Real CC0 water sounds (a big splash, a whirlpool, a
+  wet slap, ink) are still wanted.
+- Tests: 694 Elixir (9 new), 88 JS (3 new).
+
+**Delivered 2026-10-26 (d), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-26d.md`): **swimming, camps
+across Crater Lake, and dismounting on hills**, from the owner's first walk on the terrain.
+
+- **Dismounting on a hill was refused** ("land first"): the server judged "in the air" by height above
+  0, the old flat ground. It now measures from what's underneath (the terrain or the water's surface,
+  `BaconWorld.Terrain.surface_units/3`), as the move checks and the creatures already did.
+- **Swimming.** Water deeper than wading (1.2 m) is open: you float at the surface (the swim clips are
+  authored with the body hanging from the waterline), slower (2.2 m/s, 3.4 sprinting), with no
+  jumping, crouching, fighting or fishing, and splashes instead of footsteps. Everyone else sees the
+  swim clips (motion flag 8). Only the map's margin stops you now (and the Millpond, a reedy pond).
+  Creatures don't swim: they stop at the water's edge and leave swimmers alone.
+- **Camps across the zone** (for the time being, until the owner places creatures in game): the three
+  by the village, plus the North Graves, the Shore Ruins, the East Barrow, the Hollow Graves, the
+  Plateau Ruins, the Crater Road Barrow, the High Ruins and the Western Barrow, harder the further out
+  (140 m to 1.3 km), each on a flat, dry spot picked from the heightfield. **Baconator's lair** is on the
+  high plateau north-east of the crater, about 2 km from town (nothing near the crater itself is flat
+  enough for it). Without the terrain the old four camps stay.
+- The owner saw creatures that hit him but were invisible, until a hard refresh: a tab running old
+  scripts against the new server (the harness draws them correctly on the terrain). Production reloads
+  such tabs itself (`Bacon8Web.StaticReload`).
+- Tests: 685 Elixir (3 new), 85 JS (1 new).
+
+**Delivered 2026-10-26 (c), committed** (`4089384`, `956fb33`; `handoff/CLAUDE_CODE_PROMPT_2026-10-26c.md`): **the starter zone
 is a real landscape: Crater Lake.** The owner made it in World Creator (4096 m square, heights
 -306 to +689 m, sea at 0, exported as a 16-bit RAW) and asked for it in game with the village on the
 flat by the bay.
@@ -551,6 +612,10 @@ The first 2026-10-23 delivery:
 | 2026-10-26 | **The starter zone is Crater Lake**, the owner's World Creator map (4096 m square), with the town on the flat by the bay south of the crater. Zones are World Creator heightfields, exported as 16-bit RAW with their Min/Max, made into game files by `terrain_build.py`. Players reach other zones through zone lines at natural chokepoints (EverQuest style); seamless streaming isn't planned. |
 | 2026-10-26 | **The world is built in game, by people, not by asking Claude.** Players (and the owner) place and delete objects in the world: ground types, building pieces, rocks, trees, bushes, everything, creatures and NPCs included. Claude makes the assets; what each role may place is locked by role (for example, only admins place boss creatures). |
 | 2026-10-26 | **Binding stones** (admins only place them): players set their spawn point at one, and nobody may build within a radius about the size of the town around one. |
+| 2026-10-26 | **Who may place what is set in game by admins, item by item.** Guests may place nothing. There are **no limits** per player and **nothing decays**. **Anyone allowed to place a kind of object may also delete any object of that kind**, whoever placed it. |
+| 2026-10-26 | **Characters swim.** Deep water is open to everyone; creatures don't follow. |
+| 2026-10-27 | **The second boss is the Kraken**, in the middle of Crater Lake: highly detailed, "the stuff of nightmares" (original design; the owner's reference art only sets the mood). **It is also a mount for sale: it can't fly, it swims very fast.** |
+| 2026-10-27 | **Mounts attack.** The dragons breathe fire and claw; the Kraken's moves were ours to choose (Tentacle Lash, Maelstrom). |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 
 ## 4. How it fits together
@@ -713,6 +778,13 @@ the development PC it sits in `C:\Bacon8\tmp\b8work\harness`):
 
 In rough priority order.
 
+**The Kraken (2026-10-27), to check in a real game:** its numbers (HP, damage, how often the specials
+come, the maelstrom's pull) are first guesses; tune them after a fight. It needs real CC0 water sounds (a
+big splash, a whirlpool's roar, a wet slap, an ink spurt). The model is ~98k triangles: fine for one boss,
+but with many riders on Kraken mounts at once a lighter level of detail for the mount is worth building.
+Being held and dragged are applied by the victim's client (as creature damage is), not enforced by the
+server's move checks.
+
 **World building in game (the owner's plan, 2026-10-26; decisions log):**
 
 - **Placements are data.** A table (`bacon_world_placements`: zone, asset id, position, rotation, scale,
@@ -722,11 +794,13 @@ In rough priority order.
   same way. Colliders come with each asset.
 - **An asset catalogue** like the item catalogue: each placeable asset's model, footprint, collider,
   category (ground, building piece, rock, tree, bush, prop, creature spawn, NPC, binding stone) and the
-  roles that may place it (`admin` for boss creatures and binding stones; who else, the owner decides
-  per category). Placing checks the role on the server, never only in the client.
+  lowest role that may place it. **Admins set that per asset, in game** (a permissions view in build
+  mode, stored in a table, not in code); guests never place anything; boss creatures and binding
+  stones start admin-only. Placing and deleting check the role on the server, never only in the client.
 - **Placing in game**: a build mode (a window listing what you may place), a ghost of the piece on the
   ground under the cursor (snapped to the terrain, and to the building kit's 3 m grid for building
-  pieces), rotate, place; delete what you placed (admins anything). Undo for a short while.
+  pieces), rotate, place. **Delete: anyone allowed to place that asset may delete any copy of it**,
+  whoever placed it. No limits per player, no decay. Undo for a short while.
 - **Ground types** are painted, not placed: a coarse grid over the zone (per 2 m cell: grass, dirt,
   stone, sand, farmland...) read by the terrain shader instead of its slope rule where painted.
 - **Creatures and NPCs** become placed spawn points (kind, count, radius, respawn), read by
@@ -734,8 +808,8 @@ In rough priority order.
 - **Binding stones**: an admin-only asset. Using one (R) sets `settings["bind"]` (Recall and respawn go
   there); no placement by anyone else is allowed within its radius (about the town's: 70 m, a setting).
   The town's stone goes by the plaza.
-- Open questions for the owner: who may place what beyond the admin-only kinds; limits per player (how
-  many pieces, where: own plots?); whether placed things decay; moderation (who may delete others').
+- Answered by the owner (2026-10-26, decisions log): admins set permissions per item in game, guests
+  get none, no limits, no decay, placing a kind means you may delete it.
 
 **Terrain (2026-10-26, c):**
 
@@ -746,8 +820,11 @@ In rough priority order.
 - Painting is by rule (slope, height); World Creator's splat and scatter maps (a newer World Creator)
   would paint and plant it properly. No normal maps on the ground yet; distant chunks are plain.
 - The land outside the village is empty: the in-game placement above is the plan for filling it.
-- Creatures walk through hills (they follow the ground's height but ignore slopes); their camps sit in
-  the pad's blend. Server-side walls still don't exist (the village's colliders are client-side).
+- Creatures walk through hills (they follow the ground's height but ignore slopes) and stop dead at
+  deep water rather than going round it. Server-side walls still don't exist (the village's colliders
+  are client-side).
+- Swimming: no diving, no breath, no underwater view (the camera stays above the surface); weapons
+  stay in hand while swimming. A real CC0 stroke/splash recording would beat the drip.
 - Crater Lake and the ponds use the lake catch table; Crater Lake could get its own fish.
 - Zone lines (a ferry from the bay, a pass in the ridges) when there's a second zone.
 

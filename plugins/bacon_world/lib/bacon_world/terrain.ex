@@ -191,6 +191,24 @@ defmodule BaconWorld.Terrain do
     inside?(t, x, z) and height(t, x, z) >= t.sea - @wade
   end
 
+  @doc "Deep water (m): deeper than wading, so someone there swims."
+  def deep?(x, z), do: deep?(loaded(), x, z)
+
+  def deep?(nil, _x, _z), do: false
+  def deep?(t, x, z), do: height(t, x, z) < t.sea - @wade
+
+  @doc """
+  What someone stands or floats on at a point, in scene units (`u` per metre, scene-unit
+  coordinates): the ground, or the water's surface over water; 0 without terrain. The move checks,
+  the creatures and dismounting measure heights from it.
+  """
+  def surface_units(x, z, u) do
+    case loaded() do
+      nil -> 0.0
+      t -> max(height(t, x / u, z / u), t.sea) * u
+    end
+  end
+
   @doc "Inside the map, `margin` metres from its edges."
   def inside?(t, x, z) do
     x >= t.x0 + t.margin and z >= t.z0 + t.margin and x <= t.x0 + t.size_m - t.margin and z <= t.z0 + t.size_m - t.margin

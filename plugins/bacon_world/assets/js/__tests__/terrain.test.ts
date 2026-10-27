@@ -76,6 +76,11 @@ test('water: the sea, a named lake, land; walking stops at wading depth and the 
   assert.ok(!hf.walkable(-7.5 * U, 0), 'deep sea');
   assert.ok(!hf.walkable(0, 7.5 * U), 'past the margin');
   assert.equal(hf.surface(-8 * U, 0), 0, 'over water: the surface');
+  // swimming: deep water floats you at the surface; wading keeps your feet on the bottom
+  assert.ok(hf.deep(-8 * U, 0));
+  assert.ok(!hf.deep(-4 * U, 0));
+  assert.equal(hf.feet(-8 * U, 0), 0);
+  assert.ok(Math.abs(hf.feet(-4 * U, 0) - -1 * U) < 1e-6);
 });
 
 test('water.ts with a terrain: kinds, names, the bank, keeping people out of deep water', () => {
@@ -87,11 +92,12 @@ test('water.ts with a terrain: kinds, names, the bank, keeping people out of dee
   assert.equal(waterNameAt(w, 4 * U, 0), 'the Tarn');
   assert.equal(nearWater(w, 0, 0, 3 * U), 'lake', 'the tarn is 3 m east');
   assert.equal(waterYAt(w, -8 * U, 0), 0);
-  // into the deep sea from land: refused (slides along where it can)
-  assert.deepEqual(keepOnLand(w, -7.5 * U, 0, -3 * U, 0), { x: -3 * U, z: 0 });
-  assert.deepEqual(keepOnLand(w, -2 * U, 1 * U, -3 * U, 0), { x: -2 * U, z: 1 * U });
-  // already in deep water (a mount landed there): free to get out
-  assert.deepEqual(keepOnLand(w, -7 * U, 0, -7.5 * U, 0), { x: -7 * U, z: 0 });
+  // people swim: into the deep sea is fine; past the map's margin isn't (sliding along it)
+  assert.deepEqual(keepOnLand(w, -5.5 * U, 0, -3 * U, 0), { x: -5.5 * U, z: 0 });
+  assert.deepEqual(keepOnLand(w, 0, 7.5 * U, 0, 5 * U), { x: 0, z: 5 * U });
+  assert.deepEqual(keepOnLand(w, 1 * U, 7.5 * U, 0, 5 * U), { x: 1 * U, z: 5 * U });
+  // already outside: free to get back
+  assert.deepEqual(keepOnLand(w, 0, 7 * U, 0, 7.5 * U), { x: 0, z: 7 * U });
   // the Millpond still wins where it is
   const m: WaterLayout = { ...w, lakes: [{ id: 'millpond', name: 'the Millpond', x: 0, z: 0, rx: 1 * U, rz: 1 * U }] };
   assert.equal(waterNameAt(m, 0, 0), 'the Millpond');

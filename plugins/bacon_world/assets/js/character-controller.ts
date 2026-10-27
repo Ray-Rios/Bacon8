@@ -90,6 +90,8 @@ export type MovementState = {
   isCrouching: boolean;
   /** On a flying mount, in the air (mounts.ts). */
   isFlying: boolean;
+  /** In water too deep to stand in (terrain.ts): floating at the surface. */
+  isSwimming: boolean;
   /** Horizontal speed, m/s. */
   speed: number;
   /** Vertical speed, m/s (+ up). */
@@ -129,6 +131,8 @@ export class CharacterController {
   private terrain: THREE.Mesh | null = null;
   private groundFn: ((x: number, z: number) => number) | null = null;
   private surfaceFn: ((x: number, z: number) => number) | null = null;
+  private swimFn: ((x: number, z: number) => boolean) | null = null;
+  private isSwimming = false;
   private raycaster = new THREE.Raycaster();
 
   // Physics, in metres and seconds (converted at the scene boundary).
@@ -140,7 +144,9 @@ export class CharacterController {
   private speed = 0;
 
   // Riding (mounts.ts): the mount's speeds, and flying
-  private mount: { groundSpeed: number; flySpeed: number; flies: boolean; pivot: number } | null = null;
+  private mount: { groundSpeed: number; flySpeed: number; flies: boolean; pivot: number; swimSpeed?: number } | null = null;
+  // a mount that swims (the Kraken) is in deep water
+  private mountSwimming = false;
   private flying = false;
   private flyVel = { x: 0, y: 0, z: 0 };
   private lastSpaceMs = -1e9;
@@ -534,6 +540,25 @@ export class CharacterController {
     return codes.some((c) => this.keys.has(c));
   }
 
+  // Held fast (a creature's grab: the Kraken's tentacle) until then (performance.now ms), and
+  // dragged toward a point (its maelstrom).
+  private heldUntil = 0;
+  private drag: { x: number; z: number; left: number; speed: number } | null = null;
+
+  /** Held fast for `ms`: no walking (turning, swinging and casting still work). */
+  holdFor(ms: number): void {
+    this.heldUntil = Math.max(this.heldUntil, performance.now() + ms);
+  }
+
+  get isHeld(): boolean {
+    return performance.now() < this.heldUntil;
+  }
+
+  /** Dragged `metres` toward (x, z) (scene units) over `seconds`. */
+  dragToward(x: number, z: number, metres: number, seconds = 0.8): void {
+    this.drag = { x, z, left: seconds, speed: metres / seconds };
+  }
+
   /** Facing the camera: steering, or just after a swing. */
   private facingCamera(): boolean {
     return this.steering || performance.now() < this.faceCameraUntil;
@@ -544,22 +569,34 @@ export class CharacterController {
       this.updateFlight(dt);
       return;
     }
+    const free = !this.isHeld;
     const input = {
-      forward: this.held('KeyW', 'ArrowUp'),
-      back: this.held('KeyS', 'ArrowDown'),
-      left: this.held('KeyA', 'ArrowLeft'),
-      right: this.held('KeyD', 'ArrowRight'),
+      forward: free && this.held('KeyW', 'ArrowUp'),
+      back: free && this.held('KeyS', 'ArrowDown'),
+      left: free && this.held('KeyA', 'ArrowLeft'),
+      right: free && this.held('KeyD', 'ArrowRight'),
     };
     const dir = moveDirection(input, this.yaw);
     const hasInput = dir.x !== 0 || dir.z !== 0;
     const fwd = (input.forward ? 1 : 0) - (input.back ? 1 : 0);
     const facingCamera = this.facingCamera();
 
-    this.isCrouching = this.held('KeyC') && this.isGrounded && !this.mount;
+    // Swimming (deep water, terrain.ts): afloat at the surface, slower, no crouching or jumping.
+    {
+      const p = this.character.position;
+      this.isSwimming = !this.mount && !!this.swimFn?.(p.x, p.z) && p.y <= this.groundHeight(p.x, p.z) + 0.3 * UNITS_PER_METRE;
+    }
+    this.isCrouching = this.held('KeyC') && this.isGrounded && !this.mount && !this.isSwimming;
     this.isSprinting = this.held('ShiftLeft', 'ShiftRight') && !this.isCrouching && !(facingCamera && fwd < 0);
-    let maxSpeed = this.isCrouching ? MOVE.crouchSpeed : this.isSprinting ? MOVE.sprintSpeed : MOVE.jogSpeed;
-    // A mount runs at its own pace (sprinting half as fast again).
-    if (this.mount) maxSpeed = this.mount.groundSpeed * (this.isSprinting ? 1.5 : 1);
+    let maxSpeed: number = this.isCrouching ? MOVE.crouchSpeed : this.isSprinting ? MOVE.sprintSpeed : MOVE.jogSpeed;
+    if (this.isSwimming) maxSpeed = this.isSprinting ? MOVE.swimSprintSpeed : MOVE.swimSpeed;
+    // A mount runs at its own pace (sprinting half as fast again); one that swims, at its swimming
+    // pace in deep water (a quarter faster sprinting).
+    {
+      const p = this.character.position;
+      this.mountSwimming = !!this.mount?.swimSpeed && !!this.swimFn?.(p.x, p.z);
+    }
+    if (this.mount) maxSpeed = this.mountSwimming ? this.mount.swimSpeed! * (this.isSprinting ? 1.25 : 1) : this.mount.groundSpeed * (this.isSprinting ? 1.5 : 1);
     if (facingCamera && fwd < 0) maxSpeed *= BACKPEDAL;
 
     const control = this.isGrounded ? 1 : MOVE.airControl;
@@ -587,7 +624,7 @@ export class CharacterController {
     }
 
     // Jump (grounded only), gravity, and the ground.
-    if (this.held('Space') && this.isGrounded) {
+    if (this.held('Space') && this.isGrounded && !this.isSwimming) {
       this.verticalSpeed = MOVE.jumpSpeed;
       this.isGrounded = false;
     }
@@ -617,12 +654,35 @@ export class CharacterController {
       }
     }
 
+    // dragged (a maelstrom): toward its middle, stopping a body's length short
+    if (this.drag) {
+      const d = this.drag;
+      const dx = d.x - pos.x;
+      const dz = d.z - pos.z;
+      const dist = Math.hypot(dx, dz);
+      const step = Math.min(d.speed * UNITS_PER_METRE * dt, Math.max(0, dist - 2 * UNITS_PER_METRE));
+      if (dist > 1e-3 && step > 0) {
+        const nx = pos.x + (dx / dist) * step;
+        const nz = pos.z + (dz / dist) * step;
+        const ok = this.options.collide ? this.options.collide(nx, nz, pos.x, pos.z) : { x: nx, z: nz };
+        pos.x = ok.x;
+        pos.z = ok.z;
+      }
+      d.left -= dt;
+      if (d.left <= 0) this.drag = null;
+    }
+
     const ground = this.groundHeight(pos.x, pos.z);
-    if (pos.y <= ground) {
+    // swimming: bob up to the surface rather than snapping to it (stepping off the shelf)
+    if (this.isSwimming && pos.y < ground) {
+      pos.y = Math.min(ground, pos.y + Math.max(0.02, (ground - pos.y) * Math.min(1, dt * 5)));
+      this.verticalSpeed = 0;
+      this.isGrounded = true;
+    } else if (pos.y <= ground) {
       pos.y = ground;
       this.verticalSpeed = 0;
       this.isGrounded = true;
-    } else if (this.isGrounded && pos.y - ground > 0.05) {
+    } else if (this.isGrounded && pos.y - ground > 0.05 && !(this.swimFn?.(pos.x, pos.z) && pos.y - ground < 1.6 * UNITS_PER_METRE)) {
       // Walked off a ledge.
       this.isGrounded = false;
     }
@@ -699,7 +759,7 @@ export class CharacterController {
   }
 
   /** Climbs on (a mount's speeds; `pivot` its rider's head height, scene units) or off (null). */
-  setMount(spec: { groundSpeed: number; flySpeed: number; flies: boolean; pivot: number } | null): void {
+  setMount(spec: { groundSpeed: number; flySpeed: number; flies: boolean; pivot: number; swimSpeed?: number } | null): void {
     this.mount = spec;
     if (!spec) {
       this.flying = false;
@@ -715,6 +775,11 @@ export class CharacterController {
 
   get isMounted(): boolean {
     return !!this.mount;
+  }
+
+  /** On a mount that swims, in deep water. */
+  get isMountSwimming(): boolean {
+    return !!this.mount && this.mountSwimming;
   }
 
   get isFlying(): boolean {
@@ -768,9 +833,14 @@ export class CharacterController {
    * The ground from a heightfield (terrain.ts): `ground` under the feet, `surface` (the ground or
    * the water's top) under the camera. Null: back to flat.
    */
-  setGround(ground: ((x: number, z: number) => number) | null, surface: ((x: number, z: number) => number) | null = null): void {
+  setGround(
+    ground: ((x: number, z: number) => number) | null,
+    surface: ((x: number, z: number) => number) | null = null,
+    swim: ((x: number, z: number) => boolean) | null = null
+  ): void {
     this.groundFn = ground;
     this.surfaceFn = surface;
+    this.swimFn = swim;
   }
 
   setPositionCallback(callback: (x: number, y: number, z: number, rotation: number) => void): void {
@@ -796,6 +866,7 @@ export class CharacterController {
       isGrounded: this.isGrounded,
       isCrouching: this.isCrouching,
       isFlying: this.flying,
+      isSwimming: this.isSwimming,
       speed: this.speed,
       verticalSpeed: this.verticalSpeed,
     };

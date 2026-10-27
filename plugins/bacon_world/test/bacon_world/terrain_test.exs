@@ -75,6 +75,28 @@ defmodule BaconWorld.TerrainTest do
     assert {:error, :not_at_water} = Water.cast(2.0, 6.0, 4.0, 0.0)
   end
 
+  test "swimming: deep water is open (the map's margin isn't), heights measure from the surface" do
+    assert Terrain.deep?(-8.0, 0.0)
+    refute Terrain.deep?(-4.0, 0.0)
+    # people swim: anywhere inside the margin is allowed, water included
+    assert Terrain.deep?(-5.5, 0.0) and Water.walkable?(-5.5, 0.0)
+    refute Water.walkable?(0.0, 7.5)
+    # over water the surface (the sea, 0 here); on land the ground; scene units
+    assert_in_delta Terrain.surface_units(-16.0, 0.0, 2.0), 0.0, 1.0e-6
+    assert_in_delta Terrain.surface_units(0.0, 0.0, 2.0), 2.0, 1.0e-6
+  end
+
+  test "creatures leave swimmers alone and don't wade into deep water" do
+    assert BaconWorld.Mobs.Brain.out_of_reach?(%{x: 0.0, y: 0.0, z: 0.0, swimming: true})
+    refute BaconWorld.Mobs.Brain.out_of_reach?(%{x: 0.0, y: 0.0, z: 0.0})
+  end
+
+  test "with a terrain the zone has its spread-out camps and the far lair" do
+    ids = Enum.map(BaconWorld.Mobs.Spawns.camps(), & &1.id)
+    assert "west_barrow" in ids and "lair" in ids
+    assert %{x: 930.0} = Enum.find(BaconWorld.Mobs.Spawns.camps(), &(&1.id == "lair"))
+  end
+
   test "the payload carries the files and the numbers in scene units" do
     p = Terrain.payload(2.0)
     assert p.heights == "/models/World/Terrain/tiny_hd.bin"
@@ -90,5 +112,8 @@ defmodule BaconWorld.TerrainTest do
     assert Water.kind_at(0.0, 0.0) == nil
     assert Water.kind_at(200.0, 0.0) == :ocean
     assert Terrain.payload(1.0) == nil
+    assert Terrain.surface_units(10.0, 10.0, 1.2) == 0.0
+    assert %{x: 92.0} = Enum.find(BaconWorld.Mobs.Spawns.camps(), &(&1.id == "lair"))
+    refute Enum.any?(BaconWorld.Mobs.Spawns.camps(), &(&1.id == "west_barrow"))
   end
 end

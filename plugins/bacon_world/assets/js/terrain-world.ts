@@ -54,9 +54,12 @@ export const TerrainWorld = {
   /** Hands the ground to whoever stands on it (again after any of them is created). */
   applyGround(this: any) {
     const hf: Heightfield | null = this.heightfield || null;
-    // feet: the ground, but never below wading depth (someone flying down over deep water lands on it)
-    const feet = hf ? (x: number, z: number) => Math.max(hf.height(x, z), hf.info.sea - hf.info.wade) : null;
-    this.controller?.setGround?.(feet, hf ? (x: number, z: number) => hf.surface(x, z) : null);
+    // feet: the ground, or the water's surface where it's too deep to stand (they swim there)
+    this.controller?.setGround?.(
+      hf ? (x: number, z: number) => hf.feet(x, z) : null,
+      hf ? (x: number, z: number) => hf.surface(x, z) : null,
+      hf ? (x: number, z: number) => hf.deep(x, z) : null
+    );
     if (this.mobsView) this.mobsView.ground = hf ? (x: number, z: number) => hf.surface(x, z) : null;
     if (this.npcsView) this.npcsView.ground = hf ? (x: number, z: number) => hf.height(x, z) : null;
     if (this.water) this.water.terrain = hf;

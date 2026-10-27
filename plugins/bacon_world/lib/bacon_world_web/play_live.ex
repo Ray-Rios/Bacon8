@@ -30,7 +30,7 @@ defmodule BaconWorldWeb.PlayLive do
   @presence_broadcast_interval_ms 100
 
   # Fighting, looting and the inventory (BaconWorldWeb.GameEvents).
-  @game_events ~w(fetch_mobs melee_attack loot_open loot_take loot_all loot_close
+  @game_events ~w(fetch_mobs melee_attack mount_attack loot_open loot_take loot_all loot_close
                   inventory_fetch inventory_move inventory_equip inventory_unequip inventory_destroy
                   merchant_open merchant_buy merchant_sell)
   # Riding (BaconWorldWeb.MountEvents).
@@ -405,7 +405,7 @@ defmodule BaconWorldWeb.PlayLive do
         presence_updated_at = System.system_time(:millisecond)
 
         Presence.update(self(), topic, current_character.character_id, fn meta ->
-          Map.merge(meta, %{x: x, y: y, z: z, heading: heading, updated_at: presence_updated_at})
+          Map.merge(meta, %{x: x, y: y, z: z, heading: heading, m: motion, updated_at: presence_updated_at})
         end)
       end
 
@@ -813,9 +813,8 @@ defmodule BaconWorldWeb.PlayLive do
 
   # Nobody goes out to sea (2026-10-26, BaconWorld.Water): a move that ends beyond the shallows
   # and further out than it began is refused. Coming back in is always allowed, so anyone who
-  # was out there before this rule can walk home. With terrain (BaconWorld.Terrain) "out" is
-  # deep water or the map's margin, and someone flying (a mount, well above the ground) may cross
-  # water but not the margin.
+  # was out there before this rule can walk home. With terrain (BaconWorld.Terrain) people swim,
+  # so "out" is only past the map's margin (or into the Millpond), flying or not.
   defp validate_on_island(from, x, y, z) do
     u = BaconWorld.Mobs.Brain.u()
 
@@ -852,14 +851,7 @@ defmodule BaconWorldWeb.PlayLive do
   end
 
   # The ground under a point (scene units): the terrain, or the water's surface over water.
-  defp ground_y(x, z) do
-    u = BaconWorld.Mobs.Brain.u()
-
-    case BaconWorld.Terrain.loaded() do
-      nil -> 0.0
-      t -> max(BaconWorld.Terrain.height(t, x / u, z / u), t.sea) * u
-    end
-  end
+  defp ground_y(x, z), do: BaconWorld.Terrain.surface_units(x, z, BaconWorld.Mobs.Brain.u())
 
   defp validate_move_speed(socket, current_position, x, y, z, mount) do
     last_ms = socket.assigns.last_world_update_ms || System.monotonic_time(:millisecond)
@@ -1060,7 +1052,8 @@ defmodule BaconWorldWeb.PlayLive do
   # bit 4 flying (on a mount).
   defp motion_flags(params) do
     case params["m"] || params[:m] do
-      m when is_integer(m) and m >= 0 and m <= 7 -> m
+      # 1 crouching, 2 airborne, 4 flying, 8 swimming
+    m when is_integer(m) and m >= 0 and m <= 15 -> m
       _ -> 0
     end
   end

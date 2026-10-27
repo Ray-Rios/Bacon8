@@ -561,6 +561,7 @@ export class CharacterModelManager {
       isJumping?: boolean;
       isSprinting?: boolean;
       isCrouching?: boolean;
+      isSwimming?: boolean;
       speed?: number;
       /** Movement relative to facing (+x right, +z forward), for strafes and backpedals. */
       dirX?: number;
@@ -576,6 +577,7 @@ export class CharacterModelManager {
         grounded: !state.isJumping,
         crouch: !!state.isCrouching,
         sprint: !!state.isSprinting,
+        swim: !!state.isSwimming,
       });
       return;
     }

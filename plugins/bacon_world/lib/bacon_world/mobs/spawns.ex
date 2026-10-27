@@ -21,6 +21,14 @@ defmodule BaconWorld.Mobs.Spawns do
     * `drops` - `[{item_id, chance}]` on top of `loot`
     * `respawn_ms` - instead of `respawn_ms/0`
     * `boss`, `scale` - for the client (nameplate, model size)
+    * `aquatic` - lives in deep water and never leaves it (the Kraken); it reaches swimmers,
+      and anyone on the shore within its reach, but not riders in the air
+    * `specials` - big moves it winds up (the client shows the windup, `{:cast, id, move}`), one
+      every `special_every_ms`, picked by weight among those whose `range` (m) reaches the target:
+      `shape` `:target` (its chase target only), `:cone` (`half_arc_deg`) or `:ring` (all
+      round), `windup_ms`, `busy_ms` (standing still), `dmg`, and what it does to whoever it
+      hits: `root_ms` (held), `blind_ms` (ink), `pull_m` (dragged toward it), `squeeze`
+      (`{ticks, dmg}`: more damage each second while it holds you)
   """
 
   @kinds %{
@@ -87,7 +95,8 @@ defmodule BaconWorld.Mobs.Spawns do
       coins: 25..80,
       weapon_drop: 0.8
     },
-    # The boss (2026-10-24): a red dragon in its lair north-east of the village. Big enough
+    # The boss (2026-10-24): a red dragon in its lair (north-east of the village; on Crater Lake,
+    # the plateau north-east of the crater). Big enough
     # that you hit its flank, not its middle; it bites and claws what is in front, lashes its
     # tail, and every 13-18 s rears back and breathes fire in a cone (a group spreads out;
     # anyone can step out of the cone during the roar).
@@ -114,15 +123,75 @@ defmodule BaconWorld.Mobs.Spawns do
       coins: 300..700,
       weapon_drop: 0.0,
       respawn_ms: 1_200_000..1_800_000
+    },
+    # The second boss (2026-10-27): the Kraken, in the deep middle of Crater Lake. It doesn't leave
+    # the deep water; swim out to it, or fight it from a boat... or from the shore, if it follows you
+    # there. At 1.4 times the model's size its mantle towers 15 m over the water; its arms lash and slam
+    # whatever is in reach (11 m), and every 9-13 s it does something
+    # worse: snatches its target with a hunting tentacle (held fast and squeezed), sprays ink (a
+    # cone: blind), or churns the lake into a maelstrom (everyone round it is battered and dragged
+    # in - the long windup is the time to swim clear).
+    "kraken" => %{
+      name: "the Kraken",
+      boss: true,
+      scale: 1.4,
+      aquatic: true,
+      levels: 16..16,
+      hp: {2600, 80},
+      dmg: {16, 28},
+      dly_ms: 3100,
+      walk: 3.0,
+      run: 9.0,
+      aggro: 60.0,
+      reach: 11.0,
+      radius: 6.5,
+      leash: 320.0,
+      moves: [{"lash", 5}, {"slam", 3}],
+      special_every_ms: 9_000..13_000,
+      specials: [
+        %{move: "grab", weight: 4, shape: :target, range: 22.0, windup_ms: 700, busy_ms: 1_200, dmg: {10, 16}, root_ms: 3_500, squeeze: {3, {8, 14}}},
+        %{move: "ink", weight: 3, shape: :cone, range: 26.0, half_arc_deg: 38.0, windup_ms: 650, busy_ms: 900, dmg: {4, 8}, blind_ms: 5_000},
+        %{move: "maelstrom", weight: 3, shape: :ring, range: 24.0, windup_ms: 1_900, busy_ms: 2_600, dmg: {20, 34}, pull_m: 6.0}
+      ],
+      weapons: [{nil, 1}],
+      offhand: [{nil, 1}],
+      loot: [{"kraken_ink_sac", 1.0, 1..3}, {"abyssal_hook", 0.9, 2..6}, {"kraken_beak", 0.4, 1..1}],
+      drops: [{"abyssal_harpoon", 0.3}, {"krakenfang_cutlass", 0.3}, {"barnacled_buckler", 0.25}],
+      coins: 600..1200,
+      weapon_drop: 0.0,
+      respawn_ms: 1_500_000..2_100_000
     }
   }
 
-  @camps [
+  # By the village: the three beginners' camps (both worlds).
+  @near [
     %{id: "graveyard", name: "the Old Graveyard", x: 52.0, z: -48.0, radius: 9.0, theme: "graveyard", mobs: [{"decaying_skeleton", 6}]},
     %{id: "chapel", name: "the Ruined Chapel", x: -6.0, z: 64.0, radius: 10.0, theme: "ruins", mobs: [{"decaying_skeleton", 2}, {"skeleton", 4}]},
-    %{id: "barrow", name: "the Barrow", x: -66.0, z: -14.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton", 2}, {"skeleton_warrior", 3}]},
-    %{id: "lair", name: "Baconator's Lair", x: 92.0, z: 42.0, radius: 16.0, theme: "lair", mobs: [{"baconator", 1}]}
+    %{id: "barrow", name: "the Barrow", x: -66.0, z: -14.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton", 2}, {"skeleton_warrior", 3}]}
   ]
+
+  # The round island (no terrain): Baconator just north-east of the village.
+  @island @near ++ [%{id: "lair", name: "Baconator's Lair", x: 92.0, z: 42.0, radius: 16.0, theme: "lair", mobs: [{"baconator", 1}]}]
+
+  # Crater Lake (BaconWorld.Terrain, 2026-10-26): camps out across the zone, harder the further from
+  # town, each on a flat, dry spot picked from the heightfield (slope under ~16 degrees within 18 m,
+  # 60 m from water, 150 m from the map's edge). Baconator's lair is on the high plateau north-east
+  # of the crater, ~2 km from town (nothing near the crater itself is flat enough). For the time
+  # being: the owner will place creatures in game (BACON_WORLD.md, "World building in game").
+  @crater_lake @near ++
+                 [
+                   %{id: "north_graves", name: "the North Graves", x: -26.0, z: -220.0, radius: 9.0, theme: "graveyard", mobs: [{"decaying_skeleton", 5}]},
+                   %{id: "shore_ruins", name: "the Shore Ruins", x: -222.0, z: 72.0, radius: 10.0, theme: "ruins", mobs: [{"decaying_skeleton", 2}, {"skeleton", 3}]},
+                   %{id: "east_barrow", name: "the East Barrow", x: 516.0, z: 100.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton", 3}, {"skeleton_warrior", 2}]},
+                   %{id: "hollow_graves", name: "the Hollow Graves", x: 52.0, z: -522.0, radius: 10.0, theme: "graveyard", mobs: [{"skeleton", 5}]},
+                   %{id: "plateau_ruins", name: "the Plateau Ruins", x: 672.0, z: -488.0, radius: 11.0, theme: "ruins", mobs: [{"skeleton", 2}, {"skeleton_warrior", 3}]},
+                   %{id: "crater_road", name: "the Crater Road Barrow", x: 108.0, z: -818.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton", 2}, {"skeleton_warrior", 3}]},
+                   %{id: "high_ruins", name: "the High Ruins", x: 988.0, z: -82.0, radius: 11.0, theme: "ruins", mobs: [{"skeleton_warrior", 5}]},
+                   %{id: "west_barrow", name: "the Western Barrow", x: -1266.0, z: -148.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton_warrior", 5}]},
+                   %{id: "lair", name: "Baconator's Lair", x: 930.0, z: -1756.0, radius: 16.0, theme: "lair", mobs: [{"baconator", 1}]},
+                   # the deep middle of the crater's lake (~317 m of water under it)
+                   %{id: "kraken_deep", name: "the Kraken's Deep", x: -147.0, z: -1947.0, radius: 0.0, theme: "deep", mobs: [{"kraken", 1}]}
+                 ]
 
   # Metres.
   @safe_radius 40.0
@@ -130,7 +199,8 @@ defmodule BaconWorld.Mobs.Spawns do
 
   def kinds, do: @kinds
   def kind(id), do: Map.fetch!(@kinds, id)
-  def camps, do: @camps
+  @doc "The zone's camps: Crater Lake's when its terrain is loaded, else the round island's."
+  def camps, do: if(BaconWorld.Terrain.loaded(), do: @crater_lake, else: @island)
   def safe_radius, do: @safe_radius
   def leash, do: @leash
 
@@ -148,6 +218,9 @@ defmodule BaconWorld.Mobs.Spawns do
   @doc "How far a chase may take it from home, metres."
   def leash(kind_id), do: Map.get(kind(kind_id), :leash, @leash)
 
+  @doc "True for a creature of the deep water (it never leaves it)."
+  def aquatic?(kind_id), do: Map.has_key?(@kinds, kind_id) and Map.get(kind(kind_id), :aquatic, false) == true
+
   @doc "True for a boss (roots last a third as long on one)."
   def boss?(kind_id), do: Map.has_key?(@kinds, kind_id) and Map.get(kind(kind_id), :boss, false) == true
 
@@ -158,7 +231,7 @@ defmodule BaconWorld.Mobs.Spawns do
   def points do
     golden = :math.pi() * (3 - :math.sqrt(5))
 
-    Enum.flat_map(@camps, fn camp ->
+    Enum.flat_map(camps(), fn camp ->
       kinds = Enum.flat_map(camp.mobs, fn {kind, count} -> List.duplicate(kind, count) end)
       total = length(kinds)
 
@@ -174,7 +247,7 @@ defmodule BaconWorld.Mobs.Spawns do
 
   @doc "What the client needs to dress the camps."
   def camps_payload(units_per_metre) do
-    Enum.map(@camps, fn c -> %{id: c.id, name: c.name, theme: c.theme, x: c.x * units_per_metre, z: c.z * units_per_metre, radius: c.radius * units_per_metre} end)
+    Enum.map(camps(), fn c -> %{id: c.id, name: c.name, theme: c.theme, x: c.x * units_per_metre, z: c.z * units_per_metre, radius: c.radius * units_per_metre} end)
   end
 
   @doc "Picks from `[{value, weight}]`."

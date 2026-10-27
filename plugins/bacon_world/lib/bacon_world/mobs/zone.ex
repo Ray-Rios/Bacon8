@@ -170,8 +170,16 @@ defmodule BaconWorld.Mobs.Zone do
 
         id ->
           {x, z} = {num(meta[:x]), num(meta[:z])}
-          # y is the height above the ground (Brain.airborne?/1): on a hillside nobody is flying
-          Map.put(acc, id, %{x: x, y: num(meta[:y]) - ground(x, z), z: z, dead: meta[:dead] == true, level: meta[:level] || 1})
+          # y is the height above the ground (Brain.airborne?/1): on a hillside nobody is flying.
+          # Swimmers are out of reach (Brain.out_of_reach?/1).
+          Map.put(acc, id, %{
+            x: x,
+            y: num(meta[:y]) - ground(x, z),
+            z: z,
+            swimming: swimming?(meta),
+            dead: meta[:dead] == true,
+            level: meta[:level] || 1
+          })
       end
     end)
   rescue
@@ -179,13 +187,13 @@ defmodule BaconWorld.Mobs.Zone do
   end
 
   # The ground under a point, scene units (BaconWorld.Terrain; 0 without terrain).
-  defp ground(x, z) do
-    u = BaconWorld.Mobs.Brain.u()
+  defp ground(x, z), do: BaconWorld.Terrain.surface_units(x, z, BaconWorld.Mobs.Brain.u())
 
-    case BaconWorld.Terrain.loaded() do
-      nil -> 0.0
-      t -> max(BaconWorld.Terrain.height(t, x / u, z / u), t.sea) * u
-    end
+  # The client's motion flags (8: swimming), or deep water under them.
+  defp swimming?(meta) do
+    m = meta[:m] || meta[:motion] || 0
+    u = BaconWorld.Mobs.Brain.u()
+    (is_integer(m) and Bitwise.band(m, 8) != 0) or BaconWorld.Terrain.deep?(num(meta[:x]) / u, num(meta[:z]) / u)
   end
 
   defp num(n) when is_number(n), do: n * 1.0
@@ -215,6 +223,7 @@ defmodule BaconWorld.Mobs.Zone do
   def event({:aggro, id, cid}), do: %{t: "aggro", id: id, target: cid}
   def event({:attack, id, cid, hit, damage}), do: %{t: "attack", id: id, target: cid, hit: hit, damage: damage}
   def event({:attack, id, cid, hit, damage, move}), do: %{t: "attack", id: id, target: cid, hit: hit, damage: damage, move: move}
+  def event({:attack, id, cid, hit, damage, move, fx}), do: %{t: "attack", id: id, target: cid, hit: hit, damage: damage, move: move, fx: fx}
   def event({:cast, id, move}), do: %{t: "cast", id: id, move: move}
   def event({:damaged, id, cid, damage, crit, hp, max_hp}), do: %{t: "damaged", id: id, by: cid, damage: damage, crit: crit, hp: hp, max_hp: max_hp}
   def event({:rooted, id, ms}), do: %{t: "rooted", id: id, ms: ms}

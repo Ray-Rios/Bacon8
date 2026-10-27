@@ -19,8 +19,11 @@ defmodule BaconWorld.Mobs.Brain do
     * `{:aggro, id, character_id}`
     * `{:attack, id, character_id, hit?, damage}`, or with a sixth element, the move
       (`"bite"`, `"claw"`, `"tail"`, `"breath"`) for kinds that have `moves` or `breath`
+    * `{:attack, id, character_id, hit?, damage, move, fx}` - a special (the Kraken's "grab",
+      "ink", "maelstrom") and what it does to the one it hits: `%{root_ms}`, `%{blind_ms}`,
+      `%{pull: [x, z], pull_m}` (the client applies them: you are held, blinded, dragged)
     * `{:cast, id, move}` - a creature starts something everyone should see coming (the
-      dragon rearing back to breathe fire)
+      dragon rearing back to breathe fire, the Kraken's specials)
     * `{:damaged, id, character_id, damage, crit?, hp, max_hp}` (from `melee/4`)
     * `{:died, id, killer_id}`
     * `{:corpse_gone, id}`
@@ -87,6 +90,11 @@ defmodule BaconWorld.Mobs.Brain do
       breath: nil,
       next_breath: now + 6_000,
       busy_until: now,
+      # special: a pending special `%{move, at, target}` (Spawns `specials`); squeeze: a held
+      # target taking damage each second `%{target, next, left, dmg}`
+      special: nil,
+      next_special: now + 8_000,
+      squeeze: nil,
       # rooted (a player's Entangling Roots): no moving before then, swinging still
       rooted_until: now
     }
@@ -123,9 +131,12 @@ defmodule BaconWorld.Mobs.Brain do
 
   def tick(m, players, now, dt, _point) do
     kind = Spawns.kind(m.kind)
-    {m, e1} = check_target(m, players)
+    {m, e1} = check_target(m, players, kind)
     {m, e2} = maybe_aggro(m, players, kind)
     {m, e0} = breathe(m, players, kind, now)
+    {m, e4} = unleash(m, players, kind, now)
+    {m, e5} = squeeze(m, players, kind, now)
+    e0 = e0 ++ e4 ++ e5
     {m2, e3} = if now < m.busy_until, do: {%{m | vx: 0.0, vz: 0.0}, []}, else: act(m, players, kind, now, dt)
     # rooted: it turns and swings, but stays where it is
     m2 = if now < Map.get(m, :rooted_until, now), do: %{m2 | x: m.x, z: m.z, vx: 0.0, vz: 0.0}, else: m2
@@ -135,26 +146,34 @@ defmodule BaconWorld.Mobs.Brain do
   @doc "True for a player too high up for the creatures (a flying mount)."
   def airborne?(p), do: (Map.get(p, :y) || 0.0) > @airborne_m * @u
 
+  @doc "Flying or swimming: no creature chases or attacks them (they don't fly or swim)."
+  def out_of_reach?(p), do: airborne?(p) or Map.get(p, :swimming, false) == true
+
+  @doc "As `out_of_reach?/1` for a kind: a creature of the deep (the Kraken) reaches swimmers."
+  def out_of_reach?(p, kind) do
+    if Map.get(kind, :aquatic, false), do: airborne?(p), else: out_of_reach?(p)
+  end
+
   # A chase ends when the target is gone, dead, safe in the village, or too far from home.
-  defp check_target(%{state: :chase, target: t} = m, players) do
+  defp check_target(%{state: :chase, target: t} = m, players, kind) do
     p = players[t]
     {hx, hz} = m.home
 
-    if is_nil(p) or p.dead or in_safe_zone?(p.x, p.z) or airborne?(p) or dist({m.x, m.z}, {hx, hz}) > Spawns.leash(m.kind) * @u do
+    if is_nil(p) or p.dead or in_safe_zone?(p.x, p.z) or out_of_reach?(p, kind) or dist({m.x, m.z}, {hx, hz}) > Spawns.leash(m.kind) * @u do
       {%{m | state: :return, target: nil, goal: m.home}, []}
     else
       {m, []}
     end
   end
 
-  defp check_target(m, _players), do: {m, []}
+  defp check_target(m, _players, _kind), do: {m, []}
 
   defp maybe_aggro(%{state: s} = m, players, kind) when s in [:idle, :wander] do
     range = kind.aggro * @u
 
     players
     |> Enum.filter(fn {_id, p} ->
-      not p.dead and not in_safe_zone?(p.x, p.z) and not airborne?(p) and dist({m.x, m.z}, {p.x, p.z}) <= range and
+      not p.dead and not in_safe_zone?(p.x, p.z) and not out_of_reach?(p, kind) and dist({m.x, m.z}, {p.x, p.z}) <= range and
         aggressive_to?(m.level, p.level || 1)
     end)
     |> Enum.min_by(fn {_id, p} -> dist({m.x, m.z}, {p.x, p.z}) end, fn -> nil end)
@@ -197,8 +216,17 @@ defmodule BaconWorld.Mobs.Brain do
     m = %{m | h: Melee.heading_to({m.x, m.z}, {p.x, p.z})}
     d = dist({m.x, m.z}, {p.x, p.z})
     breath = kind[:breath]
+    special = kind[:specials] && now >= Map.get(m, :next_special, now) && pick_special(kind.specials, d)
 
     cond do
+      special ->
+        # Wind up: everyone sees it coming (`:cast`); it lands after the windup (`unleash/4`).
+        at = now + special.windup_ms
+
+        {%{m | special: %{move: special.move, at: at, target: t}, busy_until: at + special.busy_ms,
+              next_special: now + Enum.random(kind.special_every_ms), next_attack: max(m.next_attack, at + special.busy_ms + 300), vx: 0.0, vz: 0.0},
+         [{:cast, m.id, special.move}]}
+
       breath && now >= m.next_breath && d <= breath.range * @u * 0.85 ->
         # Rear back: the fire comes after the windup, at whoever is in the cone then.
         at = now + breath.windup_ms
@@ -250,7 +278,7 @@ defmodule BaconWorld.Mobs.Brain do
       for {id, p} <- players,
           not p.dead,
           not in_safe_zone?(p.x, p.z),
-          not airborne?(p),
+          not out_of_reach?(p, kind),
           Melee.in_arc?({m.x, m.z}, m.h, {p.x, p.z}, range, b.half_arc_deg * 2) do
         hit = :rand.uniform() < Melee.hit_chance(m.level, p.level || 1)
         damage = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
@@ -261,6 +289,68 @@ defmodule BaconWorld.Mobs.Brain do
   end
 
   defp breathe(m, _players, _kind, _now), do: {m, []}
+
+  # A special whose range reaches `d` (scene units), by weight; nil when none does.
+  defp pick_special(specials, d) do
+    case Enum.filter(specials, &(d <= &1.range * @u * 0.9)) do
+      [] -> nil
+      ok -> Spawns.weighted(Enum.map(ok, &{&1, &1.weight}))
+    end
+  end
+
+  # A special whose windup is over lands on whoever it reaches then (each rolls to hit).
+  defp unleash(%{special: %{at: at} = sp} = m, players, kind, now) when now >= at do
+    s = Enum.find(kind.specials, &(&1.move == sp.move))
+    range = s.range * @u
+    {lo, hi} = s.dmg
+
+    events =
+      for {id, p} <- players,
+          not p.dead,
+          not in_safe_zone?(p.x, p.z),
+          not out_of_reach?(p, kind),
+          special_reaches?(m, s, sp, id, p, range) do
+        hit = :rand.uniform() < Melee.hit_chance(m.level, p.level || 1)
+        damage = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
+        {:attack, m.id, id, hit, damage, s.move, special_fx(s, m, hit)}
+      end
+
+    # a tentacle that caught its target holds on and squeezes
+    squeeze =
+      case {s[:squeeze], Enum.find(events, fn {:attack, _, id, hit, _, _, _} -> hit and id == sp.target end)} do
+        {{ticks, dmg}, {:attack, _, id, _, _, _, _}} -> %{target: id, next: now + 1_000, left: ticks, dmg: dmg, range: range}
+        _ -> Map.get(m, :squeeze)
+      end
+
+    {%{m | special: nil, squeeze: squeeze}, events}
+  end
+
+  defp unleash(m, _players, _kind, _now), do: {m, []}
+
+  defp special_reaches?(m, %{shape: :target}, sp, id, p, range), do: id == sp.target and dist({m.x, m.z}, {p.x, p.z}) <= range + @player_radius * @u
+  defp special_reaches?(m, %{shape: :ring}, _sp, _id, p, range), do: dist({m.x, m.z}, {p.x, p.z}) <= range
+  defp special_reaches?(m, %{shape: :cone} = s, _sp, _id, p, range), do: Melee.in_arc?({m.x, m.z}, m.h, {p.x, p.z}, range, s.half_arc_deg * 2)
+
+  # What a special does to whoever it hits, for the client to apply (it moves the character).
+  defp special_fx(%{pull_m: pull}, m, _hit), do: %{pull: [r2(m.x), r2(m.z)], pull_m: pull}
+  defp special_fx(%{root_ms: ms}, _m, true), do: %{root_ms: ms}
+  defp special_fx(%{blind_ms: ms}, _m, true), do: %{blind_ms: ms}
+  defp special_fx(_s, _m, _hit), do: %{}
+
+  # Held: a squeeze each second while it lasts, the victim is alive and still in reach.
+  defp squeeze(%{squeeze: %{next: nx} = q} = m, players, _kind, now) when now >= nx do
+    p = players[q.target]
+
+    if q.left <= 0 or is_nil(p) or p.dead or dist({m.x, m.z}, {p.x, p.z}) > q.range + @player_radius * @u do
+      {%{m | squeeze: nil}, []}
+    else
+      {lo, hi} = q.dmg
+      damage = Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1)))
+      {%{m | squeeze: %{q | next: now + 1_000, left: q.left - 1}}, [{:attack, m.id, q.target, true, damage, "squeeze"}]}
+    end
+  end
+
+  defp squeeze(m, _players, _kind, _now), do: {m, []}
 
   # Walks toward `goal` at `speed` (units/s), stopping `stop` short. Never into the village.
   defp move(m, {gx, gz}, speed, dt, stop) do
@@ -273,6 +363,10 @@ defmodule BaconWorld.Mobs.Brain do
     else
       step = min(speed * dt, d - stop)
       {nx, nz} = keep_out_of_town(m.x + dx / d * step, m.z + dz / d * step)
+      # creatures don't swim: they stop at the water's edge (BaconWorld.Terrain; never on flat
+      # ground); a creature of the deep (the Kraken) stops where the deep water ends
+      deep = BaconWorld.Terrain.deep?(nx / @u, nz / @u)
+      {nx, nz} = if deep != Spawns.aquatic?(m.kind), do: {m.x, m.z}, else: {nx, nz}
       moved = dist({nx, nz}, {m.x, m.z})
       v = if dt > 0, do: moved / dt, else: 0.0
       %{m | x: nx, z: nz, h: :math.atan2(dx, dz), vx: dx / d * v, vz: dz / d * v}
@@ -407,6 +501,7 @@ defmodule BaconWorld.Mobs.Brain do
       looter_since: now
     }
 
+    mob = mob |> Map.put(:special, nil) |> Map.put(:squeeze, nil)
     {%{mob | state: :dead, hp: 0, target: nil, goal: nil, vx: 0.0, vz: 0.0, corpse: corpse}, [{:died, mob.id, killer}]}
   end
 

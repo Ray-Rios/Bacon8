@@ -116,3 +116,26 @@ test('death holds, revive returns to locomotion', () => {
   for (let i = 0; i < 30; i++) { anim.update(1 / 30); mixer.update(1 / 30); }
   assert.ok(Math.abs(hr.position.x) < 1e-3, `alive again, got ${hr.position.x}`);
 });
+
+test('swimming: the swim clips on the whole body, idle and stroking; no weapon poses', () => {
+  const { root, hr } = rig();
+  const mixer = new THREE.AnimationMixer(root);
+  const anim = new CharacterAnimator(root, mixer, [
+    clip('Idle_Loop', 'hand_r', 0, 2),
+    clip('Swim_Idle_Loop', 'hand_r', 0.3, 2),
+    clip('Swim_Fwd_Loop', 'hand_r', 0.7, 2),
+    clip('TwoHand_Idle_Loop', 'hand_r', -0.2, 2),
+  ]);
+  anim.setGear({ set: 'two_hand', hands: 2 }, null);
+  anim.setMotion({ speed: 0, dirX: 0, dirZ: 1, grounded: true, swim: true });
+  for (let i = 0; i < 30; i++) { anim.update(1 / 30); mixer.update(1 / 30); }
+  assert.ok(Math.abs(hr.position.x - 0.3) < 1e-3, `treading water, got ${hr.position.x}`);
+  assert.deepEqual(anim.armSets(), { l: 'swim', r: 'swim', two: false });
+  assert.deepEqual(anim.freeHands(), { l: false, r: false });
+  anim.setMotion({ speed: 2.2, dirX: 0, dirZ: 1, grounded: true, swim: true });
+  for (let i = 0; i < 30; i++) { anim.update(1 / 30); mixer.update(1 / 30); }
+  assert.ok(Math.abs(hr.position.x - 0.7) < 1e-3, `swimming, got ${hr.position.x}`);
+  anim.setMotion({ speed: 0, dirX: 0, dirZ: 1, grounded: true });
+  for (let i = 0; i < 30; i++) { anim.update(1 / 30); mixer.update(1 / 30); }
+  assert.equal(anim.armSets().two, true, 'out of the water: the two-hander again');
+});

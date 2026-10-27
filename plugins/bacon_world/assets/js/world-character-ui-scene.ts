@@ -1111,6 +1111,7 @@ export const WorldCharacterUIScene = {
         isSprinting: speed > PACE.jogUpTo,
         isCrouching: (m & 1) !== 0,
         isJumping: (m & 2) !== 0,
+        isSwimming: (m & 8) !== 0,
         speed,
         dirX: dir.x,
         dirZ: dir.z
@@ -1130,6 +1131,7 @@ export const WorldCharacterUIScene = {
       isSprinting: !!movementState?.isSprinting,
       isCrouching: !!movementState?.isCrouching,
       isJumping: movementState ? !movementState.isGrounded : false,
+      isSwimming: !!movementState?.isSwimming,
       speed: movementState?.speed ?? 0,
       dirX: movementState?.dirX ?? 0,
       dirZ: movementState?.dirZ ?? 1
@@ -1152,7 +1154,13 @@ export const WorldCharacterUIScene = {
       this.wasGrounded = grounded;
       // Steps by pace: sprint 260 ms, jog 330 ms, crouch-walk 500 ms; the sound by what's underfoot.
       const interval = movementState.isCrouching ? 500 : movementState.isSprinting ? 260 : 330;
-      if (grounded && movementState.isMoving && now - this.lastStepMs > interval) {
+      // swimming: a stroke's splash now and then instead of steps
+      if (movementState.isSwimming) {
+        if (movementState.isMoving && now - this.lastStepMs > 900) {
+          this.lastStepMs = now;
+          this.audio.play('sw_drip', 0.5);
+        }
+      } else if (grounded && movementState.isMoving && now - this.lastStepMs > interval) {
         this.lastStepMs = now;
         const me = this.localCharacter();
         const surface = me ? this.surfaceAt(me.mesh.position.x, me.mesh.position.z) : 'grass';
@@ -2117,9 +2125,10 @@ export const WorldCharacterUIScene = {
 
     const now = performance.now();
     const prev = this.lastSentLocalPosition;
-    // What the body is doing, so everyone else sees it: 1 crouching, 2 airborne, 4 flying (a mount).
+    // What the body is doing, so everyone else sees it: 1 crouching, 2 airborne, 4 flying (a mount),
+    // 8 swimming.
     const ms = this.controller?.getMovementState?.();
-    const m = (ms?.isCrouching ? 1 : 0) | (ms && !ms.isGrounded ? 2 : 0) | (ms?.isFlying ? 4 : 0);
+    const m = (ms?.isCrouching ? 1 : 0) | (ms && !ms.isGrounded ? 2 : 0) | (ms?.isFlying ? 4 : 0) | (ms?.isSwimming ? 8 : 0);
 
     const moved =
       !prev ||

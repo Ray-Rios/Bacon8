@@ -14,6 +14,8 @@ const DEG = Math.PI / 180;
 
 export const MOVE = {
   jogSpeed: 5.0, // MaxWalkSpeed, m/s (the default pace)
+  swimSpeed: 2.2, // in deep water (2026-10-26)
+  swimSprintSpeed: 3.4,
   sprintSpeed: 8.0, // Shift: 1.6 x jog
   crouchSpeed: 2.5, // C
   acceleration: 20.48, // MaxAcceleration, m/s^2

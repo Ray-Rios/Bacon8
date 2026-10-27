@@ -82,6 +82,10 @@ export const FishingWorld = {
     if (!this.water || !this.holdingPole()) return false;
     const me = this.localCharacter();
     if (!me) return false;
+    if (this.controller?.getMovementState?.().isSwimming) {
+      this.combatLog('Swim to the shore first: you can only fish from dry land.', '#B8B8B8');
+      return true;
+    }
     const p = me.mesh.position;
     const near = nearWater(this.water, p.x, p.z, this.water.bank);
     if (!near) {

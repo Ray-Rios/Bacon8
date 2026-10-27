@@ -17,6 +17,7 @@ import type { HumanFactory } from './human-factory';
 import { WeaponModels, gearOf, holdItem } from './items';
 import { Nameplates, conColor } from './nameplates';
 import { DRAGON_HIT_AT, DRAGON_MOVE_CLIP, DragonFactory, DragonRig, FireBreath } from './dragon-view';
+import { InkCloud, KRAKEN_HIT_AT, KrakenFactory, KrakenRig, Maelstrom } from './kraken-view';
 
 export const MOBS_BASE = '/models/Mobs';
 const MODELS: Record<string, string> = {
@@ -26,6 +27,8 @@ const MODELS: Record<string, string> = {
 };
 // Kinds drawn with the dragon (dragon-view.ts) instead of a skeleton on the male's packs.
 const DRAGONS = new Set(['baconator']);
+// Kinds drawn with the kraken (kraken-view.ts): it lives in the water.
+const KRAKENS = new Set(['kraken']);
 // Size by kind (the warriors are a little bigger).
 const SCALE: Record<string, number> = { decaying_skeleton: 0.97, skeleton: 1.0, skeleton_warrior: 1.07 };
 
@@ -66,6 +69,8 @@ export interface MobEvent {
   killer?: string | null;
   corpse?: { owner: string | null; empty: boolean } | null;
   looter?: string | null;
+  /** attack: what a special does to whoever it hit (the Kraken's): held, blinded, dragged. */
+  fx?: { root_ms?: number; blind_ms?: number; pull?: [number, number]; pull_m?: number };
 }
 
 export interface MobEntry {
@@ -77,6 +82,10 @@ export interface MobEntry {
   /** The dragon's rig and its fire, for the dragon kinds. */
   dragon: DragonRig | null;
   fire: FireBreath | null;
+  /** The Kraken's rig, its ink and its whirlpool. */
+  kraken: KrakenRig | null;
+  ink: InkCloud | null;
+  whirl: Maelstrom | null;
   proxy: THREE.Mesh;
   net: { x: number; z: number; h: number; vx: number; vz: number; at: number };
   speed: number;
@@ -90,6 +99,9 @@ const PROXY_LYING = new THREE.BoxGeometry(0.8, 0.5, 2.2).translate(0, 0.25, 0);
 // The dragon at full size (metres; scaled with it): its body and neck, not the tail's end.
 const PROXY_DRAGON = new THREE.BoxGeometry(4.2, 5.6, 13).translate(0, 2.8, 1.2);
 const PROXY_DRAGON_LYING = new THREE.BoxGeometry(5, 3, 13).translate(0, 1.5, 1.2);
+// The Kraken (full size): the head and the mantle rising behind it, out of the water.
+const PROXY_KRAKEN = new THREE.BoxGeometry(6, 11, 9).translate(0, 4.5, -1.5);
+const PROXY_KRAKEN_DEAD = new THREE.BoxGeometry(7, 3, 9).translate(0, 0.5, 0);
 const PROXY_MAT = new THREE.MeshBasicMaterial({ visible: false });
 
 export class MobsView {
@@ -103,6 +115,8 @@ export class MobsView {
   onSwingLanded: ((e: MobEvent, mob: MobEntry) => void) | null = null;
   /** The dragon's voice, breath, wing beats and footfalls, from where it is (lobby-audio.ts kinds). */
   onSound: ((kind: string, at: THREE.Vector3, gain?: number) => void) | null = null;
+  /** Where a character is (for the Kraken's stare), or null. */
+  characterAt: ((id: string) => THREE.Vector3 | null) | null = null;
 
   private mobs = new Map<string, MobEntry>();
   private loader: GLTFLoader;
@@ -111,6 +125,7 @@ export class MobsView {
   private pending: Array<{ at: number; fn: () => void }> = [];
   private time = 0;
   private dragons = new DragonFactory();
+  private krakens = new KrakenFactory();
 
   constructor(
     private humans: HumanFactory,
@@ -164,11 +179,28 @@ export class MobsView {
             const at = e.root.position;
             setTimeout(() => this.onSound?.('dragon_roar', at, 1), 250);
           }
+          if (e.kraken && e.view.state !== 'dead') {
+            e.kraken.play('roar');
+            const at = e.root.position;
+            setTimeout(() => this.onSound?.('kraken_roar', at, 1), 200);
+          }
         }
         break;
       case 'attack':
         if (e && e.view.state !== 'dead') {
           const entry = e;
+          if (e.kraken) {
+            // the specials were wound up on their cast: they land now
+            if (ev.move === 'grab' || ev.move === 'ink' || ev.move === 'maelstrom') {
+              this.onSwingLanded?.(ev, entry);
+              break;
+            }
+            const move = ev.move === 'slam' || ev.move === 'squeeze' ? ev.move : 'lash';
+            e.kraken.play(move);
+            if (Math.random() < 0.5) this.onSound?.('kraken_growl', e.root.position, 0.8);
+            this.pending.push({ at: this.time + (KRAKEN_HIT_AT[move] ?? 0.5), fn: () => this.onSwingLanded?.(ev, entry) });
+            break;
+          }
           if (e.dragon) {
             // the breath's burn comes after its cast (the clip is already playing)
             if (ev.move === 'breath') {
@@ -187,6 +219,14 @@ export class MobsView {
         }
         break;
       case 'cast':
+        if (e?.kraken && e.view.state !== 'dead' && ev.move) {
+          const entry = e;
+          const k = e.kraken;
+          const d = k.play(ev.move);
+          this.onSound?.(ev.move === 'maelstrom' ? 'kraken_roar' : 'kraken_growl', e.root.position, 1);
+          if (ev.move === 'ink') this.pending.push({ at: this.time + 0.35, fn: () => entry.ink?.start(1.1) });
+          if (ev.move === 'maelstrom') entry.whirl?.start(d + 1.2);
+        }
         if (e?.dragon && ev.move === 'breath' && e.view.state !== 'dead') {
           e.dragon.play('Breath');
           const entry = e;
@@ -201,6 +241,10 @@ export class MobsView {
           if (typeof ev.max_hp === 'number') e.view.max_hp = ev.max_hp;
           if ((ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0) e.animator?.hit();
           // a boss flinches now and then, not at every scratch
+          if (e.kraken && (ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0 && Math.random() < 0.15) {
+            e.kraken.play('Hit');
+            this.onSound?.('kraken_hurt', e.root.position, 0.9);
+          }
           if (e.dragon && (ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0 && Math.random() < 0.15) {
             e.dragon.play('Hit');
             this.onSound?.('dragon_hurt', e.root.position, 0.9);
@@ -220,7 +264,9 @@ export class MobsView {
             setTimeout(() => this.onSound?.('land_hard', at, 1), 1400);
           }
           e.dragon?.die();
-          e.proxy.geometry = e.dragon ? PROXY_DRAGON_LYING : PROXY_LYING;
+          if (e.kraken) this.onSound?.('kraken_roar', e.root.position, 0.9);
+          e.kraken?.die();
+          e.proxy.geometry = this.proxyFor(e.view.kind, true);
         }
         break;
       case 'corpse':
@@ -299,6 +345,12 @@ export class MobsView {
       e.mixer?.update(dt);
       e.dragon?.update(dt);
       e.fire?.update(dt);
+      if (e.kraken) {
+        e.kraken.lookAt = (e.view.target && this.characterAt?.(e.view.target)) || null;
+        e.kraken.update(dt);
+      }
+      e.ink?.update(dt);
+      e.whirl?.update(dt);
       // The name: con colour, a corpse in grey.
       const plateId = `mob:${id}`;
       const dead = e.view.state === 'dead';
@@ -306,7 +358,7 @@ export class MobsView {
         plateId,
         e.root,
         { name: dead ? `${e.view.name}'s corpse` : e.view.name, color: dead ? '#B9B2A6' : conColor(e.view.level - me.level, me.level) },
-        { height: dead ? (e.dragon ? 2.6 * (e.view.scale ?? 1) * U : 0.6 * U) : e.heightU, target: me.targetId === id }
+        { height: dead ? (e.dragon || e.kraken ? 2.6 * (e.view.scale ?? 1) * U : 0.6 * U) : e.heightU, target: me.targetId === id }
       );
     }
   }
@@ -386,11 +438,9 @@ export class MobsView {
     root.position.set(v.x, 0, v.z);
     root.rotation.y = v.h;
     const dragon = DRAGONS.has(v.kind);
-    const scale = dragon ? v.scale ?? 1 : SCALE[v.kind] ?? 1;
-    const proxy = new THREE.Mesh(
-      dragon ? (v.state === 'dead' ? PROXY_DRAGON_LYING : PROXY_DRAGON) : v.state === 'dead' ? PROXY_LYING : PROXY_STANDING,
-      PROXY_MAT
-    );
+    const kraken = KRAKENS.has(v.kind);
+    const scale = dragon || kraken ? v.scale ?? 1 : SCALE[v.kind] ?? 1;
+    const proxy = new THREE.Mesh(this.proxyFor(v.kind, v.state === 'dead'), PROXY_MAT);
     proxy.userData.mobId = v.id;
     proxy.scale.setScalar(UNITS_PER_METRE * scale);
     root.add(proxy);
@@ -403,12 +453,15 @@ export class MobsView {
       animator: null,
       dragon: null,
       fire: null,
+      kraken: null,
+      ink: null,
+      whirl: null,
       proxy,
       net: { x: v.x, z: v.z, h: v.h, vx: 0, vz: 0, at: this.time },
       speed: 0,
       rise: rise ? 1.4 : 0,
       sink: -1,
-      heightU: dragon ? (7.6 * scale + 0.6) * UNITS_PER_METRE : (1.8 * scale + 0.3) * UNITS_PER_METRE,
+      heightU: kraken ? (11.5 * scale + 1) * UNITS_PER_METRE : dragon ? (7.6 * scale + 0.6) * UNITS_PER_METRE : (1.8 * scale + 0.3) * UNITS_PER_METRE,
     };
     if (rise) root.position.y = -1.9 * UNITS_PER_METRE;
     this.mobs.set(v.id, e);
@@ -418,7 +471,28 @@ export class MobsView {
   }
 
   // Loads the model, then the animations and the weapons, into an entry.
+  private proxyFor(kind: string, dead: boolean): THREE.BufferGeometry {
+    if (KRAKENS.has(kind)) return dead ? PROXY_KRAKEN_DEAD : PROXY_KRAKEN;
+    if (DRAGONS.has(kind)) return dead ? PROXY_DRAGON_LYING : PROXY_DRAGON;
+    return dead ? PROXY_LYING : PROXY_STANDING;
+  }
+
   private async dress(e: MobEntry, scale: number) {
+    if (KRAKENS.has(e.view.kind)) {
+      const rig = await this.krakens.create(scale);
+      if (!rig || this.mobs.get(e.view.id) !== e) {
+        rig?.dispose();
+        return;
+      }
+      e.root.add(rig.root);
+      e.kraken = rig;
+      e.model = rig.model;
+      const U = UNITS_PER_METRE;
+      if (rig.mouth) e.ink = new InkCloud(this.group, rig.mouth, e.root, 18.5 * scale * U, 5.5 * scale * U);
+      e.whirl = new Maelstrom(this.group, e.root, 17 * scale * U, () => (this.ground ? this.ground(e.root.position.x, e.root.position.z) : 0));
+      if (e.view.state === 'dead') rig.die(true);
+      return;
+    }
     if (DRAGONS.has(e.view.kind)) {
       const rig = await this.dragons.create(scale);
       if (!rig || this.mobs.get(e.view.id) !== e) {
@@ -474,11 +548,13 @@ export class MobsView {
     if (v.state === 'dead' && !wasDead) {
       e.animator?.dieInstantly();
       e.dragon?.die(true);
-      e.proxy.geometry = e.dragon ? PROXY_DRAGON_LYING : PROXY_LYING;
+      e.kraken?.die(true);
+      e.proxy.geometry = this.proxyFor(v.kind, true);
     } else if (v.state !== 'dead' && wasDead) {
       e.animator?.revive();
       e.dragon?.revive();
-      e.proxy.geometry = e.dragon ? PROXY_DRAGON : PROXY_STANDING;
+      e.kraken?.revive();
+      e.proxy.geometry = this.proxyFor(v.kind, false);
     }
   }
 
@@ -489,6 +565,9 @@ export class MobsView {
     e.animator?.dispose();
     e.dragon?.dispose();
     e.fire?.dispose();
+    e.kraken?.dispose();
+    e.ink?.dispose();
+    e.whirl?.dispose();
     // Geometry and materials are shared with the template and the weapons file.
     this.mobs.delete(id);
     this.nameplateIds.delete(`mob:${id}`);

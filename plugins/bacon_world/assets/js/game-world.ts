@@ -29,14 +29,47 @@ const FIST = { dmg: 3, dly: 9 };
 type Hand = 'left' | 'right';
 
 // The combat log for a creature's moves (BaconWorld.Mobs.Spawns `moves`, `breath`).
-const MOVE_VERBS: Record<string, string> = { bite: 'bites', claw: 'claws', tail: 'lashes', breath: 'breathes fire on' };
-const MISS_VERBS: Record<string, string> = { bite: 'bite', claw: 'claw', tail: 'lash' };
+const MOVE_VERBS: Record<string, string> = {
+  bite: 'bites',
+  claw: 'claws',
+  tail: 'lashes',
+  breath: 'breathes fire on',
+  // the Kraken's (2026-10-27)
+  lash: 'lashes',
+  slam: 'slams down on',
+  grab: 'seizes',
+  squeeze: 'crushes',
+  ink: 'sprays ink over',
+  maelstrom: 'drags into its maelstrom',
+};
+const MISS_VERBS: Record<string, string> = { bite: 'bite', claw: 'claw', tail: 'lash', lash: 'lash', slam: 'slam down on', grab: 'seize', ink: 'ink' };
+// What a creature's special winds up into (the combat log, when it's near).
+const CAST_WARNINGS: Record<string, string> = {
+  breath: 'rears back and draws a deep breath!',
+  grab: 'uncoils a hunting tentacle!',
+  ink: 'swells, its maw gaping!',
+  maelstrom: 'begins to churn the lake into a whirlpool! Swim clear!',
+};
+// The Kraken's voice: the dragon's recordings, pitched down (lobby-audio.ts kinds; rate).
+const SOUND_ALIAS: Record<string, [string, number]> = {
+  kraken_roar: ['dragon_roar', 0.6],
+  kraken_growl: ['dragon_growl', 0.62],
+  kraken_hurt: ['dragon_hurt', 0.65],
+  kraken_stroke: ['sw_drip', 0.45],
+};
 const MOUNT_REFUSALS: Record<string, string> = {
   no_mount: "You don't have a mount yet. Dragons are for sale in the Bacon Store.",
   not_owned: "That mount isn't yours.",
   dead: 'Not while you are dead.',
   airborne: 'Land first (double-tap Space, or fly down to the ground).',
 };
+
+/** A sound by kind, or by one of the aliases above. */
+function playKind(audio: any, kind: string, at: THREE.Vector3, gain: number, rate = 1) {
+  const a = SOUND_ALIAS[kind];
+  if (a) audio?.playAt(a[0], at, gain, a[1] * rate);
+  else audio?.playAt(kind, at, gain, rate);
+}
 
 function reply(hook: any, event: string, payload: any, fallback: any = { ok: false }): Promise<any> {
   return new Promise((resolve) => {
@@ -111,7 +144,11 @@ export const GameWorld = {
       }));
       this.mobsView.onEvent = (e: MobEvent, m: MobEntry | undefined) => this.onMobEvent(e, m);
       this.mobsView.onSwingLanded = (e: MobEvent, m: MobEntry) => this.onMobSwingLanded(e, m);
-      this.mobsView.onSound = (kind: string, at: THREE.Vector3, gain?: number) => this.audio?.playAt(kind, at, gain ?? 1);
+      this.mobsView.onSound = (kind: string, at: THREE.Vector3, gain?: number) => playKind(this.audio, kind, at, gain ?? 1);
+      this.mobsView.characterAt = (id: string) => {
+        const c = this.characterManager?.getAllCharacters().get(id);
+        return c ? c.mesh.position.clone().add(new THREE.Vector3(0, 1.4 * U, 0)) : null;
+      };
       this.scene.add(this.mobsView.group);
     }
     this.applyGround?.();
@@ -225,7 +262,7 @@ export const GameWorld = {
     const myId = this.state?.currentPlayer?.character_id;
     let boss = false;
     for (const m of this.mobsView?.all?.() || []) {
-      if (m.dragon && m.view.state !== 'dead' && (m.view.target === myId || (this.targetId === m.view.id && m.view.target))) boss = true;
+      if ((m.dragon || m.kraken) && m.view.state !== 'dead' && (m.view.target === myId || (this.targetId === m.view.id && m.view.target))) boss = true;
     }
     const day = (this.ambientLight?.intensity ?? 0.85) > 0.32;
     a.setMood(boss ? 'boss' : lair > 0.6 ? 'lair' : day ? 'day' : 'night');
@@ -247,7 +284,9 @@ export const GameWorld = {
   initMounts(this: any) {
     if (!this.mounts) {
       this.mounts = new MountSystem(() => this.characterManager);
-      this.mounts.onSound = (kind: string, at: THREE.Vector3, gain: number) => this.audio?.playAt(kind, at, gain, kind === 'wing_flap' ? 1.2 : 1.15);
+      this.mounts.onSound = (kind: string, at: THREE.Vector3, gain: number) => playKind(this.audio, kind, at, gain, kind === 'wing_flap' ? 1.2 : 1.15);
+      this.mounts.fxParent = this.scene;
+      this.mounts.surfaceAt = (x: number, z: number) => (this.heightfield ? this.heightfield.surface(x, z) : 0);
     }
     void reply(this, 'mounts_fetch', {}, { catalog: {}, owned: [], mount: null }).then((res: any) => {
       if (!this.mounts) return;
@@ -284,7 +323,8 @@ export const GameWorld = {
         if (res.spec) this.mounts.catalog[res.mount] = res.spec;
         this.applyLocalMount(res.mount);
         const spec = this.mounts.spec(res.mount);
-        this.combatLog(`You climb onto your ${spec?.name || 'mount'}.${spec?.flies ? ' Double-tap Space to fly.' : ''}`, '#9FD8FF');
+        const moves = spec?.attacks ? ` It fights: ${spec.attacks.left?.name || 'left'} (left), ${spec.attacks.right?.name || 'right'} (right).` : '';
+        this.combatLog(`You climb onto your ${spec?.name || 'mount'}.${spec?.flies ? ' Double-tap Space to fly.' : spec?.swims ? ' It swims fast in deep water.' : ''}${moves}`, '#9FD8FF');
       } else {
         this.combatLog(MOUNT_REFUSALS[res?.reason] || "You can't ride right now.", '#B8B8B8');
       }
@@ -296,13 +336,19 @@ export const GameWorld = {
     if (!myId || !this.mounts) return;
     void this.mounts.set(myId, id);
     const spec = this.mounts.spec(id);
-    this.controller?.setMount(spec ? { groundSpeed: spec.ground_speed, flySpeed: spec.fly_speed, flies: spec.flies, pivot: this.mounts.pivotFor(spec.id) } : null);
+    this.controller?.setMount(
+      spec ? { groundSpeed: spec.ground_speed, flySpeed: spec.fly_speed, flies: spec.flies, pivot: this.mounts.pivotFor(spec.id), swimSpeed: spec.swims ? spec.swim_speed : undefined } : null
+    );
   },
 
   /** Per frame after the characters animated: dragons move with their riders. */
   tickMounts(this: any, dt: number) {
     const myId = this.state?.currentPlayer?.character_id;
-    this.mounts?.update(dt, (id: string) => (id === myId ? !!this.controller?.isFlying : ((this.remoteMotion?.get(id) ?? 0) & 4) !== 0));
+    this.mounts?.update(
+      dt,
+      (id: string) => (id === myId ? !!this.controller?.isFlying : ((this.remoteMotion?.get(id) ?? 0) & 4) !== 0),
+      (x: number, z: number) => !!this.heightfield?.deep(x, z)
+    );
   },
 
   // ---------------------------------------------------------------- the stable
@@ -367,12 +413,12 @@ export const GameWorld = {
   meleeAttack(this: any, hand: Hand) {
     if (this.isDead || !this.controller || !this.state?.currentPlayer) return;
     const myId = this.state.currentPlayer.character_id;
+    // from the saddle, the mount fights (BaconWorld.Mounts `attacks`)
     if (this.mounts?.mountOf(myId)) {
-      const now0 = performance.now();
-      if (now0 - (this.saddleNagAt || 0) > 3000) this.combatLog("You can't fight from the saddle. Press M to climb down.", '#B8B8B8');
-      this.saddleNagAt = now0;
+      this.mountAttack(hand);
       return;
     }
+    // (2026-10-27: swimmers fight too: the Kraken is out in the deep water)
     const now = performance.now();
     if (now < this.swingReadyAt(hand)) return;
     const h = this.handItem(hand);
@@ -401,6 +447,28 @@ export const GameWorld = {
     });
   },
 
+  /** A mount's move for this hand: its own cooldown, the rig plays it, the zone resolves it. */
+  mountAttack(this: any, hand: Hand) {
+    const myId = this.state?.currentPlayer?.character_id;
+    const spec = this.mounts?.spec(this.mounts?.mountOf(myId));
+    const move = spec?.attacks?.[hand];
+    if (!move || !myId) return;
+    const now = performance.now();
+    const key = 'mount_' + hand;
+    if (now < (this.nextSwing?.[key] || 0)) return;
+    const dly = move.dly * 100;
+    this.nextSwing[key] = now + dly;
+    this.gameUI?.cooldown(hand, dly);
+    this.controller.faceCamera(1400);
+    const hitIn = (this.mounts.playMove(myId, move.move) ?? 0.5) * 1000;
+    const target = this.targetId && this.mobsView?.get(this.targetId) ? this.targetId : null;
+    void reply(this, 'mount_attack', { hand, heading: this.controller.getYaw(), target_id: target }).then((res: any) => {
+      if (!res?.ok) return;
+      setTimeout(() => this.showHits(res.hits || []), Math.max(0, hitIn - 40));
+      if (res.progress) this.applyProgress(res.progress);
+    });
+  },
+
   isOtherPlayer(this: any, id: string): boolean {
     return id !== this.state?.currentPlayer?.character_id && !!this.characterManager?.getAllCharacters().get(id);
   },
@@ -408,6 +476,10 @@ export const GameWorld = {
   // Someone else swung: their arm moves on our screen too.
   onRemoteSwing(this: any, p: any) {
     if (!p?.character_id || p.character_id === this.state?.currentPlayer?.character_id) return;
+    if (p.mount_move) {
+      this.mounts?.playMove(p.character_id, p.mount_move);
+      return;
+    }
     const animator = this.characterManager?.getAnimator(p.character_id);
     const info = animator?.attack(p.hand === 'left' ? 'left' : 'right', !!p.heavy, (p.delay_ms || 900) / 1000);
     if (!info) return;
@@ -546,7 +618,7 @@ export const GameWorld = {
         this.onMobRooted?.(e, m);
         break;
       case 'cast':
-        if (m && e.move === 'breath' && dist < 45 * U) this.combatLog(`${capital(m.view.name)} rears back and draws a deep breath!`, '#FFB347');
+        if (m && e.move && CAST_WARNINGS[e.move] && dist < 60 * U) this.combatLog(`${capital(m.view.name)} ${CAST_WARNINGS[e.move]}`, '#FFB347');
         break;
     }
     // A corpse that has gone, or a creature come back, is a new creature: let go of it
@@ -568,7 +640,9 @@ export const GameWorld = {
         this.audio?.play('hit_flesh', 1);
         if (Math.random() < 0.7) setTimeout(() => this.audio?.say('hurt', 0.75), 60);
         this.characterManager?.getAnimator(myId)?.hit();
+        this.applyMobFx(e, m);
       } else {
+        if (e.fx?.pull) this.applyMobFx(e, m);
         this.combatLog(
           e.move === 'breath' ? `You dodge ${capital(m.view.name)}'s flames!` : `${capital(m.view.name)} tries to ${MISS_VERBS[e.move || ''] || 'hit'} YOU, but misses!`,
           '#B8B8B8'
@@ -581,6 +655,48 @@ export const GameWorld = {
       this.audio?.play(e.hit ? 'hit_flesh' : 'swing', 0.7, d);
       if (e.hit && e.target) this.characterManager?.getAnimator(e.target)?.hit();
     }
+  },
+
+  /** What a creature's special does to us (BaconWorld.Mobs.Brain `fx`): held, blinded, dragged. */
+  applyMobFx(this: any, e: MobEvent, m: MobEntry) {
+    const fx = e.fx;
+    if (!fx || !this.controller) return;
+    const name = capital(m.view.name);
+    if (fx.root_ms) {
+      this.controller.holdFor(fx.root_ms);
+      this.combatLog(`${name} holds you fast!`, '#FF9B7A');
+    }
+    if (fx.blind_ms) {
+      this.inkScreen(fx.blind_ms);
+      this.combatLog('Ink! You can barely see.', '#B89BD8');
+    }
+    if (fx.pull && fx.pull_m) {
+      this.controller.dragToward(fx.pull[0], fx.pull[1], fx.pull_m, 0.9);
+      this.combatLog(`The maelstrom drags you toward ${name}!`, '#8FC8FF');
+    }
+  },
+
+  /** Ink over the screen: black, clearing from the edges in, for `ms`. */
+  inkScreen(this: any, ms: number) {
+    const host = this.el as HTMLElement | undefined;
+    if (!host) return;
+    let el = host.querySelector('.b8-ink') as HTMLDivElement | null;
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'b8-ink';
+      el.style.cssText =
+        'position:absolute;inset:0;pointer-events:none;z-index:40;opacity:0;transition:opacity 0.25s ease-in;' +
+        'background:radial-gradient(ellipse at 50% 55%, rgba(8,3,14,0.35) 0%, rgba(8,3,14,0.92) 38%, rgba(4,1,8,0.98) 70%);';
+      host.appendChild(el);
+    }
+    const ink = el;
+    ink.style.transition = 'opacity 0.25s ease-in';
+    ink.style.opacity = '1';
+    clearTimeout(this.inkTimer);
+    this.inkTimer = setTimeout(() => {
+      ink.style.transition = `opacity ${Math.max(0.6, ms / 2500)}s ease-out`;
+      ink.style.opacity = '0';
+    }, Math.max(0, ms * 0.55));
   },
 
   // ---------------------------------------------------------------- targeting

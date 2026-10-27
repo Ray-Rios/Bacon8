@@ -72,9 +72,12 @@ defmodule BaconWorldWeb.MountEvents do
 
   def handle_event("mount_dismount", _params, socket) do
     me = socket.assigns[:current_character_runtime]
-    y = (me && me[:position] && me.position[:y]) || 0.0
+    pos = (me && me[:position]) || %{}
+    y = pos[:y] || 0.0
+    # height above what's under you (the terrain or the water's surface; 0 on flat ground)
+    above = y - BaconWorld.Terrain.surface_units(pos[:x] || 0.0, pos[:z] || 0.0, BaconWorld.Mobs.Brain.u())
 
-    if socket.assigns[:mount] && y > @ground_y,
+    if socket.assigns[:mount] && above > @ground_y,
       do: {:reply, %{ok: false, reason: "airborne"}, socket},
       else: {:reply, %{ok: true}, dismount(socket)}
   end

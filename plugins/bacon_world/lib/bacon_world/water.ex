@@ -125,11 +125,15 @@ defmodule BaconWorld.Water do
     end
   end
 
-  @doc "Within the walkable world (metres): inside the waterline plus the shallows (or the terrain's rules)."
+  @doc """
+  Where someone may be (metres). The round island: inside the waterline plus the shallows. A
+  terrain: anywhere inside the map's margin, water included (people swim, 2026-10-26), except in
+  the Millpond (a reedy pond, walked round).
+  """
   def walkable?(x, z) do
     case Terrain.loaded() do
       nil -> :math.sqrt(x * x + z * z) <= @walk_radius
-      t -> Terrain.walkable?(t, x, z) and not Enum.any?(@lakes, &(lake_scale(&1, x, z) < 0.85))
+      t -> Terrain.inside?(t, x, z) and not Enum.any?(@lakes, &(lake_scale(&1, x, z) < 0.85))
     end
   end
 

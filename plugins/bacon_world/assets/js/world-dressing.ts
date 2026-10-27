@@ -419,6 +419,7 @@ export class WorldDressing {
       if (c.theme === 'graveyard') this.graveyard(cx, cz, R, toTown, r);
       else if (c.theme === 'ruins') this.ruins(cx, cz, R, toTown, r);
       else if (c.theme === 'lair') this.lair(cx, cz, R, toTown, r);
+      else if (c.theme === 'deep') continue; // the Kraken's: the lake is all the dressing it needs
       else this.barrow(cx, cz, R, toTown, r);
     }
     this.merge();

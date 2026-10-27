@@ -128,6 +128,16 @@ export class Heightfield {
     return lake ? { kind: 'lake', id: lake.id, name: lake.name } : { kind: 'ocean', id: 'sea', name: 'the sea' };
   }
 
+  /** Deeper than wading: someone here swims (BaconWorld.Terrain.deep?/3). */
+  deep(x: number, z: number): boolean {
+    return this.height(x, z) < this.info.sea - this.info.wade;
+  }
+
+  /** Where feet go: the ground, or the water's surface where it's too deep to stand (swimming). */
+  feet(x: number, z: number): number {
+    return this.deep(x, z) ? this.info.sea : this.height(x, z);
+  }
+
   /** Inside the map, `margin` from its edges. */
   inside(x: number, z: number): boolean {
     const { x0, z0, size, margin } = this.info;

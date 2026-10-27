@@ -76,6 +76,14 @@ defmodule BaconWorld.Items do
     %{id: "emberforged_longsword", name: "Emberforged Longsword", kind: "weapon", slots: ["main", "off"], hands: 1, set: "sword_1h", skill: "1H Slashing", dmg: 15, dly: 13, reach: 1.15, model: "Longsword", value: 2400},
     %{id: "dragonbone_greataxe", name: "Dragonbone Greataxe", kind: "weapon", slots: ["main"], hands: 2, set: "two_hand", skill: "2H Slashing", dmg: 24, dly: 21, reach: 1.3, model: "BattleAxe", value: 3200},
     %{id: "scaleplate_shield", name: "Scaleplate Shield", kind: "shield", slots: ["off"], hands: 1, set: "shield", skill: "Bash", dmg: 5, dly: 14, reach: 0.6, ac: 11, model: "KiteShield", value: 2000},
+    # The Kraken's (2026-10-27): what it leaves, and what it sometimes held in its arms. Icons are the
+    # plugin's own (priv/static/icons, rendered from the model by library/pipeline/scripts/kraken_icons.py).
+    %{id: "kraken_ink_sac", name: "Kraken Ink Sac", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 10, model: nil, icon_url: "/plugins/bacon_world/icons/kraken_ink_sac.png", value: 300},
+    %{id: "abyssal_hook", name: "Abyssal Hook", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/abyssal_hook.png", value: 220},
+    %{id: "kraken_beak", name: "Kraken Beak", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 5, model: nil, icon_url: "/plugins/bacon_world/icons/kraken_beak.png", value: 2500},
+    %{id: "abyssal_harpoon", name: "Abyssal Harpoon", kind: "weapon", slots: ["main"], hands: 2, set: "polearm", skill: "2H Piercing", dmg: 26, dly: 19, reach: 2.0, model: "Spear", value: 3400},
+    %{id: "krakenfang_cutlass", name: "Krakenfang Cutlass", kind: "weapon", slots: ["main", "off"], hands: 1, set: "sword_1h", skill: "1H Slashing", dmg: 16, dly: 12, reach: 1.0, model: "Cutlass", value: 2800},
+    %{id: "barnacled_buckler", name: "Barnacled Buckler", kind: "shield", slots: ["off"], hands: 1, set: "shield", skill: "Bash", dmg: 5, dly: 13, reach: 0.6, ac: 12, model: "Buckler", value: 2300},
 
     # Fishing (2026-10-26, BaconWorld.Water): the pole is held two-handed and cast at the water
     # (BaconWorldWeb.FishingEvents); what bites goes in the bags and sells to any merchant. Icons
