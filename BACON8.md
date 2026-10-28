@@ -31,6 +31,12 @@ On 2026-10-27:
   button, reporting each step on the item. The plugin's README has the whole loop and its safety rules.
   The start menu now shows plugins' apps (`desktop_apps/1`, which takes the user), the hook milestone 5
   planned.
+- **The start menu no longer offers Terminal, Calculator, Notepad, Media Player or Settings**
+  (`lib/bacon8_web/components/taskbar.ex`, `lib/bacon8_web/live/desktop_live.ex`,
+  `lib/bacon8_web/components/window.ex`): five apps whose windows were decorative only (a static
+  prompt, buttons with no handlers, a textarea that saved nothing). File Manager is now the only
+  app pinned to the start menu, and the extra File Explorer button that duplicated it on the
+  taskbar itself is gone (Suggestions & Bugs #1).
 
 On 2026-10-26:
 

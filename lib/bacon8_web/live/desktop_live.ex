@@ -387,83 +387,6 @@ defmodule Bacon8Web.DesktopLive do
           content: ""
         }
       
-      "terminal" ->
-        %{
-          id: window_id,
-          title: "Terminal",
-          app: "terminal",
-          x: 250,
-          y: 250,
-          width: 800,
-          height: 500,
-          minimized: false,
-          maximized: false,
-          z_index: socket.assigns.next_z_index,
-          history: [],
-          current_directory: "~"
-        }
-      
-      "calculator" ->
-        %{
-          id: window_id,
-          title: "Calculator",
-          app: "calculator",
-          x: 300,
-          y: 300,
-          width: 350,
-          height: 450,
-          minimized: false,
-          maximized: false,
-          z_index: socket.assigns.next_z_index,
-          display: "0",
-          memory: 0
-        }
-      
-      "notepad" ->
-        %{
-          id: window_id,
-          title: "Notepad",
-          app: "notepad",
-          x: 350,
-          y: 150,
-          width: 600,
-          height: 400,
-          minimized: false,
-          maximized: false,
-          z_index: socket.assigns.next_z_index,
-          content: ""
-        }
-      
-      "media_player" ->
-        %{
-          id: window_id,
-          title: "Media Player",
-          app: "media_player",
-          x: 400,
-          y: 200,
-          width: 600,
-          height: 400,
-          minimized: false,
-          maximized: false,
-          z_index: socket.assigns.next_z_index,
-          current_track: nil,
-          playing: false
-        }
-      
-      "settings" ->
-        %{
-          id: window_id,
-          title: "Settings",
-          app: "settings",
-          x: 450,
-          y: 250,
-          width: 700,
-          height: 500,
-          minimized: false,
-          maximized: false,
-          z_index: socket.assigns.next_z_index
-        }
-      
       _ ->
         %{
           id: window_id,
@@ -1347,46 +1270,6 @@ defmodule Bacon8Web.DesktopLive do
                 </a>
               </div>
           <% end %>
-        </div>
-        """
-      "terminal" ->
-        ~H"""
-        <div class="p-4 font-mono text-sm text-green-400 bg-black h-full">
-          <div>Terminal Emulator</div>
-          <div class="mt-2">$ <span class="animate-pulse">_</span></div>
-        </div>
-        """
-      "calculator" ->
-        ~H"""
-        <div class="p-4 bg-gray-900 h-full flex flex-col">
-          <div class="text-right text-2xl text-white mb-4 p-2 glass-dark rounded">0</div>
-          <div class="grid grid-cols-4 gap-2 flex-1">
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">7</button>
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">8</button>
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">9</button>
-            <button class="bg-blue-600 hover:bg-blue-500 text-white rounded p-2">÷</button>
-            
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">4</button>
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">5</button>
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">6</button>
-            <button class="bg-blue-600 hover:bg-blue-500 text-white rounded p-2">×</button>
-            
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">1</button>
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">2</button>
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">3</button>
-            <button class="bg-blue-600 hover:bg-blue-500 text-white rounded p-2">-</button>
-            
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">0</button>
-            <button class="bg-gray-700 hover:bg-gray-600 text-white rounded p-2">.</button>
-            <button class="bg-green-600 hover:bg-green-500 text-white rounded p-2">=</button>
-            <button class="bg-blue-600 hover:bg-blue-500 text-white rounded p-2">+</button>
-          </div>
-        </div>
-        """
-      "notepad" ->
-        ~H"""
-        <div class="h-full">
-          <textarea class="w-full h-full bg-white text-black p-4 font-mono resize-none border-0 focus:outline-none" placeholder="Start typing..."></textarea>
         </div>
         """
       _ ->

@@ -90,12 +90,7 @@ defmodule Bacon8Web.Components.Window do
   defp get_app_icon(app) do
     case app do
       "file_manager" -> "📁"
-      "terminal" -> "💻"
-      "calculator" -> "🧮"
-      "notepad" -> "📝"
-      "media_player" -> "🎵"
       "media_preview" -> "🎬"
-      "settings" -> "⚙️"
       "welcome" -> "👋"
       "text_editor" -> "📝"
       "browser" -> "🌐"

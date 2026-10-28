@@ -54,70 +54,15 @@ defmodule Bacon8Web.Components.Taskbar do
             <!-- Applications Grid -->
             <div class="p-4">
               <div class="grid grid-cols-3 gap-3">
-                <button 
+                <button
                   type="button"
-                  phx-click="open_app" 
+                  phx-click="open_app"
                   phx-value-app="file_manager"
                   phx-target={@target}
                   class="flex flex-col items-center p-3 rounded-lg hover:bg-gray-700 transition-colors group"
                 >
                   <div class="text-2xl mb-1 group-hover:scale-110 transition-transform">📁</div>
                   <div class="text-white text-xs text-center">File Manager</div>
-                </button>
-                
-                <button 
-                  type="button"
-                  phx-click="open_app" 
-                  phx-value-app="terminal"
-                  phx-target={@target}
-                  class="flex flex-col items-center p-3 rounded-lg hover:bg-gray-700 transition-colors group"
-                >
-                  <div class="text-2xl mb-1 group-hover:scale-110 transition-transform">💻</div>
-                  <div class="text-white text-xs text-center">Terminal</div>
-                </button>
-                
-                <button 
-                  type="button"
-                  phx-click="open_app" 
-                  phx-value-app="calculator"
-                  phx-target={@target}
-                  class="flex flex-col items-center p-3 rounded-lg hover:bg-gray-700 transition-colors group"
-                >
-                  <div class="text-2xl mb-1 group-hover:scale-110 transition-transform">🧮</div>
-                  <div class="text-white text-xs text-center">Calculator</div>
-                </button>
-                
-                <button 
-                  type="button"
-                  phx-click="open_app" 
-                  phx-value-app="notepad"
-                  phx-target={@target}
-                  class="flex flex-col items-center p-3 rounded-lg hover:bg-gray-700 transition-colors group"
-                >
-                  <div class="text-2xl mb-1 group-hover:scale-110 transition-transform">📝</div>
-                  <div class="text-white text-xs text-center">Notepad</div>
-                </button>
-                
-                <button 
-                  type="button"
-                  phx-click="open_app" 
-                  phx-value-app="media_player"
-                  phx-target={@target}
-                  class="flex flex-col items-center p-3 rounded-lg hover:bg-gray-700 transition-colors group"
-                >
-                  <div class="text-2xl mb-1 group-hover:scale-110 transition-transform">🎵</div>
-                  <div class="text-white text-xs text-center">Media Player</div>
-                </button>
-                
-                <button 
-                  type="button"
-                  phx-click="open_app" 
-                  phx-value-app="settings"
-                  phx-target={@target}
-                  class="flex flex-col items-center p-3 rounded-lg hover:bg-gray-700 transition-colors group"
-                >
-                  <div class="text-2xl mb-1 group-hover:scale-110 transition-transform">⚙️</div>
-                  <div class="text-white text-xs text-center">Settings</div>
                 </button>
 
                 <%!-- Apps from active plugins (c:Bacon8.Plugin.desktop_apps/1), e.g. Suggestions & Bugs, which guests don't get --%>
@@ -170,20 +115,6 @@ defmodule Bacon8Web.Components.Taskbar do
               </div>
             </div>
           </div>
-        </div>
-        
-        <!-- Pinned Items -->
-        <div class="flex items-center space-x-1 px-2">
-          <button 
-            type="button"
-            phx-click="open_app" 
-            phx-value-app="file_manager"
-            phx-target={@target}
-            class="flex items-center space-x-2 px-3 py-2 rounded hover:glass-dark hover:bg-white/20 text-gray-300 hover:text-white transition-colors group"
-            title="File Explorer"
-          >
-            <span class="text-lg group-hover:scale-110 transition-transform">📁</span>
-          </button>
         </div>
         
         <!-- Window Buttons (Running Applications) -->
@@ -451,11 +382,6 @@ defmodule Bacon8Web.Components.Taskbar do
   defp get_app_icon(app) do
     case app do
       "file_manager" -> "📁"
-      "terminal" -> "💻"
-      "calculator" -> "🧮"
-      "notepad" -> "📝"
-      "media_player" -> "🎵"
-      "settings" -> "⚙️"
       "welcome" -> "👋"
       _ -> "💻"
     end
