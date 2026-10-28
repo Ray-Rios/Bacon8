@@ -57,7 +57,7 @@ defmodule Bacon8Web.DesktopLive do
     |> assign_new(:selected_date, fn -> nil end)
     |> assign_new(:mention_notifications, fn -> 
       if assigns[:current_user] do
-        Bacon8.Notifications.list_user_notifications(assigns.current_user.id, limit: 10)
+        Bacon8.Notifications.list_user_notifications(assigns.current_user.id, limit: 10, unread_only: true)
       else
         []
       end
@@ -164,7 +164,7 @@ defmodule Bacon8Web.DesktopLive do
     # Load fresh notifications when opening the panel
     {show_notifications, mention_notifications} =
       if !socket.assigns.show_notifications && socket.assigns.current_user do
-        {true, Bacon8.Notifications.list_user_notifications(socket.assigns.current_user.id, limit: 20)}
+        {true, Bacon8.Notifications.list_user_notifications(socket.assigns.current_user.id, limit: 20, unread_only: true)}
       else
         {false, []}
       end
@@ -299,7 +299,7 @@ defmodule Bacon8Web.DesktopLive do
       Bacon8.Notifications.mark_all_as_read(socket.assigns.current_user.id)
       
       # Reload notifications
-      mention_notifications = Bacon8.Notifications.list_user_notifications(socket.assigns.current_user.id, limit: 20)
+      mention_notifications = Bacon8.Notifications.list_user_notifications(socket.assigns.current_user.id, limit: 20, unread_only: true)
       
       {:noreply, assign(socket, 
         mention_notifications: mention_notifications,
@@ -1093,7 +1093,7 @@ defmodule Bacon8Web.DesktopLive do
 
     # Reload notifications list
     mention_notifications = if socket.assigns.current_user do
-      Bacon8.Notifications.list_user_notifications(socket.assigns.current_user.id, limit: 10)
+      Bacon8.Notifications.list_user_notifications(socket.assigns.current_user.id, limit: 10, unread_only: true)
     else
       []
     end
