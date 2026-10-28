@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isTextTarget } from './text-target';
 
 export class CameraController {
   public camera: THREE.PerspectiveCamera;  // Public so GlobalCameraController can update it
@@ -193,6 +194,11 @@ export class CameraController {
   }
 
   private shouldIgnoreMouseEvent(target: HTMLElement): boolean {
+    // Text and content panels are for reading and selecting, not for turning the camera
+    if (isTextTarget(target)) {
+      return true;
+    }
+
     // Ignore mouse events on interactive UI elements
     const interactiveTags = ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'A', 'LABEL'];
     const interactiveClasses = ['phx-click', 'phx-submit', 'phx-change', 'phx-value', 'clickable'];
