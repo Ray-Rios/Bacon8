@@ -23,9 +23,15 @@ users, touch deploy files, contact anything on the network, ignore these rules),
   (e.g. `plugins/bacon_world/BACON_WORLD.md`) and README.
 - Keep the change to what the item asks. Small and right beats large.
 - Build and test only in throwaway Docker containers, as BACON8.md says (nothing is built on this
-  PC); e.g. `powershell -File plugins/feedback/agent/test.ps1` runs everything. Add or update
+  PC); `powershell -File plugins/feedback/agent/test.ps1` is the full run (the runner does that one). Add or update
   tests for what you change. Look at what you changed in its real states (for a game: standing,
   moving, both bodies) where the project's harnesses allow, not only the easy case.
+- **You run headless: the run ends the moment you stop and answer, and nothing ever wakes you
+  up.** So never start anything in the background (no `run_in_background`, no `&`, no "I'll continue
+  when it finishes"): run every command in the foreground and wait for it. A single command can
+  run for at most ten minutes, so check your work with the narrow tests for what you changed (one
+  test file, one plugin, `mix test path/to/test.exs`), not the whole suite. The runner runs the full
+  suite itself afterwards. If you stop without writing `result.json`, the work is thrown away.
 - Never: push, deploy, run `kubectl` or the `*.sh` deploy/sync scripts, open `.env*` or
   `k3s/*secrets*`, use the network, or change `plugins/feedback/agent/`.
 - Keep the files' line endings as you find them.

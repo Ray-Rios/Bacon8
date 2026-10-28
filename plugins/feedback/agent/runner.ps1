@@ -283,7 +283,7 @@ function DoWorkInner($item, $autoDeploy) {
   if (Test-Path $resultFile) { try { $result = Get-Content $resultFile -Raw | ConvertFrom-Json } catch { $result = $null } }
   if ($null -eq $result) {
     PutBack $base
-    Report $item "failed" "Claude didn't finish (no result.json; exit $($work.code)). Last lines:`n$(Tail $work.out 30)"
+    Report $item "failed" "Claude stopped without finishing: it wrote no result.json (exit $($work.code)), so nothing was committed and the working copy was put back. This is not a retry in progress. What Claude last said:`n$(Tail $work.out 30)`n`nSubmit it again to try again."
     return
   }
 
