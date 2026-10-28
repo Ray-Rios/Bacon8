@@ -116,6 +116,18 @@ const BlockEditorHook = {
     
     // Set up event listeners
     this.setupEventListeners();
+
+    // The buttons that save or publish live outside the editor: tell the server the latest words
+    // first. (Capture phase: before LiveView sends the click itself.)
+    this.beforeSave = (e: Event) => {
+      const t = e.target as Element | null;
+      if (!t || !t.closest) return;
+      if (t.closest('[phx-click="save_content"], [phx-click="set_published"]') || (e.type === 'submit' && t.closest('#settings-form'))) {
+        this.flushChange();
+      }
+    };
+    document.addEventListener('click', this.beforeSave, true);
+    document.addEventListener('submit', this.beforeSave, true);
     
     // Listen for LiveView events
     this.setupLiveViewHandlers();
@@ -2629,7 +2641,14 @@ const BlockEditorHook = {
     }
   },
 
+  // Every change is told to the server soon (so "Save" always has the latest words), and saved by
+  // the autosave a little later. Pressing Save / Publish / Save settings sends it at once
+  // (`flushChange`): the server answers each click with what it has, in the order it was sent.
   scheduleAutosave(this: any) {
+    this.changed = true;
+    if (this.changeTimeout) clearTimeout(this.changeTimeout);
+    this.changeTimeout = setTimeout(() => this.flushChange(), 250);
+
     if (this.autosaveTimeout) {
       clearTimeout(this.autosaveTimeout);
     }
@@ -2639,7 +2658,22 @@ const BlockEditorHook = {
     }, this.config.autosaveDelay);
   },
 
+  flushChange(this: any) {
+    if (this.changeTimeout) {
+      clearTimeout(this.changeTimeout);
+      this.changeTimeout = null;
+    }
+    if (!this.changed) return;
+    this.changed = false;
+    this.pushEvent('editor-change', {
+      content: JSON.stringify(this.state),
+      html: this.stateToHtml(),
+      format: 'blocks'
+    });
+  },
+
   save(this: any) {
+    this.changed = false;
     const content = JSON.stringify(this.state);
     const html = this.stateToHtml();
     
@@ -2726,6 +2760,11 @@ const BlockEditorHook = {
     if (this.autosaveTimeout) {
       clearTimeout(this.autosaveTimeout);
     }
+    if (this.changeTimeout) {
+      clearTimeout(this.changeTimeout);
+    }
+    document.removeEventListener('click', this.beforeSave, true);
+    document.removeEventListener('submit', this.beforeSave, true);
   }
 };
 
