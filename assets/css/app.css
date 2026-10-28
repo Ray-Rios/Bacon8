@@ -138,6 +138,8 @@
 }
 
 .window-content {
+  user-select: text;
+  -webkit-user-select: text;
   padding: 16px;
   height: calc(100% - 40px);
   overflow: auto;
@@ -478,7 +480,6 @@ html.chrome-hidden [data-responsive-content] { top: 0 !important; bottom: 0 !imp
   min-width: 300px;
   min-height: 200px;
   overflow: hidden;
-  user-select: none;
 }
 
 .desktop-window:hover {
