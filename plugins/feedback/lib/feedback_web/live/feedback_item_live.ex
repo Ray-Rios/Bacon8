@@ -74,7 +74,7 @@ defmodule FeedbackWeb.FeedbackItemLive do
   # ---------------------------------------------------------------- events
 
   @impl true
-  def handle_event("vote", %{"value" => v}, socket) do
+  def handle_event("vote", %{"vote" => v}, socket) do
     with {value, ""} when value in [-1, 0, 1] <- Integer.parse(to_string(v)),
          {:ok, _} <- Feedback.vote(socket.assigns.item, socket.assigns.current_user, value) do
       {:noreply, reload(socket)}

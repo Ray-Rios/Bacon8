@@ -65,7 +65,7 @@ defmodule FeedbackWeb.Components do
         type="button"
         phx-click="vote"
         phx-value-id={@item.id}
-        phx-value-value={if @item.my_vote == 1, do: "0", else: "1"}
+        phx-value-vote={if @item.my_vote == 1, do: "0", else: "1"}
         disabled={not @can_vote}
         aria-label="Vote up"
         aria-pressed={to_string(@item.my_vote == 1)}
@@ -81,7 +81,7 @@ defmodule FeedbackWeb.Components do
         type="button"
         phx-click="vote"
         phx-value-id={@item.id}
-        phx-value-value={if @item.my_vote == -1, do: "0", else: "-1"}
+        phx-value-vote={if @item.my_vote == -1, do: "0", else: "-1"}
         disabled={not @can_vote}
         aria-label="Vote down"
         aria-pressed={to_string(@item.my_vote == -1)}

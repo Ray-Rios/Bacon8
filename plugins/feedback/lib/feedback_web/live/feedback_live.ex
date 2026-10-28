@@ -123,7 +123,8 @@ defmodule FeedbackWeb.FeedbackLive do
     {:noreply, push_patch(socket, to: "/feedback?" <> URI.encode_query(query))}
   end
 
-  def handle_event("vote", %{"id" => id, "value" => v}, socket) do
+  # (the attribute is phx-value-vote, not phx-value-value: LiveView sends a button's own empty value over a phx-value-value)
+  def handle_event("vote", %{"id" => id, "vote" => v}, socket) do
     user = socket.assigns.current_user
 
     with {value, ""} when value in [-1, 0, 1] <- Integer.parse(to_string(v)),

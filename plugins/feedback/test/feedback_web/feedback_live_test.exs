@@ -88,6 +88,27 @@ defmodule FeedbackWeb.FeedbackLiveTest do
     assert html =~ "2▲" and html =~ "0▼"
   end
 
+  test "voting works the way a browser sends it: a button's own empty value rides along" do
+    i = item(member())
+    other = member()
+    {:ok, list, html} = live(signed_in(other), "/feedback")
+
+    # LiveView adds the button's `value` property (empty) to the click and it wins over a
+    # phx-value-value, so the vote must not travel under the name "value".
+    refute html =~ "phx-value-value"
+
+    up = list |> element("#item-#{i.id} button[aria-label='Vote up']")
+    assert render_click(up, %{"value" => ""}) =~ "2▲"
+
+    down = list |> element("#item-#{i.id} button[aria-label='Vote down']")
+    html = render_click(down, %{"value" => ""})
+    assert html =~ "1▲" and html =~ "1▼"
+    assert Repo.get!(Feedback.Item, i.id).score == 0
+
+    {:ok, page, _} = live(signed_in(other), "/feedback/#{i.id}")
+    assert page |> element("button[aria-label='Vote up']") |> render_click(%{"value" => ""}) =~ "2▲"
+  end
+
   test "an admin approves and submits to Claude from the item page; members don't see those buttons" do
     boss = admin()
     i = item(member())
