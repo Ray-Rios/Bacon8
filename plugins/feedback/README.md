@@ -97,6 +97,10 @@ These are guard rails, not a sandbox: Claude Code runs as your Windows user. The
 
 ### Setting it up (once, on the dev PC)
 
+Run these in a **PowerShell** window (`PS C:\Bacon8>`), not Git Bash: bash swallows the backslashes
+in the paths. In Git Bash, write them with forward slashes (`plugins/feedback/agent/runner.ps1`).
+The `.bacon8` folder under your Windows user folder doesn't exist yet: `mkdir $env:USERPROFILE\.bacon8`.
+
 1. Activate the plugin on `/admin/plugins` (it isn't on by default), then open
    `/admin/feedback/agent`. Press **Make a token** and copy it (it is shown once).
 2. Save the token as `%USERPROFILE%\.bacon8\feedback-agent.token`.
