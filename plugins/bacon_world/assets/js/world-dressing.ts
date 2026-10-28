@@ -130,6 +130,16 @@ export class WorldDressing {
     this.scene.environment = this.env;
   }
 
+  /** A loaded piece by node name (P_<Id>, K_<Id>), for build mode's placed objects (placed-view.ts). */
+  template(name: string): THREE.Object3D | null {
+    return this.templates.get(name) || null;
+  }
+
+  /** Resolves once the village's pieces have loaded (at once when building never started). */
+  ready(): Promise<void> {
+    return this.built || Promise.resolve();
+  }
+
   private firstMaterial(name: string): THREE.Material | null {
     let found: THREE.Material | null = null;
     this.templates.get(name)?.traverse((o: any) => {
@@ -437,6 +447,9 @@ export class WorldDressing {
       else if (c.theme === 'ruins') this.ruins(cx, cz, R, toTown, r);
       else if (c.theme === 'lair') this.lair(cx, cz, R, toTown, r);
       else if (c.theme === 'deep') continue; // the Kraken's: the lake is all the dressing it needs
+      else if (c.theme === 'warren') this.warren(cx, cz, R, toTown, r);
+      else if (c.theme === 'goblin') this.goblinCamp(cx, cz, R, toTown, r);
+      else if (c.theme === 'orc') this.orcCamp(cx, cz, R, toTown, r);
       else this.barrow(cx, cz, R, toTown, r);
     }
     this.merge();
@@ -582,6 +595,105 @@ export class WorldDressing {
     for (const s of [-1, 1]) this.prop('Brazier', g.x + Math.cos(toTown) * 2.6 * s, g.z - Math.sin(toTown) * 2.6 * s, 0, 0.35, 0, 1.2);
     const w = at(toTown + 0.35, R + 5.5);
     this.prop('Waystone', w.x, w.z, toTown / D2R, 0.5);
+  }
+
+  // The rats' warren (2026-10-28): a heap of spoiled stores, gnawed sacks and broken barrels
+  // round a few dark holes in the ground.
+  private warren(cx: number, cz: number, R: number, toTown: number, r: () => number) {
+    this.patch(cx, cz, R + 2.5, '#5A4A36', 59);
+    this.patch(cx, cz, R * 0.55, '#3E3226', 61);
+    const at = (a: number, d: number) => ({ x: cx + Math.sin(a) * d, z: cz + Math.cos(a) * d });
+    // burrows: dark discs half sunk, with spoil heaped round them
+    const dark = new THREE.MeshStandardMaterial({ color: '#120E0A', roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    for (let i = 0; i < 4; i++) {
+      const p = at(r() * Math.PI * 2, R * (0.2 + r() * 0.5));
+      const m = new THREE.Mesh(this.drape(new THREE.CircleGeometry(0.45 + r() * 0.25, 18).rotateX(-Math.PI / 2), p.x, p.z, 0.02), dark);
+      m.position.set(p.x, 0, p.z);
+      this.group.add(m);
+      for (let k = 0; k < 3; k++) {
+        const q = at(r() * Math.PI * 2, 0.7);
+        this.put('Rock3', p.x + q.x - cx, p.z + q.z - cz, r() * 360, -0.05, 0.35, 0.18, 0.35);
+      }
+    }
+    for (let i = 0; i < 7; i++) {
+      const p = at(toTown + Math.PI * 0.4 + r() * Math.PI * 1.2, R * (0.7 + r() * 0.5));
+      const pick = ['Sack', 'SackPile', 'BarrelSide', 'CrateSmall', 'Basket', 'Crate', 'Bucket'][i];
+      this.prop(pick, p.x, p.z, r() * 360, 0.35);
+    }
+    for (let i = 0; i < 6; i++) {
+      const p = at(r() * Math.PI * 2, R * r());
+      this.prop(['FoodBread', 'FoodCheese', 'FoodPumpkin', 'Bowl', 'Mug', 'Skull'][i], p.x, p.z, r() * 360, 0);
+    }
+    for (let i = 0; i < 2; i++) {
+      const p = at(toTown + Math.PI + (r() - 0.5) * 1.6, R + 2.5);
+      this.prop('Log', p.x, p.z, r() * 360, 0.4);
+    }
+  }
+
+  // A goblin camp (2026-10-28): ragged tents round a fire, a crooked stake fence, loot heaped up.
+  private goblinCamp(cx: number, cz: number, R: number, toTown: number, r: () => number) {
+    this.patch(cx, cz, R + 3, '#4D4634', 67);
+    this.ring(cx, cz, R + 2.2, toTown, r, 'K_Fence_Wood', 0.7);
+    const at = (a: number, d: number) => ({ x: cx + Math.sin(a) * d, z: cz + Math.cos(a) * d });
+    this.prop('Campfire', cx, cz, 0, 0.6);
+    for (let i = 0; i < 3; i++) {
+      const a = toTown + Math.PI * 0.55 + i * Math.PI * 0.45 + (r() - 0.5) * 0.2;
+      const p = at(a, R * 0.72);
+      // the door toward the fire
+      this.prop('Tent', p.x, p.z, (a + Math.PI) / D2R, 1.4, 0, 0.8 + r() * 0.15);
+    }
+    for (let i = 0; i < 4; i++) {
+      const p = at(r() * Math.PI * 2, 1.6 + r() * 0.6);
+      this.prop(i < 2 ? 'Log' : 'Stool', p.x, p.z, r() * 360, 0.25, 0, 0.8);
+    }
+    for (let i = 0; i < 6; i++) {
+      const p = at(toTown + Math.PI + (r() - 0.5) * 2.2, R * (0.45 + r() * 0.35));
+      this.prop(['Sack', 'CrateSmall', 'LootBag', 'Bottle', 'Jug', 'Barrel'][i], p.x, p.z, r() * 360, i === 5 ? 0.35 : 0.2);
+    }
+    for (let i = 0; i < 5; i++) {
+      const p = at(r() * Math.PI * 2, R * r());
+      this.prop('Skull', p.x, p.z, r() * 360, 0);
+    }
+    const w = at(toTown + 0.4, R + 3.4);
+    this.prop('Signpost', w.x, w.z, toTown / D2R + 180, 0.2);
+  }
+
+  // An orc warcamp (2026-10-28): a stockade with a gateway toward town, war tents, braziers,
+  // weapon racks, a forge and trophies on stakes.
+  private orcCamp(cx: number, cz: number, R: number, toTown: number, r: () => number) {
+    this.patch(cx, cz, R + 4, '#3F3A2E', 71);
+    this.ring(cx, cz, R + 3, toTown, r, 'K_Wall_Wood', 0.92);
+    const at = (a: number, d: number) => ({ x: cx + Math.sin(a) * d, z: cz + Math.cos(a) * d });
+    const gate = at(toTown, R + 3);
+    for (const s of [-1, 1]) {
+      const x = gate.x + Math.cos(toTown) * 2.4 * s, z = gate.z - Math.sin(toTown) * 2.4 * s;
+      this.prop('Brazier', x, z, 0, 0.35, 0, 1.25);
+      this.prop('Banner', x + Math.sin(toTown) * 0.8, z + Math.cos(toTown) * 0.8, toTown / D2R, 0.2, 0, 1.2);
+    }
+    for (let i = 0; i < 4; i++) {
+      const a = toTown + Math.PI * 0.45 + i * Math.PI * 0.37;
+      const p = at(a, R * 0.75);
+      this.prop('Tent', p.x, p.z, (a + Math.PI) / D2R, 1.6, 0, 1.0 + r() * 0.15);
+    }
+    this.prop('Campfire', cx, cz, 0, 0.6, 0, 1.3);
+    const f = at(toTown + Math.PI * 0.9, R * 0.35);
+    this.prop('Forge', f.x, f.z, (toTown) / D2R, 1.1);
+    const an = at(toTown + Math.PI * 0.75, R * 0.3);
+    this.prop('Anvil', an.x, an.z, r() * 360, 0.4);
+    for (let i = 0; i < 2; i++) {
+      const p = at(toTown + Math.PI * (1.2 + i * 0.25), R * 0.45);
+      this.prop('WeaponRack', p.x, p.z, (toTown + Math.PI * 0.2) / D2R, 0.6);
+    }
+    for (let i = 0; i < 4; i++) {
+      const p = at(r() * Math.PI * 2, R * (0.55 + r() * 0.35));
+      this.prop(['TrainingDummy', 'Woodpile', 'CrateStack', 'BarrelSide'][i], p.x, p.z, r() * 360, 0.5);
+    }
+    // trophies: skulls heaped along the stockade
+    for (let i = 0; i < 8; i++) {
+      const a = toTown + 0.6 + (i / 8) * Math.PI * 1.7;
+      const p = at(a, R + 2.2);
+      this.prop('Skull', p.x, p.z, a / D2R + 180, 0, 0, 1.1);
+    }
   }
 
   private barrow(cx: number, cz: number, R: number, toTown: number, r: () => number) {

@@ -30,7 +30,7 @@ const ALL = new Set<Channel>(CHANNELS);
 /** The animation set an item is held with (anims.json "sets"). */
 export type GearSet =
   | 'unarmed' | 'sword_1h' | 'axe_1h' | 'blunt_1h' | 'dagger' | 'two_hand' | 'polearm' | 'staff'
-  | 'shield' | 'torch' | 'lantern';
+  | 'shield' | 'torch' | 'lantern' | 'bow';
 
 export interface Gear {
   set: GearSet;
@@ -121,10 +121,11 @@ const FALLBACK: Record<string, string[]> = {
   Staff_Bonk: ['Sword_Regular_A'], Staff_Slam: ['Sword_Regular_A'], Shield_Dash: ['Punch_Jab'],
   Staff_Guard_Loop: ['Sword_Idle'], QStaff_Sweep: ['Sword_Regular_A'],
   Hit_Head: ['Hit_Chest'], Jump_Land: [],
+  Bow_Idle_Loop: ['Idle_Loop'], Bow_Draw: ['OverhandThrow'], Bow_Release: [],
 };
 
 /** A weapon pose, and its swings. `hit` is the impact time in seconds (measured on the clips). */
-interface Swing { clip: string; hit: number; rec?: string; }
+interface Swing { clip: string; hit: number; rec?: string; rate?: number; }
 interface StanceDef { idle: string; light: Swing[]; heavy?: Swing; }
 
 const SWORD: StanceDef = {
@@ -155,6 +156,14 @@ export const STANCES: Record<GearSet, StanceDef> = {
   shield: { idle: 'Idle_Shield_Loop', light: [{ clip: 'Shield_Dash', hit: 0.22 }] },
   torch: { idle: 'Idle_Torch_Loop', light: [{ clip: 'Sword_Regular_A', hit: 0.23 }] },
   lantern: { idle: 'Idle_Lantern_Loop', light: [{ clip: 'Punch_Jab', hit: 0.2 }] },
+  // Bows (2026-10-28): the bow in the left fist, the string drawn to the cheek (0.87 s), loosed at
+  // the end of the draw, then the release. A heavy shot draws slower and holds a moment longer.
+  // Two-handed, but not driven by two-hand.ts: the library's clips have both arms right.
+  bow: {
+    idle: 'Bow_Idle_Loop',
+    light: [{ clip: 'Bow_Draw', hit: 0.84, rec: 'Bow_Release' }],
+    heavy: { clip: 'Bow_Draw', hit: 0.84, rec: 'Bow_Release', rate: 0.62 },
+  },
 };
 
 /** What a rider plays (anim packs, Core). */
@@ -458,8 +467,8 @@ export class CharacterAnimator {
     if (!name) return null;
     const clip = this.clips.get(name)!;
     const mirror = hand === 'left' && !twoHanded && !LEFT_HANDED.has(swing.clip);
-    let rate = 1;
-    if (delay && clip.duration > delay * 0.95) rate = clip.duration / (delay * 0.95);
+    let rate = swing.rate ?? 1;
+    if (delay && clip.duration / rate > delay * 0.95) rate = clip.duration / (delay * 0.95);
     // Standing still, the whole body swings (footwork); moving, the legs keep running.
     const moving = this.motion.speed >= IDLE_BELOW || !this.motion.grounded;
     const channels = new Set<Channel>(['torso']);

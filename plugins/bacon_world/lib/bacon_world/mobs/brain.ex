@@ -440,10 +440,17 @@ defmodule BaconWorld.Mobs.Brain do
     # A big creature (the dragon) is hit at its hide, not its middle.
     reach = fn mob -> (attack.item.reach + extra + mob_radius(mob) + @player_radius + @swing_slack) * @u end
 
+    # a bow's selected target is hit inside a wider cone than anything else it might hit
+    ranged = Melee.ranged?(attack.item)
+    in_arc = fn mob ->
+      a = if ranged and mob.id == attack[:target], do: max(arc, Melee.ranged_target_arc()), else: arc
+      Melee.in_arc?({attack.x, attack.z}, attack.heading, {mob.x, mob.z}, reach.(mob), a)
+    end
+
     victims =
       mobs
       |> Map.values()
-      |> Enum.filter(&(alive?(&1) and Melee.in_arc?({attack.x, attack.z}, attack.heading, {&1.x, &1.z}, reach.(&1), arc)))
+      |> Enum.filter(&(alive?(&1) and in_arc.(&1)))
       |> Enum.sort_by(fn mob -> {if(mob.id == attack[:target], do: 0, else: 1), dist({attack.x, attack.z}, {mob.x, mob.z})} end)
       |> Enum.take(max_targets)
 

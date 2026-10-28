@@ -62,6 +62,37 @@ export class NpcsView {
     await Promise.all(list.map((v) => (this.npcs.has(v.id) ? Promise.resolve() : this.add(v))));
   }
 
+  /**
+   * One person, new or changed (build mode moved, turned or renamed them, 2026-10-28): moved in
+   * place when only where they stand changed, rebuilt otherwise.
+   */
+  async put(v: NpcView) {
+    const e = this.npcs.get(v.id);
+    if (e && JSON.stringify(e.view.appearance) === JSON.stringify(v.appearance) && JSON.stringify(e.view.gear) === JSON.stringify(v.gear)) {
+      e.view = v;
+      e.root.position.set(v.x, e.root.position.y, v.z);
+      return;
+    }
+    if (e) this.remove(v.id);
+    await this.add(v);
+  }
+
+  /** Takes one person away (build mode deleted them). */
+  drop(id: string) {
+    this.remove(id);
+  }
+
+  /** The ids of the names over their heads, for the hook's nameplate pruning. */
+  plateIds(): string[] {
+    return [...this.npcs.keys()].map((id) => `npc:${id}`);
+  }
+
+  /** Hidden while build mode carries them about (the ghost stands in). */
+  setHidden(id: string, hidden: boolean) {
+    const e = this.npcs.get(id);
+    if (e) e.root.visible = !hidden;
+  }
+
   private async add(v: NpcView) {
     const root = new THREE.Group();
     root.name = `NPC_${v.id}`;

@@ -19,6 +19,8 @@ defmodule BaconWorld.Melee do
   @crit_mult 1.75
   @heavy_dmg 1.5
   @heavy_dly 1.4
+  @ranged_arc 30
+  @ranged_target_arc 60
 
   @doc "Milliseconds between swings with `item` (EverQuest DLY is tenths of a second)."
   def delay_ms(item, heavy \\ false), do: round(item.dly * 100 * if(heavy, do: @heavy_dly, else: 1.0))
@@ -48,9 +50,22 @@ defmodule BaconWorld.Melee do
   enough that you have to face what you hit (2026-10-23: two-handers swept 150
   degrees and hit players nearly beside them).
   """
+  def sweep(%{ranged: true}), do: {1, @ranged_arc}
   def sweep(item) do
     if item.hands == 2, do: {3, 110}, else: {1, 90}
   end
+
+  @doc """
+  A bow (2026-10-28) shoots one arrow at one thing: whatever lies within a narrow cone (#{30}
+  degrees) along where the archer looks, out to the bow's reach; the selected target counts
+  within a wider one (`ranged_target_arc/0`), so a targeted creature is hit when the archer
+  faces it roughly. Arrows never run out.
+  """
+  def ranged?(%{ranged: true}), do: true
+  def ranged?(_), do: false
+
+  @doc "The cone (degrees) inside which a bow's selected target is hit."
+  def ranged_target_arc, do: @ranged_target_arc
 
   # Up close (inside this share of the reach) the arc widens to this half-angle, so
   # something pressed against your side still counts, but never anything behind you.

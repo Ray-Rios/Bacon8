@@ -28,6 +28,13 @@ defmodule BaconWorld.Mobs do
   @doc "Roots a creature (`Brain.root/3`): `:ok` or `{:error, reason}`."
   def root(slug, attack), do: call(slug, {:root, attack}, {:error, :mobs_unavailable})
 
+  @doc """
+  Replaces the creatures of one placed spawn (`BaconWorld.Building`): `points` in
+  `BaconWorld.Mobs.Spawns.points/0`'s shape, all with ids `"p:<placement_id>:<n>"`; `[]` removes
+  them. The old ones vanish and the new ones rise at once.
+  """
+  def put_points(slug, placement_id, points), do: cast(slug, {:put_points, placement_id, points})
+
   def loot_open(slug, mob_id, character_id, pos), do: call(slug, {:loot_open, mob_id, character_id, pos}, {:error, :mobs_unavailable})
   def loot_take(slug, mob_id, character_id, index), do: call(slug, {:loot_take, mob_id, character_id, index}, {:error, :mobs_unavailable})
   def loot_return(slug, mob_id, item), do: cast(slug, {:loot_return, mob_id, item})
@@ -39,5 +46,9 @@ defmodule BaconWorld.Mobs do
     :exit, _ -> default
   end
 
-  defp cast(slug, msg), do: GenServer.cast(Zone.name(slug), msg)
+  defp cast(slug, msg) do
+    GenServer.cast(Zone.name(slug), msg)
+  catch
+    :exit, _ -> :ok
+  end
 end

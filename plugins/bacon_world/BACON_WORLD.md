@@ -18,7 +18,7 @@ Related documents:
   deployment.
 - Facts dated. The owner's decisions are recorded, not re-argued.
 
-Last update: **2026-10-27**.
+Last update: **2026-10-28**.
 
 ---
 
@@ -45,7 +45,7 @@ It is also the template other Bacon8 games copy.
 All of it uses our own or CC0 art. Every 3D asset is built by scripts in the game repository,
 so it can be rebuilt and changed.
 
-## 2. State on 2026-10-27
+## 2. State on 2026-10-28
 
 > **Hub note from Claude Code, 2026-10-25.** Everything listed below up to and including the
 > 24f delivery (skill tree, stable, game cards, the Gem) is **committed and deployed**, and
@@ -72,6 +72,79 @@ so it can be rebuilt and changed.
 
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
+
+**Delivered 2026-10-28 (a), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-28a.md`): **build mode, rats, goblins
+and orcs, and the bow.** The owner's brief: the backquote key puts the character into build mode; clicking something your role may use
+picks it up and moves it; held, the right button turns it gently; a right-click alone deletes it; a searchable menu of
+what can be brought into the world; GMs and admins place NPCs and creatures. More creatures than skeletons and bosses:
+rats, goblins and orcs. And a bow that never runs out of arrows.
+
+- **Build mode** (`build-world.ts`, `build-ui.ts`, `placed-view.ts`; server `BaconWorld.Building`,
+  `BaconWorldWeb.BuildEvents`, migration `20261028000000`: `bacon_world_placements`, `bacon_world_asset_rules`).
+  - The backquote key (`` ` ``, left of 1) toggles it (the cursor goes free; the pointer can't be captured while it is on). A window on the right lists
+    the catalogue: the 90 props (split into Props, Trees & plants, Rocks), the 36 building pieces, every creature kind
+    and four NPC templates (villager, clothier, angler, stablemaster), searchable (every word, by name, category or
+    id; Enter takes the first match) and filterable by category. Entries the role may not use are hidden (a lock button
+    shows them, with the role they need).
+  - Pick an entry: a green ghost rides the ground under the cursor (red when not allowed). **Left click** sets it down;
+    **Shift+click** sets it down and keeps another in hand. **Left click on a placed thing** picks it up (it keeps where
+    the cursor caught it). Holding: the **right button held turns it gently** (45 degrees a second; Shift the other way),
+    the **wheel** or **Q/E** turn it 15 degrees, **PgUp/PgDn** raise and lower it 0.25 m (Shift: a 3 m storey),
+    **[ ]** size it (0.5-2), **Delete** removes it, **Esc** puts it back. **Right-click** (no drag) on a placed thing
+    removes it; **Ctrl+Z** undoes the last place, move or removal (25 deep, 5 minutes). Right-drag still steers and
+    left-drag still turns the camera. Building pieces snap to a 1.5 m grid and right angles (a checkbox; Alt ignores it).
+  - Creature spawns: a GM sets how many (1-12) and the spread (0-40 m); the zone (`Mobs.put_points/3`) spawns them at
+    once and respawns them there. In build mode a red ring and post mark each spawn, with its name; picking up a placed
+    creature (or its marker) moves the spawn, right-clicking one removes it. NPCs: a blue post, an optional name; a
+    placed merchant trades with its template's stock (`Merchants.templates/0`, `Merchants.placed/2`; ids `"p:<id>"`).
+  - **Who may place what**: each asset has a lowest role (`admin > gm > moderator > editor > member`); guests and the
+    banned never place anything. Defaults: props and building pieces for members, creatures and NPCs for GMs, the
+    bosses and the waystone for admins. **Admins change it in the window**, row by row (a role dropdown); stored in
+    `bacon_world_asset_rules`. Being allowed to place a kind means moving and removing any copy of it, whoever placed
+    it (the owner, 2026-10-26). Every check is on the server; a burst limit (40 changes in 10 s) is the only throttle.
+  - Placed props and pieces block walking (box, circle or two boxes either side of a doorway, from each model's extent;
+    floors, stairs, roofs, rugs and doors don't), client-side like the village's. Copies share geometry and one prepared
+    material per template material (surface textures applied once).
+  - Everyone in the zone sees every change at once (`bacon_world:build:<zone>`); placements arrive with `fetch_mobs`.
+  - Not yet: the village built in code (`world-dressing.ts`) and the code camps are not placements, so they can't be
+    moved; see §7.
+- **Rats, goblins and orcs** (`BaconWorld.Mobs.Spawns`; models `Mobs/B8_Rat.glb`, `B8_Goblin.glb`, `B8_Orc.glb`):
+  - **giant rat** (1-2, packs of five or six, quick, bites) and **plague rat** (3-4, bigger, sickly fur, glowing eyes):
+    an original model built from code (`library/pipeline/scripts/build_rat.py`: one loft from the nose to the tail tip
+    so the fur's UVs run along the body, ears, eyes, incisors, whiskers, four legs with toes; a 22-bone rig; a fur
+    texture and normal map painted in UV space; six keyed clips: Idle, Walk, Run, Bite, Hit, Death). `rat-view.ts`
+    picks the gait from the speed and lays the bite and flinch over it. Drops rat tails and pelts.
+  - **goblin** (2-4) and **goblin archer** (3-4, keeps to its 16 m reach and shoots: the client draws each arrow),
+    **orc** (5-7) and **orc warlord** (9-10, 210 HP + 30 a level, may drop the Ashwood Longbow): the MakeHuman male
+    reshaped (`build_greenskins.py`: his shape keys baked to a thin pot-bellied goblin or a huge orc; the head sculpted
+    by fields: long swept-back pointed ears, a hooked nose, a pointed chin and a bigger head; a jutting wide jaw, a heavy
+    brow, a flat broad nose and tusks; the skin his albedo recoloured and mottled, warts on goblins; his eye materials
+    retinted yellow or ember red; MakeHuman shorts or trousers and boots in dirty colours, the skin under them cut away;
+    a belt, a leather harness (strips laid on the body by ray casts), a pouch, a skull, a spiked pauldron). They keep his
+    rig, so they play his packs and hold the weapons in his grips, like the skeletons. Game scale 0.72 (goblin, about
+    1.3 m) and 1.12 (orc, about 2 m). Drops: goblin ears, tarnished trinkets, orc tusks, orcish war belts, and their
+    weapons (three new ones: the Orcish Cleaver, the Orcish Greataxe, the Spiked Club).
+  - **Camps** (new themes in `world-dressing.ts`): `warren` (spoiled stores and burrows), `goblin` (ragged tents round a
+    fire, a crooked stake fence, loot), `orc` (a stockade with a gateway toward town, war tents, braziers, banners,
+    weapon racks, a forge, skulls). Crater Lake: the Rat Nest (128, 112), the Drowned Cellars (-160, -696), the Goblin
+    Thicket (-152, -128), the Goblin Camp (104, -272), the Orc Warcamp (608, -360), the Warlord's Hold (888, -200), all
+    flat dry spots from the heightfield. Both worlds: the Rat Warren (62, 30) by the village; the round island also gets
+    a goblin camp (-96, 72).
+- **Bows** (`items.ex`: `hunting_bow` (Old Bram sells it, 60c), `goblin_shortbow`, `ashwood_longbow`; `ranged: true`;
+  set `"bow"`): two-handed, held in the left hand (`heldLeft`), drawn in code (`items.ts` BOWS: limbs bent back toward
+  the archer, a leather grip, horn nocks, a string whose middle follows the drawing hand each frame, an arrow nocked on
+  it while drawn). The library's Bow_Idle_Loop / Bow_Draw / Bow_Release clips (both bodies); the left button looses at
+  the end of the draw (0.84 s), the right button is a slower, harder shot. **Arrows never run out.** The server
+  (`Melee.ranged?/1`, `Brain.melee/4`) hits one thing along where the archer looks: a 30 degree cone out to the bow's
+  reach (26-38 m), the selected target within 60 degrees. `arrows.ts` draws each arrow (45 m/s, a shallow arc) to what
+  it hit, or on to the end of its reach, where it sticks for four seconds; the numbers show as it lands. Other players'
+  shots and the goblin archers' fly too.
+- Other fixes on the way: NPC names were pruned and rebuilt every frame (the hook's nameplate pruning didn't keep
+  them); creature hits and deaths sound like bone only for the skeletons now.
+- Icons (128 px, `priv/static/icons/`): the three bows and the six new drops (`library/pipeline/scripts/icons_0428.py`).
+- Tests: 119 Elixir (plugin; 11 new: `building_test.exs` and the new kinds and bows in `mobs_test.exs`), 102 JS (9 new:
+  `build-mode.test.ts`, `bow.test.ts`). The creatures, the bow on both bodies, arrows, placed objects and the whole
+  build-mode flow (place, Shift-place, turn, pick up, move, remove, undo) were checked in a three.js harness.
 
 **Delivered 2026-10-27 (c), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27c.md`): **fixes from the owner's
 second try of 27b.** Delivery (b) said the two-handers were checked "walking"; they were not checked running, where
@@ -671,6 +744,10 @@ The first 2026-10-23 delivery:
 | 2026-10-27 | **Under water is only lightly tinted** (the owner: the murk "was a bit much"), and nothing may change the fog's kind at run time (it rebuilds every shader). |
 | 2026-10-27 | **The boss Kraken is 1.5 times its first size and roams the lake freely** (no set path). |
 | 2026-10-27 | **Mounts attack.** The dragons breathe fire and claw; the Kraken's moves were ours to choose (Tentacle Lash, Maelstrom). |
+| 2026-10-28 | **Build mode is the backquote key (`` ` ``).** Click something your role may use to pick it up and move it; holding it, the right button turns it gently; a right-click alone deletes it. A searchable menu lists what can be brought into the world. |
+| 2026-10-28 | **GMs and admins place and remove NPCs and creatures** (the defaults; admins can change any asset's role in game). |
+| 2026-10-28 | **More creatures: rats, goblins and orcs**, beside the skeletons and the bosses. |
+| 2026-10-28 | **A bow, and no arrows to manage: bows fire endless arrows.** |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 
 ## 4. How it fits together
@@ -839,6 +916,25 @@ big splash, a whirlpool's roar, a wet slap, an ink spurt). The model is ~98k tri
 but with many riders on Kraken mounts at once a lighter level of detail for the mount is worth building.
 Being held and dragged are applied by the victim's client (as creature damage is), not enforced by the
 server's move checks.
+
+**Build mode, creatures and bows (2026-10-28), to check in a real game:**
+
+- The owner to try build mode as a member, a GM and an admin: the window, placing, turning, the role dropdowns,
+  creature spawns and NPCs, undo. Two players building at once (each sees the other's changes).
+- **The village and the code camps aren't placements yet**: their houses, stalls and trees can't be picked up. The plan
+  below: import `world-dressing.ts`'s layout as rows (a mix task or an admin button), then draw the village from them.
+  The same for `Spawns` camps and `Merchants`' fixed merchants.
+- Placed things block walking on the client only (like the village); the server doesn't check walls. Stacking (a second
+  storey) is by PgUp/PgDn: nothing snaps one piece onto another yet, and nobody can walk up stairs or onto floors.
+- Binding stones (the waystone is admin-only already) still need the R interaction and the no-build radius.
+- Sounds: the bow uses the existing draw and swing whooshes; rats, goblins and orcs have no voices of their own. Real
+  CC0 recordings wanted (a bow's twang, an arrow's thud, squeaks, goblin chatter, orc grunts).
+- The goblins and orcs keep the male's posture-less clips (like the skeletons): no hunch for goblins yet. A goblin
+  shaman and orc caster need spells for creatures (none exist).
+- The plague rat is the rat tinted; its own model (patchy fur, sores) would be better. Rats walk through hills like all
+  creatures.
+- Bows: the limbs don't flex as the string is drawn; no aiming up or down (arrows fly level along the heading, to the
+  target's height when there is one). PvP arrows land like swings (the hit is decided at once).
 
 **World building in game (the owner's plan, 2026-10-26; decisions log):**
 

@@ -58,6 +58,12 @@ export interface ControllerOptions {
    * cursor (the click opens a window that needs it, such as looting a corpse).
    */
   lockOnClick?: (event: MouseEvent) => boolean;
+  /**
+   * Asked first on a mouse press or a wheel turn with the cursor free: true keeps it from the
+   * camera (build mode, 2026-10-28: while an object is held the right button turns it and the
+   * wheel turns it finely, instead of steering and zooming).
+   */
+  mouseTaken?: (event: MouseEvent) => boolean;
   /** Told when pointer lock starts or ends, to show the hint or the centre dot. */
   onPointerLockChange?: (locked: boolean) => void;
   /** The browser refused the lock (Chrome waits ~1 s after Esc): ask for another click. */
@@ -295,6 +301,7 @@ export class CharacterController {
 
   private onMouseDown(event: MouseEvent): void {
     if (!this.inputEnabled) return;
+    if (!this.isPointerLocked() && this.options.mouseTaken?.(event)) return;
     if (this.isPointerLocked()) {
       // Mouse-look on: the buttons are the hands.
       const hand = event.button === 0 ? 'left' : event.button === 2 ? 'right' : null;
@@ -421,6 +428,7 @@ export class CharacterController {
 
   private onWheel(event: WheelEvent): void {
     event.preventDefault();
+    if (!this.isPointerLocked() && this.options.mouseTaken?.(event)) return;
     // mounted, the camera may pull further back (the dragon is big)
     this.distance = this.mount
       ? Math.min(FLIGHT.maxCameraDistance, Math.max(CAMERA.minDistance * 2, this.distance * Math.exp(event.deltaY * 0.001)))

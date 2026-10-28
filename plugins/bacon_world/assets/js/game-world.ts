@@ -20,6 +20,7 @@ import { conColor, playerColor } from './nameplates';
 import { NpcsView, NPC_COLOR } from './npcs-view';
 import { gearKey, type Gear } from './wardrobe';
 import { WorldDressing } from './world-dressing';
+import { Arrows } from './arrows';
 
 const U = UNITS_PER_METRE;
 const LOOT_RANGE = 4.2 * U; // a little inside the server's 4.5 m
@@ -27,6 +28,8 @@ const TRADE_RANGE = 5.6 * U; // a little inside BaconWorld.Merchants.reach/0 (6 
 const FIST = { dmg: 3, dly: 9 };
 
 type Hand = 'left' | 'right';
+// creatures whose hits and deaths crack bone (the rest are flesh: rats, goblins, orcs, the bosses)
+const BONY = /skeleton/;
 
 // The combat log for a creature's moves (BaconWorld.Mobs.Spawns `moves`, `breath`).
 const MOVE_VERBS: Record<string, string> = {
@@ -151,6 +154,10 @@ export const GameWorld = {
       };
       this.scene.add(this.mobsView.group);
     }
+    if (!this.arrows) {
+      this.arrows = new Arrows();
+      this.scene.add(this.arrows.group);
+    }
     this.applyGround?.();
     void reply(this, 'fetch_mobs', {}, { mobs: [], camps: [], merchants: [] }).then((res: any) => {
       if (!this.mobsView) return;
@@ -158,17 +165,22 @@ export const GameWorld = {
       this.camps = res.camps || [];
       // the sea and the lakes (water.ts, fishing-world.ts)
       if (res.water) this.initWater(res.water);
-      const people = () => [...(this.dressing ? this.dressing.colliders() : this.worldColliders.filter((c: any) => !c.npc && c.kind !== 'ellipse')), ...(this.npcsView?.colliders() || []).map((c: any) => ({ ...c, npc: true })), ...this.waterColliders()];
-      this.worldColliders = people();
-      void this.npcsView?.setAll(res.merchants || []).then(() => (this.worldColliders = people()));
+      // the village's, the people's, the water's and build mode's colliders (build-world.ts)
+      this.rebuildColliders();
+      void this.npcsView?.setAll(res.merchants || []).then(() => this.rebuildColliders());
       if (this.dressing && this.camps.length) void this.dressing.addCamps(this.camps).then(() => {
-        if (this.dressing) this.worldColliders = people();
+        if (this.dressing) this.rebuildColliders();
       });
+      // what players put in the world in build mode (BaconWorld.Building)
+      this.initPlaced(res.placements || []);
     });
     this.updateHUD();
   },
 
   teardownGame(this: any) {
+    this.teardownBuild?.();
+    this.arrows?.dispose();
+    this.arrows = null;
     this.mounts?.clearAll();
     this.teardownSkills?.();
     this.teardownFishing?.();
@@ -191,6 +203,7 @@ export const GameWorld = {
 
   tickGame(this: any, dt: number) {
     this.tickFishing?.(dt);
+    this.arrows?.update(dt);
     this.mobsView?.update(dt);
     this.npcsView?.update(dt, this.targetId);
     const me = this.localCharacter();
@@ -445,11 +458,67 @@ export const GameWorld = {
     this.pvpShowAt = now + hitIn - 40;
 
     const target = this.targetId && (this.mobsView?.get(this.targetId) || this.isOtherPlayer(this.targetId)) ? this.targetId : null;
-    void reply(this, 'melee_attack', { hand, heading: this.controller.getYaw(), heavy, target_id: target }).then((res: any) => {
+    const yaw = this.controller.getYaw();
+    // a bow (2026-10-28): the arrow leaves at the end of the draw and the numbers show as it lands
+    const ranged = !!h.def?.ranged;
+    if (ranged) {
+      setTimeout(() => this.audio?.play('draw', 0.45), 60);
+      this.pvpShowAt = now + hitIn + 400;
+    }
+    void reply(this, 'melee_attack', { hand, heading: yaw, heavy, target_id: target }).then((res: any) => {
       if (!res?.ok) return;
-      setTimeout(() => this.showHits(res.hits || []), Math.max(0, hitIn - 40));
+      if (ranged) {
+        const firstHit = (res.hits || [])[0];
+        setTimeout(() => this.loose(myId, yaw, h.def.reach, firstHit?.id ?? null, !!firstHit?.hit, () => this.showHits(res.hits || [])), Math.max(0, hitIn - (performance.now() - now)));
+      } else {
+        setTimeout(() => this.showHits(res.hits || []), Math.max(0, hitIn - 40));
+      }
       if (res.progress) this.applyProgress(res.progress);
     });
+  },
+
+  /** Where a character's bow is (its left grip), scene units; or its chest. */
+  bowAt(this: any, characterId: string): THREE.Vector3 | null {
+    const c = this.characterManager?.getAllCharacters().get(characterId);
+    if (!c) return null;
+    const grip = c.mesh.getObjectByName('weapon_l');
+    return grip ? grip.getWorldPosition(new THREE.Vector3()) : c.mesh.position.clone().add(new THREE.Vector3(0, 1.4 * U, 0));
+  },
+
+  /**
+   * An arrow leaves `shooterId`'s bow: at the creature it hit (or just past it, a miss), else
+   * straight on along `yaw` to the bow's reach (metres). `done` runs as it lands.
+   */
+  loose(this: any, shooterId: string, yaw: number, reachM: number, mobId: string | null, hit: boolean, done: (() => void) | null) {
+    const from = this.bowAt(shooterId);
+    if (!from || !this.arrows) {
+      done?.();
+      return;
+    }
+    this.audio?.play('swing', 0.55, this.distanceToCharacter?.(shooterId) ?? 0, 1.35);
+    const mob = mobId ? this.mobsView?.get(mobId) : null;
+    if (mob) {
+      const at = () => {
+        const e = this.mobsView?.get(mobId!);
+        if (!e) return null;
+        const p = e.root.position.clone();
+        p.y += e.heightU * 0.55;
+        // a miss goes wide
+        if (!hit) p.add(new THREE.Vector3(Math.cos(yaw), 0.4, -Math.sin(yaw)).multiplyScalar(0.9 * U));
+        return p;
+      };
+      const to = at();
+      if (to) {
+        this.arrows.shoot(from, to, done, hit ? at : null);
+        return;
+      }
+    }
+    // nothing hit: on along where the archer looked, down to the ground if it gets there first
+    const dir = new THREE.Vector3(Math.sin(yaw), -0.03, Math.cos(yaw)).normalize();
+    const to = from.clone().addScaledVector(dir, reachM * U);
+    const g = this.groundAt ? this.groundAt(to.x, to.z) : 0;
+    if (to.y < g) to.y = g + 0.05 * U;
+    this.arrows.shoot(from, to, done);
   },
 
   /** A mount's move for this hand: its own cooldown, the rig plays it, the zone resolves it. */
@@ -489,6 +558,13 @@ export const GameWorld = {
     const info = animator?.attack(p.hand === 'left' ? 'left' : 'right', !!p.heavy, (p.delay_ms || 900) / 1000);
     if (!info) return;
     const d = this.distanceToCharacter(p.character_id);
+    // their bow: an arrow leaves it, along where they face
+    const main = item(this.characterManager?.getGear(p.character_id)?.main);
+    if (main?.ranged) {
+      const c = this.characterManager?.getAllCharacters().get(p.character_id);
+      setTimeout(() => this.loose(p.character_id, c?.mesh.rotation.y ?? 0, main.reach, null, false, null), info.hitIn * 1000);
+      return;
+    }
     setTimeout(() => this.audio?.play('swing', p.heavy ? 0.9 : 0.7, d, p.heavy ? 0.85 : 1), Math.max(0, info.hitIn * 1000 - 120));
   },
 
@@ -556,15 +632,17 @@ export const GameWorld = {
       const pos = m.root.position.clone();
       if (hit.hit) {
         this.showFloatingDamage(pos, String(hit.damage), hit.crit ? '#FFD84A' : '#FFFFFF', hit.crit ? 1.35 : 1);
-        this.audio?.play('hit_bone', 0.9);
+        this.audio?.play(BONY.test(m.view.kind) ? 'hit_bone' : 'hit_flesh', 0.9);
         this.combatLog(hit.crit ? `You score a critical hit! (${hit.damage})` : `You hit ${m.view.name} for ${hit.damage} points of damage.`, hit.crit ? '#FFD84A' : '#E8E8E8');
       } else {
         this.showFloatingDamage(pos, 'miss', '#A0A0A0', 0.85);
         this.combatLog(`You try to hit ${m.view.name}, but miss!`, '#A0A0A0');
       }
-      if (hit.killed) {
+      if (hit.killed && BONY.test(m.view.kind)) {
         this.audio?.play('bone_break', 1);
         setTimeout(() => this.audio?.play('bone_collapse', 0.8), 260);
+      }
+      if (hit.killed) {
         this.combatLog(`You have slain ${m.view.name}!`, '#FFE58A');
       }
       // Hitting something you hadn't targeted targets it.
@@ -635,6 +713,11 @@ export const GameWorld = {
 
   // A creature's swing reached its impact frame.
   onMobSwingLanded(this: any, e: MobEvent, m: MobEntry) {
+    // an archer (2026-10-28): the arrow flies first, the hit lands when it gets there
+    if (item(m.view.weapon)?.ranged && !e.move && !(e as any).arrived) {
+      this.mobShot(e, m);
+      return;
+    }
     const myId = this.state?.currentPlayer?.character_id;
     const me = this.localCharacter();
     if (e.target === myId && me) {
@@ -660,6 +743,28 @@ export const GameWorld = {
       this.audio?.play(e.hit ? 'hit_flesh' : 'swing', 0.7, d);
       if (e.hit && e.target) this.characterManager?.getAnimator(e.target)?.hit();
     }
+  },
+
+  /** A creature's arrow from its bow to whoever it shot at, then the hit (onMobSwingLanded). */
+  mobShot(this: any, e: MobEvent, m: MobEntry) {
+    const grip = m.model?.getObjectByName('weapon_l');
+    const from = grip ? grip.getWorldPosition(new THREE.Vector3()) : m.root.position.clone().add(new THREE.Vector3(0, 1.2 * U, 0));
+    const victim = e.target ? this.characterManager?.getAllCharacters().get(e.target) : null;
+    const land = () => this.onMobSwingLanded({ ...e, arrived: true } as any, m);
+    if (!victim || !this.arrows) {
+      land();
+      return;
+    }
+    const at = () => {
+      const v = this.characterManager?.getAllCharacters().get(e.target);
+      if (!v) return null;
+      const p = v.mesh.position.clone().add(new THREE.Vector3(0, 1.25 * U, 0));
+      if (!e.hit) p.add(new THREE.Vector3((Math.random() - 0.5) * 1.6 * U, 0.5 * U, (Math.random() - 0.5) * 1.6 * U));
+      return p;
+    };
+    const me = this.localCharacter();
+    this.audio?.play('swing', 0.5, me ? me.mesh.position.distanceTo(m.root.position) : 30, 1.35);
+    this.arrows.shoot(from, at() || victim.mesh.position.clone(), land, e.hit ? at : null);
   },
 
   /** What a creature's special does to us (BaconWorld.Mobs.Brain `fx`): held, blinded, dragged. */

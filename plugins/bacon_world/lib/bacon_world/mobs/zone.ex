@@ -50,7 +50,8 @@ defmodule BaconWorld.Mobs.Zone do
 
       id ->
         t = now()
-        points = Map.new(Spawns.points(), &{&1.id, &1})
+        # the camps in code, and the spawns placed in build mode (BaconWorld.Building)
+        points = Map.new(Spawns.points() ++ BaconWorld.Building.mob_points(state.slug), &{&1.id, &1})
         mobs = Map.new(points, fn {id, p} -> {id, Brain.spawn(p, t)} end)
         Logger.info("bacon_world:mobs zone=#{state.slug} node=#{node()} creatures=#{map_size(mobs)}")
         Process.send_after(self(), :tick, @tick_ms)
@@ -122,6 +123,18 @@ defmodule BaconWorld.Mobs.Zone do
   end
 
   @impl true
+  def handle_cast({:put_points, placement_id, new_points}, state) do
+    prefix = "p:#{placement_id}:"
+    t = now()
+    gone = for {id, _} <- state.points, String.starts_with?(id, prefix), do: id
+    fresh = Map.new(new_points, &{&1.id, &1})
+    mobs = Map.drop(state.mobs, gone)
+    spawned = Map.new(fresh, fn {id, p} -> {id, Brain.spawn(p, t)} end)
+    events = Enum.map(gone, &{:corpse_gone, &1}) ++ Enum.map(Map.values(spawned), &{:spawn, Brain.view(&1)})
+    broadcast_events(state.topic, events)
+    {:noreply, %{state | points: state.points |> Map.drop(gone) |> Map.merge(fresh), mobs: Map.merge(mobs, spawned), moving: MapSet.difference(state.moving, MapSet.new(gone))}}
+  end
+
   def handle_cast({:loot_return, id, item}, state) do
     case state.mobs[id] do
       nil -> {:noreply, state}

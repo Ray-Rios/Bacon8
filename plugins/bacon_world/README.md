@@ -24,10 +24,12 @@ renamed its tables, its game row and its `plugin_states` row.
 | `lib/bacon_world/combat.ex` | HP/MP, PvP flags, respawn (server-authoritative); spells later (Throw Stone is retired) |
 | `lib/bacon_world/items.ex` | The item catalogue: weapons with EverQuest-style DMG/DLY, shields, a torch, junk, underwear and cloth armour |
 | `lib/bacon_world/inventory.ex`, `inventory_item.ex` | What a character carries: two hands, five worn slots, 24 bag slots, coins |
-| `lib/bacon_world/merchants.ex` | NPC traders: Tilda the clothier, Old Bram the angler (fishing poles), their stock, reach and prices |
+| `lib/bacon_world/merchants.ex` | NPC traders: Tilda the clothier, Old Bram the angler (fishing poles, the hunting bow), their stock, reach and prices; the NPC templates build mode places, and placed NPCs as merchants |
 | `lib/bacon_world/terrain.ex` | The zone's ground (`BaconWorld.Terrain`): reads the World Creator heightfield and water grids from the models volume (`World/Terrain/`), heights, water bodies, where people may walk, the client's description; flat when the files are missing |
 | `lib/bacon_world/water.ex` | The sea and the lakes (with a terrain: below the sea's level; without: the round island), the Millpond, casting rules, where people may walk, what each water's catches are |
 | `lib/bacon_world_web/fishing_events.ex` | PlayLive's fishing events (`fish_cast`, `fish_reel`, `fish_stop`): the server-timed bite, the reel window, the catch |
+| `lib/bacon_world/building.ex`, `placement.ex`, `asset_rule.ex` | Build mode (2026-10-28): the catalogue of placeable assets (props, building pieces, creature spawns, NPC templates), who may place what (a lowest role per asset, admins change it in game), placing, moving and deleting (`bacon_world_placements`), placed creature spawns and NPCs |
+| `lib/bacon_world_web/build_events.ex` | PlayLive's build events (`build_open`, `build_place`, `build_move`, `build_delete`, `build_rule`) and the zone's `build_placed` / `build_removed` |
 | `lib/bacon_world/progression.ex` | Levels, experience, con colours, skill points banked for the tree |
 | `lib/bacon_world/melee.ex` | Swing numbers: reach and arc, hit chance, damage, delay |
 | `lib/bacon_world/mobs.ex`, `mobs/` | Creatures: spawns and kinds, the rules (`Brain`, pure), the zone process, its keeper |
@@ -46,7 +48,7 @@ renamed its tables, its game row and its `plugin_states` row.
 | `lib/bacon_world/{zone,spell,character_spell}.ex` | Schemas for the plugin's own tables |
 | `lib/bacon_world_web/routes.ex` | `/games/bacon_world` |
 | `lib/bacon_world_web/play_live.ex` | Character select and the live world |
-| `priv/games_repo/migrations/` | `bacon_world_zones`, `bacon_world_spells`, `bacon_world_character_spells` (created as `web_lobby_*`, renamed by `20261021120000`), `bacon_world_items` (`20261022000000`) |
+| `priv/games_repo/migrations/` | `bacon_world_zones`, `bacon_world_spells`, `bacon_world_character_spells` (created as `web_lobby_*`, renamed by `20261021120000`), `bacon_world_items` (`20261022000000`), `bacon_world_skill_trees` (`20261025000000`), `bacon_world_placements` and `bacon_world_asset_rules` (`20261028000000`, build mode) |
 | `priv/repo/migrations/` | the site DB's `plugin_states` row, renamed by `20261021120100` |
 | `assets/js/world-character-ui-scene.ts` | The hook (`WorldCharacterUIScene`): front end, world, multiplayer |
 | `assets/js/front-ui.ts`, `character-stage.ts` | Character select and creator (HTML) over a lit 3D stage |
@@ -61,9 +63,12 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/model-manager.ts` | Characters in the scene: loading, their animators, what they hold |
 | `assets/js/anim-driver.ts` | The animator: four body channels, strafes, stances, swings with either hand (mirrored) |
 | `assets/js/game-world.ts`, `game-ui.ts` | Fighting, looting, the inventory; the EverQuest-style windows and hotbar |
-| `assets/js/mobs-view.ts` | Creatures on the client: models, weapons, smoothing, corpses; dragons (Baconator: moves, breath, roar) |
+| `assets/js/mobs-view.ts` | Creatures on the client: models (skeletons, goblins and orcs on the male's rig, rats on their own, dragons, the Kraken), weapons, smoothing, corpses; dragons (Baconator: moves, breath, roar) |
 | `assets/js/dragon-view.ts` | The B8 dragon: loading, a rig that picks its own locomotion (ground or air), one-shots, fire breath, the mounts' hue shift |
 | `assets/js/two-hand.ts` | Two-handed weapons (2026-10-27): the guard and swings as poses of the weapon (grip, haft, edge, torso turn), which `human-factory.ts` (`twoHandDrive`) puts both arms on |
+| `assets/js/build-world.ts`, `build-ui.ts`, `placed-view.ts` | Build mode (the backquote key): the mixin (holding, snapping, the mouse and keys, undo, talking to the server), its searchable window, and the placed objects (models from the village's GLBs, their colliders, spawn and NPC markers) |
+| `assets/js/rat-view.ts` | The B8 rat (2026-10-28): its rig and clips, the gait from the speed, bites and flinches over it, the plague rat's tint |
+| `assets/js/arrows.ts` | Arrows in flight (bows, goblin archers): a shallow arc at 45 m/s, following what they hit, sticking where they land |
 | `assets/js/kraken-view.ts` | The B8 Kraken (2026-10-27): a rig animated in code (writhing arms, swimming, one-shots for its moves, eyes that follow their target, pulsing photophores), the ink cloud and the maelstrom |
 | `assets/js/mounts.ts` | Mounts on the client: the dragon or the Kraken under its rider, the rider seated on the saddle bone, the mount's moves (`playMove`) |
 | `assets/js/stable-ui.ts` | The stable window (the stablemaster): choose which owned mount M summons |

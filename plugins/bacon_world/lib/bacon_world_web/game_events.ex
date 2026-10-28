@@ -16,7 +16,8 @@ defmodule BaconWorldWeb.GameEvents do
       (`BaconWorld.Mounts` `attacks`: a dragon's claw and fire breath, the Kraken's lash and
       maelstrom). Its own timer per hand; creatures only. Replies like `"melee_attack"` plus
       `move`; everyone sees it (`"zone_swing"` with `mount_move`).
-    * `"fetch_mobs"` - every creature and corpse, and the camps to dress.
+    * `"fetch_mobs"` - every creature and corpse, the camps to dress, the merchants, the water,
+      and everything placed in build mode (`BaconWorld.Building`).
     * `"loot_open"` `%{mob_id}`, `"loot_take"` `%{mob_id, index}`,
       `"loot_all"` `%{mob_id}`, `"loot_close"` `%{mob_id}` - EverQuest looting.
     * `"inventory_move"` `%{from, to}`, `"inventory_equip"` `%{slot}`,
@@ -55,6 +56,7 @@ defmodule BaconWorldWeb.GameEvents do
   def join(socket, payload) do
     slug = payload.zone.slug || "lobby"
     if Phoenix.LiveView.connected?(socket), do: PubSub.subscribe(Bacon8.PubSub, Mobs.topic(slug))
+    socket = BaconWorldWeb.BuildEvents.join(socket, slug)
 
     assign(socket,
       mobs_zone: slug,
@@ -74,6 +76,7 @@ defmodule BaconWorldWeb.GameEvents do
       slug ->
         if id = socket.assigns[:looting], do: Mobs.loot_close(slug, id, character_id(socket))
         PubSub.unsubscribe(Bacon8.PubSub, Mobs.topic(slug))
+        BaconWorldWeb.BuildEvents.leave(socket, slug)
         assign(socket, mobs_zone: nil, looting: nil)
     end
   end
@@ -96,6 +99,8 @@ defmodule BaconWorldWeb.GameEvents do
        camps: Spawns.camps_payload(Brain.u()),
        safe_radius: Spawns.safe_radius() * Brain.u(),
        merchants: Merchants.payload(slug),
+       # what players put in the world in build mode (BaconWorld.Building), metres
+       placements: BaconWorld.Building.list(slug),
        # the sea and the lakes (BaconWorld.Water): the client draws them and fishes in them
        water: BaconWorld.Water.layout(Brain.u())
      }, socket}

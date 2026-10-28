@@ -108,7 +108,7 @@ defmodule BaconWorld.FishingTest do
 
     test "Old Bram sells the pole, which is held two-handed" do
       bram = Merchants.get("bram")
-      assert bram.title == "Angler" and bram.sells == ["fishing_pole"]
+      assert bram.title == "Angler" and bram.sells == ["fishing_pole", "hunting_bow"]
       assert Water.near(bram.x, bram.z, Water.bank()) == :lake
       pole = Items.get("fishing_pole")
       assert %{hands: 2, model: "FishingPole", slots: ["main"]} = pole

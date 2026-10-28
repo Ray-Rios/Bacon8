@@ -21,6 +21,8 @@ defmodule BaconWorld.Mobs.Spawns do
     * `drops` - `[{item_id, chance}]` on top of `loot`
     * `respawn_ms` - instead of `respawn_ms/0`
     * `boss`, `scale` - for the client (nameplate, model size)
+    * `ranged` - it shoots (the goblin archers' bows): it holds off at its `reach` and the client
+      draws an arrow for each attack
     * `aquatic` - lives in deep water and never leaves it (the Kraken); it reaches swimmers,
       and anyone on the shore within its reach, but not riders in the air
     * `roam` - wanders on its own, anywhere within this many metres of its spawn point (where it
@@ -97,6 +99,121 @@ defmodule BaconWorld.Mobs.Spawns do
       coins: 25..80,
       weapon_drop: 0.8
     },
+    # Rats (2026-10-28): quick, weak, in packs, a nuisance near town. Their own little rig
+    # (rats-view.ts): no weapons; they bite.
+    "giant_rat" => %{
+      name: "a giant rat",
+      levels: 1..2,
+      hp: {9, 6},
+      dmg: {1, 3},
+      dly_ms: 1500,
+      walk: 1.0,
+      run: 4.4,
+      aggro: 6.0,
+      reach: 0.7,
+      radius: 0.3,
+      moves: [{"bite", 3}, {"claw", 1}],
+      weapons: [{nil, 1}],
+      offhand: [{nil, 1}],
+      loot: [{"rat_tail", 0.7, 1..1}, {"rat_pelt", 0.35, 1..1}],
+      coins: 0..4,
+      weapon_drop: 0.0,
+      respawn_ms: 45_000..80_000
+    },
+    "plague_rat" => %{
+      name: "a plague rat",
+      scale: 1.4,
+      levels: 3..4,
+      hp: {16, 8},
+      dmg: {2, 5},
+      dly_ms: 1600,
+      walk: 1.1,
+      run: 4.8,
+      aggro: 8.0,
+      reach: 0.85,
+      radius: 0.4,
+      moves: [{"bite", 3}, {"claw", 1}],
+      weapons: [{nil, 1}],
+      offhand: [{nil, 1}],
+      loot: [{"rat_tail", 0.8, 1..1}, {"rat_pelt", 0.6, 1..2}],
+      coins: 2..8,
+      weapon_drop: 0.0
+    },
+    # Goblins (2026-10-28): small, green and spiteful, on the male's rig (B8_Goblin.glb plays his
+    # packs). The archers keep their distance and shoot (`ranged`: they stop at their reach).
+    "goblin" => %{
+      name: "a goblin",
+      levels: 2..4,
+      hp: {15, 9},
+      dmg: {2, 6},
+      dly_ms: 1900,
+      walk: 1.3,
+      run: 4.1,
+      aggro: 10.0,
+      reach: 1.0,
+      weapons: [{"rusty_dagger", 3}, {"bone_club", 2}, {"spiked_club", 2}, {"rusty_short_sword", 2}, {"rusty_hand_axe", 1}],
+      offhand: [{nil, 5}, {"dented_buckler", 2}, {"rusty_dagger", 1}],
+      loot: [{"goblin_ear", 0.6, 1..2}, {"tarnished_trinket", 0.08, 1..1}],
+      coins: 6..26,
+      weapon_drop: 0.7
+    },
+    "goblin_archer" => %{
+      name: "a goblin archer",
+      levels: 3..4,
+      hp: {13, 8},
+      dmg: {3, 7},
+      dly_ms: 2400,
+      walk: 1.3,
+      run: 4.0,
+      aggro: 16.0,
+      reach: 16.0,
+      ranged: true,
+      weapons: [{"goblin_shortbow", 1}],
+      offhand: [{nil, 1}],
+      loot: [{"goblin_ear", 0.6, 1..2}, {"tarnished_trinket", 0.1, 1..1}],
+      coins: 8..30,
+      weapon_drop: 0.35
+    },
+    # Orcs (2026-10-28): big, grey-green, tusked, on the male's rig (B8_Orc.glb); harder than
+    # anything outside the lairs. A warlord leads the warband at its hold.
+    "orc" => %{
+      name: "an orc",
+      levels: 5..7,
+      hp: {38, 15},
+      dmg: {5, 12},
+      dly_ms: 2500,
+      walk: 1.2,
+      run: 3.9,
+      aggro: 12.0,
+      reach: 1.4,
+      radius: 0.5,
+      weapons: [{"orcish_cleaver", 4}, {"spiked_club", 2}, {"orcish_greataxe", 2}, {"notched_battle_axe", 1}, {"cracked_maul", 1}],
+      offhand: [{nil, 3}, {"cracked_kite_shield", 1}, {"dented_buckler", 1}],
+      loot: [{"orc_tusk", 0.55, 1..2}, {"orcish_war_belt", 0.1, 1..1}, {"tarnished_trinket", 0.1, 1..1}],
+      coins: 25..80,
+      weapon_drop: 0.6
+    },
+    "orc_warlord" => %{
+      name: "an orc warlord",
+      scale: 1.08,
+      levels: 9..10,
+      hp: {210, 30},
+      dmg: {9, 18},
+      dly_ms: 2700,
+      walk: 1.2,
+      run: 4.0,
+      aggro: 14.0,
+      reach: 1.6,
+      radius: 0.55,
+      leash: 40.0,
+      weapons: [{"orcish_greataxe", 1}],
+      offhand: [{nil, 1}],
+      loot: [{"orc_tusk", 1.0, 2..3}, {"orcish_war_belt", 0.5, 1..1}],
+      drops: [{"ashwood_longbow", 0.2}],
+      coins: 150..300,
+      weapon_drop: 0.5,
+      respawn_ms: 360_000..540_000
+    },
     # The boss (2026-10-24): a red dragon in its lair (north-east of the village; on Crater Lake,
     # the plateau north-east of the crater). Big enough
     # that you hit its flank, not its middle; it bites and claws what is in front, lashes its
@@ -171,11 +288,16 @@ defmodule BaconWorld.Mobs.Spawns do
   @near [
     %{id: "graveyard", name: "the Old Graveyard", x: 52.0, z: -48.0, radius: 9.0, theme: "graveyard", mobs: [{"decaying_skeleton", 6}]},
     %{id: "chapel", name: "the Ruined Chapel", x: -6.0, z: 64.0, radius: 10.0, theme: "ruins", mobs: [{"decaying_skeleton", 2}, {"skeleton", 4}]},
-    %{id: "barrow", name: "the Barrow", x: -66.0, z: -14.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton", 2}, {"skeleton_warrior", 3}]}
+    %{id: "barrow", name: "the Barrow", x: -66.0, z: -14.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton", 2}, {"skeleton_warrior", 3}]},
+    # 2026-10-28: rats on the edge of town, between the graveyard and the chapel
+    %{id: "warren", name: "the Rat Warren", x: 62.0, z: 30.0, radius: 7.0, theme: "warren", mobs: [{"giant_rat", 5}]}
   ]
 
+  # On the round island (no terrain) the goblins camp on its western shore.
+  @island_goblins [%{id: "goblin_camp", name: "the Goblin Camp", x: -96.0, z: 72.0, radius: 9.0, theme: "goblin", mobs: [{"goblin", 3}, {"goblin_archer", 1}]}]
+
   # The round island (no terrain): Baconator just north-east of the village.
-  @island @near ++ [%{id: "lair", name: "Baconator's Lair", x: 92.0, z: 42.0, radius: 16.0, theme: "lair", mobs: [{"baconator", 1}]}]
+  @island @near ++ @island_goblins ++ [%{id: "lair", name: "Baconator's Lair", x: 92.0, z: 42.0, radius: 16.0, theme: "lair", mobs: [{"baconator", 1}]}]
 
   # Crater Lake (BaconWorld.Terrain, 2026-10-26): camps out across the zone, harder the further from
   # town, each on a flat, dry spot picked from the heightfield (slope under ~16 degrees within 18 m,
@@ -192,6 +314,13 @@ defmodule BaconWorld.Mobs.Spawns do
                    %{id: "crater_road", name: "the Crater Road Barrow", x: 108.0, z: -818.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton", 2}, {"skeleton_warrior", 3}]},
                    %{id: "high_ruins", name: "the High Ruins", x: 988.0, z: -82.0, radius: 11.0, theme: "ruins", mobs: [{"skeleton_warrior", 5}]},
                    %{id: "west_barrow", name: "the Western Barrow", x: -1266.0, z: -148.0, radius: 10.0, theme: "barrow", mobs: [{"skeleton_warrior", 5}]},
+                   # 2026-10-28: rats, goblins and orcs (flat, dry spots from the heightfield, like the rest)
+                   %{id: "rat_nest", name: "the Rat Nest", x: 128.0, z: 112.0, radius: 7.0, theme: "warren", mobs: [{"giant_rat", 6}]},
+                   %{id: "drowned_cellars", name: "the Drowned Cellars", x: -160.0, z: -696.0, radius: 9.0, theme: "warren", mobs: [{"plague_rat", 5}, {"giant_rat", 2}]},
+                   %{id: "goblin_thicket", name: "the Goblin Thicket", x: -152.0, z: -128.0, radius: 9.0, theme: "goblin", mobs: [{"goblin", 3}, {"goblin_archer", 1}]},
+                   %{id: "goblin_camp", name: "the Goblin Camp", x: 104.0, z: -272.0, radius: 11.0, theme: "goblin", mobs: [{"goblin", 4}, {"goblin_archer", 2}]},
+                   %{id: "orc_warcamp", name: "the Orc Warcamp", x: 608.0, z: -360.0, radius: 12.0, theme: "orc", mobs: [{"orc", 4}, {"goblin_archer", 2}]},
+                   %{id: "warlords_hold", name: "the Warlord's Hold", x: 888.0, z: -200.0, radius: 12.0, theme: "orc", mobs: [{"orc", 3}, {"orc_warlord", 1}]},
                    %{id: "lair", name: "Baconator's Lair", x: 930.0, z: -1756.0, radius: 16.0, theme: "lair", mobs: [{"baconator", 1}]},
                    # the deep middle of the crater's lake (~317 m of water under it)
                    %{id: "kraken_deep", name: "the Kraken's Deep", x: -147.0, z: -1947.0, radius: 0.0, theme: "deep", mobs: [{"kraken", 1}]}

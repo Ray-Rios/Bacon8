@@ -18,19 +18,29 @@ import { WeaponModels, gearOf, holdItem } from './items';
 import { Nameplates, conColor } from './nameplates';
 import { DRAGON_HIT_AT, DRAGON_MOVE_CLIP, DragonFactory, DragonRig, FireBreath } from './dragon-view';
 import { InkCloud, KRAKEN_HIT_AT, KrakenFactory, KrakenRig, Maelstrom } from './kraken-view';
+import { RAT_HIT_AT, RatFactory, RatRig } from './rat-view';
 
 export const MOBS_BASE = '/models/Mobs';
 const MODELS: Record<string, string> = {
   decaying_skeleton: 'B8_Skeleton.glb',
   skeleton: 'B8_Skeleton.glb',
   skeleton_warrior: 'B8_Skeleton.glb',
+  // 2026-10-28: the MakeHuman male reshaped (library/pipeline/scripts/build_greenskins.py): his rig,
+  // so they play his packs and hold weapons in his grips
+  goblin: 'B8_Goblin.glb',
+  goblin_archer: 'B8_Goblin.glb',
+  orc: 'B8_Orc.glb',
+  orc_warlord: 'B8_Orc.glb',
 };
+// Kinds drawn with the rat (rat-view.ts): their own rig and clips.
+const RATS = new Set(['giant_rat', 'plague_rat']);
+
 // Kinds drawn with the dragon (dragon-view.ts) instead of a skeleton on the male's packs.
 const DRAGONS = new Set(['baconator']);
 // Kinds drawn with the kraken (kraken-view.ts): it lives in the water.
 const KRAKENS = new Set(['kraken']);
 // Size by kind (the warriors are a little bigger).
-const SCALE: Record<string, number> = { decaying_skeleton: 0.97, skeleton: 1.0, skeleton_warrior: 1.07 };
+const SCALE: Record<string, number> = { decaying_skeleton: 0.97, skeleton: 1.0, skeleton_warrior: 1.07, giant_rat: 1.3, plague_rat: 1.3, goblin: 0.72, goblin_archer: 0.7, orc: 1.12, orc_warlord: 1.12 };
 
 export interface MobView {
   id: string;
@@ -86,6 +96,8 @@ export interface MobEntry {
   kraken: KrakenRig | null;
   ink: InkCloud | null;
   whirl: Maelstrom | null;
+  /** The rat's rig, for the rat kinds. */
+  rat: RatRig | null;
   proxy: THREE.Mesh;
   net: { x: number; z: number; h: number; vx: number; vz: number; at: number };
   speed: number;
@@ -102,6 +114,8 @@ const PROXY_DRAGON_LYING = new THREE.BoxGeometry(5, 3, 13).translate(0, 1.5, 1.2
 // The Kraken (full size): the head and the mantle rising behind it, out of the water.
 const PROXY_KRAKEN = new THREE.BoxGeometry(6, 11, 9).translate(0, 4.5, -1.5);
 const PROXY_KRAKEN_DEAD = new THREE.BoxGeometry(7, 3, 9).translate(0, 0.5, 0);
+const PROXY_RAT = new THREE.BoxGeometry(0.3, 0.32, 0.65).translate(0, 0.16, -0.05);
+const PROXY_RAT_DEAD = new THREE.BoxGeometry(0.4, 0.2, 0.65).translate(0, 0.1, -0.05);
 const PROXY_MAT = new THREE.MeshBasicMaterial({ visible: false });
 
 export class MobsView {
@@ -126,6 +140,7 @@ export class MobsView {
   private time = 0;
   private dragons = new DragonFactory();
   private krakens = new KrakenFactory();
+  private rats = new RatFactory();
 
   constructor(
     private humans: HumanFactory,
@@ -213,6 +228,11 @@ export class MobsView {
             this.pending.push({ at: this.time + (DRAGON_HIT_AT[clip] ?? 0.5) / 1.15, fn: () => this.onSwingLanded?.(ev, entry) });
             break;
           }
+          if (e.rat) {
+            e.rat.play('Bite');
+            this.pending.push({ at: this.time + RAT_HIT_AT, fn: () => this.onSwingLanded?.(ev, entry) });
+            break;
+          }
           const info = e.animator?.attack('right', false, 2.0);
           const at = this.time + (info?.hitIn ?? 0.3);
           this.pending.push({ at, fn: () => this.onSwingLanded?.(ev, entry) });
@@ -240,6 +260,7 @@ export class MobsView {
           if (typeof ev.hp === 'number') e.view.hp = ev.hp;
           if (typeof ev.max_hp === 'number') e.view.max_hp = ev.max_hp;
           if ((ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0) e.animator?.hit();
+          if ((ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0 && Math.random() < 0.6) e.rat?.play('Hit');
           // a boss flinches now and then, not at every scratch
           if (e.kraken && (ev.damage ?? 0) > 0 && (ev.hp ?? 1) > 0 && Math.random() < 0.15) {
             e.kraken.play('Hit');
@@ -266,6 +287,7 @@ export class MobsView {
           e.dragon?.die();
           if (e.kraken) this.onSound?.('kraken_roar', e.root.position, 0.9);
           e.kraken?.die();
+          e.rat?.die();
           e.proxy.geometry = this.proxyFor(e.view.kind, true);
         }
         break;
@@ -344,6 +366,10 @@ export class MobsView {
       }
       e.animator?.update(dt);
       e.mixer?.update(dt);
+      if (e.rat) {
+        e.rat.setSpeed(e.view.state === 'dead' ? 0 : e.speed);
+        e.rat.update(dt);
+      }
       e.dragon?.update(dt);
       e.fire?.update(dt);
       if (e.kraken) {
@@ -359,7 +385,7 @@ export class MobsView {
         plateId,
         e.root,
         { name: dead ? `${e.view.name}'s corpse` : e.view.name, color: dead ? '#B9B2A6' : conColor(e.view.level - me.level, me.level) },
-        { height: dead ? (e.dragon || e.kraken ? 2.6 * (e.view.scale ?? 1) * U : 0.6 * U) : e.heightU, target: me.targetId === id }
+        { height: dead ? (e.dragon || e.kraken ? 2.6 * (e.view.scale ?? 1) * U : e.rat ? 0.35 * U : 0.6 * U) : e.heightU, target: me.targetId === id }
       );
     }
   }
@@ -440,7 +466,9 @@ export class MobsView {
     root.rotation.y = v.h;
     const dragon = DRAGONS.has(v.kind);
     const kraken = KRAKENS.has(v.kind);
-    const scale = dragon || kraken ? v.scale ?? 1 : SCALE[v.kind] ?? 1;
+    const rat = RATS.has(v.kind);
+    // the kind's own size, times the server's (a plague rat, a warlord)
+    const scale = dragon || kraken ? v.scale ?? 1 : (SCALE[v.kind] ?? 1) * (v.scale ?? 1);
     const proxy = new THREE.Mesh(this.proxyFor(v.kind, v.state === 'dead'), PROXY_MAT);
     proxy.userData.mobId = v.id;
     proxy.scale.setScalar(UNITS_PER_METRE * scale);
@@ -457,12 +485,13 @@ export class MobsView {
       kraken: null,
       ink: null,
       whirl: null,
+      rat: null,
       proxy,
       net: { x: v.x, z: v.z, h: v.h, vx: 0, vz: 0, at: this.time },
       speed: 0,
       rise: rise ? 1.4 : 0,
       sink: -1,
-      heightU: kraken ? (11.5 * scale + 1) * UNITS_PER_METRE : dragon ? (7.6 * scale + 0.6) * UNITS_PER_METRE : (1.8 * scale + 0.3) * UNITS_PER_METRE,
+      heightU: kraken ? (11.5 * scale + 1) * UNITS_PER_METRE : dragon ? (7.6 * scale + 0.6) * UNITS_PER_METRE : rat ? (0.32 * scale + 0.25) * UNITS_PER_METRE : (1.8 * scale + 0.3) * UNITS_PER_METRE,
     };
     if (rise) root.position.y = -1.9 * UNITS_PER_METRE;
     this.mobs.set(v.id, e);
@@ -473,12 +502,25 @@ export class MobsView {
 
   // Loads the model, then the animations and the weapons, into an entry.
   private proxyFor(kind: string, dead: boolean): THREE.BufferGeometry {
+    if (RATS.has(kind)) return dead ? PROXY_RAT_DEAD : PROXY_RAT;
     if (KRAKENS.has(kind)) return dead ? PROXY_KRAKEN_DEAD : PROXY_KRAKEN;
     if (DRAGONS.has(kind)) return dead ? PROXY_DRAGON_LYING : PROXY_DRAGON;
     return dead ? PROXY_LYING : PROXY_STANDING;
   }
 
   private async dress(e: MobEntry, scale: number) {
+    if (RATS.has(e.view.kind)) {
+      const rig = await this.rats.create(scale, e.view.kind === 'plague_rat');
+      if (!rig || this.mobs.get(e.view.id) !== e) {
+        rig?.dispose();
+        return;
+      }
+      e.root.add(rig.root);
+      e.rat = rig;
+      e.model = rig.model;
+      if (e.view.state === 'dead') rig.die(true);
+      return;
+    }
     if (KRAKENS.has(e.view.kind)) {
       const rig = await this.krakens.create(scale);
       if (!rig || this.mobs.get(e.view.id) !== e) {
@@ -550,11 +592,13 @@ export class MobsView {
       e.animator?.dieInstantly();
       e.dragon?.die(true);
       e.kraken?.die(true);
+      e.rat?.die(true);
       e.proxy.geometry = this.proxyFor(v.kind, true);
     } else if (v.state !== 'dead' && wasDead) {
       e.animator?.revive();
       e.dragon?.revive();
       e.kraken?.revive();
+      e.rat?.revive();
       e.proxy.geometry = this.proxyFor(v.kind, false);
     }
   }
@@ -569,6 +613,7 @@ export class MobsView {
     e.kraken?.dispose();
     e.ink?.dispose();
     e.whirl?.dispose();
+    e.rat?.dispose();
     // Geometry and materials are shared with the template and the weapons file.
     this.mobs.delete(id);
     this.nameplateIds.delete(`mob:${id}`);

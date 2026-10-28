@@ -39,6 +39,7 @@ import { SkillsWorld } from './skills-world';
 import { FishingWorld } from './fishing-world';
 import { keepOnLand } from './water';
 import { TerrainWorld } from './terrain-world';
+import { BuildWorld } from './build-world';
 import type { GameUI } from './game-ui';
 import type { MobsView } from './mobs-view';
 import type { NpcsView } from './npcs-view';
@@ -500,6 +501,8 @@ export const WorldCharacterUIScene = {
     });
 
     // Creatures (game-world.ts, mobs-view.ts) and other players' weapons.
+    this.handleEvent('build_placed', (payload: any) => this.onBuildPlaced(payload));
+    this.handleEvent('build_removed', (payload: any) => this.onBuildRemoved(payload));
     this.handleEvent('mob_events', (payload: any) => {
       for (const e of payload?.events || []) this.mobsView?.event(e);
     });
@@ -875,7 +878,9 @@ export const WorldCharacterUIScene = {
         canvas: this.renderer.domElement,
         // No pointer lock while dead or in the menu (they need the cursor). A click
         // that closes chat locks too: the chat's pointerdown handler blurs it first.
-        canLock: () => !this.isDead && !this.isGameMenuOpen(),
+        canLock: () => !this.isDead && !this.isGameMenuOpen() && !this.buildMode,
+        // build mode, holding something: the right button and the wheel turn it
+        mouseTaken: (event: MouseEvent) => this.buildTakesMouse(event),
         // A click on a corpse loots it: keep the cursor for the loot window.
         lockOnClick: (event: MouseEvent) => !this.corpseUnderCursor(event),
         onPointerLockChange: (locked: boolean) => this.updateLookHint(locked),
@@ -1414,6 +1419,8 @@ export const WorldCharacterUIScene = {
 
   handleGameEscape(this: any, reason: 'key' | 'lock-lost') {
     if (this.isDead) return;
+    // build mode: Esc drops what the cursor holds, then leaves build mode
+    if (reason === 'key' && this.buildEscape()) return;
     // Esc closes the inventory or loot window (or drops what the cursor holds) first.
     if (reason === 'key' && this.gameUI?.closeTop()) return;
     if (reason === 'key' && this.stable?.isOpen) {
@@ -1835,6 +1842,9 @@ export const WorldCharacterUIScene = {
       return;
     }
 
+    // `: build mode, and its keys while it is on (build-world.ts)
+    if (!this.isGameMenuOpen() && !this.isDead && this.buildKey(event)) return;
+
     // K: the skill tree; Q E F Z X: skills; 1-0, Shift+1-0: the spell bar (skills-world.ts)
     if (!this.isGameMenuOpen() && !this.isDead && this.skillKey(event)) {
       event.preventDefault();
@@ -1914,6 +1924,9 @@ export const WorldCharacterUIScene = {
       );
     });
     this.mobsView?.nameplateIds?.forEach((id: string) => keep.add(id));
+    // the merchants' names were pruned and rebuilt every frame until 2026-10-28
+    this.npcsView?.plateIds?.().forEach((id: string) => keep.add(id));
+    this.buildPlateIds?.().forEach((id: string) => keep.add(id));
     this.nameplates.prune(keep);
     this.nameplates.update(this.camera);
   },
@@ -2344,6 +2357,7 @@ export const WorldCharacterUIScene = {
       this.tickMounts(deltaSeconds);
       this.tickSkills(deltaSeconds);
       this.tickGame(deltaSeconds);
+      this.tickBuild(deltaSeconds);
       this.tickTerrain();
       this.updateNameplates();
       this.tickTargetRing();
@@ -2365,6 +2379,9 @@ export const WorldCharacterUIScene = {
 
     // The end of a camera drag (left drag, cursor free) isn't a click.
     if (this.controller?.wasDrag?.()) return;
+
+    // Build mode: a click sets down what the cursor holds, or picks up something placed.
+    if (this.buildLeftClick(event)) return;
 
     // In world mode: ray-cast for characters (targeting). With the pointer locked
     // the cursor is hidden, so aim at the centre of the screen (the dot).
@@ -2427,6 +2444,8 @@ export const WorldCharacterUIScene = {
   // cursor free.
   handleRightButton(this: any, event: MouseEvent) {
     if (event.button !== 2 || this.state?.uiState !== 'world' || this.controller?.isPointerLocked()) return;
+    // build mode: the right button turns what is held, a right click removes
+    if (this.buildRightButton(event)) return;
     if (event.type === 'mousedown') {
       this.rmbDown = { x: event.clientX, y: event.clientY, t: performance.now() };
       return;
@@ -2745,4 +2764,6 @@ export const WorldCharacterUIScene = {
   // Fishing and the water (fishing-world.ts, water.ts).
   ...FishingWorld,
   ...TerrainWorld,
+  // Build mode (` key, build-world.ts, BaconWorld.Building).
+  ...BuildWorld,
 };

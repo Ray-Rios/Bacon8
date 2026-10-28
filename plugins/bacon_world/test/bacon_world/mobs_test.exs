@@ -31,9 +31,10 @@ defmodule BaconWorld.MobsTest do
   describe "spawns" do
     test "every camp is outside the safe village and spawns its creatures" do
       points = Spawns.points()
-      assert length(points) == 18
+      # 18 skeletons and the dragon, the warren's 5 rats, the goblin camp's 4 (2026-10-28)
+      assert length(points) == 27
       assert Enum.all?(points, fn p -> :math.sqrt(p.x * p.x + p.z * p.z) > Spawns.safe_radius() end)
-      assert points |> Enum.map(& &1.id) |> Enum.uniq() |> length() == 18
+      assert points |> Enum.map(& &1.id) |> Enum.uniq() |> length() == 27
     end
 
     test "creatures hold a weapon from their list; a two-hander leaves the off hand empty" do
@@ -265,6 +266,60 @@ defmodule BaconWorld.MobsTest do
       attack = %{id: "a", level: 30, x: 0.0, z: -3.5 * @u, heading: 0.0, item: item, heavy: false, target: m.id}
       {_mobs, hits, _} = Brain.melee(%{m.id => m}, attack, 0, fn -> 0.0 end)
       assert [%{hit: true}] = hits
+    end
+  end
+
+  describe "rats, goblins and orcs (2026-10-28)" do
+    test "each new kind spawns with its weapons and drops what it should" do
+      for kind <- ~w(giant_rat plague_rat goblin goblin_archer orc orc_warlord) do
+        m = Brain.spawn(point(kind), 0)
+        assert m.hp > 0 and m.kind == kind
+        k = Spawns.kind(kind)
+        assert m.level in k.levels
+        for {item_id, _chance, _qty} <- k.loot, do: assert(Items.get(item_id), "#{kind} loot #{item_id}")
+        for {w, _} <- k.weapons, w != nil, do: assert(Items.get(w), "#{kind} weapon #{w}")
+      end
+
+      # rats bite, bare-pawed
+      rat = Brain.spawn(point("giant_rat"), 0)
+      assert rat.weapon == nil and rat.offhand == nil
+      # an archer holds a bow, two-handed, so nothing in the other hand
+      archer = Brain.spawn(point("goblin_archer"), 0)
+      assert archer.weapon == "goblin_shortbow" and archer.offhand == nil
+    end
+
+    test "a goblin archer shoots from its reach instead of closing in" do
+      a = point("goblin_archer") |> Brain.spawn(0) |> Map.merge(%{level: 3, h: 0.0, state: :chase, target: "p1", next_attack: 0})
+      players = %{"p1" => player_at(14.0, %{level: 3})}
+      {_m, events} = run(a, players, 0, 300)
+      assert Enum.any?(events, &match?({:attack, _, "p1", _, _}, &1))
+    end
+  end
+
+  describe "bows (2026-10-28)" do
+    defp shot(mobs, attrs) do
+      bow = Items.get("hunting_bow")
+      attack = Map.merge(%{id: "archer", level: 10, x: 0.0, z: 0.0, heading: 0.0, item: bow, heavy: false, target: nil}, attrs)
+      {_mobs, hits, _} = Brain.melee(mobs, attack, 0, fn -> 0.0 end)
+      hits
+    end
+
+    defp at_m(id, x, z), do: %{id => point() |> Brain.spawn(0) |> Map.merge(%{id: id, x: x * @u, z: z * @u, level: 1, hp: 30, max_hp: 30})}
+
+    test "an arrow reaches far, along where the archer looks, one thing at a time" do
+      bow = Items.get("hunting_bow")
+      assert Melee.ranged?(bow) and bow.hands == 2 and bow.reach >= 30
+      assert [%{id: "far"}] = shot(at_m("far", 0.0, 28.0), %{})
+      # 25 degrees off: outside the cone
+      assert [] = shot(at_m("off", 28.0 * :math.sin(0.44), 28.0 * :math.cos(0.44)), %{})
+      # ...unless it is the target, which counts within a wider cone
+      assert [%{id: "off"}] = shot(at_m("off", 28.0 * :math.sin(0.44), 28.0 * :math.cos(0.44)), %{target: "off"})
+      # out of reach
+      assert [] = shot(at_m("gone", 0.0, 45.0), %{})
+      # two in a line: only one arrow
+      mobs = Map.merge(at_m("a", 0.0, 10.0), at_m("b", 0.0, 20.0))
+      assert [%{id: "a"}] = shot(mobs, %{})
+      assert Melee.sweep(bow) == {1, 30}
     end
   end
 end

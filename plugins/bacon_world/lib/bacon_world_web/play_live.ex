@@ -39,6 +39,8 @@ defmodule BaconWorldWeb.PlayLive do
   @skill_events ~w(skills_fetch skill_learn hotbar_set cast cast_cancel)
   # Fishing (BaconWorldWeb.FishingEvents, BaconWorld.Water).
   @fishing_events ~w(fish_cast fish_reel fish_stop)
+  # Build mode (BaconWorldWeb.BuildEvents, BaconWorld.Building).
+  @build_events ~w(build_open build_place build_move build_delete build_rule)
 
   on_mount {Bacon8Web.UserAuth, :require_authenticated_user}
 
@@ -381,6 +383,10 @@ defmodule BaconWorldWeb.PlayLive do
     BaconWorldWeb.FishingEvents.handle_event(event, params, socket)
   end
 
+  def handle_event(event, params, socket) when event in @build_events do
+    BaconWorldWeb.BuildEvents.handle_event(event, params, socket)
+  end
+
   def handle_event("world_position_update", params, socket) do
     with %{"x" => raw_x, "y" => raw_y, "z" => raw_z, "heading" => raw_heading} <- stringify_keys(params),
          {:ok, x} <- to_float(raw_x),
@@ -589,6 +595,8 @@ defmodule BaconWorldWeb.PlayLive do
   def handle_info({:spell_land, landing}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.spell_land(landing, socket)}
   def handle_info({:zone_cast, payload}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.zone_cast(payload, socket)}
   def handle_info({:player_heal, heal}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.player_heal(heal, socket)}
+  def handle_info({:build_placed, view}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.placed(view, socket)}
+  def handle_info({:build_removed, id, asset}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.removed(id, asset, socket)}
   def handle_info({:fish_bite, token}, socket), do: {:noreply, BaconWorldWeb.FishingEvents.bite(token, socket)}
   def handle_info({:fish_escape, token}, socket), do: {:noreply, BaconWorldWeb.FishingEvents.escape(token, socket)}
 

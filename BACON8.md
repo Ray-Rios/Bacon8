@@ -16,7 +16,14 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-27**.
+Last substantive update: **2026-10-28**.
+
+On 2026-10-28:
+
+- Bacon World: **build mode** (the backquote key: a searchable window of what the account's role may place, pick up,
+  turn, move and remove things; admins set the lowest role per asset in game; two new games-DB tables from the
+  plugin's migration `20261028000000`), **rats, goblins and orcs** with their own camps, and **bows** with endless
+  arrows. Details in **`BACON_WORLD.md`** §2. No core files changed.
 
 On 2026-10-27:
 

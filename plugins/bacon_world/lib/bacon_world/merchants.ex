@@ -113,21 +113,73 @@ defmodule BaconWorld.Merchants do
         "legs" => "cloth_trousers",
         "feet" => "leather_boots"
       },
-      sells: ~w(fishing_pole)
+      sells: ~w(fishing_pole hunting_bow)
     }
   ]
 
   @by_id Map.new(@merchants, &{&1.id, &1})
 
+  # What build mode can place (2026-10-28, BaconWorld.Building): each kind of person, with a few
+  # looks to tell copies apart (picked by the placement's id). Merchants sell their village
+  # counterpart's stock.
+  @clothes %{"under_top" => "linen_bikini_top", "under_bottom" => "linen_bikini_bottom", "chest" => "cloth_tunic", "legs" => "cloth_trousers", "feet" => "leather_boots"}
+  @his_clothes %{"under_bottom" => "linen_bikini_bottom", "chest" => "cloth_tunic", "legs" => "cloth_trousers", "feet" => "cloth_shoes"}
+  @villager_looks [
+    %{name: "Mira", look: %{"v" => 1, "body" => "female", "height" => 0.99, "shape" => %{"weight" => 0.1, "muscle" => 0.1, "hips" => 0.25, "face" => 0.2}, "skin" => "#E8B898", "eyes" => "#4C6A8A", "brows" => nil, "hair" => %{"style" => "LooseBraid", "color" => "#6B4228"}, "facial" => %{"style" => "none", "color" => "#6B4228"}}, gear: @clothes},
+    %{name: "Hob", look: %{"v" => 1, "body" => "male", "height" => 1.0, "shape" => %{"weight" => 0.3, "muscle" => 0.3, "belly" => 0.3, "jaw" => 0.3}, "skin" => "#C98E68", "eyes" => "#4F3A26", "brows" => nil, "hair" => %{"style" => "Messy", "color" => "#2E2016"}, "facial" => %{"style" => "ShortBeard", "color" => "#2E2016"}}, gear: @his_clothes},
+    %{name: "Wenna", look: %{"v" => 1, "body" => "female", "height" => 0.96, "shape" => %{"weight" => 0.3, "belly" => 0.2, "hips" => 0.35, "face" => 0.4}, "skin" => "#B57A55", "eyes" => "#3B2B1E", "brows" => nil, "hair" => %{"style" => "Bun", "color" => "#1C1410"}, "facial" => %{"style" => "none", "color" => "#1C1410"}}, gear: Map.put(@clothes, "chest", "wool_sweater")},
+    %{name: "Aldric", look: %{"v" => 1, "body" => "male", "height" => 1.03, "shape" => %{"weight" => 0.0, "muscle" => 0.5, "shoulders" => 0.3, "face" => 0.2}, "skin" => "#EBC3A4", "eyes" => "#5E7F4F", "brows" => nil, "hair" => %{"style" => "SweptBack", "color" => "#C89B5B"}, "facial" => %{"style" => "Stubble", "color" => "#C89B5B"}}, gear: Map.put(@his_clothes, "chest", "blue_dyed_tunic")}
+  ]
+  @templates [
+    %{id: "villager", label: "a villager", kind: "villager", title: "Villager", sells: [], looks: @villager_looks,
+      greeting: "Fine day, isn't it?"},
+    %{id: "clothier", label: "a clothier", kind: "trader", title: "Clothier", sells: @by_id["tilda"].sells,
+      looks: [%{name: "Elsa Weaver", look: @by_id["tilda"].look, gear: @by_id["tilda"].gear} | Enum.take(@villager_looks, 1)]},
+    %{id: "angler", label: "an angler", kind: "trader", title: "Angler", sells: @by_id["bram"].sells,
+      looks: [%{name: "Brann Tull", look: @by_id["bram"].look, gear: @by_id["bram"].gear}, Enum.at(@villager_looks, 1)]},
+    %{id: "stablemaster", label: "a stablemaster", kind: "stable", title: "Stablemaster", sells: [],
+      looks: [%{name: "Pip Ashby", look: @by_id["rowena"].look, gear: @by_id["rowena"].gear}, Enum.at(@villager_looks, 3)]}
+  ]
+
   @doc "How close (metres) a player must stand to trade."
   def reach, do: @reach
 
   @doc "A merchant by id, or nil."
+  def get("p:" <> _ = id), do: BaconWorld.Building.npc_by_id(id)
   def get(id) when is_binary(id), do: Map.get(@by_id, id)
   def get(_), do: nil
 
-  @doc "The merchants in a zone."
-  def in_zone(zone), do: Enum.filter(@merchants, &(&1.zone == zone))
+  @doc "The merchants in a zone: the village's own and those placed in build mode (`BaconWorld.Building`)."
+  def in_zone(zone), do: Enum.filter(@merchants, &(&1.zone == zone)) ++ BaconWorld.Building.npcs(zone)
+
+  @doc """
+  The NPCs build mode can place (`"npc:<id>"` in `BaconWorld.Building`'s catalogue): a villager
+  who only greets you, and one of each kind of merchant, with the village merchant's stock.
+  """
+  def templates, do: @templates
+
+  @doc """
+  A placed NPC (a `BaconWorld.Placement` of `"npc:<template>"`) as a merchant: id
+  `"p:<placement id>"`, its template's kind, title and stock, a look picked from the template's
+  by the placement's id, facing where it was turned to. Nil for an unknown template.
+  """
+  def placed(template_id, %{id: pid, x: x, z: z, rot: rot, zone: zone, data: data}) do
+    case Enum.find(@templates, &(&1.id == template_id)) do
+      nil ->
+        nil
+
+      t ->
+        looks = t.looks
+        look = Enum.at(looks, :erlang.phash2(pid, length(looks)))
+        name = case (data || %{})["name"] do
+          n when is_binary(n) and n != "" -> n
+          _ -> look.name
+        end
+
+        %{id: "p:" <> pid, kind: t.kind, name: name, title: t.title, zone: zone, x: x, z: z,
+          face: {x + :math.sin(rot) * 4.0, z + :math.cos(rot) * 4.0}, look: look.look, gear: look.gear, sells: t.sells, greeting: t[:greeting]}
+    end
+  end
 
   @doc "What a merchant asks for an item (copper)."
   def sell_price(item), do: item.value
@@ -153,21 +205,27 @@ defmodule BaconWorld.Merchants do
   def payload(zone) do
     u = Brain.u()
 
-    for m <- in_zone(zone) do
-      {fx, fz} = m.face
+    for m <- in_zone(zone), do: npc_payload(m, u)
+  end
 
-      %{
-        id: m.id,
-        name: m.name,
-        title: m.title,
-        x: m.x * u,
-        z: m.z * u,
-        face_x: fx * u,
-        face_z: fz * u,
-        appearance: m.look,
-        gear: m.gear,
-        kind: Map.get(m, :kind, "trader")
-      }
-    end
+  @doc "One merchant as the client draws it (scene units)."
+  def npc_payload(m, u \\ Brain.u())
+  def npc_payload(nil, _u), do: nil
+
+  def npc_payload(m, u) do
+    {fx, fz} = m.face
+
+    %{
+      id: m.id,
+      name: m.name,
+      title: m.title,
+      x: m.x * u,
+      z: m.z * u,
+      face_x: fx * u,
+      face_z: fz * u,
+      appearance: m.look,
+      gear: m.gear,
+      kind: Map.get(m, :kind, "trader")
+    }
   end
 end

@@ -146,6 +146,12 @@ export const WEAPONS: Record<string, Surface> = {
 /** Mobs (B8_Skeleton.glb). */
 export const MOBS: Record<string, Surface> = {
   Skel_Bone: { set: 'worn', scale: 0.25 },
+  // the goblins' and orcs' (2026-10-28, build_greenskins.py): what they wear
+  Mob_Cloth: { set: 'cloth', scale: 0.3, strength: 0.9 },
+  Mob_Leather: { set: 'leather', scale: 0.3, strength: 0.8 },
+  Mob_Iron: { set: 'metal', scale: 0.3, strength: 0.8 },
+  Mob_Bone: { set: 'worn', scale: 0.2, strength: 0.5 },
+  Mob_Rope: { set: 'rope', scale: 0.2 },
 };
 
 const TABLES: Record<Family, Record<string, Surface>> = { kit: KIT, props: PROPS, weapons: WEAPONS, mobs: MOBS };

@@ -35,6 +35,8 @@ export interface ItemDef {
   /** How a worn item is drawn on each body (wardrobe.ts), and its colours. */
   wear?: Record<string, { garment: string; design?: string } | null> | null;
   colors?: Record<string, string> | null;
+  /** A bow (2026-10-28): shoots endless arrows out to `reach` (BaconWorld.Melee). */
+  ranged?: boolean;
 }
 
 export type Catalog = Record<string, ItemDef>;
@@ -122,7 +124,7 @@ export function describe(id: string): string[] {
     if (it.skill) lines.push(`Skill: ${it.skill}`);
     if (it.dmg) lines.push(`DMG: ${it.dmg}   DLY: ${it.dly}`);
     if (it.ac) lines.push(`AC: ${it.ac}`);
-    lines.push(`Reach: ${it.reach.toFixed(1)} m`);
+    lines.push(it.ranged ? `Range: ${Math.round(it.reach)} m (arrows never run out)` : `Reach: ${it.reach.toFixed(1)} m`);
   }
   lines.push(`Value: ${money(it.value)}`);
   return lines;
@@ -176,6 +178,9 @@ export const HOLD: Record<string, { y?: number; roll?: number; off?: number }> =
  * +Y from the grip toward the tip). A child named `RodTip` marks where a fishing line hangs.
  */
 const PROCEDURAL: Record<string, () => THREE.Object3D> = {
+  Bow: () => makeBow('Bow'),
+  ShortBow: () => makeBow('ShortBow'),
+  Longbow: () => makeBow('Longbow'),
   // 2026-10-26: fishing (water.ts, fishing-world.ts)
   FishingPole: () => {
     const g = new THREE.Group();
@@ -207,6 +212,181 @@ const PROCEDURAL: Record<string, () => THREE.Object3D> = {
     return g;
   },
 };
+
+// ---------------------------------------------------------------------------
+// Bows (2026-10-28): drawn in code, held in the LEFT hand (the library's Bow_* clips hold the bow in
+// the left fist, arm out, and draw the string to the right cheek). In weapon_l's frame +Y runs up
+// the bow and +Z points at the target, so the limbs bend toward -Z and the string lies behind the
+// grip. Each frame (onBeforeRender) the string's middle follows the right hand while it is close
+// to it (drawing), and an arrow sits nocked on it; let go, it snaps back.
+
+export interface BowShape {
+  /** Half the bow's length, grip to tip (m). */
+  half: number;
+  /** How far the tips sit behind the grip (m), and the string at rest (brace height). */
+  tipBack: number;
+  /** A recurve's tips flick forward again. */
+  recurve: number;
+  /** Limb width and thickness at the grip (m). */
+  width: number;
+  wood: string;
+  dark: string;
+  grip: string;
+}
+
+export const BOWS: Record<string, BowShape> = {
+  Bow: { half: 0.74, tipBack: 0.14, recurve: 0.0, width: 0.032, wood: '#7A5230', dark: '#3E2716', grip: '#5B3B24' },
+  // the goblins': short, crude, recurved
+  ShortBow: { half: 0.56, tipBack: 0.11, recurve: 0.05, width: 0.03, wood: '#6B5A38', dark: '#2E2618', grip: '#4A3520' },
+  // the orcs' prize: tall pale ash with dark horn tips
+  Longbow: { half: 0.92, tipBack: 0.16, recurve: 0.0, width: 0.035, wood: '#C2A57A', dark: '#2A211A', grip: '#6B4428' },
+};
+
+/** A point on a bow's limb at s (0 = grip, 1 = tip; +-1 for the upper and lower limb), metres. */
+export function bowLimb(b: BowShape, s: number): { y: number; z: number } {
+  const t = Math.abs(s);
+  // bent back toward the archer (a curve), flicked forward at the tips on a recurve
+  const z = -b.tipBack * t * t + b.recurve * Math.max(0, (t - 0.75) / 0.25) ** 2;
+  return { y: Math.sign(s || 1) * b.half * t, z };
+}
+
+/** Where the string's middle goes: the drawing hand (bow space), if it is near, else at rest (pure; tested). */
+export function nockPoint(b: BowShape, hand: { x: number; y: number; z: number } | null): { x: number; y: number; z: number; drawn: number } {
+  const rest = { x: 0, y: 0, z: bowLimb(b, 1).z, drawn: 0 };
+  if (!hand) return rest;
+  const back = rest.z - hand.z;
+  // the hand behind the bow, near its middle, within a long draw: it holds the string
+  if (back > 0.04 && back < 0.95 && Math.abs(hand.y) < 0.35 && Math.abs(hand.x) < 0.3) {
+    return { x: hand.x * 0.6, y: hand.y * 0.6, z: hand.z, drawn: Math.min(1, back / 0.7) };
+  }
+  return rest;
+}
+
+function makeBow(model: string): THREE.Object3D {
+  const b = BOWS[model];
+  const g = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({ color: b.wood, roughness: 0.55 });
+  const dark = new THREE.MeshStandardMaterial({ color: b.dark, roughness: 0.5 });
+  const leather = new THREE.MeshStandardMaterial({ color: b.grip, roughness: 0.9 });
+  wood.name = 'W_Wood';
+  leather.name = 'W_Leather';
+  // the limbs: a tapered tube along the curve, flattened front to back
+  const n = 24;
+  const pts: THREE.Vector3[] = [];
+  for (let i = 0; i <= n; i++) {
+    const s = -1 + (2 * i) / n;
+    const p = bowLimb(b, s);
+    pts.push(new THREE.Vector3(0, p.y, p.z));
+  }
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const tube = new THREE.TubeGeometry(curve, 48, 1, 8, false);
+  // taper toward the tips and flatten (the tube's radius is 1: scale each ring about the curve)
+  const P = tube.attributes.position;
+  const segs = 48;
+  for (let i = 0; i <= segs; i++) {
+    const c = curve.getPointAt(i / segs);
+    const t = Math.abs(i / segs - 0.5) * 2;
+    const w = b.width * (1 - 0.55 * t);
+    for (let j = 0; j <= 8; j++) {
+      const k = i * 9 + j;
+      if (k >= P.count) continue;
+      const dx = P.getX(k) - c.x, dy = P.getY(k) - c.y, dz = P.getZ(k) - c.z;
+      P.setXYZ(k, c.x + dx * w * 0.5, c.y + dy * w * 0.35, c.z + dz * w * 0.35);
+    }
+  }
+  tube.computeVertexNormals();
+  g.add(new THREE.Mesh(tube, wood));
+  // the grip: a leather wrap round the middle; an arrow rest
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(b.width * 0.62, b.width * 0.62, 0.13, 10), leather);
+  g.add(grip);
+  const rest = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 0.03), dark);
+  rest.position.set(b.width * 0.35, 0.075, 0.0);
+  g.add(rest);
+  // horn nocks at the tips
+  for (const s of [-1, 1]) {
+    const p = bowLimb(b, s);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(b.width * 0.32, 0.05, 6), dark);
+    tip.position.set(0, p.y + s * 0.02, p.z);
+    if (s < 0) tip.rotation.x = Math.PI;
+    g.add(tip);
+  }
+  // the string: three points, the middle one moves
+  const top = bowLimb(b, 1), bot = bowLimb(b, -1);
+  const sgeo = new THREE.BufferGeometry();
+  sgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, top.y, top.z, 0, 0, top.z, 0, bot.y, bot.z]), 3));
+  const string = new THREE.Line(sgeo, new THREE.LineBasicMaterial({ color: '#E8E0C8' }));
+  string.frustumCulled = false;
+  g.add(string);
+  // the nocked arrow (shown while drawn): shaft, head, fletching; its nock at its origin, pointing +Z
+  const arrow = makeArrow();
+  arrow.visible = false;
+  g.add(arrow);
+  const tmp = new THREE.Vector3();
+  const inv = new THREE.Matrix4();
+  let hand: THREE.Object3D | null | undefined;
+  string.onBeforeRender = () => {
+    if (hand === undefined || (hand && !hand.parent)) {
+      // the same character's right grip: the first ancestor (going up the arm to the spine)
+      // whose bones include one
+      hand = null;
+      for (let up = g.parent; up && !hand; up = up.parent) {
+        if (up.type === 'Scene') break;
+        hand = up.getObjectByName('weapon_r') || null;
+      }
+    }
+    let local: { x: number; y: number; z: number } | null = null;
+    if (hand) {
+      hand.getWorldPosition(tmp);
+      g.updateWorldMatrix(true, false);
+      inv.copy(g.matrixWorld).invert();
+      tmp.applyMatrix4(inv);
+      local = { x: tmp.x, y: tmp.y, z: tmp.z };
+    }
+    const k = nockPoint(b, local);
+    const A = sgeo.attributes.position as THREE.BufferAttribute;
+    A.setXYZ(1, k.x, k.y, k.z);
+    A.needsUpdate = true;
+    arrow.visible = k.drawn > 0.25;
+    if (arrow.visible) {
+      // from the nock over the arrow rest
+      arrow.position.set(k.x, k.y, k.z);
+      tmp.set(b.width * 0.35 - k.x, 0.075 - k.y, 0.02 - k.z).normalize();
+      arrow.quaternion.setFromUnitVectors(PLUS_Z, tmp);
+    }
+  };
+  g.traverse((o: any) => {
+    if (o.isMesh) o.castShadow = true;
+  });
+  return g;
+}
+
+/** An arrow (metres): its nock at the origin, pointing +Z, 0.75 m long. */
+export function makeArrow(): THREE.Group {
+  const a = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0045, 0.0045, 0.72, 5).rotateX(Math.PI / 2).translate(0, 0, 0.36), ARROW_MATS.shaft);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.05, 4).rotateX(Math.PI / 2).translate(0, 0, 0.745), ARROW_MATS.head);
+  a.add(shaft, head);
+  for (let i = 0; i < 3; i++) {
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(0.018, 0.09).translate(0.011, 0, 0.07), ARROW_MATS.feather);
+    f.rotation.z = (i * Math.PI * 2) / 3;
+    a.add(f);
+  }
+  a.name = 'Arrow';
+  return a;
+}
+
+const PLUS_Z = new THREE.Vector3(0, 0, 1);
+
+const ARROW_MATS = {
+  shaft: new THREE.MeshStandardMaterial({ color: '#9C7A4E', roughness: 0.7 }),
+  head: new THREE.MeshStandardMaterial({ color: '#5E6268', roughness: 0.35, metalness: 0.8 }),
+  feather: new THREE.MeshStandardMaterial({ color: '#D9D2C2', roughness: 0.9, side: THREE.DoubleSide }),
+};
+
+/** True for a model held in the left hand even as the main weapon (the bows). */
+export function heldLeft(model: string | null | undefined): boolean {
+  return !!model && !!BOWS[model];
+}
 
 /** Loads the weapons file once and hands out clones of its nodes. */
 export class WeaponModels {
@@ -265,18 +445,27 @@ export class WeaponModels {
  * (main) or weapon_l (off) bone. Resolves when the model is in place.
  */
 export async function holdItem(models: WeaponModels, root: THREE.Object3D, hand: 'main' | 'off', itemId: string | null): Promise<void> {
-  const bone = root.getObjectByName(hand === 'main' ? 'weapon_r' : 'weapon_l');
-  if (!bone) return;
+  const right = root.getObjectByName('weapon_r');
+  const left = root.getObjectByName('weapon_l');
   const want = item(itemId)?.model || null;
+  // a bow is the main weapon but sits in the left hand (heldLeft)
+  const bone = hand === 'main' && !heldLeft(want) ? right : left;
+  if (!bone || !right || !left) return;
   const token = `${hand}:${itemId ?? ''}`;
-  bone.userData.b8Wanted = token;
-  const old = bone.children.filter((c) => c.userData.b8Weapon);
-  if (old.length === 1 && old[0].userData.b8Weapon === want) return;
+  const key = hand === 'main' ? 'b8WantedMain' : 'b8WantedOff';
+  root.userData[key] = token;
+  // what this hand's slot shows now, on either bone (each copy knows its slot)
+  const mine = () => [...right.children, ...left.children].filter((c) => c.userData.b8Weapon && (c.userData.b8Slot ?? (c.parent === right ? 'main' : 'off')) === hand);
+  const old = mine();
+  if (old.length === 1 && old[0].userData.b8Weapon === want && old[0].parent === bone) return;
   const fresh = want ? await models.create(want) : null;
   // A newer request may have come in while loading.
-  if (bone.userData.b8Wanted !== token) return;
-  bone.children.filter((c) => c.userData.b8Weapon).forEach((c) => bone.remove(c));
-  if (fresh) bone.add(fresh);
+  if (root.userData[key] !== token) return;
+  mine().forEach((c) => c.parent?.remove(c));
+  if (fresh) {
+    fresh.userData.b8Slot = hand;
+    bone.add(fresh);
+  }
   // the off hand's grip on a two-hander (HOLD.off), read by human-factory.ts twoHandGrip
-  if (hand === 'main') bone.userData.b8OffGrip = want ? HOLD[want]?.off ?? null : null;
+  if (hand === 'main') right.userData.b8OffGrip = want && !heldLeft(want) ? HOLD[want]?.off ?? null : null;
 }

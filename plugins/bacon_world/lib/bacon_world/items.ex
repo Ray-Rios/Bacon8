@@ -32,6 +32,7 @@ defmodule BaconWorld.Items do
     * `icon_url` - an icon of its own (the plugin's `priv/static/icons`), for items without a model
       or weapon icon on the models volume (fishing, 2026-10-26)
     * `wear`, `colors` - how a worn item is drawn (above)
+    * `ranged` - a bow (2026-10-28): shoots endless arrows out to `reach` (`BaconWorld.Melee`)
   """
 
   @fist %{id: "fist", name: "Fist", kind: "weapon", slots: [], hands: 1, set: "unarmed", skill: "Hand to Hand", dmg: 3, dly: 9, reach: 0.75, ac: 0, stack: 1, value: 0, model: nil, icon: nil}
@@ -84,6 +85,27 @@ defmodule BaconWorld.Items do
     %{id: "abyssal_harpoon", name: "Abyssal Harpoon", kind: "weapon", slots: ["main"], hands: 2, set: "polearm", skill: "2H Piercing", dmg: 26, dly: 19, reach: 2.0, model: "Spear", value: 3400},
     %{id: "krakenfang_cutlass", name: "Krakenfang Cutlass", kind: "weapon", slots: ["main", "off"], hands: 1, set: "sword_1h", skill: "1H Slashing", dmg: 16, dly: 12, reach: 1.0, model: "Cutlass", value: 2800},
     %{id: "barnacled_buckler", name: "Barnacled Buckler", kind: "shield", slots: ["off"], hands: 1, set: "shield", skill: "Bash", dmg: 5, dly: 13, reach: 0.6, ac: 12, model: "Buckler", value: 2300},
+
+    # Bows (2026-10-28): two-handed, held in the left hand, and they never run out of arrows (the
+    # owner: "I don't want to deal with arrows"). `ranged`: one arrow at whatever is in a narrow
+    # cone along where the archer looks, out to `reach` (BaconWorld.Melee). Drawn in code
+    # (items.ts PROCEDURAL), with the library's Bow_* clips. Old Bram sells the hunting bow; goblin
+    # archers carry the short bow; orc chieftains sometimes the longbow.
+    %{id: "hunting_bow", name: "Hunting Bow", kind: "weapon", slots: ["main"], hands: 2, set: "bow", skill: "Archery", dmg: 9, dly: 16, reach: 32.0, model: "Bow", ranged: true, value: 60, icon_url: "/plugins/bacon_world/icons/hunting_bow.png"},
+    %{id: "goblin_shortbow", name: "Goblin Short Bow", kind: "weapon", slots: ["main"], hands: 2, set: "bow", skill: "Archery", dmg: 8, dly: 15, reach: 26.0, model: "ShortBow", ranged: true, value: 35, icon_url: "/plugins/bacon_world/icons/goblin_shortbow.png"},
+    %{id: "ashwood_longbow", name: "Ashwood Longbow", kind: "weapon", slots: ["main"], hands: 2, set: "bow", skill: "Archery", dmg: 14, dly: 18, reach: 38.0, model: "Longbow", ranged: true, value: 420, icon_url: "/plugins/bacon_world/icons/ashwood_longbow.png"},
+
+    # What the rats, goblins and orcs leave (2026-10-28).
+    %{id: "rat_tail", name: "Rat Tail", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/rat_tail.png", value: 1},
+    %{id: "rat_pelt", name: "Rat Pelt", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/rat_pelt.png", value: 3},
+    %{id: "goblin_ear", name: "Goblin Ear", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/goblin_ear.png", value: 4},
+    %{id: "tarnished_trinket", name: "Tarnished Trinket", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 10, model: nil, icon_url: "/plugins/bacon_world/icons/tarnished_trinket.png", value: 25},
+    %{id: "orc_tusk", name: "Orc Tusk", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/orc_tusk.png", value: 12},
+    %{id: "orcish_war_belt", name: "Orcish War Belt", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 5, model: nil, icon_url: "/plugins/bacon_world/icons/orcish_war_belt.png", value: 60},
+    # what orcs swing (and drop): heavier than the skeletons' rusty iron
+    %{id: "orcish_cleaver", name: "Orcish Cleaver", kind: "weapon", slots: ["main", "off"], hands: 1, set: "axe_1h", skill: "1H Slashing", dmg: 11, dly: 14, reach: 0.75, model: "Axe", value: 45},
+    %{id: "orcish_greataxe", name: "Orcish Greataxe", kind: "weapon", slots: ["main"], hands: 2, set: "two_hand", skill: "2H Slashing", dmg: 19, dly: 21, reach: 1.25, model: "BattleAxe", value: 90},
+    %{id: "spiked_club", name: "Spiked Club", kind: "weapon", slots: ["main", "off"], hands: 1, set: "blunt_1h", skill: "1H Blunt", dmg: 9, dly: 13, reach: 0.85, model: "MorningStar", value: 20},
 
     # Fishing (2026-10-26, BaconWorld.Water): the pole is held two-handed and cast at the water
     # (BaconWorldWeb.FishingEvents); what bites goes in the bags and sells to any merchant. Icons
@@ -154,7 +176,7 @@ defmodule BaconWorld.Items do
 
   @armor_defaults %{hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, ac: 0, stack: 1, model: nil, icon: nil, icon_url: nil}
 
-  @defaults %{ac: 0, stack: 1, icon: nil, icon_url: nil, wear: nil, colors: nil}
+  @defaults %{ac: 0, stack: 1, icon: nil, icon_url: nil, wear: nil, colors: nil, ranged: false}
   @by_id Map.new(@items, fn i -> {i.id, Map.merge(@defaults, i)} end)
          |> Map.merge(Map.new(@wearables, fn i -> {i.id, @defaults |> Map.merge(@armor_defaults) |> Map.merge(i)} end))
 
@@ -223,7 +245,9 @@ defmodule BaconWorld.Items do
          # a picture of its own (the plugin's static files), instead of the models volume's
          icon_url: i.icon_url,
          wear: i.wear,
-         colors: i.colors
+         colors: i.colors,
+         # a bow: shoots arrows (BaconWorld.Melee.ranged?/1)
+         ranged: i.ranged == true
        }}
     end)
   end
