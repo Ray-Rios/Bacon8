@@ -33,7 +33,7 @@ Set-StrictMode -Version 2.0
 # ------------------------------------------------------------------ settings
 
 if (-not (Test-Path $Config)) { throw "No settings file at $Config. Copy plugins\feedback\agent\config.example.json there and fill it in." }
-$cfg = Get-Content $Config -Raw | ConvertFrom-Json
+$cfg = Get-Content $Config -Raw -Encoding UTF8 | ConvertFrom-Json
 
 function Setting($name, $default) {
   if ($cfg.PSObject.Properties.Name -contains $name -and $null -ne $cfg.$name -and "$($cfg.$name)" -ne "") { return $cfg.$name }
@@ -268,7 +268,7 @@ function DoWorkInner($item, $autoDeploy) {
 
   $base = GitOut @("rev-parse", "HEAD")
   $rel = "tmp/feedback-agent/$($item.number)"
-  $prompt = (Get-Content (Join-Path $AgentDir "WORK_PROMPT.md") -Raw).Replace("{{DIR}}", $rel).Replace("{{NUMBER}}", "$($item.number)").Replace("{{TITLE}}", $item.title)
+  $prompt = (Get-Content (Join-Path $AgentDir "WORK_PROMPT.md") -Raw -Encoding UTF8).Replace("{{DIR}}", $rel).Replace("{{NUMBER}}", "$($item.number)").Replace("{{TITLE}}", $item.title)
   $promptFile = Join-Path $dir "prompt.md"
   WriteText $promptFile ($prompt)
 
@@ -280,7 +280,7 @@ function DoWorkInner($item, $autoDeploy) {
 
   $resultFile = Join-Path $dir "result.json"
   $result = $null
-  if (Test-Path $resultFile) { try { $result = Get-Content $resultFile -Raw | ConvertFrom-Json } catch { $result = $null } }
+  if (Test-Path $resultFile) { try { $result = Get-Content $resultFile -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $result = $null } }
   if ($null -eq $result) {
     PutBack $base
     Report $item "failed" "Claude stopped without finishing: it wrote no result.json (exit $($work.code)), so nothing was committed and the working copy was put back. This is not a retry in progress. What Claude last said:`n$(Tail $work.out 30)`n`nSubmit it again to try again."
@@ -315,7 +315,7 @@ function DoWorkInner($item, $autoDeploy) {
   # A second Claude, which didn't write it, reviews the diff.
   $diff = GitOut @("diff", "--stat", "$base..HEAD")
   $patch = GitOut @("diff", "$base..HEAD")
-  $review = (Get-Content (Join-Path $AgentDir "REVIEW_PROMPT.md") -Raw).Replace("{{DIR}}", $rel)
+  $review = (Get-Content (Join-Path $AgentDir "REVIEW_PROMPT.md") -Raw -Encoding UTF8).Replace("{{DIR}}", $rel)
   $reviewFile = Join-Path $dir "review-prompt.md"
   WriteText $reviewFile (($review + "`n`n## The item`n`n" + ($item | ConvertTo-Json -Depth 6) + "`n`n## Claude's summary`n`n" + (Prop $result "summary" "") + "`n`n## The diff`n`n" + $diff + "`n`n" + (Clip $patch 150000)))
   Log "Second review of #$($item.number)..."
