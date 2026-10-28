@@ -24,7 +24,9 @@ defmodule Bacon8Web.Plugs.IpBlockerPlug do
   end
 
   defp is_blocked?(ip) do
-    case :ets.whereis(:blocked_ips) do
+    # (an address that isn't one visitor's is never blocked, whatever an old entry says)
+    case Bacon8.Security.blockable_ip?(ip) && :ets.whereis(:blocked_ips) do
+      false -> false
       :undefined -> false
       _ ->
         case :ets.lookup(:blocked_ips, ip) do

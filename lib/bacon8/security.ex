@@ -9,6 +9,48 @@ defmodule Bacon8.Security do
   alias Bacon8.Security.{LoginAttempt, BlockedIdentifier, DeviceFingerprint, BehavioralData, AllowedIdentifier, SuspiciousRequest}
   alias Bacon8.RateLimiter
 
+  ## Addresses we can't tell apart
+
+  @doc """
+  True for an address that identifies one visitor on the public internet, so it makes sense to block
+  or rate-limit it.
+
+  False for private, loopback and link-local addresses, and for anything that isn't an address.
+  Behind Docker Desktop every visitor arrives from the node's own address (192.168.65.3): it names
+  no one, and blocking it would shut the whole site out.
+  """
+  def blockable_ip?(ip) when is_binary(ip) do
+    case :inet.parse_address(String.to_charlist(String.trim(ip))) do
+      {:ok, addr} -> public_address?(addr)
+      _ -> false
+    end
+  end
+
+  def blockable_ip?(_), do: false
+
+  defp public_address?({0, 0, 0, 0}), do: false
+  defp public_address?({127, _, _, _}), do: false
+  defp public_address?({10, _, _, _}), do: false
+  defp public_address?({172, b, _, _}) when b in 16..31, do: false
+  defp public_address?({192, 168, _, _}), do: false
+  defp public_address?({169, 254, _, _}), do: false
+  defp public_address?({100, b, _, _}) when b in 64..127, do: false
+  defp public_address?({_, _, _, _}), do: true
+  defp public_address?({0, 0, 0, 0, 0, 0, 0, 1}), do: false
+  defp public_address?({0, 0, 0, 0, 0, 0xFFFF, hi, lo}), do: public_address?({div(hi, 256), rem(hi, 256), div(lo, 256), rem(lo, 256)})
+  defp public_address?({first, _, _, _, _, _, _, _}) when first in 0xFC00..0xFDFF, do: false
+  defp public_address?({first, _, _, _, _, _, _, _}) when first in 0xFE80..0xFEBF, do: false
+  defp public_address?({_, _, _, _, _, _, _, _}), do: true
+
+  @doc """
+  What a login or sign-in attempt is throttled by: the visitor's address when it names one visitor,
+  else the account being tried. (Throttling by an address everyone shares would let any five wrong
+  passwords lock every member out.)
+  """
+  def throttle_key(ip, account) do
+    if blockable_ip?(ip), do: ip, else: "account:" <> (account |> to_string() |> String.trim() |> String.downcase())
+  end
+
   ## Login Attempts
 
   @doc """
@@ -66,9 +108,17 @@ defmodule Bacon8.Security do
   Blocks an identifier.
   """
   def block_identifier(attrs) do
-    %BlockedIdentifier{}
-    |> BlockedIdentifier.changeset(attrs)
-    |> Repo.insert()
+    identifier = attrs[:identifier] || attrs["identifier"]
+    type = attrs[:identifier_type] || attrs["identifier_type"]
+
+    if type == "ip" and not blockable_ip?(identifier) do
+      # (an address that isn't one visitor's: blocking it would block everyone behind it)
+      {:error, :not_blockable}
+    else
+      %BlockedIdentifier{}
+      |> BlockedIdentifier.changeset(attrs)
+      |> Repo.insert()
+    end
   end
 
   @doc """
@@ -232,8 +282,8 @@ defmodule Bacon8.Security do
       allowed?(identifier, "ip") or (fingerprint_hash && allowed?(fingerprint_hash, "fingerprint")) ->
         {:ok, :allowed}
       
-      # Check blocklist
-      blocked?(identifier, "ip") or (fingerprint_hash && blocked?(fingerprint_hash, "fingerprint")) ->
+      # Check blocklist (an address that isn't one visitor's is never blocked)
+      (blockable_ip?(identifier) and blocked?(identifier, "ip")) or (fingerprint_hash && blocked?(fingerprint_hash, "fingerprint")) ->
         {:error, :blocked}
       
       # Check rate limiter

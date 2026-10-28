@@ -123,8 +123,9 @@ defmodule Bacon8Web.Plugs.SuspiciousRequestPlug do
   end
 
   defp should_auto_block?(ip) do
-    # Don't auto-block if on allowlist
-    if Bacon8.Security.allowed?(ip, "ip") do
+    # Don't auto-block if on allowlist, or if the address isn't one visitor's (behind Docker Desktop
+    # every visitor shares the node's own address: blocking it would block the whole site)
+    if Bacon8.Security.allowed?(ip, "ip") or not Bacon8.Security.blockable_ip?(ip) do
       false
     else
       count = get_recent_suspicious_count(ip)

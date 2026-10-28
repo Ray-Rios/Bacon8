@@ -73,9 +73,14 @@ defmodule Bacon8Web.Plugs.HoneypotPlug do
   end
 
   defp block_ip(ip) do
-    Logger.error("🚫 Auto-blocking suspicious IP: #{ip}")
-    # Add to blocked IPs table
-    :ets.insert(:blocked_ips, {ip, System.system_time(:second)})
+    if Bacon8.Security.blockable_ip?(ip) do
+      Logger.error("🚫 Auto-blocking suspicious IP: #{ip}")
+      # Add to blocked IPs table
+      :ets.insert(:blocked_ips, {ip, System.system_time(:second)})
+    else
+      # Behind Docker Desktop every visitor looks like the node's own address: blocking it blocks all
+      Logger.warning("Not blocking #{ip}: it doesn't name one visitor")
+    end
   end
 
   defp get_client_ip(conn) do

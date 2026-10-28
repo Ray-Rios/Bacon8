@@ -212,7 +212,7 @@ defmodule Bacon8Web.AuthLive do
     # Wrap security check in try-rescue to catch database errors
     try do
       # Check security system first (rate limiting + blocklist)
-      case Bacon8.Security.check_login_security(ip_address, fingerprint, ip_address) do
+      case Bacon8.Security.check_login_security(Bacon8.Security.throttle_key(ip_address, identifier), fingerprint, ip_address) do
         {:ok, :allowed} ->
           Logger.info("Security check passed, proceeding with authentication")
           # Proceed with authentication

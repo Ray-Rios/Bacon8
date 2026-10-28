@@ -207,8 +207,8 @@ defmodule Bacon8.Accounts do
     ip_address = Keyword.get(opts, :ip_address)
     user_agent = Keyword.get(opts, :user_agent, "Unknown")
     
-    # Check rate limiting first
-    with :ok <- check_login_rate_limit(ip_address) do
+    # Check rate limiting first (by address, or by account when the address names no one visitor)
+    with :ok <- check_login_rate_limit(ip_address && Bacon8.Security.throttle_key(ip_address, identifier)) do
       start_time = System.monotonic_time(:millisecond)
       
       result = case get_user_by_email_or_username(identifier) do
@@ -271,7 +271,11 @@ defmodule Bacon8.Accounts do
     user_agent = Keyword.get(opts, :user_agent, "Unknown")
     
     # Record in RateLimiter
-    if ip_address, do: Bacon8.Accounts.RateLimit.record_login_attempt(ip_address)
+    if ip_address do
+      Bacon8.Accounts.RateLimit.record_login_attempt(
+        Bacon8.Security.throttle_key(ip_address, identifier_attempted || (user && user.email))
+      )
+    end
     
     # Record in Security Context
     Bacon8.Security.record_login_attempt(%{

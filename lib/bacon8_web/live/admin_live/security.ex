@@ -37,6 +37,9 @@ defmodule Bacon8Web.AdminLive.Security do
         RateLimiter.block(identifier)
         {:noreply, load_security_data(socket) |> put_flash(:info, "Identifier blocked successfully")}
       
+      {:error, :not_blockable} ->
+        {:noreply, socket |> put_flash(:error, not_blockable_text(identifier))}
+
       {:error, _changeset} ->
         {:noreply, socket |> put_flash(:error, "Failed to block identifier")}
     end
@@ -91,25 +94,14 @@ defmodule Bacon8Web.AdminLive.Security do
 
   @impl true
   def handle_event("block_ip_quick", %{"ip" => ip}, socket) do
-    case Security.block_identifier(%{
-      identifier: ip,
-      identifier_type: "ip",
-      reason: "Blocked from security dashboard - vulnerability scanning",
-      blocked_at: DateTime.utc_now(),
-      auto_blocked: false,
-      blocked_by_user_id: socket.assigns.current_user.id
-    }) do
-      {:ok, _} ->
-        # Also block in rate limiter and ETS
-        RateLimiter.block(ip)
-        ensure_ets_table()
-        :ets.insert(:blocked_ips, {ip, System.system_time(:second)})
-        {:noreply, load_security_data(socket) |> put_flash(:info, "IP #{ip} blocked successfully")}
-      
-      {:error, _changeset} ->
-        {:noreply, socket |> put_flash(:error, "Failed to block IP")}
+    # (checked here too, before anything is added to the rate limiter or the block table)
+    if not Security.blockable_ip?(ip) do
+      {:noreply, put_flash(socket, :error, not_blockable_text(ip))}
+    else
+      block_ip_now(socket, ip)
     end
   end
+
 
   @impl true
   def handle_event("fetch_logs", _params, socket) do
@@ -131,6 +123,31 @@ defmodule Bacon8Web.AdminLive.Security do
     end
     
     {:noreply, assign(socket, server_logs: logs)}
+  end
+
+  defp block_ip_now(socket, ip) do
+    case Security.block_identifier(%{
+      identifier: ip,
+      identifier_type: "ip",
+      reason: "Blocked from security dashboard - vulnerability scanning",
+      blocked_at: DateTime.utc_now(),
+      auto_blocked: false,
+      blocked_by_user_id: socket.assigns.current_user.id
+    }) do
+      {:ok, _} ->
+        # Also block in rate limiter and ETS
+        RateLimiter.block(ip)
+        ensure_ets_table()
+        :ets.insert(:blocked_ips, {ip, System.system_time(:second)})
+        {:noreply, load_security_data(socket) |> put_flash(:info, "IP #{ip} blocked successfully")}
+      
+      {:error, _changeset} ->
+        {:noreply, socket |> put_flash(:error, "Failed to block IP")}
+    end
+  end
+
+  defp not_blockable_text(ip) do
+    "#{ip} is an internal address, not a visitor: behind Docker Desktop every visitor arrives from the server's own gateway, so blocking it would lock everyone out, you included. Real addresses need a proxy in front that passes them on."
   end
 
   defp ensure_ets_table do
@@ -665,6 +682,18 @@ defmodule Bacon8Web.AdminLive.Security do
             Suspicious Requests (Vulnerability Scans)
           </h3>
           
+          <!-- Behind Docker Desktop every visitor arrives from one internal address -->
+          <%= if Enum.any?(@suspicious_stats.top_offenders, fn {ip, _} -> not Security.blockable_ip?(ip) end) do %>
+            <div id="internal-address-note" class="mb-6 p-4 bg-blue-900/20 border border-blue-700 rounded-lg text-sm text-blue-100">
+              <strong>These scans are real, but the address is not.</strong>
+              An address like 192.168.65.3 is the server's own gateway (Docker Desktop's virtual machine), not a
+              hacker's computer and not a compromised container. Every visitor from the internet is rewritten to it
+              before reaching this site, so scanners and members look alike here. It can't be blocked (that would
+              block everyone), and the sign-in limits use the account instead of the address. To see and block real
+              addresses, put a proxy in front that passes them on.
+            </div>
+          <% end %>
+
           <!-- Top Offenders Summary -->
           <%= if not Enum.empty?(@suspicious_stats.top_offenders) do %>
             <div class="mb-6 p-4 bg-yellow-900/20 border border-yellow-700 rounded-lg">
@@ -674,6 +703,7 @@ defmodule Bacon8Web.AdminLive.Security do
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-800 text-yellow-200">
                     <%= ip %>: <%= count %> requests
                     <button
+                      :if={Security.blockable_ip?(ip)}
                       phx-click="block_ip_quick"
                       phx-value-ip={ip}
                       class="ml-2 text-red-400 hover:text-red-300"
@@ -744,12 +774,14 @@ defmodule Bacon8Web.AdminLive.Security do
                       </td>
                       <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">
                         <button
+                          :if={Security.blockable_ip?(request.ip_address)}
                           phx-click="block_ip_quick"
                           phx-value-ip={request.ip_address}
                           class="text-red-400 hover:text-red-300"
                         >
                           Block
                         </button>
+                        <span :if={!Security.blockable_ip?(request.ip_address)} class="text-gray-500 text-xs" title="Internal address: it names no one visitor, so it can't be blocked">can't block</span>
                       </td>
                     </tr>
                   <% end %>
