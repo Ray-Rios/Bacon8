@@ -1,9 +1,13 @@
 defmodule BaconStoreWeb.StoreLive do
   @moduledoc """
-  /store - the storefront (BACON8.md §8): products in category tabs, each
-  linking to its page (`StoreProductLive`), and Gem packs, bought straight
-  from their card. `?category=<slug>` picks a tab; `?category=gems` shows
-  only Gem packs.
+  /store - the storefront (BACON8.md §8; glass cards 2026-10-28). Everything on sale is a glass
+  card like the games' cards (`BaconStoreWeb.StoreComponents.store_card/1`): the item in 3D on
+  the front with its name and price, the details on the back. Clicking a card slides its sheet up
+  from the bottom (`?item=<slug>`, so a link opens it and Back closes it): the full details and the
+  pay buttons, by card and/or with Gems. There is no separate product page any more:
+  `/store/p/<slug>` comes here (`StoreProductLive`).
+
+  `?category=<slug>` picks a tab; `?category=gems` shows only Gem packs.
   """
   use Bacon8Web, :live_view
 
@@ -23,7 +27,12 @@ defmodule BaconStoreWeb.StoreLive do
        owned: owned_ids(user),
        categories: Catalog.storefront_categories(),
        packs: Catalog.gem_packs(),
-       card_open?: Store.checkout_available?()
+       card_open?: Store.checkout_available?(),
+       item: nil,
+       images: [],
+       shown: nil,
+       check: nil,
+       confirming: false
      )}
   end
 
@@ -43,7 +52,35 @@ defmodule BaconStoreWeb.StoreLive do
         slug -> Catalog.storefront(slug)
       end
 
-    {:noreply, assign(socket, tab: tab, products: products)}
+    {:noreply, socket |> assign(tab: tab, products: products, query: Map.take(params, ["category"])) |> show_item(params["item"])}
+  end
+
+  # The sheet: the item named in the URL, or none.
+  defp show_item(socket, slug) when is_binary(slug) do
+    case Catalog.get_active_product_by_slug(slug) do
+      nil ->
+        socket |> put_flash(:error, "That item isn't available.") |> assign(item: nil)
+
+      product ->
+        images = if product.kind == "gem_pack", do: [], else: Catalog.images(product)
+
+        socket
+        |> assign(page_title: product.name, item: product, images: images, shown: nil, confirming: false)
+        |> refresh()
+    end
+  end
+
+  defp show_item(socket, _), do: assign(socket, item: nil, page_title: "Store", confirming: false)
+
+  defp refresh(socket) do
+    user = socket.assigns[:current_user]
+    item = socket.assigns.item
+
+    assign(socket,
+      balance: user && Wallet.balance(user),
+      check: item && Store.purchase_check(user, item),
+      card_open?: Store.checkout_available?()
+    )
   end
 
   # Products the user can't buy again because they own them.
@@ -53,7 +90,24 @@ defmodule BaconStoreWeb.StoreLive do
     user |> Entitlements.active(Fulfilment.download_kind()) |> Enum.map(& &1.key) |> MapSet.new()
   end
 
+  defp here(socket, extra), do: "/store?" <> URI.encode_query(Map.merge(socket.assigns.query, extra))
+
   @impl true
+  def handle_event("open_item", %{"slug" => slug}, socket) when is_binary(slug),
+    do: {:noreply, push_patch(socket, to: here(socket, %{"item" => slug}))}
+
+  def handle_event("close_item", _params, socket) do
+    to = if socket.assigns.query == %{}, do: ~p"/store", else: here(socket, %{})
+    {:noreply, push_patch(socket, to: to)}
+  end
+
+  def handle_event("show", %{"id" => id}, socket) do
+    {:noreply, assign(socket, shown: Enum.find(socket.assigns.images, socket.assigns.shown, &(&1.id == id)))}
+  end
+
+  def handle_event("show_art", _params, socket), do: {:noreply, assign(socket, shown: nil)}
+
+  # A Gem pack straight from its card's sheet (card only).
   def handle_event("buy_pack", %{"id" => id}, socket) do
     user = socket.assigns.current_user
 
@@ -67,9 +121,35 @@ defmodule BaconStoreWeb.StoreLive do
     end
   end
 
+  def handle_event("buy_card", _params, %{assigns: %{item: %{} = item}} = socket) do
+    case Store.start_checkout(socket.assigns.current_user, item) do
+      {:ok, _order, url} -> {:noreply, go(socket, url)}
+      {:error, :not_signed_in} -> {:noreply, push_navigate(socket, to: ~p"/login")}
+      {:error, reason} -> {:noreply, socket |> put_flash(:error, Store.reason_text(reason)) |> refresh()}
+    end
+  end
+
+  def handle_event("confirm_gems", _params, socket), do: {:noreply, assign(socket, confirming: true)}
+  def handle_event("cancel_gems", _params, socket), do: {:noreply, assign(socket, confirming: false)}
+
+  def handle_event("buy_gems", _params, %{assigns: %{item: %{} = item}} = socket) do
+    case Store.buy_with_gems(socket.assigns.current_user, item) do
+      {:ok, _order} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Bought #{item.name}. It's in your library.")
+         |> push_navigate(to: ~p"/store/library")}
+
+      {:error, reason} ->
+        {:noreply, socket |> assign(confirming: false) |> put_flash(:error, Store.reason_text(reason)) |> refresh()}
+    end
+  end
+
   # Sent by the desktop taskbar in the app layout; nothing to do here.
   def handle_event(event, _params, socket) when event in ["toggle_calendar", "toggle_start_menu", "open_app"],
     do: {:noreply, socket}
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @doc false
   # A provider's hosted checkout is another site; the fake one is a page here.
@@ -82,7 +162,8 @@ defmodule BaconStoreWeb.StoreLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto bg-black">
+    <.store_styles />
+    <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto bg-black" data-store-scroll>
       <div class="mx-auto max-w-6xl px-6 py-12">
         <div class="mb-8 flex flex-wrap items-end justify-between gap-6">
           <div>
@@ -108,8 +189,8 @@ defmodule BaconStoreWeb.StoreLive do
         </nav>
 
         <div :if={@tab != "gems"}>
-          <div :if={@products != []} class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            <.product_card :for={p <- @products} product={p} owned={MapSet.member?(@owned, p.id)} />
+          <div :if={@products != []} class="sc-grid">
+            <.store_card :for={p <- @products} product={p} owned={MapSet.member?(@owned, p.id)} />
           </div>
           <p :if={@products == [] and @tab != "all"} class="py-12 text-center text-gray-500">Nothing in this category yet.</p>
         </div>
@@ -122,29 +203,8 @@ defmodule BaconStoreWeb.StoreLive do
             <p class="text-sm text-gray-500">100 Gems = $1. Spend them on anything here, and in every game on the hub.</p>
           </div>
           <p :if={not @card_open?} class="mb-4 text-sm text-yellow-300">Card purchases open soon.</p>
-          <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            <div
-              :for={{pack, i} <- Enum.with_index(@packs)}
-              class="flex flex-col rounded-xl border border-gray-800 bg-gray-950/80 p-4 transition hover:border-orange-500/60"
-              data-gem-host
-            >
-              <div class="flex items-start justify-between">
-                <%!-- The bigger the pack, the bigger the gem. --%>
-                <Bacon8Web.Components.Gem.gem size={40 + min(i, 5) * 8} />
-                <span :if={pack.badge} class="rounded bg-blue-600/30 px-2 py-0.5 text-xs text-blue-200">{pack.badge}</span>
-              </div>
-              <div class="mt-3 text-lg font-semibold text-white">{Store.format_number(Store.gems_for(pack))}</div>
-              <div :if={Store.promo_active?(pack)} class="text-xs text-green-300">incl. {Store.format_number(pack.bonus_gems)} bonus</div>
-              <button
-                type="button"
-                phx-click="buy_pack"
-                phx-value-id={pack.id}
-                disabled={not @card_open?}
-                class="mt-4 w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {Store.format_price(pack.price_cents, pack.currency)}
-              </button>
-            </div>
+          <div class="sc-grid packs">
+            <.store_card :for={pack <- @packs} product={pack} />
           </div>
         </section>
 
@@ -156,8 +216,164 @@ defmodule BaconStoreWeb.StoreLive do
         </div>
       </div>
     </div>
+
+    <.item_sheet
+      :if={@item}
+      item={@item}
+      images={@images}
+      shown={@shown}
+      check={@check}
+      balance={@balance}
+      confirming={@confirming}
+      card_open?={@card_open?}
+    />
     """
   end
+
+  # The sheet that slides up: the item large (its 3D turn, or its pictures), what you get, the
+  # description, and the pay buttons.
+  attr :item, :map, required: true
+  attr :images, :list, default: []
+  attr :shown, :map, default: nil
+  attr :check, :any, default: nil
+  attr :balance, :integer, default: nil
+  attr :confirming, :boolean, default: false
+  attr :card_open?, :boolean, default: false
+
+  defp item_sheet(assigns) do
+    art = Catalog.art(assigns.item)
+    assigns = assign(assigns, art: art, style: "--sc-tint:#{tint(art, 0.24)}")
+
+    ~H"""
+    <div id={"sheet-#{@item.id}"} class="ss" phx-hook="StoreSheet" role="dialog" aria-modal="true" aria-label={@item.name} style={@style}>
+      <div class="ss-backdrop" data-sheet-close></div>
+      <div class="ss-panel" tabindex="-1">
+        <div class="ss-grab" data-sheet-close><i></i></div>
+        <button type="button" class="ss-x" data-sheet-close aria-label="Close">✕</button>
+        <div class="ss-body">
+          <div>
+            <div class="ss-stage" data-spin-host data-gem-host>
+              <%= if @shown do %>
+                <img src={media_url(@shown)} alt={@item.name} class="sc-img" />
+              <% else %>
+                <.art art={@art} alt={@item.name} />
+              <% end %>
+            </div>
+            <div :if={@images != [] and @art.type != :image} class="ss-thumbs">
+              <button type="button" phx-click="show_art" class={[!@shown && "on"]} aria-label="The item in 3D">
+                <span class="flex h-full w-full items-center justify-center text-xl text-gray-300">⟳</span>
+              </button>
+              <button :for={img <- @images} type="button" phx-click="show" phx-value-id={img.id} class={[@shown && @shown.id == img.id && "on"]}>
+                <img src={media_url(img)} alt="" />
+              </button>
+            </div>
+            <div :if={@images != [] and @art.type == :image and length(@images) > 1} class="ss-thumbs">
+              <button :for={img <- @images} type="button" phx-click="show" phx-value-id={img.id} class={[thumb_on?(@shown, img, @images) && "on"]}>
+                <img src={media_url(img)} alt="" />
+              </button>
+            </div>
+            <div :if={@item.description} class="ss-about">{description_html(@item.description)}</div>
+          </div>
+
+          <aside class="ss-buy">
+            <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-gray-400">
+              <span>{Catalog.kind_label(@item.kind)}</span>
+              <span :if={@item.category} class="text-gray-600">· {@item.category.name}</span>
+              <span :if={@item.badge} class="ml-auto rounded-full bg-blue-600 px-2.5 py-0.5 normal-case tracking-normal text-white">{@item.badge}</span>
+            </div>
+            <h2 class="mt-3 text-3xl font-bold leading-tight text-white">{@item.name}</h2>
+            <p :if={@item.summary} class="mt-2 text-gray-400">{@item.summary}</p>
+
+            <div class="mt-5 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-gray-300">
+              <span class="text-gray-500">You get:</span> {Catalog.describe(@item)}
+              <span :if={@item.kind == "gem_pack" and Store.promo_active?(@item)} class="text-green-300">
+                (incl. {Store.format_number(@item.bonus_gems)} bonus)
+              </span>
+            </div>
+
+            <div class="mt-6"><.price_tags product={@item} size="lg" /></div>
+
+            <div class="mt-5 space-y-3">
+              <%= if @item.kind == "gem_pack" do %>
+                <button
+                  type="button"
+                  phx-click="buy_pack"
+                  phx-value-id={@item.id}
+                  disabled={not @card_open?}
+                  class="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Pay {Store.format_price(@item.price_cents, @item.currency)}
+                </button>
+                <p :if={not @card_open?} class="text-xs text-yellow-300">Card purchases open soon.</p>
+              <% else %>
+                <%= case @check do %>
+                  <% :ok -> %>
+                    <button
+                      :if={@item.price_cents}
+                      type="button"
+                      phx-click="buy_card"
+                      disabled={not @card_open?}
+                      class="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Pay with card · {Store.format_price(@item.price_cents, @item.currency)}
+                    </button>
+                    <p :if={@item.price_cents && not @card_open?} class="text-xs text-yellow-300">Card purchases open soon.</p>
+
+                    <%= if @item.price_gems do %>
+                      <%= cond do %>
+                        <% (@balance || 0) < @item.price_gems -> %>
+                          <button type="button" disabled class="w-full cursor-not-allowed rounded-xl border border-sky-800 px-4 py-3 font-semibold text-sky-300 opacity-50">
+                            Pay with Gems · <Bacon8Web.Components.Gem.gems amount={@item.price_gems} />
+                          </button>
+                          <p class="text-xs text-gray-400">
+                            You have <Bacon8Web.Components.Gem.gems amount={@balance || 0} />.
+                            <.link patch={~p"/store?category=gems"} class="text-blue-400 hover:underline">Get more Gems</.link>
+                          </p>
+                        <% @confirming -> %>
+                          <div class="rounded-xl border border-sky-700 bg-sky-950/40 p-4">
+                            <p class="text-sm text-gray-200">
+                              Spend <Bacon8Web.Components.Gem.gems amount={@item.price_gems} /> of your <Bacon8Web.Components.Gem.gems amount={@balance} />?
+                            </p>
+                            <div class="mt-3 flex gap-2">
+                              <button type="button" phx-click="buy_gems" phx-disable-with="Buying…" class="flex-1 rounded-lg bg-sky-600 px-3 py-2 font-semibold text-white hover:bg-sky-500">
+                                Confirm
+                              </button>
+                              <button type="button" phx-click="cancel_gems" class="rounded-lg bg-gray-800 px-3 py-2 text-gray-200 hover:bg-gray-700">Cancel</button>
+                            </div>
+                          </div>
+                        <% true -> %>
+                          <button type="button" phx-click="confirm_gems" class="w-full rounded-xl border border-sky-600 px-4 py-3 font-semibold text-sky-300 transition hover:bg-sky-950/60">
+                            Pay with Gems · <Bacon8Web.Components.Gem.gems amount={@item.price_gems} />
+                          </button>
+                      <% end %>
+                    <% end %>
+                  <% {:error, :already_owned} -> %>
+                    <div class="rounded-xl border border-green-800 bg-green-950/40 px-4 py-3 text-green-200">✓ You own this.</div>
+                    <.link navigate={~p"/store/library"} class="block w-full rounded-xl bg-gray-800 px-4 py-3 text-center font-semibold text-white hover:bg-gray-700">
+                      Open your library
+                    </.link>
+                  <% {:error, :not_signed_in} -> %>
+                    <.link navigate={~p"/login"} class="block w-full rounded-xl bg-blue-600 px-4 py-3 text-center font-semibold text-white hover:bg-blue-500">
+                      Sign in to buy
+                    </.link>
+                  <% {:error, reason} -> %>
+                    <div class="rounded-xl border border-gray-700 bg-gray-900 px-4 py-3 text-gray-300">{Store.reason_text(reason)}</div>
+                  <% _ -> %>
+                <% end %>
+              <% end %>
+            </div>
+
+            <div class="mt-5"><.small_print /></div>
+          </aside>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp thumb_on?(nil, img, [first | _]), do: img.id == first.id
+  defp thumb_on?(%{id: id}, img, _images), do: img.id == id
+  defp thumb_on?(_shown, _img, _images), do: false
 
   attr :label, :string, required: true
   attr :active, :boolean, default: false

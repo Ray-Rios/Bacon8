@@ -73,7 +73,53 @@ so it can be rebuilt and changed.
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
 
-**Delivered 2026-10-28 (a), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-28a.md`): **build mode, rats, goblins
+**Delivered 2026-10-28 (b), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-28b.md`): **the village as placements,
+binding stones, groups, and the store's glass cards.** The owner's brief: convert the village and the existing camps into
+placements, where only admins and GMs may edit the town round a binding stone (100 m, up from the plan's 70 m); EverQuest
+groups of up to 20 (invite, disband...; no raids), experience divided by the members and their levels; and, on the site,
+every purchasable item as a glass card like the games' cards, the item in 3D, a sheet that slides up to buy it.
+
+- **The village and the camps are placements** (`BaconWorld.Building.ensure_seeded/1`, migration `20261028100000`:
+  `bacon_world_seeds`). The layout `world-dressing.ts` draws was captured from the client itself into
+  `priv/seed/village.json` (344 pieces: houses, plinths, fences, stalls, lamps, trees...), `camps_island.json` (210) and
+  `camps_crater_lake.json` (642; pieces and the camps' creatures as spawn placements). The first time a zone starts, the
+  rows go in once (a row in `bacon_world_seeds` in the same transaction: never twice, even on two nodes), each stood on
+  the ground, `data.origin` saying where it came from (`"village"`, `"camp:<id>"`), stretched pieces keeping their
+  `data.s` [x, y, z] (gables, crags) through moves. From then on what builders move or delete stays that way; the
+  client stops drawing those pieces itself (`villageOff`, `campsOff`) and the zone stops spawning the seeded camps'
+  creatures from code. The village is also a new building piece: `X_Plinth` (a house's stone plinth).
+- **Drawn instanced** (`placed-view.ts` rewritten): one InstancedMesh per part of each kind of piece, so the village's
+  pieces cost a draw call per kind and part (about 150), not per piece. Lamps glow at night like the code's did. Checked
+  in the harness: the seeded village renders the same as the code's (plus its binding stone).
+- **Binding stones**: a placed waystone (`P_Waystone`, admin-only) is one; the village's stands by the square. **Within
+  100 m of one only GMs and admins may place, move or remove anything** (`Building.protected?/4`, checked on the server
+  for the old and the new spot; the ghost turns red for members; build mode draws the 100 m circle). **R** beside a stone
+  (5 m) binds you there (`"bind_stone"`, `settings["bind"]`): Recall and respawning after death take you back to it
+  (`Combat.respawn_point/2`; another zone's bind sends you to the zone's spawn).
+- **Groups** (`BaconWorld.Groups`, a GenServer with an ETS table; `BaconWorldWeb.GroupEvents`; `group-ui.ts`,
+  `group-world.ts`). Up to 20. **Invite** your target (the window's button) or `/invite Name`; the invitee gets an
+  Accept / Decline box (`/accept`, `/decline`, or `/invite` again, as in EverQuest; it lapses after a minute). The leader
+  **kicks** (`/disband Name`, `/kick`, the row's ✕), hands the **lead** over (`/makeleader`, ♛), **disbands**
+  (`/disband`); anyone **leaves** (`/disband` as a member, `/leave`, the button). The lead passes on when the leader
+  leaves; a group of one ends. Logging out, closing the tab or a dropped connection leaves the group (each member's
+  LiveView is monitored); zoning keeps it. **/g** talks to the group. The group window lists the members with the
+  leader's crown, their level and a health bar (from the zone; "away" for one elsewhere); click a row to target them.
+  - **Experience, EverQuest style** (`Groups.shares/2`): the kill's experience against the highest-level member who
+    earns any, plus 2% a member beyond the first, split in proportion to level (a level 20 earns twice a level 10's
+    share). Members the creature cons grey to get nothing and don't count; nor do the dead or anyone more than 100 m
+    from the killer. Alone it is the kill's experience as before. Each member's own LiveView awards its share
+    (`{:group_xp, ...}`), so levels, presence and the HUD update the same way.
+  - **Loot**: anyone in the killer's group may loot during the lock minute, one looter at a time (`Brain.loot_open/4`);
+    the corpse's coins are split evenly among the group members near (the looter keeps the odd coppers; "as your
+    split").
+- **The store's 3D mounts**: `BaconWorld.Plugin.store_art/2` tells the Bacon Store to show each mount turning in 3D
+  (sheets in `priv/static/store/`, rendered from the game's own models by `library/pipeline/scripts/store_turntables.py`;
+  the dragons tinted like `dragon-view.ts` tints them). See BACON8.md §8 for the cards.
+- Tests: 130 Elixir in the plugin (11 new: seeding once, the 100 m rule for members and GMs, binding, keeping a piece's
+  stretch; groups: invite, accept, leave, kick, lead, disband, 20 at most, a closed tab, the experience split, group
+  loot), 109 JS (7 new: `placed-view.test.ts`, `groups.test.ts`).
+
+**Delivered 2026-10-28 (a), committed** (`669dca8`; `handoff/CLAUDE_CODE_PROMPT_2026-10-28a.md`): **build mode, rats, goblins
 and orcs, and the bow.** The owner's brief: the backquote key puts the character into build mode; clicking something your role may use
 picks it up and moves it; held, the right button turns it gently; a right-click alone deletes it; a searchable menu of
 what can be brought into the world; GMs and admins place NPCs and creatures. More creatures than skeletons and bosses:
@@ -748,6 +794,8 @@ The first 2026-10-23 delivery:
 | 2026-10-28 | **GMs and admins place and remove NPCs and creatures** (the defaults; admins can change any asset's role in game). |
 | 2026-10-28 | **More creatures: rats, goblins and orcs**, beside the skeletons and the bosses. |
 | 2026-10-28 | **A bow, and no arrows to manage: bows fire endless arrows.** |
+| 2026-10-28 | **The village and the camps become placements.** Only admins and GMs may edit a town: nothing within **100 m** of a binding stone (was 70 m in the plan). |
+| 2026-10-28 | **Groups, EverQuest style, up to 20; no raids.** Experience is split by level weight with a small group bonus; grey-con, dead or far (100 m) members get none. Anyone in the group may loot during the lock minute, one at a time; coins split evenly among the members near. |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 
 ## 4. How it fits together
@@ -921,12 +969,23 @@ server's move checks.
 
 - The owner to try build mode as a member, a GM and an admin: the window, placing, turning, the role dropdowns,
   creature spawns and NPCs, undo. Two players building at once (each sees the other's changes).
-- **The village and the code camps aren't placements yet**: their houses, stalls and trees can't be picked up. The plan
-  below: import `world-dressing.ts`'s layout as rows (a mix task or an admin button), then draw the village from them.
-  The same for `Spawns` camps and `Merchants`' fixed merchants.
+- ~~The village and the code camps aren't placements yet~~ (done 2026-10-28 b). Still from code: `Merchants`' fixed
+  merchants (Tilda, Old Bram...), the village's ground (plaza and paths are painted, not placed) and a camp's ground
+  patch. The seed files are the client's layout of 2026-10-28; a zone seeded once never re-reads them, so later changes
+  to `world-dressing.ts`' layout don't reach a seeded zone (by design).
 - Placed things block walking on the client only (like the village); the server doesn't check walls. Stacking (a second
   storey) is by PgUp/PgDn: nothing snaps one piece onto another yet, and nobody can walk up stairs or onto floors.
-- Binding stones (the waystone is admin-only already) still need the R interaction and the no-build radius.
+- ~~Binding stones~~ (done 2026-10-28 b: R binds, 100 m no-build for members).
+
+**The village, binding stones and groups (2026-10-28 b), to check in a real game:**
+
+- The first start of each zone seeds it (a log line `bacon_world:building seeded`); check the village looks the same,
+  that the camps' creatures still spawn (now from their placements) and that a member can't build in town but can
+  outside it. The seeded rows are many (about 550-1,000 per zone): watch the zone's start time and `fetch_mobs`.
+- Groups across zones: invites by name reach anyone in the world; experience and coin splits only count members in the
+  killer's zone. Groups are in memory: a server restart ends them (as EverQuest's did on a zone crash).
+- Experience goes to the killer's (last hitter's) group, the corpse to the top damager's group, as before for solo
+  players. Nameplates don't yet colour groupmates.
 - Sounds: the bow uses the existing draw and swing whooshes; rats, goblins and orcs have no voices of their own. Real
   CC0 recordings wanted (a bow's twang, an arrow's thud, squeaks, goblin chatter, orc grunts).
 - The goblins and orcs keep the male's posture-less clips (like the skeletons): no hunch for goblins yet. A goblin
@@ -957,7 +1016,7 @@ server's move checks.
 - **Creatures and NPCs** become placed spawn points (kind, count, radius, respawn), read by
   `BaconWorld.Mobs.Spawns` from the table instead of its code; merchants the same.
 - **Binding stones**: an admin-only asset. Using one (R) sets `settings["bind"]` (Recall and respawn go
-  there); no placement by anyone else is allowed within its radius (about the town's: 70 m, a setting).
+  there); no placement by anyone else is allowed within its radius (100 m, the owner 2026-10-28; was 70 m).
   The town's stone goes by the plaza.
 - Answered by the owner (2026-10-26, decisions log): admins set permissions per item in game, guests
   get none, no limits, no decay, placing a kind means you may delete it.

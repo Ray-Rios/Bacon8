@@ -40,7 +40,9 @@ defmodule BaconWorldWeb.PlayLive do
   # Fishing (BaconWorldWeb.FishingEvents, BaconWorld.Water).
   @fishing_events ~w(fish_cast fish_reel fish_stop)
   # Build mode (BaconWorldWeb.BuildEvents, BaconWorld.Building).
-  @build_events ~w(build_open build_place build_move build_delete build_rule)
+  @build_events ~w(build_open build_place build_move build_delete build_rule bind_stone)
+  # Groups (BaconWorldWeb.GroupEvents, BaconWorld.Groups).
+  @group_events ~w(group_invite group_accept group_decline group_leave group_disband group_kick group_leader group_chat group_fetch)
 
   on_mount {Bacon8Web.UserAuth, :require_authenticated_user}
 
@@ -109,6 +111,8 @@ defmodule BaconWorldWeb.PlayLive do
        human_assets: Models.human_assets(),
        # the zone's ground (BaconWorld.Terrain): the hook loads it before building the village
        terrain: BaconWorld.Terrain.payload(BaconWorld.Mobs.Brain.u()),
+       # the village and the camps as placements (build mode): the client stops drawing those pieces
+       seeded: if(connected?(socket), do: BaconWorld.Building.ensure_seeded("lobby"), else: %{village: false, camps: []}),
        item_catalog: Items.catalog_payload(),
        equipment: %{},
        swing_at: %{},
@@ -387,6 +391,10 @@ defmodule BaconWorldWeb.PlayLive do
     BaconWorldWeb.BuildEvents.handle_event(event, params, socket)
   end
 
+  def handle_event(event, params, socket) when event in @group_events do
+    BaconWorldWeb.GroupEvents.handle_event(event, params, socket)
+  end
+
   def handle_event("world_position_update", params, socket) do
     with %{"x" => raw_x, "y" => raw_y, "z" => raw_z, "heading" => raw_heading} <- stringify_keys(params),
          {:ok, x} <- to_float(raw_x),
@@ -595,6 +603,9 @@ defmodule BaconWorldWeb.PlayLive do
   def handle_info({:spell_land, landing}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.spell_land(landing, socket)}
   def handle_info({:zone_cast, payload}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.zone_cast(payload, socket)}
   def handle_info({:player_heal, heal}, socket), do: {:noreply, BaconWorldWeb.SkillEvents.player_heal(heal, socket)}
+  def handle_info({tag, _} = msg, socket) when tag in [:group_update, :group_invite, :group_notice, :group_chat, :group_xp, :group_coins],
+    do: {:noreply, BaconWorldWeb.GroupEvents.info(msg, socket)}
+
   def handle_info({:build_placed, view}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.placed(view, socket)}
   def handle_info({:build_removed, id, asset}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.removed(id, asset, socket)}
   def handle_info({:fish_bite, token}, socket), do: {:noreply, BaconWorldWeb.FishingEvents.bite(token, socket)}
@@ -722,6 +733,7 @@ defmodule BaconWorldWeb.PlayLive do
     socket
     |> assign(current_zone_topic: topic, zone_online_characters: zone_online_characters)
     |> GameEvents.join(payload)
+    |> BaconWorldWeb.GroupEvents.enter(payload)
 
   end
 
@@ -744,6 +756,7 @@ defmodule BaconWorldWeb.PlayLive do
 
   defp leave_world(socket) do
     socket
+    |> BaconWorldWeb.GroupEvents.leave_world()
     |> leave_zone_presence()
     |> untrack_account_presence()
     |> assign(
@@ -1192,6 +1205,7 @@ defmodule BaconWorldWeb.PlayLive do
           data-current-player={Jason.encode!(@current_character_payload)}
           data-human-assets={Jason.encode!(@human_assets)}
           data-terrain={Jason.encode!(@terrain)}
+          data-seeded={Jason.encode!(@seeded)}
           data-item-catalog={Jason.encode!(@item_catalog)}
           phx-update="ignore"
         ></div>

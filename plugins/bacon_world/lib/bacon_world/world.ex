@@ -388,7 +388,8 @@ defmodule BaconWorld.World do
     end
   end
 
-  defp owned_query(user_id, character_id) do
+  @doc false
+  def owned_query(user_id, character_id) do
     game_id = game_id!()
 
     case Ecto.UUID.cast(character_id) do

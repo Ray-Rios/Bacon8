@@ -59,6 +59,18 @@ export class WorldDressing {
   private groundAt: ((x: number, z: number) => number) | null = null;
   /** Fog's start and end (m): close by on the old island, far off over a terrain. */
   private fog: [number, number] = [70, 190];
+  /**
+   * Build mode owns these pieces (2026-10-28): once the server has seeded the village and a camp as
+   * placements (BaconWorld.Building), their pieces come from there (placed-view.ts) and only the
+   * ground they stand on (the plaza, paths, a camp's patch and mound) is drawn here. `villageOff` and
+   * `campsOff` say which; `piecesOff` is the switch while laying one out.
+   */
+  villageOff = false;
+  campsOff = new Set<string>();
+  private piecesOff = false;
+  /** While set, every piece laid out is recorded too (the seed export, harness only). */
+  recording: Array<{ name: string; m: number[]; group: string }> | null = null;
+  private recordGroup = 'village';
   /** 1 while the camera is under water (terrain-world.ts), eased in `uw`. */
   underwater = 0;
   private uw = 0;
@@ -120,7 +132,10 @@ export class WorldDressing {
       const g = new THREE.BoxGeometry(6.4, 0.5, 6.4).translate(0, 0.05, 0);
       this.templates.set('X_Plinth', new THREE.Mesh(g, stone));
     }
+    this.piecesOff = this.villageOff;
+    this.recordGroup = 'village';
     this.layout();
+    this.piecesOff = false;
     this.merge();
     if (!this.env) {
       const pm = new THREE.PMREMGenerator(this.renderer);
@@ -128,6 +143,14 @@ export class WorldDressing {
       pm.dispose();
     }
     this.scene.environment = this.env;
+  }
+
+  /** A material that glows at night (a placed lamp's, placed-view.ts): tick() brightens it after dark. */
+  addGlow(mat: THREE.Material) {
+    const m = mat as THREE.MeshStandardMaterial;
+    if (this.glow.includes(m)) return;
+    m.userData.base = m.emissiveIntensity || 1;
+    this.glow.push(m);
   }
 
   /** A loaded piece by node name (P_<Id>, K_<Id>), for build mode's placed objects (placed-view.ts). */
@@ -249,17 +272,20 @@ export class WorldDressing {
 
   private put(name: string, x: number, z: number, rotDeg = 0, y = 0, sx = 1, sy = 1, sz = 1) {
     const full = name.startsWith('P_') || name.startsWith('K_') ? name : `P_${name}`;
-    if (!this.templates.has(full)) return;
+    if (!this.templates.has(full) || this.piecesOff) return;
     const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y + this.gy(x, z), z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotDeg * D2R), new THREE.Vector3(sx, sy, sz));
     this.placements.push({ name: full, m });
+    this.recording?.push({ name: full, m: m.toArray(), group: this.recordGroup });
   }
 
   private prop(name: string, x: number, z: number, rotDeg = 0, r = 0.4, y = 0, s = 1) {
+    if (this.piecesOff) return;
     this.put(name, x, z, rotDeg, y, s, s, s);
     if (r > 0) this.cols.push({ kind: 'circle', x, z, r: r * s });
   }
 
   private box(x: number, z: number, hx: number, hz: number, rotDeg: number) {
+    if (this.piecesOff) return;
     this.cols.push({ kind: 'box', x, z, hx, hz, rot: rotDeg * D2R });
   }
 
@@ -271,9 +297,11 @@ export class WorldDressing {
     const T = new THREE.Matrix4().makeTranslation(cx, gy, cz);
     const base = T.multiply(R);
     const at = (name: string, x: number, y: number, z: number, r = 0, sx = 1) => {
-      if (!this.templates.has(name)) return;
+      if (!this.templates.has(name) || this.piecesOff) return;
       const local = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), r * D2R), new THREE.Vector3(sx, 1, 1));
-      this.placements.push({ name, m: base.clone().multiply(local) });
+      const m = base.clone().multiply(local);
+      this.placements.push({ name, m });
+      this.recording?.push({ name, m: m.toArray(), group: this.recordGroup });
     };
     const fl = 0.3; // floor level above the ground
     const H = 3;
@@ -443,6 +471,8 @@ export class WorldDressing {
       const cx = c.x / U, cz = c.z / U, R = c.radius / U;
       // the side facing the village, where the way in is
       const toTown = Math.atan2(-cx, -cz);
+      this.piecesOff = this.campsOff.has(c.id);
+      this.recordGroup = `camp:${c.id}`;
       if (c.theme === 'graveyard') this.graveyard(cx, cz, R, toTown, r);
       else if (c.theme === 'ruins') this.ruins(cx, cz, R, toTown, r);
       else if (c.theme === 'lair') this.lair(cx, cz, R, toTown, r);
@@ -452,6 +482,7 @@ export class WorldDressing {
       else if (c.theme === 'orc') this.orcCamp(cx, cz, R, toTown, r);
       else this.barrow(cx, cz, R, toTown, r);
     }
+    this.piecesOff = false;
     this.merge();
   }
 
@@ -563,7 +594,7 @@ export class WorldDressing {
       const p = at(a, d);
       const s = 0.9 + r() * 0.8;
       this.put('Boulder', p.x, p.z, r() * 360, -0.2, s * 1.1, s * (1.4 + r() * 1.2), s);
-      this.cols.push({ kind: 'circle', x: p.x, z: p.z, r: 1.7 * s });
+      if (!this.piecesOff) this.cols.push({ kind: 'circle', x: p.x, z: p.z, r: 1.7 * s });
     }
     // the hoard, behind the middle
     const away = toTown + Math.PI;
@@ -722,7 +753,7 @@ export class WorldDressing {
       if (Math.abs(d) < 0.35) continue;
       const x = cx + Math.sin(a) * (R + 1.5), z = cz + Math.cos(a) * (R + 1.5);
       this.put('Boulder', x, z, r() * 360, 0, 0.45, 1.5 + r() * 0.7, 0.45);
-      this.cols.push({ kind: 'circle', x, z, r: 0.55 });
+      if (!this.piecesOff) this.cols.push({ kind: 'circle', x, z, r: 0.55 });
     }
     for (let i = 0; i < 5; i++) {
       const a = r() * Math.PI * 2, d = r() * R;

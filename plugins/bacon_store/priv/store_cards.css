@@ -1,0 +1,142 @@
+/* The storefront's glass cards and the item sheet (2026-10-28; BaconStoreWeb.StoreComponents
+   inlines this into /store, so the first paint has it; behaviour: assets/js/store_card.ts).
+   The cards are the games' cards (assets/css/game_card.css) made for things you buy: the item
+   in 3D on the front with its name and price, turned over (hover, or a tap) to a frosted back
+   with what it is. */
+
+.sc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1.5rem; }
+.sc-grid.packs { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 1.1rem; }
+
+.sc {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  perspective: 1400px;
+  cursor: pointer;
+  outline: none;
+  border-radius: 18px;
+  -webkit-tap-highlight-color: transparent;
+}
+.sc-inner {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.85s cubic-bezier(0.2, 0.75, 0.25, 1);
+  border-radius: inherit;
+}
+@media (hover: hover) {
+  .sc:hover .sc-inner { transform: rotateY(180deg) scale(1.03); }
+}
+.sc.flipped .sc-inner,
+.sc:focus-visible .sc-inner { transform: rotateY(180deg) scale(1.03); }
+
+.sc-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    radial-gradient(120% 75% at 50% 30%, var(--sc-tint, rgba(59, 130, 246, 0.22)), transparent 62%),
+    linear-gradient(170deg, rgba(30, 36, 52, 0.92), rgba(6, 8, 13, 0.96));
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: box-shadow 0.5s ease;
+}
+.sc-back { transform: rotateY(180deg); }
+.sc:hover .sc-face,
+.sc.flipped .sc-face,
+.sc:focus-visible .sc-face {
+  box-shadow: 0 28px 60px -20px var(--sc-shadow, rgba(59, 130, 246, 0.45)), 0 0 0 1px rgba(147, 197, 253, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* The item, centred, above its name. */
+.sc-stage { position: absolute; left: 10%; right: 10%; top: 7%; bottom: 30%; display: flex; align-items: center; justify-content: center; }
+.sc-stage b8-spin, .sc-stage .sc-img { width: 100%; height: 100%; }
+.sc-stage b8-gem { --gem-size: min(62%, 150px); width: var(--gem-size); height: var(--gem-size); }
+.sc-img { object-fit: contain; filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.6)); user-select: none; }
+.sc-img.cover { object-fit: cover; border-radius: 10px; }
+b8-spin { display: block; }
+b8-spin:not(:defined) { background: center / contain no-repeat; }
+
+/* Glass: a fixed reflection and a band of light that sweeps across as it turns. */
+.sc-gloss { position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.04) 22%, transparent 38%),
+    radial-gradient(120% 60% at 0% 0%, rgba(255, 255, 255, 0.08), transparent 60%);
+  mix-blend-mode: screen; }
+.sc-gloss::after { content: ""; position: absolute; top: -20%; bottom: -20%; left: -60%; width: 45%;
+  transform: translateX(-120%) skewX(-18deg); opacity: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08) 30%, rgba(255, 255, 255, 0.5) 50%, rgba(255, 255, 255, 0.08) 70%, transparent); }
+@media (hover: hover) { .sc:hover .sc-gloss::after { animation: sc-sweep 0.95s ease-out forwards; } }
+.sc.flipped .sc-gloss::after { animation: sc-sweep 0.95s ease-out forwards; }
+@keyframes sc-sweep { 0% { transform: translateX(0) skewX(-18deg); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateX(420%) skewX(-18deg); opacity: 0; } }
+
+.sc-title { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; padding: 2.2rem 1.1rem 1.1rem; text-align: center;
+  background: linear-gradient(to top, rgba(3, 4, 8, 0.9), rgba(3, 4, 8, 0.55) 55%, transparent); }
+.sc-kind { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: #94a3b8; }
+.sc-title h3 { margin: 0.2rem 0 0.45rem; color: #fff; font-size: 1.15rem; font-weight: 700; line-height: 1.2; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8); }
+.sc-price { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.4rem; font-size: 0.95rem; }
+.sc-price .cash { color: #fff; font-weight: 700; }
+.sc-price .or { color: #64748b; font-size: 0.8rem; }
+.sc-price .gems { color: #7dd3fc; font-weight: 700; }
+
+.sc-badge, .sc-owned { position: absolute; top: 12px; z-index: 3; border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.72rem; font-weight: 600; color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); }
+.sc-badge { left: 12px; background: #2563eb; }
+.sc-owned { right: 12px; background: #16a34a; }
+
+/* Back: the item blurred behind frosted glass, with what it is. */
+.sc-blur { position: absolute; inset: -4% -8% 18%; z-index: 0; filter: blur(11px) saturate(1.4) brightness(1); transform: scaleX(-1); }
+.sc-blur img { width: 100%; height: 100%; object-fit: contain; }
+.sc-blur img.cover { object-fit: cover; }
+.sc-blur b8-gem { --gem-size: 70%; width: 70%; height: 70%; margin: 15%; }
+.sc-panel { position: absolute; inset: 12px; z-index: 3; display: flex; flex-direction: column; padding: 1.1rem 1.15rem;
+  border-radius: 12px; background: rgba(15, 18, 28, 0.36); border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12); -webkit-backdrop-filter: blur(12px) saturate(1.3); backdrop-filter: blur(12px) saturate(1.3); }
+.sc-panel h3 { flex: none; margin: 0.15rem 0 0.55rem; color: #fff; font-size: 1.1rem; font-weight: 700; }
+.sc-desc { flex: 1; min-height: 0; overflow: hidden; color: #d1d5db; font-size: 0.84rem; line-height: 1.45;
+  -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent); mask-image: linear-gradient(to bottom, #000 78%, transparent); }
+.sc-desc p { margin: 0 0 0.55rem; }
+.sc-gets { flex: none; margin-top: 0.6rem; font-size: 0.75rem; color: #a5b4fc; }
+.sc-more { flex: none; align-self: center; margin-top: 0.7rem; display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.5rem 1.2rem;
+  border-radius: 999px; color: #fff; font-weight: 700; font-size: 0.9rem; background: linear-gradient(180deg, #3b82f6, #1d4ed8);
+  border: 1px solid rgba(191, 219, 254, 0.5); box-shadow: 0 6px 18px -6px rgba(37, 99, 235, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+
+/* ---------------------------------------------------------------- the item sheet */
+.ss { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; }
+.ss-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.6); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); animation: ss-fade 0.3s ease both; }
+.ss-panel { position: relative; width: min(1040px, 100%); max-height: min(88vh, 900px); overflow-y: auto; outline: none;
+  border-radius: 22px 22px 0 0; border: 1px solid rgba(255, 255, 255, 0.14); border-bottom: 0;
+  background: radial-gradient(90% 50% at 30% 0%, var(--sc-tint, rgba(59, 130, 246, 0.18)), transparent 60%), linear-gradient(180deg, rgba(20, 24, 36, 0.97), rgba(6, 8, 13, 0.99));
+  box-shadow: 0 -24px 60px -10px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  animation: ss-up 0.42s cubic-bezier(0.2, 0.8, 0.25, 1) both; }
+.ss.closing .ss-panel { animation: ss-down 0.26s ease-in both; }
+.ss.closing .ss-backdrop { animation: ss-fade 0.26s ease reverse both; }
+.ss-grab { position: sticky; top: 0; z-index: 2; display: flex; justify-content: center; padding: 10px 0 4px; }
+.ss-grab i { width: 44px; height: 5px; border-radius: 99px; background: rgba(255, 255, 255, 0.25); }
+.ss-x { position: absolute; top: 14px; right: 16px; z-index: 3; width: 34px; height: 34px; border-radius: 50%; color: #cbd5e1; font-size: 1.1rem;
+  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); }
+.ss-x:hover { color: #fff; background: rgba(255, 255, 255, 0.14); }
+.ss-body { display: grid; grid-template-columns: 1fr; gap: 1.75rem; padding: 0.5rem 1.5rem 2rem; }
+@media (min-width: 860px) { .ss-body { grid-template-columns: 5fr 4fr; padding: 0.5rem 2.25rem 2.25rem; } }
+.ss-stage { position: relative; aspect-ratio: 1 / 1; max-height: 52vh; margin: 0 auto; width: 100%; border-radius: 18px;
+  background: radial-gradient(70% 60% at 50% 42%, var(--sc-tint, rgba(59, 130, 246, 0.25)), transparent 70%); }
+.ss-stage b8-spin, .ss-stage .sc-img { position: absolute; inset: 6%; width: 88%; height: 88%; }
+.ss-stage b8-gem { position: absolute; left: 50%; top: 50%; --gem-size: 58%; width: 58%; height: 58%; transform: translate(-50%, -50%); }
+.ss-thumbs { display: flex; gap: 0.6rem; margin-top: 0.8rem; overflow-x: auto; }
+.ss-thumbs button { flex: none; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; border: 2px solid transparent; opacity: 0.7; background: #111827; }
+.ss-thumbs button.on, .ss-thumbs button:hover { opacity: 1; border-color: #3b82f6; }
+.ss-thumbs img { width: 100%; height: 100%; object-fit: cover; }
+.ss-about { margin-top: 1.4rem; color: #d1d5db; font-size: 0.95rem; line-height: 1.6; }
+.ss-about p { margin: 0 0 0.8rem; }
+.ss-buy { align-self: start; }
+@media (min-width: 860px) { .ss-buy { position: sticky; top: 1rem; } }
+
+@keyframes ss-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes ss-down { from { transform: translateY(0); } to { transform: translateY(100%); } }
+@keyframes ss-fade { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-inner { transition: transform 0.01s; }
+  .sc-gloss::after { display: none; }
+  .ss-panel, .ss.closing .ss-panel { animation-duration: 0.01s; }
+}

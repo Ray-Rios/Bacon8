@@ -359,12 +359,15 @@ defmodule BaconWorld.Mobs.Spawns do
 
   @doc """
   Every spawn point: `%{id, camp, kind, x, z}` in metres, spread over the camp on
-  a sunflower pattern so they don't stand in a line.
+  a sunflower pattern so they don't stand in a line. `except`: camps that are placements now
+  (`BaconWorld.Building.ensure_seeded/1`), whose creatures the placements spawn instead.
   """
-  def points do
+  def points(except \\ []) do
     golden = :math.pi() * (3 - :math.sqrt(5))
 
-    Enum.flat_map(camps(), fn camp ->
+    camps()
+    |> Enum.reject(&(&1.id in except))
+    |> Enum.flat_map(fn camp ->
       kinds = Enum.flat_map(camp.mobs, fn {kind, count} -> List.duplicate(kind, count) end)
       total = length(kinds)
 
@@ -379,8 +382,9 @@ defmodule BaconWorld.Mobs.Spawns do
   end
 
   @doc "What the client needs to dress the camps."
-  def camps_payload(units_per_metre) do
-    Enum.map(camps(), fn c -> %{id: c.id, name: c.name, theme: c.theme, x: c.x * units_per_metre, z: c.z * units_per_metre, radius: c.radius * units_per_metre} end)
+  def camps_payload(units_per_metre, placed \\ []) do
+    # `placed`: camps whose pieces are placements now: the client draws only their ground
+    Enum.map(camps(), fn c -> %{id: c.id, name: c.name, theme: c.theme, x: c.x * units_per_metre, z: c.z * units_per_metre, radius: c.radius * units_per_metre, placed: c.id in placed} end)
   end
 
   @doc "Picks from `[{value, weight}]`."

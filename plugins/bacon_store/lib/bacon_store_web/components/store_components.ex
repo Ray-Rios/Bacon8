@@ -23,7 +23,128 @@ defmodule BaconStoreWeb.StoreComponents do
   def kind_glyph(%{kind: "gem_pack"} = assigns), do: ~H"<Bacon8Web.Components.Gem.gem size={@size} />"
   def kind_glyph(assigns), do: ~H"{kind_icon(@kind)}"
 
-  @doc "A product tile for the storefront grid."
+  # The cards' and the sheet's styles, inlined so the first paint has them (store_cards.css).
+  @css_path Path.expand("../../../priv/store_cards.css", __DIR__)
+  @external_resource @css_path
+  @css File.read!(@css_path)
+
+  @doc "The storefront's card and sheet styles (priv/store_cards.css), once per page."
+  def store_styles(assigns) do
+    assigns = assign(assigns, :css, @css)
+
+    ~H"""
+    <style>{Phoenix.HTML.raw(@css)}</style>
+    """
+  end
+
+  @doc """
+  The product's picture (`BaconStore.Store.Catalog.art/1`): the Gem, the item turning in 3D
+  (`<b8-spin>`, assets/js/store_spin.ts) or an uploaded picture. `still`: no idle turn (the
+  blurred copy on a card's back).
+  """
+  attr :art, :map, required: true
+  attr :still, :boolean, default: false
+  attr :alt, :string, default: ""
+
+  def art(%{art: %{type: :gem}} = assigns), do: ~H"<Bacon8Web.Components.Gem.gem still={@still} calm={@still} />"
+
+  def art(%{art: %{type: :spin}} = assigns) do
+    ~H"""
+    <b8-spin src={@art.src} glow={@art.glow} still={@still} style={"background-image:url(#{@art.src}.webp)"}></b8-spin>
+    """
+  end
+
+  def art(%{art: %{type: :image}} = assigns) do
+    ~H"""
+    <img src={@art.url} alt={@alt} class="sc-img cover" loading="lazy" draggable="false" />
+    """
+  end
+
+  @doc "A card's tint, from its art's glow colour (\"#RRGGBB\" -> rgba with `alpha`)."
+  def tint(%{glow: "#" <> hex}, alpha) when byte_size(hex) == 6 do
+    <<r::binary-2, g::binary-2, b::binary-2>> = hex
+    "rgba(#{String.to_integer(r, 16)}, #{String.to_integer(g, 16)}, #{String.to_integer(b, 16)}, #{alpha})"
+  end
+
+  def tint(_art, alpha), do: "rgba(59, 130, 246, #{alpha})"
+
+  @doc """
+  A product as a glass card (priv/store_cards.css, the `StoreCard` hook): the item in 3D on the
+  front with its name and price; turned over, the item blurred behind frosted glass with what it
+  is. A click opens its sheet in `BaconStoreWeb.StoreLive` (`"open_item"`).
+  """
+  attr :product, Product, required: true
+  attr :owned, :boolean, default: false
+
+  def store_card(assigns) do
+    p = assigns.product
+    art = Catalog.art(p)
+    assigns = assign(assigns, art: art, style: "--sc-tint:#{tint(art, 0.26)};--sc-shadow:#{tint(art, 0.5)}")
+
+    ~H"""
+    <div
+      id={"sc-#{@product.id}"}
+      class="sc"
+      phx-hook="StoreCard"
+      data-slug={@product.slug}
+      data-spin-host
+      data-gem-host
+      tabindex="0"
+      role="button"
+      aria-label={"#{@product.name}: details and buying"}
+      style={@style}
+    >
+      <div class="sc-inner">
+        <div class="sc-face sc-front">
+          <div class="sc-stage"><.art art={@art} alt={@product.name} /></div>
+          <div class="sc-gloss"></div>
+          <span :if={@product.badge} class="sc-badge">{@product.badge}</span>
+          <span :if={@owned} class="sc-owned">Owned</span>
+          <div class="sc-title">
+            <div class="sc-kind">{Catalog.kind_label(@product.kind)}</div>
+            <h3>{@product.name}</h3>
+            <.card_price product={@product} />
+          </div>
+        </div>
+        <div class="sc-face sc-back">
+          <div class="sc-blur"><.art art={@art} still /></div>
+          <div class="sc-gloss"></div>
+          <div class="sc-panel">
+            <div class="sc-kind">{Catalog.kind_label(@product.kind)}</div>
+            <h3>{@product.name}</h3>
+            <div class="sc-desc">
+              <p :if={@product.summary}>{@product.summary}</p>
+              {description_html(@product.description)}
+            </div>
+            <div class="sc-gets">{Catalog.describe(@product)}</div>
+            <span class="sc-more">{if @owned, do: "Details", else: "View & buy"}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc "A card's price line: \"$4.99 or 💎 499\" (a Gem pack: its Gems for its price)."
+  attr :product, Product, required: true
+
+  def card_price(%{product: %{kind: "gem_pack"}} = assigns) do
+    ~H"""
+    <div class="sc-price"><span class="cash">{Store.format_price(@product.price_cents, @product.currency)}</span></div>
+    """
+  end
+
+  def card_price(assigns) do
+    ~H"""
+    <div class="sc-price">
+      <span :if={@product.price_cents} class="cash">{Store.format_price(@product.price_cents, @product.currency)}</span>
+      <span :if={@product.price_cents && @product.price_gems} class="or">or</span>
+      <span :if={@product.price_gems} class="gems"><Bacon8Web.Components.Gem.gems amount={@product.price_gems} /></span>
+    </div>
+    """
+  end
+
+  @doc "A product tile for the storefront grid (the old tile; the storefront uses `store_card/1`)."
   attr :product, Product, required: true
   attr :owned, :boolean, default: false
 

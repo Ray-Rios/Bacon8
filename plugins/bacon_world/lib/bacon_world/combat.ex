@@ -49,15 +49,33 @@ defmodule BaconWorld.Combat do
     end
   end
 
-  @doc "Full HP/MP and back to the zone's spawn point. Returns the spawn point."
+  @doc """
+  Full HP/MP and back to where the character is bound (a binding stone, `BaconWorld.Building.bind/4`)
+  when the bind is in this zone, else the zone's spawn point. Returns the point.
+  """
   def respawn_character(character_id) do
     with {:ok, c} <- World.fetch_character(character_id) do
       zone = World.zone_for((c.settings || %{})["zone_slug"])
-      %{x: x, y: y, z: z, heading: h} = spawn = World.spawn_point(zone)
+      %{x: x, y: y, z: z, heading: h} = spawn = respawn_point(c, zone)
 
       World.merge_stats(World.by_id_query(c.id), %{"hp" => World.stat(c, "max_hp"), "mp" => World.stat(c, "max_mp")})
       World.merge_settings(World.by_id_query(c.id), %{"position" => %{"x" => x, "y" => y, "z" => z, "heading" => h}})
       {:ok, spawn}
+    end
+  end
+
+  @doc false
+  def respawn_point(c, zone) do
+    settings = c.settings || %{}
+
+    case settings["bind"] do
+      %{"x" => x, "z" => z} = b when is_number(x) and is_number(z) ->
+        if (b["zone"] || "lobby") == (settings["zone_slug"] || "lobby"),
+          do: %{x: x * 1.0, y: (b["y"] || 0.0) * 1.0, z: z * 1.0, heading: (b["heading"] || 0.0) * 1.0},
+          else: World.spawn_point(zone)
+
+      _ ->
+        World.spawn_point(zone)
     end
   end
 

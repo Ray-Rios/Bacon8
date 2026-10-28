@@ -28,7 +28,7 @@ store.
 
 | Path | |
 |---|---|
-| `/store`, `/store/p/:slug`, `/store/library`, `/store/orders[/:id]`, `/store/fake-checkout/:ref` | pages (`site`) |
+| `/store` (glass cards; `?item=<slug>` opens an item's sheet), `/store/p/:slug` (redirects to the sheet), `/store/library`, `/store/orders[/:id]`, `/store/fake-checkout/:ref` | pages (`site`) |
 | `/store/media/:id`, `/store/download/:id` | product images and downloads (`site`, `:drive_files` pipeline) |
 | `POST /api/store/webhooks/:provider` | payment webhooks (`site_api`, `:webhooks` pipeline) |
 | `/admin/bacon_store/products[/new\|/:id]`, `/admin/bacon_store/orders[/:id]` | admin |

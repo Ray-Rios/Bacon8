@@ -3,6 +3,8 @@ defmodule BaconWorld.BuildingTest do
   # creature spawns and NPCs placed in the world, and the LiveView's events.
   use Bacon8.DataCase, async: false
 
+  import Ecto.Query
+
   alias Bacon8.GamesRepo
   alias BaconWorld.{Building, Merchants, Placement}
   alias BaconWorld.Mobs.{Brain, Spawns}
@@ -22,7 +24,8 @@ defmodule BaconWorld.BuildingTest do
       assert MapSet.member?(ids, "K_Wall_Stone")
       for kind <- Map.keys(Spawns.kinds()), do: assert(MapSet.member?(ids, "mob:" <> kind))
       for t <- Merchants.templates(), do: assert(MapSet.member?(ids, "npc:" <> t.id))
-      assert Enum.count(cat, &(&1.kind == "model")) == 126
+      assert Enum.count(cat, &(&1.kind == "model")) == 127
+      assert Building.asset("X_Plinth").category == "Building"
       assert Building.asset("P_TreeOak").category == "Trees & plants"
       assert Building.asset("P_Boulder").category == "Rocks"
       assert Building.asset("mob:goblin").name == "Goblin"
@@ -140,6 +143,90 @@ defmodule BaconWorld.BuildingTest do
       assert fx > 20.0
       assert Merchants.get("p:" <> Ecto.UUID.generate()) == nil
       assert Merchants.get("p:junk") == nil
+    end
+  end
+
+  describe "the village and camps as placements, and binding stones" do
+    # (each test seeds a zone of its own: seeding is cached per zone for the node's life)
+    defp fresh_zone, do: "seed_test_" <> String.slice(Ecto.UUID.generate(), 0, 8)
+
+    test "seeding happens once: the village and the camps become placements, with where they came from" do
+      zone = fresh_zone()
+      village = Building.seed_rows("village.json")
+      assert length(village) > 300
+      assert Enum.any?(village, &(&1["asset"] == "P_Waystone"))
+
+      seeded = Building.ensure_seeded(zone)
+      assert seeded.village
+      assert seeded.camps != []
+      placed = GamesRepo.all(from(p in Placement, where: p.zone == ^zone))
+      n = length(placed)
+      assert Enum.count(placed, &(&1.data["origin"] == "village")) == length(village)
+      assert Enum.any?(placed, &String.starts_with?(&1.data["origin"] || "", "camp:"))
+      # stretched pieces keep their stretch
+      assert Enum.any?(placed, &match?([_, _, _], &1.data["s"]))
+      # camp creatures are spawn placements now, so the code's camps stop spawning
+      assert Enum.any?(placed, &String.starts_with?(&1.asset, "mob:"))
+      assert Spawns.points(seeded.camps) |> Enum.all?(&(&1.camp not in seeded.camps))
+
+      # a second call (even after the cache is lost: another node) inserts nothing
+      :persistent_term.erase({Building, :seeded, zone, "village"})
+      assert Building.ensure_seeded(zone).village
+      assert GamesRepo.aggregate(from(p in Placement, where: p.zone == ^zone), :count) == n
+
+      # what builders delete stays deleted
+      [barrel | _] = Enum.reject(placed, &(&1.asset == "P_Waystone" or String.starts_with?(&1.asset, "mob:")))
+      assert {:ok, _} = Building.delete(user("admin"), zone, barrel.id)
+      :persistent_term.erase({Building, :seeded, zone, "village"})
+      Building.ensure_seeded(zone)
+      assert GamesRepo.get(Placement, barrel.id) == nil
+    end
+
+    test "within 100 m of a binding stone only GMs and admins build" do
+      zone = fresh_zone()
+      {:ok, stone} = Building.place(user("admin"), nil, zone, at("P_Waystone", 0.0, 0.0))
+      assert Building.binding_radius() == 100.0
+      assert Building.protected?(zone, 99.0, 0.0)
+      refute Building.protected?(zone, 101.0, 0.0)
+
+      m = user("member")
+      assert {:error, msg} = Building.place(m, nil, zone, at("P_Barrel", 60.0, 60.0))
+      assert msg =~ "binding stone"
+      assert {:ok, out} = Building.place(m, nil, zone, at("P_Barrel", 120.0, 0.0))
+      # nor carried in, nor anything in town moved out or removed
+      assert {:error, _} = Building.move(m, zone, out.id, %{"x" => 50.0})
+      {:ok, inside} = Building.place(user("gm"), nil, zone, at("P_Barrel", 10.0, 0.0))
+      assert {:error, _} = Building.move(m, zone, inside.id, %{"x" => 130.0})
+      assert {:error, _} = Building.delete(m, zone, inside.id)
+      # GMs may
+      assert {:ok, _} = Building.move(user("gm"), zone, inside.id, %{"x" => 20.0})
+      assert {:ok, _} = Building.delete(user("gm"), zone, inside.id)
+      # moving the stone itself is judged by where it goes, not by its own circle
+      assert {:ok, _} = Building.move(user("admin"), zone, stone.id, %{"x" => 300.0})
+      refute Building.protected?(zone, 0.0, 0.0)
+      assert {:ok, _} = Building.place(m, nil, zone, at("P_Barrel", 0.0, 0.0))
+    end
+
+    test "a move keeps a piece's stretch and where it came from" do
+      zone = fresh_zone()
+      {:ok, v} = Building.place(user("admin"), nil, zone, at("P_Barrel", 500.0, 500.0))
+      GamesRepo.update_all(from(p in Placement, where: p.id == ^v.id), set: [data: %{"origin" => "village", "s" => [2.0, 1.0, 3.0]}])
+      {:ok, _} = Building.move(user("admin"), zone, v.id, %{"x" => 505.0, "data" => %{"origin" => "forged"}})
+      p = GamesRepo.get(Placement, v.id)
+      assert p.data["origin"] == "village" and p.data["s"] == [2.0, 1.0, 3.0]
+    end
+
+    test "binding at a stone: only beside one; Recall and respawn go there" do
+      zone = fresh_zone()
+      u = Brain.u()
+      {:ok, _} = Building.place(user("admin"), nil, zone, at("P_Waystone", 40.0, 40.0))
+      me = user("member")
+      assert {:error, _} = Building.bind(me, Ecto.UUID.generate(), zone, %{x: 0.0, y: 0.0, z: 0.0})
+      # beside the stone, but no such character of yours: nothing saved
+      assert {:error, _} = Building.bind(me, Ecto.UUID.generate(), zone, %{x: 42.0 * u, y: 0.0, z: 40.0 * u})
+
+      c = %{settings: %{"zone_slug" => zone, "bind" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0, "zone" => zone}}}
+      assert BaconWorld.Combat.respawn_point(c, nil) == %{x: 1.0, y: 2.0, z: 3.0, heading: 0.0}
     end
   end
 

@@ -96,7 +96,7 @@ defmodule BaconWorldWeb.GameEvents do
     {:reply,
      %{
        mobs: Mobs.snapshot(slug),
-       camps: Spawns.camps_payload(Brain.u()),
+       camps: Spawns.camps_payload(Brain.u(), BaconWorld.Building.seeded(slug).camps),
        safe_radius: Spawns.safe_radius() * Brain.u(),
        merchants: Merchants.payload(slug),
        # what players put in the world in build mode (BaconWorld.Building), metres
@@ -226,8 +226,19 @@ defmodule BaconWorldWeb.GameEvents do
 
       case Mobs.loot_open(slug, mob_id, me.character_id, {me.position.x, me.position.z}) do
         {:ok, coins, items} ->
-          total = if coins > 0, do: Inventory.add_coins(me.character_id, coins), else: Inventory.coins(me.character_id)
-          {:reply, %{ok: true, coins: coins, total_coins: total, items: indexed(items)}, assign(socket, looting: mob_id)}
+          # a group splits the coins evenly among the members near (EverQuest's auto-split); the
+          # odd coppers are the looter's
+          mates = if coins > 0, do: Enum.map(groupmates_near(socket, me), &elem(&1, 0)), else: []
+          each = div(coins, length(mates) + 1)
+          mine = coins - each * length(mates)
+
+          for id <- mates, each > 0 do
+            Inventory.add_coins(id, each)
+            PubSub.broadcast(Bacon8.PubSub, BaconWorld.Groups.topic(id), {:group_coins, each})
+          end
+
+          total = if mine > 0, do: Inventory.add_coins(me.character_id, mine), else: Inventory.coins(me.character_id)
+          {:reply, %{ok: true, coins: mine, split: if(mates != [] and each > 0, do: length(mates) + 1), total_coins: total, items: indexed(items)}, assign(socket, looting: mob_id)}
 
         {:error, reason} ->
           {:reply, %{ok: false, error: loot_error(reason)}, socket}
@@ -499,7 +510,9 @@ defmodule BaconWorldWeb.GameEvents do
 
   @doc false
   # Experience for the creatures in `hits` that died (also a spell's or a skill's:
-  # BaconWorldWeb.SkillEvents). Returns `{socket, progress | nil}`.
+  # BaconWorldWeb.SkillEvents). In a group it is shared (`BaconWorld.Groups.shares/2`) among the
+  # members alive and near: this LiveView awards its own share and tells the others theirs.
+  # Returns `{socket, progress | nil}`.
   def award_kills(socket, hits) do
     kills = Enum.filter(hits, & &1.killed)
     me = current(socket)
@@ -508,27 +521,71 @@ defmodule BaconWorldWeb.GameEvents do
       {socket, nil}
     else
       level = socket.assigns[:level] || 1
-      xp = kills |> Enum.map(&Progression.kill_xp(&1.level, level)) |> Enum.sum()
+      near = groupmates_near(socket, me)
 
-      case Progression.award_xp(me.character_id, xp) do
-        {:ok, progress} ->
-          progress = Map.put(progress, :gained, xp)
+      xp =
+        Enum.reduce(kills, 0, fn k, acc ->
+          shares = BaconWorld.Groups.shares(k.level, [{me.character_id, level} | near])
+          BaconWorld.Groups.award(me.character_id, shares, k.level)
+          acc + Map.get(shares, me.character_id, 0)
+        end)
 
-          socket =
-            if progress.levels_gained > 0 do
-              socket
-              |> assign(level: progress.level)
-              |> update_presence(%{level: progress.level})
-              |> update_runtime(%{max_hp: progress.max_hp, max_mp: progress.max_mp, level: progress.level})
-            else
-              socket
-            end
+      gain_xp(socket, xp, :kill)
+    end
+  end
 
-          {socket, progress}
+  @doc """
+  Awards `xp` and keeps the socket's level in step. `source`: `:kill` (returns `{socket, progress}`,
+  the caller replies with it) or `:group` (a groupmate's kill: pushes `"xp_gained"`, returns the
+  socket).
+  """
+  def gain_xp(socket, xp, source) do
+    me = current(socket)
 
-        _ ->
-          {socket, nil}
+    result =
+      with %{} <- me, {:ok, progress} <- Progression.award_xp(me.character_id, xp) do
+        progress = Map.put(progress, :gained, xp)
+
+        socket =
+          if progress.levels_gained > 0 do
+            socket
+            |> assign(level: progress.level)
+            |> update_presence(%{level: progress.level})
+            |> update_runtime(%{max_hp: progress.max_hp, max_mp: progress.max_mp, level: progress.level})
+          else
+            socket
+          end
+
+        {socket, progress}
+      else
+        _ -> {socket, nil}
       end
+
+    case {source, result} do
+      {:kill, r} -> r
+      {:group, {socket, nil}} -> socket
+      {:group, {socket, progress}} -> push_event(socket, "xp_gained", Map.put(progress, :group, true))
+    end
+  end
+
+  # The other members of my group in this zone, alive and within BaconWorld.Groups.share_range_m/0
+  # of me (the zone's presence): `[{character_id, level}]`.
+  defp groupmates_near(socket, me) do
+    case BaconWorld.Groups.members(me.character_id) do
+      [_only] ->
+        []
+
+      ids ->
+        range = BaconWorld.Groups.share_range_m() * Brain.u()
+        {mx, mz} = {me.position.x, me.position.z}
+
+        (socket.assigns[:zone_online_characters] || [])
+        |> Enum.filter(fn p ->
+          p.character_id != me.character_id and p.character_id in ids and not (p[:dead] || false) and
+            :math.sqrt(:math.pow((p.x || 0.0) - mx, 2) + :math.pow((p.z || 0.0) - mz, 2)) <= range
+        end)
+        |> Enum.uniq_by(& &1.character_id)
+        |> Enum.map(&{&1.character_id, &1[:level] || 1})
     end
   end
 

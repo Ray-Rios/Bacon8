@@ -395,6 +395,62 @@ defmodule BaconStore.Store.Catalog do
   defp for_days(%Product{duration_days: nil}), do: ""
   defp for_days(%Product{duration_days: d}), do: " for #{d} day#{if d == 1, do: "", else: "s"}"
 
+  # ---------------------------------------------------------------------------
+  # The item in 3D (2026-10-28)
+  # ---------------------------------------------------------------------------
+
+  # Each kind's 3D icon (`<b8-spin>` sheets in priv/static/spin/, from
+  # library/pipeline/scripts/store_turntables.py), and the colour it glows.
+  @kind_spins %{
+    "download" => {"kind_download", "#3A8CFF"},
+    "license_key" => {"kind_license_key", "#F2C14E"},
+    "access" => {"kind_access", "#FF7A45"},
+    "item" => {"kind_item", "#E0B040"}
+  }
+
+  @doc """
+  How a product shows itself on its card and its sheet:
+
+    * `%{type: :gem}` - a Gem pack: the Gem (`<b8-gem>`).
+    * `%{type: :spin, src, glow}` - a turntable (`<b8-spin>`): the game's own model when the game
+      plugin has one for what the product grants (an optional `store_art(grant_kind, grant_key)`
+      on its plugin module returning `%{src, glow}`: Bacon World's mounts), else the kind's 3D
+      icon (a crate, a key, a ticket, a chest).
+    * `%{type: :image, url}` - an admin-uploaded picture, which stands in for the kind's icon (not
+      for a game's model).
+  """
+  def art(%Product{kind: "gem_pack"}), do: %{type: :gem, glow: "#FF8A3A"}
+
+  def art(%Product{} = p) do
+    cond do
+      a = game_art(p) -> Map.put(a, :type, :spin)
+      cover = is_list(p.files) && cover(p) -> %{type: :image, url: "/store/media/#{cover.id}", glow: "#60A5FA"}
+      true -> kind_art(p.kind)
+    end
+  end
+
+  @doc "A kind's 3D icon."
+  def kind_art(kind) do
+    {name, glow} = Map.get(@kind_spins, kind, @kind_spins["item"])
+    %{type: :spin, src: "/plugins/bacon_store/spin/" <> name, glow: glow}
+  end
+
+  defp game_art(%Product{kind: "item", grant_kind: kind, grant_key: key}) when is_binary(kind) and is_binary(key) do
+    Bacon8.Plugins.installed()
+    |> Enum.find_value(fn mod ->
+      if Code.ensure_loaded?(mod) and function_exported?(mod, :store_art, 2) do
+        case mod.store_art(kind, key) do
+          %{src: src} = a when is_binary(src) -> %{src: src, glow: a[:glow] || "#60A5FA"}
+          _ -> nil
+        end
+      end
+    end)
+  rescue
+    _ -> nil
+  end
+
+  defp game_art(_p), do: nil
+
   @doc "Short label for a kind."
   def kind_label("gem_pack"), do: "Gems"
   def kind_label("download"), do: "Download"

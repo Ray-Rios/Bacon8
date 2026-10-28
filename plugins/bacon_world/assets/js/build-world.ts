@@ -16,7 +16,7 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { UNITS_PER_METRE } from './controls-math';
 import { BuildWindow, type CatalogueEntry } from './build-ui';
-import { PlacedView, isModel, type Placement } from './placed-view';
+import { BINDING_RADIUS_M, PlacedView, isModel, type Placement } from './placed-view';
 
 const U = UNITS_PER_METRE;
 const TURN_RATE = Math.PI / 4; // radians a second while the right button is held: gentle
@@ -102,6 +102,7 @@ export const BuildWorld = {
       const source = {
         template: (name: string) => dressing?.template?.(name) ?? null,
         ready: () => dressing?.ready?.() ?? Promise.resolve(),
+        addGlow: (m: THREE.Material) => dressing?.addGlow?.(m),
       };
       this.placedView = new PlacedView(source);
       this.placedView.ground = (x: number, z: number) => this.groundAt(x * U, z * U) / U;
@@ -232,6 +233,10 @@ export const BuildWorld = {
       this.combatLog(`Only a ${entry.min_role} or higher may move ${entry.name.toLowerCase()}.`, '#FF9B7A');
       return;
     }
+    if (!this.buildMayTown() && this.buildInTown(p.x, p.z, id)) {
+      this.combatLog(`Only GMs and admins may build within ${BINDING_RADIUS_M} m of a binding stone.`, '#FF9B7A');
+      return;
+    }
     this.buildDropHeld(true);
     const kind = isModel(p.asset) ? 'model' : p.asset.startsWith('mob:') ? 'mob' : 'npc';
     const ghost = this.placedView.ghost(p.asset, p.data);
@@ -292,11 +297,21 @@ export const BuildWorld = {
     const held: Held | null = this.buildHeld;
     const spot = this.buildSpot(this.buildAlt);
     if (!held || !spot) return;
-    this.placedView.pose(held.ghost, spot);
+    this.placedView.pose(held.ghost, { ...spot, data: held.kind === 'model' ? held.data : {} });
     if (held.kind === 'mob') held.ghost.scale.setScalar(1);
     const entry = this.buildWindow?.entry(held.asset);
-    const ok = !entry || entry.allowed;
+    const ok = (!entry || entry.allowed) && (this.buildMayTown() || !this.buildInTown(spot.x, spot.z, held.id));
     (held.ghost.userData.ghostMat as THREE.MeshBasicMaterial | undefined)?.color.set(ok ? '#7CFF8A' : '#FF6A55');
+  },
+
+  /** True within a binding stone's radius (metres; `except`: the stone itself being moved). */
+  buildInTown(this: any, x: number, z: number, except: string | null = null): boolean {
+    return ((this.placedView?.all() || []) as Placement[]).some((p) => p.asset === 'P_Waystone' && p.id !== except && Math.hypot(p.x - x, p.z - z) <= BINDING_RADIUS_M);
+  },
+
+  /** GMs and admins may build in towns (the server decides; this only colours the ghost). */
+  buildMayTown(this: any): boolean {
+    return ['gm', 'admin'].includes(this.buildInfo?.role);
   },
 
   // ---------------------------------------------------------------- the mouse
@@ -549,6 +564,10 @@ export const BuildWorld = {
     const entry = p ? this.buildWindow?.entry(p.asset) : null;
     if (entry && !entry.allowed) {
       this.combatLog(`Only a ${entry.min_role} or higher may remove ${entry.name.toLowerCase()}.`, '#FF9B7A');
+      return;
+    }
+    if (p && !this.buildMayTown() && this.buildInTown(p.x, p.z, id)) {
+      this.combatLog(`Only GMs and admins may build within ${BINDING_RADIUS_M} m of a binding stone.`, '#FF9B7A');
       return;
     }
     const res = await reply(this, 'build_delete', { id });

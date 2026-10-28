@@ -51,7 +51,9 @@ defmodule BaconWorld.Mobs.Zone do
       id ->
         t = now()
         # the camps in code, and the spawns placed in build mode (BaconWorld.Building)
-        points = Map.new(Spawns.points() ++ BaconWorld.Building.mob_points(state.slug), &{&1.id, &1})
+        # (the code's village and camps become placements the first time: BaconWorld.Building)
+        seeded = BaconWorld.Building.ensure_seeded(state.slug)
+        points = Map.new(Spawns.points(seeded.camps) ++ BaconWorld.Building.mob_points(state.slug), &{&1.id, &1})
         mobs = Map.new(points, fn {id, p} -> {id, Brain.spawn(p, t)} end)
         Logger.info("bacon_world:mobs zone=#{state.slug} node=#{node()} creatures=#{map_size(mobs)}")
         Process.send_after(self(), :tick, @tick_ms)

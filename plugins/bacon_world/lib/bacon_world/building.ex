@@ -60,6 +60,12 @@ defmodule BaconWorld.Building do
   # the waystone will be the binding stone (BACON_WORLD.md): admins only, like the bosses
   @admin_props ~w(Waystone)
 
+  # around a binding stone (a placed waystone) only GMs and admins may build: the town's and
+  # anywhere else an admin puts one (the owner, 2026-10-28: 100 m)
+  @binding_asset "P_Waystone"
+  @binding_radius 100.0
+  @binding_role "gm"
+
   @max_count 12
   @max_radius 40.0
   @max_extent 6000.0
@@ -106,6 +112,8 @@ defmodule BaconWorld.Building do
       end
 
     kit = for k <- @kit, do: %{id: "K_" <> k, name: k |> String.replace("_", " ") |> words(), category: "Building", kind: "model", default_role: "member", model: "K_" <> k, file: "kit"}
+    # the stone plinth the village's houses stand on (world-dressing.ts makes it; no file of its own)
+    kit = kit ++ [%{id: "X_Plinth", name: "Stone plinth", category: "Building", kind: "model", default_role: "member", model: "X_Plinth", file: nil}]
 
     mobs =
       for {kind, def} <- Enum.sort_by(Spawns.kinds(), fn {_k, d} -> {Map.get(d, :boss, false), Enum.min(d.levels)} end) do
@@ -209,7 +217,8 @@ defmodule BaconWorld.Building do
 
     with %{} = a <- asset(asset_id) || {:error, "There is no such thing to place."},
          true <- can_place?(user, asset_id) || {:error, "You aren't allowed to place #{a.name}."},
-         {:ok, fields} <- fields(a, attrs, %{}) do
+         {:ok, fields} <- fields(a, attrs, %{}),
+         :ok <- town_ok(user, zone, [{fields.x, fields.z}]) do
       row = struct(Placement, Map.merge(fields, %{zone: zone, asset: asset_id, placed_by: user_id(user), character_id: character_id}))
 
       case GamesRepo.insert(row) do
@@ -228,7 +237,8 @@ defmodule BaconWorld.Building do
     with %Placement{} = p <- get(zone, id) || {:error, "That isn't there any more."},
          %{} = a <- asset(p.asset) || {:error, "That can't be moved."},
          true <- can_place?(user, p.asset) || {:error, "You aren't allowed to move #{a.name}."},
-         {:ok, fields} <- fields(a, attrs, p) do
+         {:ok, fields} <- fields(a, attrs, p),
+         :ok <- town_ok(user, zone, [{p.x, p.z}, {fields.x, fields.z}], p.id) do
       case p |> Ecto.Changeset.change(fields) |> GamesRepo.update() do
         {:ok, p2} ->
           after_change(p2)
@@ -244,6 +254,7 @@ defmodule BaconWorld.Building do
   def delete(user, zone, id) do
     with %Placement{} = p <- get(zone, id) || {:error, "That isn't there any more."},
          true <- can_place?(user, p.asset) || {:error, "You aren't allowed to remove #{(asset(p.asset) || %{name: "that"}).name}."},
+         :ok <- town_ok(user, zone, [{p.x, p.z}], p.id),
          {:ok, _} <- GamesRepo.delete(p) do
       if String.starts_with?(p.asset, "mob:"), do: Mobs.put_points(zone, p.id, [])
       Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_removed, p.id, p.asset})
@@ -296,7 +307,7 @@ defmodule BaconWorld.Building do
     raw = if is_map(raw), do: raw, else: %{}
     count = int(raw["count"], old["count"] || 1) |> max(1) |> min(@max_count)
     radius = float(raw["radius"], old["radius"] || (if count > 1, do: 4.0, else: 0.0)) |> max(0.0) |> min(@max_radius)
-    %{"count" => count, "radius" => Float.round(radius, 1)}
+    Map.merge(keep(old), %{"count" => count, "radius" => Float.round(radius, 1)})
   end
 
   defp data(%{kind: "npc"}, raw, old) do
@@ -308,10 +319,14 @@ defmodule BaconWorld.Building do
         _ -> old["name"] || ""
       end
 
-    if name == "", do: %{}, else: %{"name" => name}
+    if name == "", do: keep(old), else: Map.put(keep(old), "name", name)
   end
 
-  defp data(_a, _raw, _old), do: %{}
+  defp data(_a, _raw, old), do: keep(old)
+
+  # What only the seeding writes, kept through moves: where a piece came from and its stretch
+  # (non-uniform size: [x, y, z], the village's gables and crags).
+  defp keep(old), do: Map.take(old || %{}, ["origin", "s"])
 
   @doc "A placement as clients get it (metres, radians)."
   def view(%Placement{} = p) do
@@ -320,6 +335,155 @@ defmodule BaconWorld.Building do
     case p.asset do
       "npc:" <> _ -> Map.put(base, :npc, Merchants.npc_payload(npc(p)))
       _ -> base
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Binding stones
+  # ---------------------------------------------------------------------------
+
+  @doc "Metres round a binding stone where only GMs and admins may build."
+  def binding_radius, do: @binding_radius
+
+  @doc "The binding stones (placed waystones) of a zone: `[%{id, x, y, z}]`, metres."
+  def binding_stones(zone) do
+    GamesRepo.all(from(p in Placement, where: p.zone == ^zone and p.asset == @binding_asset, select: %{id: p.id, x: p.x, y: p.y, z: p.z}))
+  rescue
+    _ -> []
+  end
+
+  @doc "The binding stone within `reach` metres of a point (metres), or nil."
+  def binding_stone_near(zone, x, z, reach \\ 5.0) do
+    Enum.find(binding_stones(zone), fn s -> :math.sqrt((s.x - x) ** 2 + (s.z - z) ** 2) <= reach end)
+  end
+
+  @doc """
+  Binds a character at the binding stone it stands by (`pos`: its position in scene units, as the
+  runtime keeps it). Saves `settings["bind"]` (scene units, a step off the stone so it doesn't
+  land inside it), which Recall and respawning read. `{:ok, bind}` or `{:error, msg}`.
+  """
+  def bind(%{id: user_id}, character_id, zone, %{x: x, z: z} = pos) do
+    u = BaconWorld.Mobs.Brain.u()
+
+    case binding_stone_near(zone, x / u, z / u) do
+      nil ->
+        {:error, "There is no binding stone here."}
+
+      stone ->
+        {dx, dz} = {x / u - stone.x, z / u - stone.z}
+        d = max(:math.sqrt(dx * dx + dz * dz), 0.01)
+        {bx, bz} = {stone.x + dx / d * 1.6, stone.z + dz / d * 1.6}
+        by = BaconWorld.Terrain.height(bx, bz) * u
+        bind = %{"x" => bx * u, "y" => max(by, (pos[:y] || 0.0) * 1.0) * 1.0, "z" => bz * u, "heading" => (pos[:heading] || 0.0) * 1.0, "zone" => zone}
+
+        case BaconWorld.World.merge_settings(BaconWorld.World.owned_query(user_id, character_id), %{"bind" => bind}) do
+          1 -> {:ok, bind}
+          _ -> {:error, "That can't be done right now."}
+        end
+    end
+  end
+
+  def bind(_user, _character_id, _zone, _pos), do: {:error, "That can't be done right now."}
+
+  @doc "True when (x, z) (metres) lies within a binding stone's radius (`except`: a stone being moved itself)."
+  def protected?(zone, x, z, except \\ nil) do
+    Enum.any?(binding_stones(zone), fn s -> s.id != except and :math.sqrt((s.x - x) ** 2 + (s.z - z) ** 2) <= @binding_radius end)
+  end
+
+  # Building at any of these spots (metres) inside a town needs a GM or better.
+  defp town_ok(user, zone, spots, except \\ nil) do
+    if at_least?(role_of(user), @binding_role) or not Enum.any?(spots, fn {x, z} -> protected?(zone, x, z, except) end),
+      do: :ok,
+      else: {:error, "Only GMs and admins may build within #{round(@binding_radius)} m of a binding stone."}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Seeding: the code's village and camps become placements
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Turns the village and the creature camps the code lays out (world-dressing.ts, `Spawns`) into
+  placements, once per zone: the files in `priv/seed/` (`village.json`, `camps_<world>.json`, written
+  from the client's own layout by the 2026-10-28 harness) are inserted with each piece stood on the
+  ground (`BaconWorld.Terrain`) and `data["origin"]` saying where it came from. A row in
+  `bacon_world_seeds` (written in the same transaction) makes sure it happens only once, even with
+  several nodes, so whatever builders change or delete later stays that way.
+
+  Returns `%{village: bool, camps: [camp id]}`: what is placements now (the client stops drawing
+  those pieces itself; the zone stops spawning those camps' creatures from code).
+  """
+  def ensure_seeded(zone) do
+    world = camps_world()
+    keys = [{"village", "village.json", "village"}, {"camps:" <> world, "camps_#{world}.json", nil}]
+    for {key, file, origin} <- keys, do: seed_once(zone, key, file, origin)
+    seeded(zone)
+  rescue
+    e ->
+      Logger.warning("bacon_world:building seed failed zone=#{zone} #{inspect(e)}")
+      %{village: false, camps: []}
+  end
+
+  @doc "What of a zone's code layout is placements already: `%{village: bool, camps: [camp id]}`."
+  def seeded(zone) do
+    keys = GamesRepo.all(from(s in "bacon_world_seeds", where: s.zone == ^zone, select: s.key))
+    world = camps_world()
+
+    camps =
+      if ("camps:" <> world) in keys,
+        do: seed_rows("camps_#{world}.json") |> Enum.map(& &1["camp"]) |> Enum.reject(&is_nil/1) |> Enum.uniq(),
+        else: []
+
+    %{village: "village" in keys, camps: camps}
+  rescue
+    _ -> %{village: false, camps: []}
+  end
+
+  # The world whose camps the zone has: Crater Lake's with its terrain, the round island's without.
+  defp camps_world do
+    case BaconWorld.Terrain.loaded() do
+      %{id: id} -> id
+      _ -> "island"
+    end
+  end
+
+  defp seed_once(zone, key, file, origin) do
+    cache = {__MODULE__, :seeded, zone, key}
+
+    if :persistent_term.get(cache, false) do
+      :ok
+    else
+      rows = seed_rows(file)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      GamesRepo.transaction(fn ->
+        {n, _} = GamesRepo.insert_all("bacon_world_seeds", [%{zone: zone, key: key, count: length(rows), inserted_at: now}], on_conflict: :nothing, conflict_target: [:zone, :key])
+
+        if n == 1 and rows != [] do
+          placements =
+            for r <- rows do
+              x = r["x"] * 1.0
+              z = r["z"] * 1.0
+              data = Map.merge(r["data"] || %{}, %{"origin" => origin || "camp:" <> r["camp"]})
+              %{id: Ecto.UUID.generate(), zone: zone, asset: r["asset"], x: x, y: (r["y"] || 0.0) + BaconWorld.Terrain.height(x, z), z: z, rot: (r["rot"] || 0.0) * 1.0,
+                scale: (r["scale"] || 1.0) * 1.0, data: data, inserted_at: now, updated_at: now}
+            end
+
+          placements |> Enum.chunk_every(500) |> Enum.each(&GamesRepo.insert_all(Placement, &1))
+          Logger.info("bacon_world:building seeded zone=#{zone} key=#{key} placements=#{length(placements)}")
+        end
+      end)
+
+      :persistent_term.put(cache, true)
+    end
+  end
+
+  @doc false
+  def seed_rows(file) do
+    path = Path.join([Bacon8.Plugins.priv_dir("bacon_world"), "seed", file])
+
+    case File.read(path) do
+      {:ok, body} -> Jason.decode!(body)
+      _ -> []
     end
   end
 

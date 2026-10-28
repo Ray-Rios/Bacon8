@@ -8,7 +8,8 @@ defmodule BaconWorld.Mobs.Brain do
   dies, the player reaches the safe village, or the chase drags the creature too
   far from home. Then it runs home and heals. Hitting a creature always makes it
   come for you. A dead creature leaves a corpse holding its loot (mostly the
-  weapon it held); the killer may loot alone for a minute, then anyone; the corpse
+  weapon it held); the killer (and the killer's group, `BaconWorld.Groups`) may loot alone for a
+  minute, then anyone; the corpse
   decays after four minutes, or once emptied, and the creature respawns later.
 
   Positions are scene units (`u/0` per metre), times milliseconds.
@@ -580,7 +581,7 @@ defmodule BaconWorld.Mobs.Brain do
       dist({x, z}, {mob.x, mob.z}) > @loot_distance * @u ->
         {:error, :too_far}
 
-      c.owner && c.owner != character_id && now < c.free_at ->
+      c.owner && c.owner != character_id && now < c.free_at and not BaconWorld.Groups.same_group?(c.owner, character_id) ->
         {:error, :not_yours_yet}
 
       c.looter && c.looter != character_id && now - c.looter_since < @looter_timeout ->

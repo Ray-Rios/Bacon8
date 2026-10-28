@@ -168,6 +168,8 @@ export const GameWorld = {
       // the village's, the people's, the water's and build mode's colliders (build-world.ts)
       this.rebuildColliders();
       void this.npcsView?.setAll(res.merchants || []).then(() => this.rebuildColliders());
+      // camps that are placements now: only their ground is drawn here
+      if (this.dressing) this.dressing.campsOff = new Set(this.camps.filter((c: any) => c.placed).map((c: any) => c.id));
       if (this.dressing && this.camps.length) void this.dressing.addCamps(this.camps).then(() => {
         if (this.dressing) this.rebuildColliders();
       });
@@ -622,6 +624,7 @@ export const GameWorld = {
       }
     }
     if (p.character_id === this.targetId) this.refreshTarget();
+    if (this.inMyGroup?.(p.character_id)) this.groupWindow?.refresh();
   },
 
   // Our swing landed: numbers over the creatures, sounds, the combat log.
@@ -815,6 +818,7 @@ export const GameWorld = {
   setTarget(this: any, id: string | null) {
     this.targetId = id;
     this.refreshTarget();
+    this.groupWindow?.refresh();
   },
 
   refreshTarget(this: any) {
@@ -897,6 +901,10 @@ export const GameWorld = {
       if (Math.hypot(p.x - n.x, p.z - n.z) > TRADE_RANGE) id = null;
     }
     id = id || this.npcsView?.nearest(p.x, p.z, TRADE_RANGE) || null;
+    if (!id && this.nearBindingStone(p.x, p.z)) {
+      void this.bindAtStone();
+      return;
+    }
     if (!id) {
       this.combatLog('There is no one close enough to talk to.', '#B8B8B8');
       return;
@@ -907,6 +915,25 @@ export const GameWorld = {
     }
     this.setTarget(id);
     void this.openMerchant(id);
+  },
+
+  /** A placed binding stone (P_Waystone) within reach (5 m) of a spot in scene units. */
+  nearBindingStone(this: any, x: number, z: number): boolean {
+    const mx = x / UNITS_PER_METRE, mz = z / UNITS_PER_METRE;
+    return ((this.placedView?.all() || []) as Array<{ asset: string; x: number; z: number }>).some(
+      (s) => s.asset === 'P_Waystone' && Math.hypot(s.x - mx, s.z - mz) <= 5
+    );
+  },
+
+  /** R at a binding stone (EverQuest's bind affinity): Recall and death bring you back here. */
+  async bindAtStone(this: any) {
+    const res = await reply(this, 'bind_stone', {});
+    if (!res.ok) {
+      this.combatLog(res.error || "You can't bind here right now.", '#FF9B7A');
+      return;
+    }
+    this.combatLog('You feel yourself bind to the area.', '#C9A8FF');
+    this.audio?.play('ui_learn', 0.6);
   },
 
   // ---------------------------------------------------------------- merchants
@@ -994,7 +1021,7 @@ export const GameWorld = {
     const items = res.items || [];
     this.characterManager?.getAnimator(this.state.currentPlayer.character_id)?.oneShot('PickUp_Table', { upperOnly: true });
     if (res.coins > 0) {
-      this.combatLog(`You receive ${moneyWords(res.coins)} from the corpse.`, '#F0D77A');
+      this.combatLog(`You receive ${moneyWords(res.coins)} from the corpse${res.split ? ` as your split` : ''}.`, '#F0D77A');
       this.audio?.play('coins', 0.9);
       if (this.inventory) {
         this.inventory = { ...this.inventory, coins: res.total_coins };
@@ -1101,6 +1128,7 @@ export const GameWorld = {
   updateHUD(this: any) {
     const cp = this.state?.currentPlayer;
     if (!cp || !this.gameUI) return;
+    if (this.group) this.groupWindow?.refresh();
     const p = this.progress || {};
     this.gameUI.setPlayer({
       name: cp.name || 'You',

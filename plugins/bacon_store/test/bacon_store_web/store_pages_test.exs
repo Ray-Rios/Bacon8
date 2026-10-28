@@ -70,9 +70,13 @@ defmodule BaconStoreWeb.StorePagesTest do
     {:ok, _view, html} = live(build_conn(), "/store")
     assert html =~ "Song Pack"
 
-    {:ok, view, html} = live(signed_in(user), "/store/p/#{p.slug}")
-    assert html =~ "Buy with Gems"
-    view |> element("button", "Buy with Gems") |> render_click()
+    # the old page sends you to the item's sheet on the storefront
+    assert {:error, {:live_redirect, %{to: to}}} = live(signed_in(user), "/store/p/#{p.slug}")
+    assert to == "/store?item=#{p.slug}"
+
+    {:ok, view, html} = live(signed_in(user), to)
+    assert html =~ "Pay with Gems"
+    view |> element("button", "Pay with Gems") |> render_click()
     view |> element("button", "Confirm") |> render_click()
     assert_redirect(view, "/store/library")
     assert Wallet.balance(user) == 700
@@ -88,6 +92,52 @@ defmodule BaconStoreWeb.StorePagesTest do
 
     assert (signed_in(verified()) |> get("/store/download/#{file.id}")).status == 404
     assert (build_conn() |> get("/store/download/#{file.id}")).status == 404
+  end
+
+  describe "the storefront's glass cards (2026-10-28)" do
+    test "everything on sale is a card; a click slides its sheet up, and it closes again" do
+      {p, img, _} = on_sale_download(%{summary: "Eight tracks.", description: "Made in **2026**."})
+      {:ok, pack} = Catalog.create_product(%{kind: "gem_pack", name: "Handful", gems: 500, price_cents: 500, active: true})
+
+      {:ok, view, html} = live(build_conn(), "/store")
+      assert html =~ ~s(id="sc-#{p.id}")
+      assert html =~ ~s(id="sc-#{pack.id}")
+      # the card's front shows its uploaded picture (it stands in for the kind's icon) and the
+      # back the description
+      assert html =~ "/store/media/#{img.id}"
+      assert html =~ "<strong>2026</strong>"
+      refute html =~ "sheet-"
+
+      view |> render_hook("open_item", %{"slug" => p.slug})
+      assert_patch(view, "/store?item=#{p.slug}")
+      html = render(view)
+      assert html =~ ~s(id="sheet-#{p.id}")
+      assert html =~ "Sign in to buy"
+
+      view |> render_hook("close_item", %{})
+      assert_patch(view, "/store")
+      refute render(view) =~ ~s(id="sheet-)
+
+      # a Gem pack's sheet has its card price
+      {:ok, _view, html} = live(build_conn(), "/store?item=#{pack.slug}")
+      assert html =~ "Pay $5.00"
+
+      # an unknown item: just the storefront
+      {:ok, _view, html} = live(build_conn(), "/store?item=nope")
+      refute html =~ ~s(id="sheet-)
+    end
+
+    test "the 3D picture: the Gem, a kind's icon, a picture, or the game's own model" do
+      assert %{type: :gem} = Catalog.art(%Store.Product{kind: "gem_pack"})
+      assert %{type: :spin, src: "/plugins/bacon_store/spin/kind_license_key"} = Catalog.art(%Store.Product{kind: "license_key", files: []})
+      assert %{type: :spin, src: "/plugins/bacon_store/spin/kind_access"} = Catalog.art(%Store.Product{kind: "access", files: []})
+      assert %{type: :spin, src: "/plugins/bacon_store/spin/kind_download"} = Catalog.art(%Store.Product{kind: "download", files: []})
+      assert %{type: :spin, src: "/plugins/bacon_store/spin/kind_item"} = Catalog.art(%Store.Product{kind: "item", grant_kind: "other_game", grant_key: "x", files: []})
+
+      # Bacon World draws its mounts (BaconWorld.Plugin.store_art/2), even with a picture uploaded
+      mount = %Store.Product{kind: "item", grant_kind: "bacon_world_mount", grant_key: "frost_drake", files: []}
+      assert %{type: :spin, src: "/plugins/bacon_world/store/mount_frost_drake"} = Catalog.art(mount)
+    end
   end
 
   test "images are public while on sale; off sale only admins see them" do

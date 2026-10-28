@@ -36,7 +36,7 @@ defmodule BaconWorld.Plugin do
   # The creatures: one zone process in the cluster (BaconWorld.Mobs.Zone), kept
   # alive by a keeper on every node.
   @impl true
-  def children, do: BaconWorld.Mobs.children()
+  def children, do: [BaconWorld.Groups | BaconWorld.Mobs.children()]
 
   # Its card on /games is in priv/static/card/ (Bacon8.GameCards), editable on /admin/bacon_world.
   @impl true
@@ -46,7 +46,20 @@ defmodule BaconWorld.Plugin do
       %{label: "Bacon World skills", path: "/admin/bacon_world/skills", icon: "🌳"}
     ]
 
+  @mount_glow %{"ember_drake" => "#FF6A2A", "verdant_drake" => "#7BD34A", "frost_drake" => "#8FD8FF", "abyssal_kraken" => "#7A6BFF"}
+
   # Mounts are sold as game items (BaconWorld.Mounts): the key is the mount's id.
   @impl true
   def entitlement_kinds, do: [BaconWorld.Mounts.kind()]
+
+  @doc """
+  The Bacon Store's picture of what it sells for us (an optional hook the store looks for,
+  `BaconStore.Store.Catalog.art/1`): a mount turning in 3D, rendered from its model
+  (library/pipeline/scripts/store_turntables.py; sheets in priv/static/store/).
+  """
+  def store_art(kind, id) do
+    if kind == BaconWorld.Mounts.kind() and BaconWorld.Mounts.get(id),
+      do: %{src: "/plugins/bacon_world/store/mount_" <> id, glow: Map.get(@mount_glow, id, "#FF8A3A")},
+      else: nil
+  end
 end

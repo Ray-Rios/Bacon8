@@ -40,6 +40,7 @@ import { FishingWorld } from './fishing-world';
 import { keepOnLand } from './water';
 import { TerrainWorld } from './terrain-world';
 import { BuildWorld } from './build-world';
+import { GroupWorld } from './group-world';
 import type { GameUI } from './game-ui';
 import type { MobsView } from './mobs-view';
 import type { NpcsView } from './npcs-view';
@@ -276,6 +277,7 @@ export const WorldCharacterUIScene = {
         this.readState();
       }
 
+      this.groupWindow?.refresh();
       if (this.state?.uiState === 'world' && this.state.currentPlayer) {
         void this.syncOtherPlayers();
         const me = this.state.currentPlayer.character_id;
@@ -501,6 +503,7 @@ export const WorldCharacterUIScene = {
     });
 
     // Creatures (game-world.ts, mobs-view.ts) and other players' weapons.
+    this.initGroupEvents();
     this.handleEvent('build_placed', (payload: any) => this.onBuildPlaced(payload));
     this.handleEvent('build_removed', (payload: any) => this.onBuildRemoved(payload));
     this.handleEvent('mob_events', (payload: any) => {
@@ -841,6 +844,12 @@ export const WorldCharacterUIScene = {
     const terrainReady = this.initTerrain();
     if (!this.dressing && this.scene && this.renderer) {
       this.dressing = new WorldDressing(this.scene, this.renderer);
+      // the village as placements (build mode, BaconWorld.Building): its pieces come from there
+      try {
+        this.dressing.villageOff = JSON.parse(this.el.dataset.seeded || '{}').village === true;
+      } catch {
+        // drawn here, as before
+      }
       const plain = [...this.worldGroup.children];
       void terrainReady.then((hf: any) => {
         if (!this.dressing) return;
@@ -849,7 +858,7 @@ export const WorldCharacterUIScene = {
       }).then(() => {
         if (!this.dressing) return;
         this.worldColliders = this.dressing.colliders();
-        if (this.worldColliders.length) plain.forEach((o: THREE.Object3D) => (o.visible = false));
+        if (this.worldColliders.length || this.dressing.villageOff) plain.forEach((o: THREE.Object3D) => (o.visible = false));
       });
     }
 
@@ -1289,6 +1298,7 @@ export const WorldCharacterUIScene = {
 
     // The player, target and inventory windows and the hotbar (game-ui.ts).
     this.initGameUI(layer);
+    this.initGroups();
 
     // ── Chat panel (bottom-left) ─────────────────────────────────────────────
     const chatPanel = document.createElement('div');
@@ -1331,6 +1341,11 @@ export const WorldCharacterUIScene = {
       event.preventDefault();
       const message = input.value.trim();
       if (!message) return;
+      // /invite, /g, /disband ... (group-world.ts)
+      if (this.groupCommand(message)) {
+        input.value = '';
+        return;
+      }
       // /mount [id], /dismount
       const cmd = /^\/(mount|dismount)\b\s*(\S*)/i.exec(message);
       if (cmd) {
@@ -1681,6 +1696,7 @@ export const WorldCharacterUIScene = {
     }
     this.chatPanel = null;
     this.chatInput = null;
+    this.disposeGroups();
     this.gameUI?.dispose();
     this.gameUI = null;
 
@@ -2766,4 +2782,6 @@ export const WorldCharacterUIScene = {
   ...TerrainWorld,
   // Build mode (` key, build-world.ts, BaconWorld.Building).
   ...BuildWorld,
+  // Groups (/invite, the group window, BaconWorld.Groups).
+  ...GroupWorld,
 };

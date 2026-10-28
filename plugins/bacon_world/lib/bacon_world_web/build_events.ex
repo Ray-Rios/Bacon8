@@ -13,6 +13,8 @@ defmodule BaconWorldWeb.BuildEvents do
     * `"build_delete"` `%{id}` - removes one. Replies `%{ok, placement}` (what it was, so the
       client can undo it by placing it again).
     * `"build_rule"` `%{asset, role}` - admins: the lowest role that may place an asset.
+    * `"bind_stone"` - bind your soul at the binding stone you stand by (within 5 m): Recall and
+      death bring you back there. Replies `%{ok, bind}` (scene units) or the reason it can't.
 
   Pushed to the client: `"build_placed"` (a placement, new or changed) and `"build_removed"`
   `%{id, asset}`, for everyone in the zone. Placements arrive first with `"fetch_mobs"`.
@@ -69,6 +71,19 @@ defmodule BaconWorldWeb.BuildEvents do
     case Building.set_rule(socket.assigns.current_user, asset, role) do
       {:ok, role} -> {:reply, %{ok: true, asset: asset, role: role}, socket}
       {:error, msg} -> {:reply, %{ok: false, error: msg}, socket}
+    end
+  end
+
+  def handle_event("bind_stone", _params, socket) do
+    me = socket.assigns[:current_character_runtime] || socket.assigns[:current_character_payload]
+
+    with %{position: pos, character_id: cid} <- me || {:error, "You aren't in the world."},
+         false <- (socket.assigns[:is_dead?] || false) && {:error, "The dead can't bind."},
+         {:ok, bind} <- Building.bind(socket.assigns.current_user, cid, socket.assigns[:mobs_zone] || "lobby", pos) do
+      {:reply, %{ok: true, bind: bind}, socket}
+    else
+      {:error, msg} when is_binary(msg) -> {:reply, %{ok: false, error: msg}, socket}
+      _ -> {:reply, %{ok: false, error: "That can't be done right now."}, socket}
     end
   end
 
