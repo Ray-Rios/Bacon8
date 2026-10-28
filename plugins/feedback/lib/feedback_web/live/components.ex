@@ -92,9 +92,19 @@ defmodule FeedbackWeb.Components do
       >
         ▼
       </button>
+      <span
+        class="mt-1 flex items-center gap-1 whitespace-nowrap border-t border-gray-800/80 pt-1 text-[10px] leading-none tabular-nums text-gray-500"
+        title={"#{@item.upvotes} upvote#{plural_s(@item.upvotes)}, #{@item.downvotes} downvote#{plural_s(@item.downvotes)}"}
+      >
+        <span class="text-orange-400/80">{@item.upvotes}▲</span>
+        <span class="text-sky-400/80">{@item.downvotes}▼</span>
+      </span>
     </div>
     """
   end
+
+  defp plural_s(1), do: ""
+  defp plural_s(_), do: "s"
 
   defp score_color(s) when s > 0, do: "text-white"
   defp score_color(s) when s < 0, do: "text-gray-500"

@@ -106,7 +106,7 @@ defmodule Feedback do
       |> limit(^limit)
       |> preload([:author, :shots])
       |> Repo.all()
-      |> with_my_votes(viewer)
+      |> with_vote_info(viewer)
     else
       []
     end
@@ -143,24 +143,34 @@ defmodule Feedback do
   defp order(q, "new"), do: order_by(q, [i], desc: i.inserted_at)
   defp order(q, _), do: order_by(q, [i], desc: i.score, desc: i.inserted_at)
 
-  defp with_my_votes([], _), do: []
+  # Fills in each item's viewer vote and up/down counts, read together from one query.
+  defp with_vote_info([], _), do: []
 
-  defp with_my_votes(items, %{id: user_id}) do
+  defp with_vote_info(items, %{id: user_id}) do
     ids = Enum.map(items, & &1.id)
 
-    votes =
+    by_item =
       Repo.all(
         from(v in Vote,
-          where: v.user_id == ^user_id and v.item_id in ^ids,
-          select: {v.item_id, v.value}
+          where: v.item_id in ^ids,
+          select: {v.item_id, v.user_id, v.value}
         )
       )
-      |> Map.new()
+      |> Enum.group_by(fn {item_id, _, _} -> item_id end)
 
-    Enum.map(items, &%{&1 | my_vote: Map.get(votes, &1.id)})
+    Enum.map(items, fn item ->
+      votes = Map.get(by_item, item.id, [])
+
+      %{
+        item
+        | my_vote: Enum.find_value(votes, fn {_, uid, value} -> uid == user_id && value end),
+          upvotes: Enum.count(votes, fn {_, _, value} -> value == 1 end),
+          downvotes: Enum.count(votes, fn {_, _, value} -> value == -1 end)
+      }
+    end)
   end
 
-  @doc "One item with its screenshots, history and the viewer's vote, or nil (also for a non-member)."
+  @doc "One item with its screenshots, history, the viewer's vote and the vote counts, or nil (also for a non-member)."
   def get_item(id, viewer) do
     with true <- member?(viewer),
          {:ok, _} <- Ecto.UUID.cast(id),
@@ -175,7 +185,7 @@ defmodule Feedback do
         events: :actor
       ])
       |> List.wrap()
-      |> with_my_votes(viewer)
+      |> with_vote_info(viewer)
       |> hd()
     else
       _ -> nil

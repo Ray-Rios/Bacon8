@@ -135,6 +135,22 @@ defmodule FeedbackTest do
       assert i2.score == 3 and i2.my_vote == nil
     end
 
+    test "upvotes and downvotes are counted separately, not just netted into the score" do
+      me = member()
+      i = item(me)
+      [a, b] = for _ <- 1..2, do: member()
+      {:ok, _} = Feedback.vote(i, a, 1)
+      {:ok, _} = Feedback.vote(i, b, -1)
+
+      # The author's own vote at posting (+1) plus a and b's votes net to 1, which on its
+      # own looks unchanged after an up and a down — the separate counts are the fix.
+      [listed] = Feedback.list_items(me)
+      assert listed.score == 1 and listed.upvotes == 2 and listed.downvotes == 1
+
+      fetched = Feedback.get_item(i.id, me)
+      assert fetched.upvotes == 2 and fetched.downvotes == 1
+    end
+
     test "no votes on declined or duplicate items" do
       boss = admin()
       i = item(member())

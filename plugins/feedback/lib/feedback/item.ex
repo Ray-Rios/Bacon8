@@ -33,8 +33,10 @@ defmodule Feedback.Item do
     has_many(:shots, Feedback.Shot, preload_order: [asc: :position, asc: :inserted_at])
     has_many(:events, Feedback.Event, preload_order: [asc: :inserted_at])
 
-    # The viewer's own vote (+1, -1 or nil), filled in by `Feedback` when listing.
+    # The viewer's own vote (+1, -1 or nil), and the vote counts, filled in by `Feedback` when listing.
     field(:my_vote, :integer, virtual: true)
+    field(:upvotes, :integer, virtual: true, default: 0)
+    field(:downvotes, :integer, virtual: true, default: 0)
 
     timestamps(type: :utc_datetime_usec)
   end

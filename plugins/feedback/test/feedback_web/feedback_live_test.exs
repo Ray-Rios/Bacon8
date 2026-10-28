@@ -82,8 +82,10 @@ defmodule FeedbackWeb.FeedbackLiveTest do
     other = member()
     {:ok, list, html} = live(signed_in(other), "/feedback")
     assert html =~ "Chat scrolls up by itself"
-    list |> element("#item-#{i.id} button[aria-label='Vote up']") |> render_click()
+    html = list |> element("#item-#{i.id} button[aria-label='Vote up']") |> render_click()
     assert Repo.get!(Feedback.Item, i.id).score == 2
+    # Two upvotes (the author's own, plus this one) show as a count, not just the net score.
+    assert html =~ "2▲" and html =~ "0▼"
   end
 
   test "an admin approves and submits to Claude from the item page; members don't see those buttons" do

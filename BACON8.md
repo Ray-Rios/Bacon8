@@ -37,6 +37,12 @@ On 2026-10-27:
   prompt, buttons with no handlers, a textarea that saved nothing). File Manager is now the only
   app pinned to the start menu, and the extra File Explorer button that duplicated it on the
   taskbar itself is gone (Suggestions & Bugs #1).
+- **The vote box shows how many voted each way, not just the net score** (`plugins/feedback`:
+  `lib/feedback.ex`, `lib/feedback_web/live/components.ex`). Voting itself already worked (an
+  up and a down vote net to the same score as neither, which read as "voting does nothing");
+  `Feedback.Item` gained virtual `upvotes`/`downvotes`, filled in alongside `my_vote` by one
+  query over `feedback_votes`, and the arrows now show "N▲ M▼" under the score (Suggestions &
+  Bugs #2).
 
 On 2026-10-26:
 
