@@ -133,3 +133,16 @@ The log is `tmp\feedback-agent\runner.log`. Each item's folder keeps Claude's ou
 | `assets/js/index.ts` | `FeedbackPaste`: pasting a screenshot adds it to the upload |
 | `agent/` | The runner, its prompts, its test run, the scheduled-task installer |
 | `priv/repo/migrations/` | `feedback_items`, `_votes`, `_shots` (bodies in the drive's blob store), `_events`, `_agent` |
+
+How to turn the task off:
+Disable-ScheduledTask -TaskName "Bacon8 Claude runner"
+
+This stops the 5-minute runs but keeps the task, so you can turn it back on with:
+Enable-ScheduledTask -TaskName "Bacon8 Claude runner"
+
+Remove the task completely:
+Unregister-ScheduledTask -TaskName "Bacon8 Claude runner" -Confirm:$false
+
+Run it by hand:
+cd C:\Bacon8
+powershell -ExecutionPolicy Bypass -File plugins\feedback\agent\runner.ps1
