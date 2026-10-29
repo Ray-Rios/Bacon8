@@ -515,7 +515,25 @@ defmodule Bacon8Web.AuthLive do
          |> assign(loading: false, form_data: form_data)
          |> put_flash(:error, "An account with this email already exists. Please try logging in instead.")
          |> assign(form: form, errors: ["An account with this email already exists"])}
+
+      {:error, reason, message} when reason in [:email_taken, :username_taken] ->
+        register_failed(socket, user_params, message)
+
+      {:error, message} when is_binary(message) ->
+        # The sign-up limit for this address
+        register_failed(socket, user_params, message)
     end
+  end
+
+  defp register_failed(socket, user_params, message) do
+    form_data = Map.put(user_params, "password", "")
+    form = to_form(form_data, as: "user")
+
+    {:noreply,
+     socket
+     |> assign(loading: false, form_data: form_data)
+     |> put_flash(:error, message)
+     |> assign(form: form, errors: [message])}
   end
 
   # ----------------
