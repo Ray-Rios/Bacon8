@@ -4,7 +4,7 @@ defmodule Bacon8Web.ContentEditing do
   and blog posts (editing in place) and the two admin screens. One implementation of the
   editor's events, so a fix or a safety rule is made once.
 
-  The block editor (`assets/js/block_editor_hook.ts`) pushes `editor-change`, `editor-autosave`,
+  The block editor (`assets/js/page_builder/hook.ts`) pushes `editor-change`, `editor-autosave`,
   `block-media-upload`, `block-media-remove` and the older `block-image-upload` to whichever
   LiveView renders it. Each of those LiveViews decides *whether* the event is allowed (who may
   edit) and *which record* it is for; the work is here.

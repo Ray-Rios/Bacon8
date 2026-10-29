@@ -28,9 +28,7 @@
     "exactOptionalPropertyTypes": false,
     "paths": {
       "@/*": ["./js/*"],
-      "@types/*": ["./js/types/*"],
-      "@threejs/*": ["./js/threejs/*"],
-      "@threejs-types/*": ["./js/threejs/types/*"]
+      "@types/*": ["./js/types/*"]
     }
   },
   "include": [
