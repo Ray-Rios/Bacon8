@@ -202,6 +202,21 @@
 .gc-play-arrow { font-size: 0.8rem; }
 span.gc-play { cursor: default; }
 
+/* Phones: two cards a row (games_live.ex), so everything on them is smaller. */
+@media (max-width: 640px) {
+  .gc { border-radius: 14px; }
+  .gc-title { padding: 2rem 0.7rem 0.75rem; }
+  .gc-title h2 { font-size: 1rem; }
+  .gc-icon { margin-right: 0.3rem; }
+  .gc-title p { font-size: 0.72rem; margin-top: 0.2rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .gc-nopic { font-size: 3rem; }
+  .gc-dots { top: 8px; right: 9px; }
+  .gc-panel { left: 8px; right: 8px; bottom: 8px; max-height: 78%; padding: 0.65rem 0.7rem; }
+  .gc-panel h2 { font-size: 0.92rem; margin-bottom: 0.3rem; }
+  .gc-details { font-size: 0.7rem; line-height: 1.35; }
+  .gc-play { padding: 0.4rem 0.85rem 0.4rem 0.7rem; font-size: 0.8rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gc-inner { transition: transform 0.01s; }
   .gc-pic { transition: opacity 0.3s ease; transform: none; }

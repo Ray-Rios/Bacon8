@@ -26,14 +26,16 @@ defmodule BaconStoreWeb.StoreComponents do
   # The cards' and the sheet's styles, inlined so the first paint has them (store_cards.css).
   @css_path Path.expand("../../../priv/store_cards.css", __DIR__)
   @external_resource @css_path
-  @css File.read!(@css_path)
+  # (the whole tag, built here: HEEx doesn't interpolate inside <style>, so `<style>{@css}</style>`
+  # would put the literal text on the page)
+  @style_tag "<style data-store-cards>" <> File.read!(@css_path) <> "</style>"
 
   @doc "The storefront's card and sheet styles (priv/store_cards.css), once per page."
   def store_styles(assigns) do
-    assigns = assign(assigns, :css, @css)
+    assigns = assign(assigns, :tag, Phoenix.HTML.raw(@style_tag))
 
     ~H"""
-    <style>{Phoenix.HTML.raw(@css)}</style>
+    {@tag}
     """
   end
 
@@ -50,7 +52,7 @@ defmodule BaconStoreWeb.StoreComponents do
 
   def art(%{art: %{type: :spin}} = assigns) do
     ~H"""
-    <b8-spin src={@art.src} glow={@art.glow} still={@still} style={"background-image:url(#{@art.src}.webp)"}></b8-spin>
+    <b8-spin src={@art.src} glow={@art.glow} still={@still} style={"--still:url(#{@art.src}.webp)"}></b8-spin>
     """
   end
 

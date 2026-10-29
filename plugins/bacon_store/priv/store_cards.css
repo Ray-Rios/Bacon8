@@ -7,6 +7,7 @@
 .sc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1.5rem; }
 .sc-grid.packs { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 1.1rem; }
 
+
 .sc {
   position: relative;
   aspect-ratio: 3 / 4;
@@ -57,7 +58,8 @@
 .sc-img { object-fit: contain; filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.6)); user-select: none; }
 .sc-img.cover { object-fit: cover; border-radius: 10px; }
 b8-spin { display: block; }
-b8-spin:not(:defined) { background: center / contain no-repeat; }
+/* the still (`--still`, set by the template) only until <b8-spin> runs: never behind the turning one */
+b8-spin:not(:defined) { background: var(--still) center / contain no-repeat; }
 
 /* Glass: a fixed reflection and a band of light that sweeps across as it turns. */
 .sc-gloss { position: absolute; inset: 0; pointer-events: none; z-index: 2;
@@ -139,4 +141,23 @@ b8-spin:not(:defined) { background: center / contain no-repeat; }
   .sc-inner { transition: transform 0.01s; }
   .sc-gloss::after { display: none; }
   .ss-panel, .ss.closing .ss-panel { animation-duration: 0.01s; }
+}
+
+/* Phones: two cards a row, smaller type (last, so it wins over the rules above). */
+@media (max-width: 640px) {
+  .sc-grid, .sc-grid.packs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+  .sc { border-radius: 14px; }
+  .sc-title { padding: 1.4rem 0.6rem 0.7rem; }
+  .sc-title h3 { font-size: 0.92rem; margin: 0.15rem 0 0.3rem; }
+  .sc-kind { font-size: 0.6rem; }
+  .sc-price { font-size: 0.8rem; gap: 0.25rem; }
+  .sc-badge, .sc-owned { top: 8px; font-size: 0.62rem; padding: 0.1rem 0.45rem; }
+  .sc-badge { left: 8px; } .sc-owned { right: 8px; }
+  .sc-panel { inset: 8px; padding: 0.7rem; }
+  .sc-panel h3 { font-size: 0.92rem; }
+  .sc-desc { font-size: 0.74rem; }
+  .sc-gets { display: none; }
+  .sc-more { padding: 0.35rem 0.8rem; font-size: 0.78rem; }
+  .ss-body { padding: 0.25rem 1rem 1.5rem; gap: 1.1rem; }
+  .ss-stage { max-height: 38vh; }
 }

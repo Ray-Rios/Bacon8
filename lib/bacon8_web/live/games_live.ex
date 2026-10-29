@@ -52,7 +52,7 @@ defmodule Bacon8Web.GamesLive do
         <p class="text-gray-400 mb-10">Pick a game to play.</p>
 
         <%!-- Play links into plugin pages, which are in their own live_session: a full page load. --%>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 max-w-sm sm:max-w-none mx-auto">
+        <div class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-8">
           <GameCard.game_card
             :for={game <- @games}
             id={"game-card-#{game.plugin}"}

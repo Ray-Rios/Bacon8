@@ -119,7 +119,6 @@ export class B8Spin extends Base {
       this.els = { fl, rx, sp, glow };
     }
     this.setAttribute("aria-hidden", "true");
-    this.style.backgroundImage = "none";
     // its card (or anything marked as its host) hovered makes it react
     this.host = this.closest("[data-spin-host]") || this;
     this.host.addEventListener("pointerenter", this.onHost);

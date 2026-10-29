@@ -100,6 +100,10 @@ defmodule BaconStoreWeb.StorePagesTest do
       {:ok, pack} = Catalog.create_product(%{kind: "gem_pack", name: "Handful", gems: 500, price_cents: 500, active: true})
 
       {:ok, view, html} = live(build_conn(), "/store")
+      # the cards' styles are on the page itself (not the literal template text)
+      assert html =~ "<style data-store-cards"
+      assert html =~ ".sc-grid {"
+      refute html =~ "Phoenix.HTML.raw"
       assert html =~ ~s(id="sc-#{p.id}")
       assert html =~ ~s(id="sc-#{pack.id}")
       # the card's front shows its uploaded picture (it stands in for the kind's icon) and the
