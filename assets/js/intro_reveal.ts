@@ -47,6 +47,8 @@ export const IntroTagline = {
     const span = this.el.querySelector('.intro-type') as HTMLElement | null;
     if (!span) return;
     const main = span.textContent || '';
+    // the typing's length always matches the words (a hand-set --n cut a longer tagline short)
+    span.style.setProperty('--n', String(main.length));
     const alt = this.el.dataset.alt || '';
     let showing = main;
     let back: any = null;

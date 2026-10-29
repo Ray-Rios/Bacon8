@@ -154,6 +154,7 @@ defmodule Bacon8.Plugins do
     case hook_result do
       :ok ->
         save_state!(slug, on?, actor)
+        Bacon8.Audit.log(actor_id(actor), if(on?, do: "plugin.activated", else: "plugin.deactivated"), "plugin", nil, %{slug: slug})
         sync_game(mod, on?)
         refresh_cache()
         Phoenix.PubSub.broadcast(Bacon8.PubSub, @topic, :plugins_changed)
@@ -231,6 +232,18 @@ defmodule Bacon8.Plugins do
       %{} = g -> Map.put_new(g, :slug, mod.slug()) |> Map.put_new(:description, "")
       _ -> nil
     end
+  end
+
+  @doc """
+  The entitlement kinds that belong to game `game_slug` (2026-10-29, for `/api/games/:slug/entitlements`):
+  what its plugin declares in `entitlement_kinds/0`. Store items for a game are granted under kinds
+  named after it, so any kind starting with the game's slug (`bacon_world_mount`) is its too.
+  Returns `{kinds, prefixes}`.
+  """
+  def game_entitlement_kinds(game_slug) when is_binary(game_slug) do
+    mod = Enum.find(installed(), fn m -> match?(%{slug: ^game_slug}, game_info(m)) end)
+    prefixes = Enum.uniq([game_slug, String.replace(game_slug, "-", "_")] ++ if(mod, do: [mod.slug()], else: []))
+    {if(mod, do: mod.entitlement_kinds(), else: []), prefixes}
   end
 
   @doc "Games of active plugins, for the games list."

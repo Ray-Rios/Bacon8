@@ -89,6 +89,7 @@ defmodule Bacon8Web.Components.EditorShell do
             id={@editor_id}
             content={@record.content}
             kind={@noun}
+            record_id={@record.id}
             placeholder={"Write your #{@noun}..."}
             min_height="60vh"
             autosave_delay={4000}

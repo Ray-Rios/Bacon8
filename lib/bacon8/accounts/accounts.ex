@@ -419,6 +419,9 @@ defmodule Bacon8.Accounts do
             "drive=#{drive}"
         )
 
+        if new_role != old_role,
+          do: Bacon8.Audit.log(if(actor == "system", do: nil, else: actor), "user.role_changed", "user", user.id, %{from: old_role, to: new_role})
+
         if new_role == "banned" and old_role != "banned" do
           disconnect_user_sessions(updated)
           cleanup_banned_user(updated)

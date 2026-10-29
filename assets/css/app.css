@@ -7,6 +7,7 @@
 @import "./intro.css";
 @import "./page_builder.css";
 @import "./games_hat.css";
+@import "./mobile.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

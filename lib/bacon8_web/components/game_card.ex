@@ -69,6 +69,9 @@ defmodule Bacon8Web.Components.GameCard do
           <div class="gc-gloss"></div>
           <div class="gc-panel">
             <h2>{@game.name}</h2>
+            <span class={["gc-kind", "gc-kind-#{Map.get(@card, :kind, "browser")}"]}>
+              {if Map.get(@card, :kind) == "download", do: "⬇ Download", else: "▶ In your browser"}
+            </span>
             <div class="gc-details">
               <p :for={p <- @paragraphs}>{p}</p>
               <p :if={@paragraphs == [] and @tagline}>{@tagline}</p>
@@ -76,7 +79,8 @@ defmodule Bacon8Web.Components.GameCard do
             <%= if @preview do %>
               <span class="gc-play" aria-disabled="true"><span class="gc-play-arrow">▶</span>{@card.play_label}</span>
             <% else %>
-              <.link navigate={@game.path} class="gc-play"><span class="gc-play-arrow">▶</span>{@card.play_label}</.link>
+              <%!-- a download game's Play opens its page (Bacon8.GameCards: kind and page) --%>
+              <.link navigate={Map.get(@card, :play_path) || @game.path} class="gc-play"><span class="gc-play-arrow">▶</span>{@card.play_label}</.link>
             <% end %>
           </div>
         </div>

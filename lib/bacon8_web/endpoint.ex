@@ -88,6 +88,9 @@ defmodule Bacon8Web.Endpoint do
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
+    # Multipart bodies up to 26 MB: the page builder posts pictures and files to /editor/media,
+    # up to Bacon8.Content.InlineMedia's 25 MB (Plug's default is 8 MB).
+    length: 26_000_000,
     json_decoder: Phoenix.json_library(),
     # Keeps the raw body of payment webhooks for signature checks.
     body_reader: {Bacon8Web.RawBodyReader, :read_body, []}

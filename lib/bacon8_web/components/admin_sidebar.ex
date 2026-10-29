@@ -136,6 +136,12 @@ defmodule Bacon8Web.Components.AdminSidebar do
             active={String.starts_with?(@current_path, "/admin/security")}
           />
           <.sidebar_link
+            href="/admin/audit"
+            icon="📜"
+            label="Audit log"
+            active={String.starts_with?(@current_path, "/admin/audit")}
+          />
+          <.sidebar_link
             href="/admin/emails"
             icon="📧"
             label="Email Logs"
@@ -212,8 +218,14 @@ defmodule Bacon8Web.Components.AdminSidebar do
       <div class="flex h-full relative z-10">
         <.admin_sidebar current_path={@current_path} current_user={@current_user} />
         
-        <!-- Main Content -->
-        <main id="admin-main-content" class="flex-1 overflow-y-auto p-6">
+        <!-- Main Content. min-w-0 lets it shrink to the screen; anything wider (a table)
+             scrolls inside it (phones, 2026-10-29). -->
+        <main id="admin-main-content" class="flex-1 min-w-0 overflow-y-auto overflow-x-auto p-3 sm:p-6">
+          <%!-- On a phone the sidebar is a drawer: this opens it (AdminSidebarResizer, mobile.css) --%>
+          <button type="button" id="admin-menu-toggle" class="admin-menu-toggle" aria-controls="admin-sidebar" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+            Admin menu
+          </button>
           <%= render_slot(@inner_block) %>
         </main>
       </div>

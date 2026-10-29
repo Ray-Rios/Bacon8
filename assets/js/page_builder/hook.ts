@@ -17,7 +17,11 @@ import { FormatBar, Sheet, caretToEnd, isPhone, pickFiles } from './ui';
 import { openLibrary } from '../block_editor_library';
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-const MAX_FILE = 50 * 1024 * 1024;
+// The server's limit (Bacon8.Content.InlineMedia, 25 MB).
+const MAX_FILE = 25 * 1024 * 1024;
+// Photos are shrunk in the browser before they're sent: a phone's 12-megapixel shot becomes a
+// sharp 2560 px JPEG of a few hundred KB, which uploads in a moment on mobile data.
+const MAX_SIDE = 2560;
 const CALLOUTS = ['info', 'tip', 'success', 'warning', 'error'];
 
 type Ctx = { mode: 'at'; at: number } | { mode: 'in'; col: string } | { mode: 'after'; block: string; replace?: boolean };
@@ -25,6 +29,10 @@ type Ctx = { mode: 'at'; at: number } | { mode: 'in'; col: string } | { mode: 'a
 export const PageBuilder = {
   mounted(this: any) {
     this.kind = (this.el.dataset.kind || 'page') as 'page' | 'post';
+    this.recordId = this.el.dataset.recordId || '';
+    // The address says the editor is open (?edit=1), so if the connection drops (a phone switching
+    // to its photo picker, a tunnel) the page comes back still editing instead of closing the editor.
+    if (this.el.dataset.readonly !== 'true') setEditParam(true);
     this.autosaveDelay = parseInt(this.el.dataset.autosaveDelay || '5000');
     this.doc = M.parseDoc(this.el.dataset.initialContent);
     this.history = new M.History();
@@ -43,7 +51,15 @@ export const PageBuilder = {
     if (M.isEmpty(this.doc) && this.el.dataset.readonly !== 'true') this.offerStarters();
   },
 
+  // The connection came back (LiveView keeps this element): the server may have lost what it was
+  // holding unsaved, so send the editor's current state again.
+  reconnected(this: any) {
+    this.changed = true;
+    this.flush();
+  },
+
   destroyed(this: any) {
+    if (this.el.dataset.readonly !== 'true' && !document.getElementById(this.el.id)) setEditParam(false);
     clearTimeout(this.changeTimer);
     clearTimeout(this.saveTimer);
     if (this.changed) this.flush();
@@ -132,21 +148,37 @@ export const PageBuilder = {
   },
 
   payload(this: any) {
-    return { content: JSON.stringify(this.doc), html: docToHtml(this.doc), format: 'blocks' };
+    // "Uploading…" and an upload's error are this screen's state, not the page's: never saved.
+    const doc = M.withoutTransient(this.doc);
+    return { content: JSON.stringify(doc), html: docToHtml(doc), format: 'blocks' };
   },
 
   flush(this: any) {
     clearTimeout(this.changeTimer);
     if (!this.changed) return;
     this.changed = false;
-    this.pushEvent('editor-change', this.payload());
+    this.send('editor-change', this.payload());
   },
 
   save(this: any) {
     this.changed = false;
     const p = this.payload();
-    this.pushEvent('editor-change', p);
-    this.pushEvent('editor-autosave', p);
+    this.send('editor-change', p);
+    this.send('editor-autosave', p);
+  },
+
+  /** Sends to the server, or (no connection right now) keeps the change for `reconnected()` to send. */
+  send(this: any, event: string, payload: any) {
+    if (this.liveSocket && typeof this.liveSocket.isConnected === 'function' && !this.liveSocket.isConnected()) {
+      this.changed = true;
+      return;
+    }
+    try {
+      const sent = this.pushEvent(event, payload);
+      if (sent && typeof sent.catch === 'function') sent.catch(() => { this.changed = true; });
+    } catch {
+      this.changed = true;
+    }
   },
 
   undo(this: any) {
@@ -478,13 +510,26 @@ export const PageBuilder = {
     if (!w) return;
     w.block.settings = { ...(w.block.settings || {}), ...settings };
     this.renderBlock(id);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const data = String(reader.result || '').split(',')[1] || '';
-      this.pushEvent('block-media-upload', { blockId: id, mediaType, filename: file.name, size: file.size, mimeType: file.type, data });
-    };
-    reader.onerror = () => this.mediaError(id, 'Couldn’t read that file.');
-    reader.readAsDataURL(file);
+    const isImage = mediaType === 'image' || mediaType === 'gallery';
+    (isImage ? shrinkPhoto(file) : Promise.resolve(file))
+      .then((f) => postMedia(this.kind, this.recordId, f))
+      .then(({ url, filename }) => this.mediaDone(id, url, mediaType, filename))
+      .catch((e: Error) => this.mediaError(id, e.message || 'The upload failed.'));
+  },
+
+  /** An upload finished: the picture or file goes into its block (or its gallery). */
+  mediaDone(this: any, blockId: string, url: string, mediaType: string, filename?: string, mediaId?: string) {
+    const w = M.findBlock(this.doc, blockId);
+    if (!w) return;
+    const b = w.block;
+    b.settings = { ...(b.settings || {}), loading: false, error: '' };
+    if (mediaType === 'gallery') b.media = [...(b.media || []), { id: mediaId || M.newId('m'), url, type: 'image', filename }];
+    else {
+      b.content = url;
+      if (filename) b.settings.filename = filename;
+    }
+    this.renderBlock(blockId);
+    this.changedNow();
   },
 
   mediaError(this: any, id: string, error: string) {
@@ -892,19 +937,9 @@ export const PageBuilder = {
       this.doc = M.parseDoc(content);
       this.render();
     });
-    this.handleEvent('block-media-uploaded', ({ blockId, url, mediaType, filename, mediaId }: any) => {
-      const w = M.findBlock(this.doc, blockId);
-      if (!w) return;
-      const b = w.block;
-      b.settings = { ...(b.settings || {}), loading: false, error: '' };
-      if (mediaType === 'gallery') b.media = [...(b.media || []), { id: mediaId || M.newId('m'), url, type: 'image', filename }];
-      else {
-        b.content = url;
-        if (filename) b.settings.filename = filename;
-      }
-      this.renderBlock(blockId);
-      this.changedNow();
-    });
+    // (library pictures still come this way: library-use answers like an upload)
+    this.handleEvent('block-media-uploaded', ({ blockId, url, mediaType, filename, mediaId }: any) =>
+      this.mediaDone(blockId, url, mediaType, filename, mediaId));
     this.handleEvent('block-media-error', ({ blockId, error }: any) => this.mediaError(blockId, error || 'The upload failed.'));
     this.handleEvent('block-image-uploaded', ({ blockId, url }: any) => {
       const w = M.findBlock(this.doc, blockId);
@@ -918,6 +953,71 @@ export const PageBuilder = {
 };
 
 // ------------------------------------------------------------------ helpers
+
+/** Adds or removes ?edit=1 in the address without a navigation (LiveView reads it on a remount). */
+function setEditParam(on: boolean) {
+  try {
+    const u = new URL(window.location.href);
+    if (on === (u.searchParams.get('edit') === '1')) return;
+    if (on) u.searchParams.set('edit', '1');
+    else u.searchParams.delete('edit');
+    window.history.replaceState(window.history.state, '', u.toString());
+    // LiveView rejoins after a dropped connection with the address it last navigated to, not the
+    // browser's: tell it too, or a remount would open the page without ?edit=1 (the editor closed).
+    (window as any).liveSocket?.main?.setHref?.(u.toString());
+  } catch { /* an old browser: nothing to do */ }
+}
+
+/** Sends one file to /editor/media (Bacon8Web.EditorMediaController): `{url, filename}`, or throws with a message. */
+async function postMedia(kind: string, recordId: string, file: File): Promise<{ url: string; filename: string }> {
+  if (!recordId) throw new Error('Save a draft first.');
+  const body = new FormData();
+  body.append('kind', kind);
+  body.append('id', recordId);
+  body.append('file', file, file.name);
+  const csrf = (document.querySelector("meta[name='csrf-token']") as HTMLMetaElement | null)?.content || '';
+  let res: Response;
+  try {
+    res = await fetch('/editor/media', { method: 'POST', body, headers: { 'x-csrf-token': csrf, accept: 'application/json' }, credentials: 'same-origin' });
+  } catch {
+    throw new Error('No connection: try again.');
+  }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.url) throw new Error(json.error || (res.status === 413 ? 'That file is too big.' : 'The upload failed.'));
+  return json;
+}
+
+/**
+ * A photo bigger than MAX_SIDE on its long side (or over 4 MB) comes back as a MAX_SIDE JPEG; GIFs
+ * (they may move) and small pictures come back untouched, as does anything the browser can't decode.
+ */
+export async function shrinkPhoto(file: File): Promise<File> {
+  if (file.type === 'image/gif' || typeof createImageBitmap !== 'function') return file;
+  let bmp: ImageBitmap;
+  try {
+    bmp = await createImageBitmap(file);
+  } catch {
+    return file;
+  }
+  const { w, h } = M.fitWithin(bmp.width, bmp.height, MAX_SIDE);
+  if (w === bmp.width && file.size <= 4 * 1024 * 1024) {
+    bmp.close();
+    return file;
+  }
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d');
+  if (!g) return file;
+  g.drawImage(bmp, 0, 0, w, h);
+  bmp.close();
+  // a PNG keeps its transparency; everything else becomes a JPEG
+  const png = file.type === 'image/png';
+  const blob: Blob | null = await new Promise((r) => c.toBlob(r, png ? 'image/png' : 'image/jpeg', 0.86));
+  if (!blob || blob.size >= file.size) return file;
+  const name = png ? file.name : file.name.replace(/\.[^.]+$/, '') + '.jpg';
+  return new File([blob], name, { type: blob.type });
+}
 
 function rowWillVanish(doc: M.Doc, w: M.Where): boolean {
   const r = doc.rows[w.r];

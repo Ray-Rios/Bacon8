@@ -98,7 +98,7 @@
   animation: rise .5s ease-out .15s both;
 }
 .intro-title span { color: var(--bacon); }
-/* "Bring home the bacon." types itself in (CSS alone, so it runs before any script arrives);
+/* "Bringinging home the bacon." types itself in (CSS alone, so it runs before any script arrives);
    hovering or tapping it types the old secret instead (IntroTagline, assets/js/intro_reveal.ts) */
 .intro-tag {
   margin-top: .6rem;

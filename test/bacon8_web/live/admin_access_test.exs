@@ -25,6 +25,7 @@ defmodule Bacon8Web.AdminAccessTest do
     "/admin/emails",
     "/admin/api-toolbox",
     "/admin/plugins",
+    "/admin/audit",
     "/admin/bacon_store/products",
     "/admin/bacon_store/orders",
     "/admin/bacon_world",

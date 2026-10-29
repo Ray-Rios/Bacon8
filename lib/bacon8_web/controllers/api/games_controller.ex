@@ -13,6 +13,39 @@ defmodule Bacon8Web.Api.GamesController do
 
   plug Bacon8Web.Plugs.GamesApiKeyOrAuth
 
+  # GET /api/games/:game_slug/entitlements (2026-10-29): the items and passes the player owns in this
+  # game (store items, mounts...), active now. A player token reads its own; the server API key
+  # passes `user_id`.
+  def list_entitlements(conn, %{"game_slug" => slug} = params) do
+    with {:ok, _game} <- fetch_game(slug),
+         {:ok, user_id} <- resolve_user_id(conn, params) do
+      items = Bacon8.Entitlements.active_for_game(user_id, Bacon8.Plugins.game_entitlement_kinds(slug))
+      json(conn, %{success: true, entitlements: Enum.map(items, &entitlement_json/1)})
+    else
+      {:error, status, message} -> error_response(conn, status, message)
+    end
+  end
+
+  # GET /api/games/:game_slug/entitlements/check?kind=&key= : does the player have this one?
+  def check_entitlement(conn, %{"game_slug" => slug, "kind" => kind, "key" => key} = params) do
+    with {:ok, _game} <- fetch_game(slug),
+         {:ok, user_id} <- resolve_user_id(conn, params) do
+      owned =
+        Bacon8.Entitlements.active_for_game(user_id, Bacon8.Plugins.game_entitlement_kinds(slug))
+        |> Enum.any?(&(&1.kind == kind and (&1.key == key or &1.key == "*")))
+
+      json(conn, %{success: true, kind: kind, key: key, active: owned})
+    else
+      {:error, status, message} -> error_response(conn, status, message)
+    end
+  end
+
+  def check_entitlement(conn, _params), do: error_response(conn, 400, "kind and key are required")
+
+  defp entitlement_json(e) do
+    %{kind: e.kind, key: e.key, quantity: e.quantity, starts_at: e.starts_at, ends_at: e.ends_at, source: e.source_type}
+  end
+
   # GET /api/games/:game_slug/characters
   def list_characters(conn, %{"game_slug" => slug} = params) do
     with {:ok, game} <- fetch_game(slug),

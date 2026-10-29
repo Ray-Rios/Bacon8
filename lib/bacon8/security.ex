@@ -115,9 +115,15 @@ defmodule Bacon8.Security do
       # (an address that isn't one visitor's: blocking it would block everyone behind it)
       {:error, :not_blockable}
     else
-      %BlockedIdentifier{}
-      |> BlockedIdentifier.changeset(attrs)
-      |> Repo.insert()
+      result =
+        %BlockedIdentifier{}
+        |> BlockedIdentifier.changeset(attrs)
+        |> Repo.insert()
+
+      with {:ok, b} <- result,
+           do: Bacon8.Audit.log(b.blocked_by_user_id, "security.blocked", "identifier", nil, %{identifier: b.identifier, type: b.identifier_type, reason: b.reason})
+
+      result
     end
   end
 
@@ -126,8 +132,14 @@ defmodule Bacon8.Security do
   """
   def unblock_identifier(identifier, identifier_type \\ "ip") do
     case Repo.get_by(BlockedIdentifier, identifier: identifier, identifier_type: identifier_type) do
-      nil -> {:error, :not_found}
-      blocked -> Repo.delete(blocked)
+      nil ->
+        {:error, :not_found}
+
+      blocked ->
+        with {:ok, _} = done <- Repo.delete(blocked) do
+          Bacon8.Audit.log(nil, "security.unblocked", "identifier", nil, %{identifier: identifier, type: identifier_type})
+          done
+        end
     end
   end
 

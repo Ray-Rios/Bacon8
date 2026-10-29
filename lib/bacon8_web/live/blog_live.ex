@@ -406,6 +406,8 @@ defmodule Bacon8Web.BlogLive do
                 <BlockEditor.block_editor
                   id={"blog-editor-#{@post.id}"}
                   content={@post.content}
+                  kind="post"
+                  record_id={@post.id}
                   placeholder="Write your blog post content..."
                   min_height="500px"
                   autosave_delay={5000}

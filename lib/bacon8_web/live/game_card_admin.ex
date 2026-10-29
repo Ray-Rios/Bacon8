@@ -7,7 +7,8 @@ defmodule Bacon8Web.GameCardAdmin do
 
   A live preview of the card (hover it to turn it over) beside the editor: the front's
   pictures (add, reorder, remove), the back's picture, the tagline, the details, the
-  Play button's label and how long each picture shows. Save writes `Bacon8.GameCards`;
+  Play button's label and how long each picture shows, and (2026-10-29) whether the game is played
+  in the browser or downloaded, and a download game's page (Play opens it). Save writes `Bacon8.GameCards`;
   "Reset" goes back to the plugin folder's card (`priv/static/card/`). Pictures upload
   as soon as they're picked but count only once saved.
   """
@@ -36,7 +37,7 @@ defmodule Bacon8Web.GameCardAdmin do
 
       {:ok,
        socket
-       |> assign(game: game, saved: card, draft: draft_of(card), dirty: false, status: nil, error: nil)
+       |> assign(game: game, saved: card, draft: draft_of(card), dirty: false, status: nil, error: nil, pages: page_choices())
        |> allow_upload(:fronts,
          accept: @accept,
          max_entries: GameCards.max_fronts(),
@@ -61,8 +62,17 @@ defmodule Bacon8Web.GameCardAdmin do
       "tagline" => card.tagline || "",
       "details" => card.details || "",
       "play_label" => card.play_label,
-      "seconds" => card.seconds
+      "seconds" => card.seconds,
+      "kind" => card.kind,
+      "page" => card.page || ""
     }
+  end
+
+  # The pages a download game's card can point at: title and slug, drafts marked.
+  defp page_choices do
+    Bacon8.Content.list_pages()
+    |> Enum.sort_by(&String.downcase(&1.title || ""))
+    |> Enum.map(&{"#{&1.title}#{if &1.is_published, do: "", else: " (draft)"} · /pages/#{&1.slug}", &1.slug})
   end
 
   # A picture finished uploading: keep it (GameCards checks it) and put it in the draft.
@@ -97,7 +107,7 @@ defmodule Bacon8Web.GameCardAdmin do
 
   @impl true
   def handle_event("draft", %{"card" => params}, socket) do
-    draft = Map.merge(socket.assigns.draft, Map.take(params, ~w(tagline details play_label seconds)))
+    draft = Map.merge(socket.assigns.draft, Map.take(params, ~w(tagline details play_label seconds kind page)))
     {:noreply, assign(socket, draft: draft, dirty: true, status: nil)}
   end
 
@@ -277,6 +287,26 @@ defmodule Bacon8Web.GameCardAdmin do
                 maxlength="2000"
                 class="mt-1 w-full rounded-md bg-gray-800 border-gray-600 text-white text-sm"
               >{@draft["details"]}</textarea>
+            </label>
+            <label class="block">
+              <span class="text-sm font-semibold text-gray-200">How it's played</span>
+              <select name="card[kind]" class="mt-1 w-full rounded-md bg-gray-800 border-gray-600 text-white text-sm">
+                <option value="browser" selected={@draft["kind"] != "download"}>In the browser</option>
+                <option value="download" selected={@draft["kind"] == "download"}>Download</option>
+              </select>
+            </label>
+            <label :if={@draft["kind"] == "download"} class="block">
+              <span class="text-sm font-semibold text-gray-200">The game's page</span>
+              <span class="text-xs text-gray-500">(Play opens it)</span>
+              <select name="card[page]" class="mt-1 w-full rounded-md bg-gray-800 border-gray-600 text-white text-sm">
+                <option value="">No page: Play opens the game's own path</option>
+                <option :for={{label, slug} <- @pages} value={slug} selected={@draft["page"] == slug}>{label}</option>
+              </select>
+              <span class="mt-1 block text-xs">
+                <a :if={@draft["page"] not in [nil, ""]} href={"/pages/#{@draft["page"]}?edit=1"} target="_blank" class="text-blue-400 hover:underline">Edit this page</a>
+                <span :if={@draft["page"] not in [nil, ""]} class="text-gray-600"> · </span>
+                <a href="/admin/pages" target="_blank" class="text-blue-400 hover:underline">All pages</a>
+              </span>
             </label>
             <label class="block">
               <span class="text-sm font-semibold text-gray-200">Play button</span>

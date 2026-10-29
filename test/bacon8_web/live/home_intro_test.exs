@@ -18,7 +18,9 @@ defmodule Bacon8Web.HomeIntroTest do
     assert html =~ "/images/intro/fork_l-600.webp"
     assert html =~ "<b8-bacon"
     assert html =~ ~s(phx-hook="IntroTagline")
-    assert html =~ "Bring home the bacon."
+    assert html =~ "Bringing home the bacon."
+    # the typing runs the whole tagline (it once stopped at "Bringing home the bac")
+    assert html =~ "--n:#{String.length("Bringing home the bacon.")}"
     assert html =~ "SECRET TO EVERYBODY"
     assert html =~ ~s(href="/register")
     assert html =~ ~s(href="/login")
@@ -27,7 +29,7 @@ defmodule Bacon8Web.HomeIntroTest do
       assert html =~ ~s(id="#{id}"), "missing section #{id}"
     end
 
-    for words <- ["WordPress", "Bring home", "Stripe", "file store", "holo-sims", "Locked down", "Plugins, WordPress-style"] do
+    for words <- ["WordPress", "Bringing home", "Stripe", "file store", "holo-sims", "Locked down", "Plugins, WordPress-style"] do
       assert html =~ words, "missing #{words}"
     end
   end

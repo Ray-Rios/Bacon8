@@ -423,3 +423,27 @@ export function pasteToHtml(text: string): string {
     .map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`)
     .join('');
 }
+
+// ------------------------------------------------------------------ uploads (2026-10-29)
+
+const TRANSIENT = ['loading', 'error'];
+
+/** The doc without what only this screen needs: an upload's "loading" and its error (they were saved, so a
+ * page could be stuck showing "Uploading…" for good). Blocks without them are returned as they are. */
+export function withoutTransient(doc: Doc): Doc {
+  const clean = (b: Block): Block => {
+    if (!b.settings || !TRANSIENT.some((k) => k in b.settings!)) return b;
+    const settings = { ...b.settings };
+    for (const k of TRANSIENT) delete settings[k];
+    return { ...b, settings };
+  };
+  return { ...doc, rows: doc.rows.map((r) => ({ ...r, columns: r.columns.map((c) => ({ ...c, blocks: c.blocks.map(clean) })) })) };
+}
+
+/** A picture's size scaled to fit `max` on its long side (never enlarged). */
+export function fitWithin(w: number, h: number, max: number): { w: number; h: number } {
+  const long = Math.max(w, h);
+  if (long <= max || long <= 0) return { w, h };
+  const s = max / long;
+  return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) };
+}

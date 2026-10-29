@@ -131,6 +131,7 @@ defmodule Bacon8Web.PageLive do
                 <BlockEditor.block_editor
                   id={"page-editor-#{@page.id}"}
                   content={@page.content}
+                  record_id={@page.id}
                   placeholder="Build your page content..."
                   min_height="500px"
                   autosave_delay={5000}

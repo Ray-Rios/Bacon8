@@ -70,6 +70,16 @@ defmodule Bacon8Web.Router do
     plug Guardian.Plug.LoadResource
   end
   
+  # The page builder's picture and file uploads (EditorMediaController): the session signs the
+  # request in, the CSRF token in the x-csrf-token header guards it, and the answer is JSON.
+  pipeline :editor_media do
+    plug Bacon8Web.Plugs.IpBlockerPlug
+    plug :accepts, ["json"]
+    plug :fetch_session
+    plug :protect_from_forgery
+    plug Bacon8Web.Auth
+  end
+
   pipeline :quiet_health do
     plug Bacon8Web.Plugs.QuietHealthCheck
   end
@@ -98,6 +108,11 @@ defmodule Bacon8Web.Router do
   # --------------------
   import Bacon8Web.PluginRouter
   plugin_pipelines()
+
+  scope "/editor", Bacon8Web do
+    pipe_through :editor_media
+    post "/media", EditorMediaController, :create
+  end
 
   # --------------------
   # Feed and sitemap (built from what is published; before /blog/:slug so "feed.xml" isn't a slug)
@@ -161,6 +176,7 @@ defmodule Bacon8Web.Router do
     live "/admin/emails", AdminLive.Emails, :index
     live "/admin/api-toolbox", AdminLive.ApiToolbox, :index
     live "/admin/plugins", AdminLive.Plugins, :index
+    live "/admin/audit", AdminLive.Audit, :index
 
   end
   end
@@ -279,6 +295,10 @@ defmodule Bacon8Web.Router do
     post "/:game_slug/releases/missing", Api.ReleasesController, :missing
     post "/:game_slug/releases/:build_id/live", Api.ReleasesController, :set_live
     post "/:game_slug/releases", Api.ReleasesController, :publish
+
+    # The player's items and passes in this game (store items, mounts), and a one-item check.
+    get "/:game_slug/entitlements", Api.GamesController, :list_entitlements
+    get "/:game_slug/entitlements/check", Api.GamesController, :check_entitlement
 
     get "/:game_slug/characters", Api.GamesController, :list_characters
     post "/:game_slug/characters", Api.GamesController, :create_character

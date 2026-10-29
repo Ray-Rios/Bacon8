@@ -197,6 +197,8 @@ defmodule Bacon8Web.InPlaceEditing do
 
     case save_pending(socket, kind, %{is_published: publish?}) do
       {:ok, saved} ->
+        Bacon8.Audit.log(socket.assigns.current_user.id, "#{kind}.#{if publish?, do: "published", else: "unpublished"}", to_string(kind), saved.id, %{title: saved.title})
+
         {:noreply,
          socket
          |> put_record(kind, saved)
@@ -226,6 +228,7 @@ defmodule Bacon8Web.InPlaceEditing do
 
     case delete(kind, record) do
       {:ok, _} ->
+        Bacon8.Audit.log(socket.assigns.current_user.id, "#{kind}.deleted", to_string(kind), record.id, %{title: record.title})
         {:noreply, socket |> put_flash(:info, "Deleted") |> push_navigate(to: list_path(kind))}
 
       _ ->

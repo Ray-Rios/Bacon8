@@ -62,6 +62,38 @@ defmodule Bacon8.Content.InlineMedia do
   def store(_context, _params, _opts), do: {:error, "Invalid file data"}
 
   @doc """
+  Stores a file the editor sent by HTTP (`Bacon8Web.EditorMediaController`, 2026-10-29): `path` is
+  the uploaded temp file, `filename` and `mime` are the browser's. Same checks and result as
+  `store/3`. Pictures go this way because a phone photo sent as base64 over the LiveView socket
+  was a frame big enough to drop the connection (the picture never arrived and, on a page opened
+  with the Edit button, the editor closed).
+  """
+  def store_file(context, path, filename, mime, opts \\ []) do
+    with {:ok, %{size: size}} <- File.stat(path),
+         :ok <- if(size <= @max_bytes, do: :ok, else: {:error, "File too large"}),
+         {:ok, name} <- clean_name(filename),
+         :ok <- allowed_type(name),
+         {:ok, bytes} <- File.read(path) do
+      entry = %{client_name: name, client_type: mime(mime), client_size: size}
+
+      case Uploads.upload_file(nil, path, entry, context: context, public: true) do
+        {:ok, url} ->
+          Bacon8.Content.Library.record(url, context, name, bytes, mime(mime), opts[:user_id])
+          {:ok, %{url: url, filename: name}}
+
+        {:error, reason} ->
+          {:error, "Upload failed: #{inspect(reason)}"}
+      end
+    else
+      {:error, message} when is_binary(message) -> {:error, message}
+      {:error, _} -> {:error, "Invalid file data"}
+    end
+  end
+
+  @doc "The largest file the editor may add (bytes)."
+  def max_bytes, do: @max_bytes
+
+  @doc """
   Deletes the file at `url` if it is one of this context's own uploads
   (`/uploads/public/<context>/<file>`). Anything else, including a URL that climbs out with
   `..`, a directory, or another page's file, is ignored. Returns `:ok` or `:ignored`.

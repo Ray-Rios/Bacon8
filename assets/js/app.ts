@@ -339,6 +339,9 @@ const AdminSidebarResizer = {
     const COLLAPSE_THRESHOLD = 100; // Below this, collapse to icon-only
     const ICON_ONLY_WIDTH = 60;
     const clickThreshold = 5;
+    // On a phone the sidebar is a drawer over the page (assets/css/mobile.css), opened by the
+    // Menu button at the top of the page (#admin-menu-toggle) and closed by a link or a tap outside.
+    const phone = () => window.matchMedia('(max-width: 767px)').matches;
 
     // Hide labels when collapsed, show icons
     const updateLabelsVisibility = (width: number) => {
@@ -390,6 +393,19 @@ const AdminSidebarResizer = {
     };
 
     initSidebar();
+    if (phone()) updateLabelsVisibility(DEFAULT_WIDTH);
+
+    const setOpen = (open: boolean) => {
+      el.classList.toggle('is-open', open);
+      document.getElementById('admin-menu-toggle')?.setAttribute('aria-expanded', String(open));
+    };
+    (this as any).onDocClick = (e: Event) => {
+      if (!phone()) return;
+      const t = e.target as HTMLElement;
+      if (t.closest('#admin-menu-toggle')) return setOpen(!el.classList.contains('is-open'));
+      if (el.classList.contains('is-open') && (!el.contains(t) || t.closest('a'))) setOpen(false);
+    };
+    document.addEventListener('click', (this as any).onDocClick);
 
     const collapse = () => {
       el.style.width = `${ICON_ONLY_WIDTH}px`;
@@ -471,6 +487,9 @@ const AdminSidebarResizer = {
     }
 
     handle.addEventListener('mousedown', onMouseDown);
+  },
+  destroyed() {
+    document.removeEventListener('click', (this as any).onDocClick);
   }
 };
 

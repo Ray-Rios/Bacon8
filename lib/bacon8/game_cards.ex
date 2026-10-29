@@ -19,6 +19,14 @@ defmodule Bacon8.GameCards do
   Pictures may be `.webp`, `.png`, `.jpg`, `.jpeg` or `.avif`. Without a tagline the card
   shows the game's `description` (`game/0`).
 
+  ## In the browser, or a download (2026-10-29)
+
+  `kind` is `"browser"` (Play opens the game's path) or `"download"` (a game you install). A
+  download game's card points at a **page** (`page`, a CMS page's slug): its Play button opens
+  `/pages/<slug>`, an ordinary page the admins edit in the page builder (what the game is, the
+  download button, requirements). The default kind comes from the plugin's `game/0` (`kind:`),
+  else `"browser"`; card.json may set `"kind"` and `"page"` too.
+
   ## Changing it from the admin
 
   Each plugin's admin section embeds `Bacon8Web.GameCardAdmin`. What an admin saves is a
@@ -36,7 +44,8 @@ defmodule Bacon8.GameCards do
   @image_exts ~w(.webp .png .jpg .jpeg .avif)
   @max_fronts 8
   @default_seconds 5
-  @fields ~w(fronts back tagline details play_label seconds)
+  @fields ~w(fronts back tagline details play_label seconds kind page)
+  @kinds ~w(browser download)
   @limits %{"tagline" => 140, "details" => 2000, "play_label" => 24}
   @topic "game_cards"
 
@@ -48,8 +57,14 @@ defmodule Bacon8.GameCards do
           details: String.t() | nil,
           play_label: String.t(),
           seconds: pos_integer(),
+          kind: String.t(),
+          page: String.t() | nil,
+          play_path: String.t() | nil,
           customized: boolean()
         }
+
+  @doc "What a game can be: played in the browser, or downloaded."
+  def kinds, do: @kinds
 
   def image_exts, do: @image_exts
   def max_fronts, do: @max_fronts
@@ -85,8 +100,15 @@ defmodule Bacon8.GameCards do
     base = folder(slug)
     data = if is_map(saved), do: Map.merge(base, Map.take(saved, @fields)), else: base
 
+    kind = if data["kind"] in @kinds, do: data["kind"], else: default_kind(slug)
+    page = if kind == "download", do: text(data["page"])
+
     %{
       slug: slug,
+      kind: kind,
+      page: page,
+      # where Play goes when it isn't the game's own path: a download game's page
+      play_path: page && "/pages/#{page}",
       fronts: data["fronts"] |> List.wrap() |> Enum.filter(&is_binary/1) |> Enum.take(@max_fronts),
       back: if(is_binary(data["back"]) and data["back"] != "", do: data["back"]),
       tagline: text(data["tagline"]),
@@ -95,6 +117,13 @@ defmodule Bacon8.GameCards do
       seconds: seconds(data["seconds"]),
       customized: is_map(saved)
     }
+  end
+
+  defp default_kind(slug) do
+    case Bacon8.Plugins.get(slug) do
+      nil -> "browser"
+      mod -> if match?(%{kind: "download"}, Bacon8.Plugins.game_info(mod)), do: "download", else: "browser"
+    end
   end
 
   defp text(s) when is_binary(s) do
@@ -142,7 +171,9 @@ defmodule Bacon8.GameCards do
       "tagline" => json["tagline"],
       "details" => json["details"],
       "play_label" => json["play_label"],
-      "seconds" => json["seconds"]
+      "seconds" => json["seconds"],
+      "kind" => json["kind"],
+      "page" => json["page"]
     }
   end
 
@@ -229,6 +260,12 @@ defmodule Bacon8.GameCards do
       back not in [nil, ""] and not own_picture?(slug, back) ->
         {:error, "The back picture isn't one of this card's."}
 
+      attrs["kind"] not in [nil, "" | @kinds] ->
+        {:error, "A game is played in the browser or downloaded."}
+
+      attrs["kind"] == "download" and attrs["page"] not in [nil, ""] and is_nil(Bacon8.Content.get_page_by_slug(attrs["page"])) ->
+        {:error, "That page doesn't exist."}
+
       too_long = Enum.find(@limits, fn {k, max} -> String.length(to_string(attrs[k] || "")) > max end) ->
         {key, max} = too_long
         {:error, "#{String.replace(key, "_", " ") |> String.capitalize()} is longer than #{max} characters."}
@@ -241,7 +278,9 @@ defmodule Bacon8.GameCards do
            "tagline" => to_string(attrs["tagline"] || ""),
            "details" => to_string(attrs["details"] || ""),
            "play_label" => to_string(attrs["play_label"] || ""),
-           "seconds" => seconds(attrs["seconds"])
+           "seconds" => seconds(attrs["seconds"]),
+           "kind" => if(attrs["kind"] in @kinds, do: attrs["kind"], else: nil),
+           "page" => if(attrs["kind"] == "download", do: to_string(attrs["page"] || ""), else: "")
          }}
     end
   end

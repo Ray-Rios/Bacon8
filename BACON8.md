@@ -18,6 +18,31 @@ what you read before changing it.
 
 Last substantive update: **2026-10-29**.
 
+On 2026-10-29 (b), from the owner's review on a phone:
+
+- **Phones: /admin and /chat fit the screen.** Below 768 px the admin sidebar is a drawer behind an "Admin menu"
+  button and the page gets the full width (tables scroll inside their box); the chat's channel list slides over the
+  chat from a ☰ button and closes when you pick a channel; long words and links in messages wrap instead of
+  widening the column past the screen. `assets/css/mobile.css`, `AdminSidebarResizer` (`app.ts`), the chat plugin's
+  `SidebarResizer`.
+- **The page builder's pictures upload by HTTP** (`POST /editor/media`, `Bacon8Web.EditorMediaController`), shrunk
+  in the browser to 2560 px first. They used to go as base64 inside a LiveView event: a phone photo made a frame
+  big enough to drop the connection, so the picture never arrived and a page opened with the Edit button came back
+  closed. The editor also survives a dropped connection now (`?edit=1` in the address, its words re-sent), its
+  "Uploading…" state is never saved, and the site's navbar and taskbar step aside while it is open (Done and
+  Publish were hidden under them on phones). Multipart bodies may be 26 MB (`endpoint.ex`).
+- **The store sells several items at once** (§8 "Baskets"): a cart, one checkout or one Gem payment for all of it,
+  and every purchase is a receipt with a number ("Order #8008", from 8001), shown on Purchases, the order page, the
+  library and `/admin/bacon_store/orders`. Store migration `20261029100000`.
+- **The front page's claims, checked.** Fixed in the copy: refunds (there are none, decisions log 2026-10-16) and
+  chat "in every zone". Built so they're true: the receipts above, the **audit log** (`/admin/audit`, written by
+  role changes, plugins switched on and off, pages and posts published, unpublished and deleted, blocks and
+  unblocks, store deliveries retried, channels), and **items and passes in the game API**
+  (`GET /api/games/:slug/entitlements`, `.../entitlements/check?kind=&key=`, §9).
+- **Download games have a page** (§9 "Game cards"): a game's card says whether it plays in the browser or is a
+  download, and a download game's card opens a CMS page chosen on its admin section. RaysSpaceSim's,
+  `/pages/rays-space-sim`, is created by migration `20261029110000` and assigned.
+
 On 2026-10-29:
 
 - Bacon World: **the grill fork** (the front page's) is the new starter one-handed piercing weapon, the **Robin Hood
@@ -43,7 +68,7 @@ On 2026-10-28:
   The old scene files under `assets/js/threejs/` (all but `controls/text-target.ts`) are unused, for `git rm`.
 - **A new front door** (`Bacon8Web.HomeLive`, `assets/css/intro.css`, `IntroReveal` and `IntroTagline` in
   `assets/js/intro_reveal.ts`). The bacon sizzles into view in a puff of steam (and keeps steaming), then one large
-  grill fork flies in and stabs it to the page, a tine through each strip. The tagline, "Bring home the bacon.", types
+  grill fork flies in and stabs it to the page, a tine through each strip. The tagline, "Bringing home the bacon.", types
   itself in like a terminal; hovering it (or tapping it, or focusing it) types "IT'S A SECRET TO EVERYBODY." instead.
   Sign Up and Log In are there at once. The fork and the steam are Blender renders
   (`library/pipeline/scripts/hero_forks.py`, `hero_steam.py`: a Mantaflow simulation, and `hero_sheets.py`, which
@@ -353,6 +378,8 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-27 | **Suggestions & Bugs is a plugin, `feedback`**, at `/feedback`, opened from the start menu. Members only: guests (and anyone signed out, banned or inactive) see neither the icon nor the page. Members post (with screenshots) and vote; only admins edit others' items, approve, decline and submit. | Owner's request; a plugin because a site might not want it (2026-10-25). |
 | 2026-10-27 | **Approved suggestions reach Claude by a runner on the development PC that collects them** (the site keeps the queue; nothing can push into a Claude conversation). One item at a time; the runner's token can only read submitted items and report on them, and Claude never sees it. Not GitHub issues: the hub repository is public, so members' reports and screenshots would be public, and the private plugins aren't in it. | Owner's choice of the options offered. The PC already has the code, the private plugins, Docker and the deploy script. |
 | 2026-10-27 | **Feedback fixes may deploy without the owner pressing anything**, when the owner turns on "Deploy on its own" (off by default) on `/admin/feedback/agent`, and only for a change that passed the runner's own test run and a second Claude's review and touches nothing security-sensitive (sign-in, permissions, uploads, storage, payments, webhooks, the router, deploy files, production config, dependencies, secrets, data-dropping migrations, the runner). Everything else waits for an admin's Deploy. Turning the switch on is the owner saying "deploy"; with it off, the rule that deploys happen only when the owner says stands as before. | Owner's decision ("automatic after tests"), with the holds added so a member's text can't steer a sensitive change into production unreviewed. |
+| 2026-10-29 | **A game that needs a download has its own page**, an ordinary CMS page picked on the game's admin section; its card on /games opens it. In-browser games open the game. | Owner's request: RaysSpaceSim (a download) needs an editable page; Bacon World plays in the browser. |
+| 2026-10-29 | **The store sells several items in one purchase** (a cart; one receipt with one order number). Each item stays its own order underneath. | Owner's request: the front page shows a multi-item order, and the store only sold one item at a time. |
 | 2026-10-28 | **Site backgrounds are SVG and CSS, never WebGL.** Six cosmic kinds (`Cosmos.kinds/0`) built from drifting SVG star tiles, gradients and CSS 3D transforms; only transform and opacity animate. | Owner's request: the three.js scenes made phones lag on every page. A game page that wants 3D draws its own. |
 | 2026-10-27 | **Behind Docker Desktop every visitor's address is the node's own, `192.168.65.3`** (the Kubernetes node's InternalIP; Docker's port forwarding replaces the client address before nginx sees it, and the ingress adds no real-IP header). It names no one, so `Bacon8.Security.blockable_ip?/1` refuses to block private, loopback and link-local addresses (the Block buttons, the honeypot, the suspicious-request plug, and the blocker plug all check it), and sign-ins are throttled by the account (`Security.throttle_key/2`) when the address names no one. Other per-address limits (registration 5 per address, the API's 200 a minute, `auth_login` 5 per 5 minutes in the router) are still shared by all visitors until real addresses are passed on. | Found from the security page, which showed internet scanners (`/blog/.env`, `wp-config.php`) as one internal address: it is not a compromised container. A shared address meant one scanner's probes, or five wrong passwords, could block or lock out every member. Real addresses need a proxy in front that passes them on (the owner's call). |
 
@@ -721,6 +748,7 @@ removed rather than kept as a `fixed` route.
 | Catalog | `BaconStore.Store.Catalog`: categories (`store_categories`), products, images and download files (`store_product_files`), license key pools (`store_license_keys`). File bodies use `Bacon8.Storage` like drive files; `Drive.gc_blobs/2` keeps any body a product file names |
 | Delivery | `BaconStore.Store.Fulfilment`: entitlements with `source_type` "store_order" (`store_download`, a plugin's item kind, `channel_access`, `channel_slots`), keys from the pool, Gems to the wallet. An open bank dispute takes it all away at once (Gems too, even into a negative balance); a won dispute gives it back, a lost one makes it permanent. Plugins get `{:entitlement_granted, e}` / `{:entitlement_revoked, e}` hub events |
 | Gems | `Store.buy_with_gems/2`: spend and deliver in one transaction |
+| Baskets (2026-10-29) | **Several items in one purchase.** The cart is `store_cart_items` (`BaconStore.Store.Cart`: one of each product, 20 at most, it follows the buyer between devices); "Add to cart" on an item's sheet, the Cart button opens `?cart=1`. Paying is `Store.start_basket_checkout/3` (one provider checkout: Stripe gets a line per item, `client_reference_id` the basket) or `Store.buy_basket_with_gems/2` (one transaction: all paid and delivered, or none). **Each item is still its own order**, so delivery, license keys, disputes and "Retry delivery" work per item as before; the orders of one purchase share `basket_id`, `number` (from `store_order_number_seq`, starting at 8001) and, by card, `provider_ref` (no longer unique). A completed checkout must pay the basket's total; a dispute is on the whole payment, so it holds every item. `start_checkout/3` and `buy_with_gems/2` are baskets of one. Bought items leave the cart. **Receipts:** `Store.receipt/1`, `list_user_receipts/2`, `list_receipts/1`; `StoreComponents.receipt/1` is the front page's card (number, items, total, a stamp: Paid, Pending, Void, Disputed, Charged back) on `/store/orders`, `/store/orders/:id`, the library's "Recent orders" and `/admin/bacon_store/orders` (with the buyer; the detail shows each item's order). Migration `20261029100000` makes every existing order a basket of one with a number |
 | The Gem (2026-10-25) | The currency has its own 3D gem, rendered in Blender (`library/pipeline/scripts/fire_gem.py`, Cycles turntable, 48 frames; `gem_sheets.py` adds the star glints and makes the sprite sheets `priv/static/images/gem/gem-64/160/288.webp` and the still `gem.webp`). On pages it is `<b8-gem>` (`assets/js/fire_gem.ts`): it turns and floats, and hovering makes it react a different way each time (whirl, hop, flare of embers, sparkles, wobble). Templates use `Bacon8Web.Components.Gem`: `<.gem size={20} />`, `<.gems amount={1500} />`, and `<.icon icon={item.icon} />` where `"gem"` is the gem (the Store's navbar link, Products in the admin sidebar). Amounts on the store pages, the Gem packs (bigger pack, bigger gem) and gem-pack products all use it; `Store.format_gems/1` stays for plain text |
 | Card | `Store.start_checkout/3` reserves a license key until the order is paid, fails or is cancelled. Paid but undeliverable (keys ran out) stays "paid" with a reason; `/admin/bacon_store/orders` has "Retry delivery" |
 | Expiry | `BaconStore.Store.Sweeper` (every 5 min, advisory lock): ends timed items and passes (a pass's channel membership goes with it), cancels card orders unpaid for 48 h |
@@ -854,6 +882,7 @@ decisions log.)
 | `Games` session claims | one live session per character (`claim` / `release`, server key) |
 | `GameCharacter.instance_id` / `instance_location` | resume-in-instance: where to put a character on next login, opaque to the hub |
 | launcher download controller | `/games/:game_slug/launcher`; filename from the manifest's `launcher.filename` or the game's name |
+| items and passes (2026-10-29) | `GET /api/games/:game_slug/entitlements`: the player's active entitlements in that game (the kinds its plugin declares in `entitlement_kinds/0`, or named after its slug, like `bacon_world_mount`); `.../entitlements/check?kind=&key=` answers `{active}`. A player token reads its own; the server key passes `user_id` |
 
 ### Moved to the game's own plugin (2026-10-16)
 
@@ -1074,7 +1103,9 @@ priv/static/card/
 
 An admin changes it on the plugin's admin page, which embeds the hub's section
 `<.live_component module={Bacon8Web.GameCardAdmin} id="game-card" plugin="<slug>" current_user={@current_user} />`
-(preview, add/reorder/remove pictures, back picture, texts). `Bacon8.GameCards` keeps the change in
+(preview, add/reorder/remove pictures, back picture, texts, and since 2026-10-29 **how it's played**: in the
+browser, or a download with **the game's page**, a CMS page its Play button opens; the plugin's `game/0` may say
+`kind: "download"`, card.json `"kind"`/`"page"`). `Bacon8.GameCards` keeps the change in
 `game_cards` (one row per plugin, overriding the folder field by field) and uploads in
 `uploads/public/game_cards/<slug>/` (files no saved card uses are deleted on save); "Reset" goes
 back to the folder. /games updates live. Bacon World's section is on `/admin/bacon_world`,

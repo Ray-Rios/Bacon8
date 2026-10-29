@@ -46,6 +46,7 @@ defmodule Bacon8Web.Components.BlockEditor do
   attr :min_height, :string, default: "400px"
   attr :class, :string, default: ""
   attr :kind, :string, default: "page", doc: "page or post: which starters an empty editor offers"
+  attr :record_id, :string, default: nil, doc: "the page's or post's id: where pictures and files are uploaded (/editor/media)"
 
   def block_editor(assigns) do
     # Support both :value and :content attribute names
@@ -92,6 +93,7 @@ defmodule Bacon8Web.Components.BlockEditor do
         data-autosave-delay={@autosave_delay}
         data-readonly={to_string(@readonly)}
         data-kind={@kind}
+        data-record-id={@record_id}
         data-initial-content={@value}
         style={"min-height: #{@min_height};"}
         class="block-editor-container"

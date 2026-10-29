@@ -3,7 +3,7 @@ defmodule Bacon8Web.HomeLive do
   The front door, for visitors (members go straight to /games). Rewritten 2026-10-28 to set
   the site's tone: the bacon sizzles into view in a puff of steam, and a big grill fork flies in and
   pins it to the page (rendered in Blender: library/pipeline/scripts/hero_forks.py, hero_steam.py);
-  "Bring home the bacon." types itself in, and hovering or tapping it says the old secret; Sign Up and Log In are there from the first moment.
+  "Bringing home the bacon." types itself in, and hovering or tapping it says the old secret; Sign Up and Log In are there from the first moment.
   Scrolling down tells what the open-source repository is (a WordPress replacement and a game
   hosting platform) and what each part does, the page editor first.
 
@@ -17,12 +17,14 @@ defmodule Bacon8Web.HomeLive do
   import Bacon8Web.Components.Gem, only: [gem: 1]
 
   @repo "https://github.com/Ray-Rios/Bacon8"
+  # the typed tagline: change the words here; the typing counts its letters (--n) itself
+  @tagline "Bringing home the bacon."
 
   def mount(_params, _session, socket) do
     if socket.assigns.current_user do
       {:ok, push_navigate(socket, to: ~p"/games")}
     else
-      {:ok, assign(socket, page_title: "Bring home the bacon", repo: @repo)}
+      {:ok, assign(socket, page_title: "Bringing home the bacon", repo: @repo, tagline: @tagline)}
     end
   end
 
@@ -47,7 +49,7 @@ defmodule Bacon8Web.HomeLive do
 
         <h1 class="intro-title">Bacon<span>8</span></h1>
         <p id="intro-tag" class="intro-tag" phx-hook="IntroTagline" data-alt="IT'S A SECRET TO EVERYBODY." tabindex="0" title="Psst">
-          <span class="intro-type" style="--n:21">Bring home the bacon.</span><b class="intro-caret">_</b>
+          <span class="intro-type" style={"--n:#{String.length(@tagline)}"}>{@tagline}</span><b class="intro-caret">_</b>
         </p>
         <p class="intro-sub">
           An open-source replacement for WordPress that hosts your games too. Pages, blog, store,
@@ -83,7 +85,7 @@ defmodule Bacon8Web.HomeLive do
             <ul>
               <li>A games hub with a card for every game</li>
               <li>An API for game clients and servers: sign-in, items, passes</li>
-              <li>Zones and holo-sim instances, each with its own chat</li>
+              <li>Zones and holo-sim instances, with chat where the players are</li>
               <li>Sell the game, and what's in it, in the same store</li>
               <li>Every game is a plugin, so it stays yours</li>
             </ul>
@@ -121,7 +123,7 @@ defmodule Bacon8Web.HomeLive do
       <%!-- ============================================================ the store --%>
       <section id="intro-store" class="intro-sec" data-reveal>
         <p class="intro-kicker">The store</p>
-        <h2 class="intro-h2">Bring home <em>the bacon.</em></h2>
+        <h2 class="intro-h2">Bringing home <em>the bacon.</em></h2>
         <div class="intro-split">
           <div class="intro-copy">
             <p>
@@ -131,7 +133,9 @@ defmodule Bacon8Web.HomeLive do
             <p>
               Real-life income or an in-game economy, it's the same store: sell downloads with
               license keys, game items and passes, or Gems, a currency for your community with
-              its own ledger. Refunds and disputes are handled from the admin pages.
+              its own ledger. Fill a cart and pay once: every purchase gets a receipt like this one,
+              in the buyer's library and on the admin's orders page. Sales are final; disputes and
+              chargebacks are handled from the admin pages.
             </p>
           </div>
           <div class="intro-receipt" aria-hidden="true">
@@ -165,9 +169,9 @@ defmodule Bacon8Web.HomeLive do
             <div class="intro-art intro-art-chat" aria-hidden="true"><i></i><i></i><i></i></div>
             <h3>Chat, with your games in it</h3>
             <p>
-              Channels with presence and reactions, private and VIP channels, and invites. Game
-              instances, zones and holo-sims, get channels of their own, so players can talk
-              where they play.
+              Channels with presence and reactions, private channels, VIP passes sold in the store,
+              and invites. Game instances like holo-sims get channels of their own, so players can
+              talk where they play.
             </p>
           </div>
           <div class="intro-feature" style="--i:2">

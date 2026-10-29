@@ -257,6 +257,16 @@ imports its file).
   brings words, never styles. The font, size and colour pickers are gone (pages stay consistent; old pages keep their
   formatting). Pictures: upload (a phone offers the camera), the library, or a link; dropped or pasted files become
   picture, gallery, video, audio or file blocks where they land. A picture without alt text shows "Add alt text".
+  **Since 2026-10-29 uploads go by HTTP** (`POST /editor/media`, `Bacon8Web.EditorMediaController`: the session
+  signs it in, the CSRF token guards it, staff only, 25 MB at most, the same checks as `InlineMedia.store/3`), and a
+  photo is shrunk in the browser to 2560 px on its long side first (a JPEG; PNGs keep their transparency; GIFs are
+  sent as they are). The old way, base64 inside the `block-media-upload` LiveView event, made a phone photo one
+  WebSocket frame of several megabytes: the connection dropped, the picture never arrived, and a page opened with
+  the Edit button came back closed (the server still handles the event, for library pictures and old clients).
+  The editor puts `?edit=1` in the address while it is open (and tells LiveView, which rejoins with its own copy of
+  the address), so a dropped connection comes back editing, and it re-sends its words when the connection returns
+  (a published page's unsaved words live in the LiveView until Save). "Uploading…" and an upload's error are never
+  saved (`model.withoutTransient/1`).
 - **Undo and Redo** (also Ctrl/Cmd+Z, Shift+Z, Y): whole-page snapshots, one step per burst of typing.
 - **New block: Button** (label typed on it; link, look and place in its gear). The editor refuses links that aren't
   http(s), mailto, a path here or #, and so does the server (`BlockEditor.safe_href/1`).

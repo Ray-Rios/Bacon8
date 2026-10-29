@@ -147,3 +147,19 @@ test('every starter is a valid, non-empty doc of known blocks', () => {
   assert.ok(!startersFor('page').some((s) => s.id === 'patch'));
   assert.ok(startersFor('post').some((s) => s.id === 'patch'));
 });
+
+test('an upload in progress or failed is never saved; the rest of the block is', () => {
+  const img = M.block('image', { content: '', settings: { size: 'full', loading: true, error: '' } });
+  const doc: M.Doc = { version: 1, rows: [M.row([img, M.textBlock('<p>hi</p>')])] };
+  const out = M.withoutTransient(doc);
+  const b = out.rows[0].columns[0].blocks[0];
+  assert.deepEqual(b.settings, { size: 'full' });
+  assert.equal(out.rows[0].columns[0].blocks[1], doc.rows[0].columns[0].blocks[1], 'untouched blocks are the same objects');
+  assert.equal(img.settings!.loading, true, 'the editor keeps its own state');
+});
+
+test('photos are scaled to fit 2560 px on the long side, never up', () => {
+  assert.deepEqual(M.fitWithin(4032, 3024, 2560), { w: 2560, h: 1920 });
+  assert.deepEqual(M.fitWithin(3024, 4032, 2560), { w: 1920, h: 2560 });
+  assert.deepEqual(M.fitWithin(800, 600, 2560), { w: 800, h: 600 });
+});

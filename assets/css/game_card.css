@@ -222,3 +222,7 @@ span.gc-play { cursor: default; }
   .gc-pic { transition: opacity 0.3s ease; transform: none; }
   .gc-gloss::after { display: none; }
 }
+
+/* how the game is played (2026-10-29: Bacon8.GameCards kind): in the browser, or a download */
+.gc-kind { flex: none; align-self: flex-start; margin: -0.15rem 0 0.55rem; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em; color: #c7f9cc; background: rgba(34, 197, 94, 0.16); box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35); }
+.gc-kind-download { color: #bfdbfe; background: rgba(59, 130, 246, 0.18); box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.4); }
