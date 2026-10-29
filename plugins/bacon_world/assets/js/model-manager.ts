@@ -12,7 +12,8 @@ import type {
   ModelLoadOptions 
 } from './types';
 import { CharacterAnimator } from './anim-driver';
-import { WeaponModels, gearOf, holdItem } from './items';
+import { WeaponModels, gearOf, holdItem, item as catalogItem } from './items';
+import { wearHat } from './crafted';
 import type { Gear } from './wardrobe';
 
 // Clip names (lower case) each lobby action prefers, best first. The Bacon8 humans
@@ -90,7 +91,10 @@ export class CharacterModelManager {
     const off = g.off ?? null;
     const twoHanded = gearOf(main)?.hands === 2;
     this.animators.get(characterId)?.setGear(gearOf(main), twoHanded ? null : gearOf(off));
-    this.humanInstances.get(characterId)?.setWorn(g);
+    const human = this.humanInstances.get(characterId);
+    human?.setWorn(g);
+    // a hat goes on the head bone (crafted.ts), a Bacon8 human's only
+    if (human) wearHat(character.mesh, human.body, catalogItem(g.head)?.model === 'RobinHat');
     await Promise.all([
       holdItem(this.weapons, character.mesh, 'main', main),
       holdItem(this.weapons, character.mesh, 'off', twoHanded ? null : off),

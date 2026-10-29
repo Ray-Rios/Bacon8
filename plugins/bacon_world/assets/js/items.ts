@@ -8,6 +8,7 @@ import { GLTFLoader, MeshoptDecoder } from '../../../../assets/js/vendor/three-l
 import { modelUrl } from './asset-url';
 import { applySurfaces } from './surface-textures';
 import type { Gear, GearSet } from './anim-driver';
+import { makeArrowModel, makeGrillFork } from './crafted';
 
 export const WEAPONS_GLB = '/models/Weapons/B8_Weapons.glb';
 export const ICONS_BASE = '/models/Weapons/icons';
@@ -60,7 +61,7 @@ export function iconUrl(id: string | null | undefined): string | null {
 
 /** EverQuest's names for the worn slots. */
 export const SLOT_NAMES: Record<string, string> = {
-  main: 'Primary', off: 'Secondary', under_top: 'Undershirt', under_bottom: 'Underwear',
+  main: 'Primary', off: 'Secondary', head: 'Head', under_top: 'Undershirt', under_bottom: 'Underwear',
   chest: 'Chest', legs: 'Legs', feet: 'Feet',
 };
 
@@ -178,6 +179,8 @@ export const HOLD: Record<string, { y?: number; roll?: number; off?: number }> =
  * +Y from the grip toward the tip). A child named `RodTip` marks where a fishing line hangs.
  */
 const PROCEDURAL: Record<string, () => THREE.Object3D> = {
+  // 2026-10-29: the starter piercing weapon (crafted.ts)
+  GrillFork: () => makeGrillFork(),
   Bow: () => makeBow('Bow'),
   ShortBow: () => makeBow('ShortBow'),
   Longbow: () => makeBow('Longbow'),
@@ -361,27 +364,13 @@ function makeBow(model: string): THREE.Object3D {
 }
 
 /** An arrow (metres): its nock at the origin, pointing +Z, 0.75 m long. */
+/** The arrow the bows shoot (2026-10-29: the site's hat-shot arrow; crafted.ts), along +Z, nock at 0. */
 export function makeArrow(): THREE.Group {
-  const a = new THREE.Group();
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0045, 0.0045, 0.72, 5).rotateX(Math.PI / 2).translate(0, 0, 0.36), ARROW_MATS.shaft);
-  const head = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.05, 4).rotateX(Math.PI / 2).translate(0, 0, 0.745), ARROW_MATS.head);
-  a.add(shaft, head);
-  for (let i = 0; i < 3; i++) {
-    const f = new THREE.Mesh(new THREE.PlaneGeometry(0.018, 0.09).translate(0.011, 0, 0.07), ARROW_MATS.feather);
-    f.rotation.z = (i * Math.PI * 2) / 3;
-    a.add(f);
-  }
-  a.name = 'Arrow';
-  return a;
+  return makeArrowModel();
 }
 
 const PLUS_Z = new THREE.Vector3(0, 0, 1);
 
-const ARROW_MATS = {
-  shaft: new THREE.MeshStandardMaterial({ color: '#9C7A4E', roughness: 0.7 }),
-  head: new THREE.MeshStandardMaterial({ color: '#5E6268', roughness: 0.35, metalness: 0.8 }),
-  feather: new THREE.MeshStandardMaterial({ color: '#D9D2C2', roughness: 0.9, side: THREE.DoubleSide }),
-};
 
 /** True for a model held in the left hand even as the main weapon (the bows). */
 export function heldLeft(model: string | null | undefined): boolean {

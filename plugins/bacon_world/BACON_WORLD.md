@@ -18,7 +18,7 @@ Related documents:
   deployment.
 - Facts dated. The owner's decisions are recorded, not re-argued.
 
-Last update: **2026-10-28**.
+Last update: **2026-10-29**.
 
 ---
 
@@ -45,7 +45,7 @@ It is also the template other Bacon8 games copy.
 All of it uses our own or CC0 art. Every 3D asset is built by scripts in the game repository,
 so it can be rebuilt and changed.
 
-## 2. State on 2026-10-28
+## 2. State on 2026-10-29
 
 > **Hub note from Claude Code, 2026-10-25.** Everything listed below up to and including the
 > 24f delivery (skill tree, stable, game cards, the Gem) is **committed and deployed**, and
@@ -72,6 +72,31 @@ so it can be rebuilt and changed.
 
 **Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
 The owner's testing of it led to the next delivery.
+
+**Delivered 2026-10-29 (a), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-29a.md`): **the site's hat, fork, arrow and
+bacon come into the game.** The owner: the front page's hat and arrow (now on /games) should be "a wearable hat and
+placeable object", the arrow "the bow's projectile"; "make the grill fork the new starter 1h piercing weapon"; "the bacon
+can be brought in game too... as the fishing bobber". All four are drawn in code, from the same shapes as the site's
+Blender renders (`library/pipeline/scripts/hero_hat.py`, `hero_forks.py`), in a new `crafted.ts`: **no models to sync**.
+
+- **The grill fork** (`grill_fork`, set `dagger`, Piercing, DMG 4 / DLY 8, reach 0.6 m, model `GrillFork`): a 0.6 m
+  barbecue fork, walnut handle with brass ferrule and cap, steel shank and two tines. It replaces the Worn Dagger in the
+  starter kit (the Worn Dagger stays in the catalogue, so characters who have one keep it). Held in the weapon grip like
+  the dagger (`items.ts` PROCEDURAL).
+- **The Robin Hood hat** (`robin_hood_hat`, armour, AC 1, 75c, sold by Tilda): the hero hat's crown, brim, band, a red
+  feather and a quill. **A new worn slot, `head`** (`Inventory` `@equipment`, `Items` `@wear_slots`, the inventory window's
+  Head box, `wardrobe.ts` `GearSlot`). Worn, it rides the head bone (`crafted.ts` `wearHat`, placed from the skeleton's
+  bind pose so it suits either body, `HAT_FIT` tuned in the harness: female up 8.5 cm, scale 1.15; male up 10 cm, back
+  1.2 cm, scale 1.25); `model-manager.ts` `setGear` puts it on and takes it off, so other players see it too. **Placeable**:
+  `X_RobinHat` in the build catalogue (Props, members), drawn from the same code (`world-dressing.ts` `template()`).
+- **The bow's arrow** is the hat's arrow (`makeArrowModel`: a 0.79 m shaft, crest bands, a nock, a four-sided head, three
+  vanes, one red), in the hand and in flight (`arrows.ts` uses `items.ts` `makeArrow`).
+- **The fishing bobber** is two wavy strips of bacon, meat and fat by vertex colour (`makeBaconBobber`, `water.ts`).
+- Icons (128 px, `priv/static/icons/grill_fork.png`, `robin_hood_hat.png`), rendered from the same code.
+- Checked: the four models in a three.js preview, the hat on both bodies in the harness (`?hat=1`, `?hatfit=up,fwd,tilt,scale`)
+  from the front, side and back.
+- Tests: Elixir `inventory_test.exs` (the login gear now has `head`; new: the fork in the starter kit, the hat only on the
+  head, on and off), JS `crafted.test.ts` (6: sizes and directions, the hat's faces point outward, the bobber, `hatOnHead`).
 
 **Delivered 2026-10-28 (b), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-28b.md`): **the village as placements,
 binding stones, groups, and the store's glass cards.** The owner's brief: convert the village and the existing camps into
@@ -796,6 +821,7 @@ The first 2026-10-23 delivery:
 | 2026-10-28 | **A bow, and no arrows to manage: bows fire endless arrows.** |
 | 2026-10-28 | **The village and the camps become placements.** Only admins and GMs may edit a town: nothing within **100 m** of a binding stone (was 70 m in the plan). |
 | 2026-10-28 | **Groups, EverQuest style, up to 20; no raids.** Experience is split by level weight with a small group bonus; grey-con, dead or far (100 m) members get none. Anyone in the group may loot during the lock minute, one at a time; coins split evenly among the members near. |
+| 2026-10-29 | **The site's grill fork is the starter one-handed piercing weapon; the Robin Hood hat is a wearable hat and a placeable object; the bow shoots the hat's arrow; the fishing bobber is bacon.** |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
 
 ## 4. How it fits together
@@ -856,7 +882,7 @@ Characters are the hub's `game_characters` (games DB):
   same weights from the look's sliders (22 on the male since 2026-10-24; 28 on the female since stage G). A morph that moves joints (`Shoulders_Broad`)
   moves the bones too (`joint_offsets` in the manifest).
 - **Wardrobe** (both bodies). Worn items come from the gear (`under_top`, `under_bottom`,
-  `chest`, `legs`, `feet`), not the look. Each is a garment mesh plus a design: a packed
+  `chest`, `legs`, `feet`; and `head`, the Robin Hood hat, drawn in code by `crafted.ts`), not the look. Each is a garment mesh plus a design: a packed
   texture (shade, trim, accent, cut-out) tinted with the item's three colours (his designs in
   `Wardrobe/Male`).
 - **After the animation** (`postAnimate`): the posture correction and relaxed fingers on
@@ -1208,7 +1234,8 @@ Claude session linked to the development PC through the desktop app):
   views side by side; navigation times out at once, then wait about a minute and
   screenshot). Parameters: `body`, `clip`, `t`, `view` (full, upper, side, hand), `yaw`,
   `focus=<bone>&dist=&az=`, `hair`, `facial`, `shape=key:v,...`, `gear=slot:item,...` (slots
-  `under_top`, `under_bottom`, `chest`, `legs`, `feet`), `main`, `off`, `tilt`, `spine`, `clav`,
+  `under_top`, `under_bottom`, `chest`, `legs`, `feet`), `main`, `off`, `hat=1` (the Robin Hood hat; `hatfit=up,fwd,tilt,scale`
+  tries a fit), `w=`/`h=` (each view's size), `tilt`, `spine`, `clav`,
   `rest=1` (the bind pose), `mob=1` (the skeleton creature on the male's packs). `village.html?mode=dragon`
   (`scale`, `clip`, `t`, `tint=scales,membrane,eye`, `fly=1`, `yaw`) and `mode=lair` show the dragon
   and the lair. Each frame

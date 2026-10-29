@@ -119,8 +119,8 @@ function h(tag: string, attrs: Attrs = {}, ...kids: Array<Node | string | null |
 }
 
 const HAND_SLOTS: Array<[string, string]> = [['main', 'Primary'], ['off', 'Secondary']];
-const WORN_SLOTS: Array<[string, string]> = [['chest', 'Chest'], ['legs', 'Legs'], ['feet', 'Feet'], ['under_top', 'Undershirt'], ['under_bottom', 'Underwear']];
-const FUTURE_SLOTS = ['Head', 'Arms', 'Hands'];
+const WORN_SLOTS: Array<[string, string]> = [['head', 'Head'], ['chest', 'Chest'], ['legs', 'Legs'], ['feet', 'Feet'], ['under_top', 'Undershirt'], ['under_bottom', 'Underwear']];
+const FUTURE_SLOTS = ['Arms', 'Hands'];
 const EQUIP_SLOTS = new Set(['main', 'off', ...WORN_SLOTS.map(([s]) => s)]);
 const SPECIAL_KEYS = ['Q', 'E', 'F', 'Z', 'X'];
 

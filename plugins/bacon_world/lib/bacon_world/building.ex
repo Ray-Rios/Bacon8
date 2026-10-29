@@ -114,6 +114,8 @@ defmodule BaconWorld.Building do
     kit = for k <- @kit, do: %{id: "K_" <> k, name: k |> String.replace("_", " ") |> words(), category: "Building", kind: "model", default_role: "member", model: "K_" <> k, file: "kit"}
     # the stone plinth the village's houses stand on (world-dressing.ts makes it; no file of its own)
     kit = kit ++ [%{id: "X_Plinth", name: "Stone plinth", category: "Building", kind: "model", default_role: "member", model: "X_Plinth", file: nil}]
+    # the Robin Hood hat (2026-10-29), made in code (crafted.ts) like the plinth
+    kit = kit ++ [%{id: "X_RobinHat", name: "Robin Hood hat", category: "Props", kind: "model", default_role: "member", model: "X_RobinHat", file: nil}]
 
     mobs =
       for {kind, def} <- Enum.sort_by(Spawns.kinds(), fn {_k, d} -> {Map.get(d, :boss, false), Enum.min(d.levels)} end) do

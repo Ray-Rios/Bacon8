@@ -11,6 +11,7 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { GLTFLoader, MeshoptDecoder, RoomEnvironment } from '../../../../assets/js/vendor/three-loaders';
 import { UNITS_PER_METRE } from './controls-math';
+import { makeRobinHat } from './crafted';
 import { modelUrl } from './asset-url';
 import { Family, Surface, applySurface, surfaceFor, surfacesEnabled } from './surface-textures';
 
@@ -155,6 +156,14 @@ export class WorldDressing {
 
   /** A loaded piece by node name (P_<Id>, K_<Id>), for build mode's placed objects (placed-view.ts). */
   template(name: string): THREE.Object3D | null {
+    // the Robin Hood hat (2026-10-29) is made in code, so it is there even before the files load
+    if (name === 'X_RobinHat' && !this.templates.has(name)) {
+      const hat = makeRobinHat();
+      hat.scale.setScalar(1.5); // a placed hat reads at a distance; build mode's [ ] sizes it
+      const holder = new THREE.Group();
+      holder.add(hat);
+      this.templates.set(name, holder);
+    }
     return this.templates.get(name) || null;
   }
 

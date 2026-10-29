@@ -29,6 +29,7 @@ defmodule BaconWorld.InventoryTest do
     assert payload.gear == %{
              "main" => "worn_short_sword",
              "off" => nil,
+             "head" => nil,
              "under_top" => "linen_bikini_top",
              "under_bottom" => "linen_bikini_bottom",
              "chest" => nil,
@@ -74,6 +75,19 @@ defmodule BaconWorld.InventoryTest do
     assert {:ok, _} = Inventory.unequip(c.id, "under_top")
     refute Map.has_key?(slots(c.id), "under_top")
     assert Inventory.gear_ids(Inventory.equipment(c.id))["chest"] == "wool_sweater"
+  end
+
+  test "the grill fork is the starter piercing weapon; the Robin Hood hat goes on the head", %{user_id: user_id, c: c} do
+    assert {:ok, _} = World.character_login_payload(user_id, c.id)
+    assert "grill_fork" in Map.values(slots(c.id))
+    refute "worn_dagger" in Map.values(slots(c.id))
+    {:ok, [bag]} = Inventory.add(c.id, "robin_hood_hat")
+    assert {:error, :cannot_equip_there} = Inventory.move(c.id, bag, "chest")
+    assert {:ok, _} = Inventory.auto_equip(c.id, bag)
+    assert slots(c.id)["head"] == "robin_hood_hat"
+    assert Inventory.gear_ids(Inventory.equipment(c.id))["head"] == "robin_hood_hat"
+    assert {:ok, _} = Inventory.unequip(c.id, "head")
+    refute Map.has_key?(slots(c.id), "head")
   end
 
   test "selling takes a whole bag slot, never what is worn", %{c: c} do

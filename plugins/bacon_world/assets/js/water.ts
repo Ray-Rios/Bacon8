@@ -16,6 +16,7 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { UNITS_PER_METRE } from './controls-math';
 import { applySurface, surfacesEnabled } from './surface-textures';
+import { makeBaconBobber } from './crafted';
 
 const U = UNITS_PER_METRE;
 
@@ -381,11 +382,12 @@ export class FishingView {
   private waterY = 0;
 
   constructor(private parent: THREE.Object3D) {
+    // the bobber is two strips of bacon (2026-10-29, the site's icon; crafted.ts)
     this.bobber = new THREE.Group();
-    const top = new THREE.Mesh(new THREE.SphereGeometry(0.06 * U, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#D8332A', roughness: 0.4 }));
-    const bottom = new THREE.Mesh(new THREE.SphereGeometry(0.06 * U, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#F2F2EE', roughness: 0.4 }));
-    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.006 * U, 0.006 * U, 0.08 * U, 5).translate(0, 0.08 * U, 0), new THREE.MeshStandardMaterial({ color: '#222222' }));
-    this.bobber.add(top, bottom, stick);
+    const bacon = makeBaconBobber(0.17);
+    bacon.scale.setScalar(U);
+    bacon.position.y = 0.01 * U;
+    this.bobber.add(bacon);
     this.bobber.visible = false;
     this.linePos = new Float32Array(16 * 3);
     const geo = new THREE.BufferGeometry();

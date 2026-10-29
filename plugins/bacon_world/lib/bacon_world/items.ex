@@ -22,7 +22,7 @@ defmodule BaconWorld.Items do
     * `id`, `name`
     * `kind` - `"weapon"`, `"shield"`, `"light"`, `"armor"` or `"junk"`
     * `slots` - where it can be equipped: `"main"` (right hand), `"off"` (left), or a
-      worn slot (`"under_top"`, `"under_bottom"`, `"chest"`, `"legs"`, `"feet"`)
+      worn slot (`"head"`, `"under_top"`, `"under_bottom"`, `"chest"`, `"legs"`, `"feet"`)
     * `hands` - 2 for two-handed weapons, which need the off hand empty
     * `set` - the animation set it is held and swung with
     * `skill` - EverQuest's weapon skill line, shown on the item
@@ -41,6 +41,9 @@ defmodule BaconWorld.Items do
     # The starter kit: every new character gets these once.
     %{id: "worn_short_sword", name: "Worn Short Sword", kind: "weapon", slots: ["main", "off"], hands: 1, set: "sword_1h", skill: "1H Slashing", dmg: 6, dly: 12, reach: 0.95, model: "Sword", value: 8},
     %{id: "worn_dagger", name: "Worn Dagger", kind: "weapon", slots: ["main", "off"], hands: 1, set: "dagger", skill: "Piercing", dmg: 4, dly: 8, reach: 0.5, model: "Dagger", value: 5},
+    # the starter piercing weapon (2026-10-29): the site's grill fork, drawn in code (crafted.ts)
+    %{id: "grill_fork", name: "Grill Fork", kind: "weapon", slots: ["main", "off"], hands: 1, set: "dagger", skill: "Piercing", dmg: 4, dly: 8, reach: 0.6, model: "GrillFork", value: 5,
+      icon_url: "/plugins/bacon_world/icons/grill_fork.png"},
     %{id: "worn_club", name: "Worn Club", kind: "weapon", slots: ["main", "off"], hands: 1, set: "blunt_1h", skill: "1H Blunt", dmg: 6, dly: 13, reach: 0.85, model: "Club", value: 4},
     %{id: "worn_spear", name: "Worn Spear", kind: "weapon", slots: ["main"], hands: 2, set: "polearm", skill: "2H Piercing", dmg: 11, dly: 17, reach: 1.9, model: "Spear", value: 10},
     %{id: "worn_quarterstaff", name: "Worn Quarterstaff", kind: "weapon", slots: ["main"], hands: 2, set: "staff", skill: "2H Blunt", dmg: 10, dly: 16, reach: 1.6, model: "Quarterstaff", value: 6},
@@ -120,7 +123,12 @@ defmodule BaconWorld.Items do
     %{id: "striped_bass", name: "Striped Bass", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/striped_bass.png", value: 8},
     %{id: "red_snapper", name: "Red Snapper", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/red_snapper.png", value: 12},
     %{id: "silver_tuna", name: "Silver Tuna", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/silver_tuna.png", value: 90},
-    %{id: "tangle_of_kelp", name: "Tangle of Kelp", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/tangle_of_kelp.png", value: 1}
+    %{id: "tangle_of_kelp", name: "Tangle of Kelp", kind: "junk", slots: [], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, stack: 20, model: nil, icon_url: "/plugins/bacon_world/icons/tangle_of_kelp.png", value: 1},
+
+    # The first hat (2026-10-29): the site's Robin Hood hat, worn in the head slot on the head bone
+    # (crafted.ts wearHat), sold by Tilda. Also placeable in build mode (X_RobinHat).
+    %{id: "robin_hood_hat", name: "Robin Hood Hat", kind: "armor", slots: ["head"], hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, ac: 1, value: 75, model: "RobinHat",
+      icon_url: "/plugins/bacon_world/icons/robin_hood_hat.png"}
   ]
 
   # What can be worn. Underwear: six sets (top and bottom are separate items), the
@@ -172,7 +180,7 @@ defmodule BaconWorld.Items do
                  |> Map.merge(%{kind: "armor", wear: %{"female" => female, "male" => female}})
                end)
 
-  @wear_slots ~w(under_top under_bottom chest legs feet)
+  @wear_slots ~w(head under_top under_bottom chest legs feet)
 
   @armor_defaults %{hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, ac: 0, stack: 1, model: nil, icon: nil, icon_url: nil}
 
@@ -185,7 +193,7 @@ defmodule BaconWorld.Items do
   @starter_kit [
     {"worn_short_sword", "main"},
     {"worn_round_shield", nil},
-    {"worn_dagger", nil},
+    {"grill_fork", nil},
     {"worn_club", nil},
     {"worn_spear", nil},
     {"worn_quarterstaff", nil},

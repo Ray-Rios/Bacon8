@@ -24,7 +24,9 @@ defmodule BaconWorld.BuildingTest do
       assert MapSet.member?(ids, "K_Wall_Stone")
       for kind <- Map.keys(Spawns.kinds()), do: assert(MapSet.member?(ids, "mob:" <> kind))
       for t <- Merchants.templates(), do: assert(MapSet.member?(ids, "npc:" <> t.id))
-      assert Enum.count(cat, &(&1.kind == "model")) == 127
+      # 90 props, 36 building pieces, the plinth and (2026-10-29) the Robin Hood hat
+      assert Enum.count(cat, &(&1.kind == "model")) == 128
+      assert Building.asset("X_RobinHat").category == "Props"
       assert Building.asset("X_Plinth").category == "Building"
       assert Building.asset("P_TreeOak").category == "Trees & plants"
       assert Building.asset("P_Boulder").category == "Rocks"

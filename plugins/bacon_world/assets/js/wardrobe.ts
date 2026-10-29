@@ -12,9 +12,10 @@
 // Pure functions here (unit-tested); human-factory.ts does the three.js side.
 import type { Body } from './appearance';
 
-export type GearSlot = 'main' | 'off' | 'under_top' | 'under_bottom' | 'chest' | 'legs' | 'feet';
+export type GearSlot = 'main' | 'off' | 'head' | 'under_top' | 'under_bottom' | 'chest' | 'legs' | 'feet';
 export type Gear = Partial<Record<GearSlot, string | null>>;
-export const WORN_SLOTS: GearSlot[] = ['under_top', 'under_bottom', 'chest', 'legs', 'feet'];
+// 'head' (2026-10-29) holds hats, which go on the head bone (crafted.ts wearHat), not garments
+export const WORN_SLOTS: GearSlot[] = ['head', 'under_top', 'under_bottom', 'chest', 'legs', 'feet'];
 
 /** What every character starts out wearing (BaconWorld.Items.starter_wear/0). */
 export const STARTER_GEAR: Gear = { under_top: 'linen_bikini_top', under_bottom: 'linen_bikini_bottom' };

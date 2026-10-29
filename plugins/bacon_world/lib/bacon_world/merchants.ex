@@ -83,7 +83,8 @@ defmodule BaconWorld.Merchants do
       },
       sells: ~w(linen_bikini_top linen_bikini_bottom athletic_top athletic_bottom rose_lace_top rose_lace_bottom
                 coral_top coral_bottom polka_dot_top polka_dot_bottom emerald_top emerald_bottom
-                cloth_tunic blue_dyed_tunic cloth_tank wool_sweater cloth_shorts cloth_trousers cloth_shoes leather_boots)
+                cloth_tunic blue_dyed_tunic cloth_tank wool_sweater cloth_shorts cloth_trousers cloth_shoes leather_boots
+                robin_hood_hat)
     },
     # The angler (2026-10-26): on the Millpond's east bank (BaconWorld.Water), facing the water.
     # Sells fishing poles; like every merchant, buys what you bring (the catch included).
