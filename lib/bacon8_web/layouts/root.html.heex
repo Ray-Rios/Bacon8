@@ -151,12 +151,12 @@
         <% color = Map.get(custom, "solid_color", "#0F172A") %>
         <div id="global-background-canvas" phx-update="ignore" class="fixed inset-0 z-0 pointer-events-none background-overlay" style={"background: #{color};"} data-bg-type="solid"></div>
       <% end %>
-      <!-- Hidden canvas for camera controls even on non-3D backgrounds -->
-      <div id="camera-control-canvas" phx-update="ignore" data-static-scene="HomeGalaxyScene" class="fixed inset-0 z-0 pointer-events-auto opacity-0"></div>
     <% else %>
-      <% hook_name = Bacon8Web.Layouts.background_hook_name(bg_pref) %>
-      <div id="global-background-canvas" phx-update="ignore" data-static-scene={hook_name} class="fixed inset-0 z-0"></div>
+      <%!-- The cosmic backgrounds: SVG and CSS, no WebGL (Bacon8Web.Components.Cosmos) --%>
+      <Bacon8Web.Components.Cosmos.cosmos kind={bg_pref} />
     <% end %>
+    <%!-- The same layers, for switching to a cosmos from a flat colour without a reload --%>
+    <template id="cosmos-layers"><Bacon8Web.Components.Cosmos.layers uid="cwt" /></template>
 
     <%= @inner_content %>
   </body>

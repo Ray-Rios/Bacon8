@@ -13,10 +13,11 @@ defmodule Bacon8Web.Components.Bacon do
   """
   use Phoenix.Component
 
-  @doc "The bacon. `still`: no idle sizzle or bob; `calm`: no hover reactions."
+  @doc "The bacon. `still`: no idle sizzle or bob; `calm`: no hover reactions; `pinned`: sizzles, no bob."
   attr :size, :integer, default: nil
   attr :still, :boolean, default: false
   attr :calm, :boolean, default: false
+  attr :pinned, :boolean, default: false, doc: "sizzles but doesn't bob"
   attr :class, :any, default: nil
   attr :rest, :global
 
@@ -26,6 +27,7 @@ defmodule Bacon8Web.Components.Bacon do
       size={@size}
       still={@still}
       calm={@calm}
+      pinned={@pinned}
       class={@class}
       style={@size && "--bacon-size:#{@size}px"}
       {@rest}

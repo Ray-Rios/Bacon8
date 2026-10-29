@@ -1,0 +1,197 @@
+/* ==================== The cosmic backgrounds (Bacon8Web.Components.Cosmos) ====================
+   2026-10-28. Layers of SVG and CSS; every animation is a transform or an opacity, so it runs on
+   the graphics chip without repainting. `data-cosmos` picks the kind; --px/--py (set by
+   BackgroundUpdater from the pointer, -1..1) lean the layers for parallax. */
+
+.cosmos {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #04030a;
+  --px: 0;
+  --py: 0;
+  contain: strict;
+}
+.cosmos > * { position: absolute; inset: 0; }
+.cosmos > div, .cosmos i, .cosmos b, .cosmos s { display: block; }
+
+/* ---------------------------------------------------------------- shared layers */
+.c-sky { background: radial-gradient(130% 90% at 50% 10%, var(--sky-a, #120b2e) 0%, var(--sky-b, #070514) 55%, #020107 100%); }
+
+.c-layer { transform: translate3d(calc(var(--px) * var(--lean, 0px)), calc(var(--py) * var(--lean, 0px)), 0); transition: transform 0.8s cubic-bezier(.2, .7, .3, 1); }
+.c-layer i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: calc(100% + var(--tile));
+  background-repeat: repeat;
+  background-size: var(--tile) var(--tile);
+  will-change: transform;
+  animation: c-drift var(--speed) linear infinite;
+}
+@keyframes c-drift { to { transform: translate3d(0, calc(-1 * var(--tile)), 0); } }
+.c-far { --tile: 512px; --speed: 240s; --lean: 6px; }
+.c-far i { background-image: url(/images/cosmos/stars-far.svg); }
+.c-mid { --tile: 640px; --speed: 120s; --lean: 14px; }
+.c-mid i { background-image: url(/images/cosmos/stars-mid.svg); }
+.c-near { --tile: 900px; --speed: 60s; --lean: 28px; }
+.c-near i { background-image: url(/images/cosmos/stars-near.svg); }
+
+.c-glow { opacity: 0; will-change: transform, opacity; }
+
+.c-twinkle b {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--s);
+  height: var(--s);
+  margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  background:
+    radial-gradient(circle, #fff 0 12%, rgba(200, 220, 255, .55) 22%, transparent 60%),
+    linear-gradient(90deg, transparent 46%, rgba(255, 255, 255, .8) 50%, transparent 54%),
+    linear-gradient(0deg, transparent 46%, rgba(255, 255, 255, .8) 50%, transparent 54%);
+  animation: c-twinkle var(--t) ease-in-out infinite var(--d);
+  will-change: transform, opacity;
+}
+@keyframes c-twinkle { 0%, 100% { opacity: .15; transform: scale(.55); } 50% { opacity: 1; transform: scale(1); } }
+
+.c-aurora, .c-planet, .c-warp { display: none !important; }
+
+/* ---------------------------------------------------------------- Deep Field (galaxy) */
+.cosmos[data-cosmos="galaxy"] { --sky-a: #171040; --sky-b: #070516; }
+.cosmos[data-cosmos="galaxy"] .c-glow-1 {
+  opacity: .55;
+  inset: -30% -40%;
+  background: radial-gradient(48% 12% at 50% 50%, rgba(190, 170, 255, .45), rgba(120, 90, 220, .18) 45%, transparent 75%);
+  transform: rotate(-24deg);
+  animation: c-band 60s ease-in-out infinite alternate;
+}
+.cosmos[data-cosmos="galaxy"] .c-glow-2 {
+  opacity: .5;
+  background: radial-gradient(40% 30% at 78% 22%, rgba(255, 120, 170, .16), transparent 70%), radial-gradient(35% 28% at 18% 80%, rgba(80, 160, 255, .14), transparent 70%);
+  animation: c-breathe 24s ease-in-out infinite alternate;
+}
+@keyframes c-band { from { transform: rotate(-24deg) scale(1); } to { transform: rotate(-20deg) scale(1.08) translate3d(2%, -1%, 0); } }
+@keyframes c-breathe { from { opacity: .35; transform: scale(1); } to { opacity: .6; transform: scale(1.06); } }
+
+/* ---------------------------------------------------------------- Nebula */
+.cosmos[data-cosmos="nebula"] { --sky-a: #1a0726; --sky-b: #06030c; }
+.cosmos[data-cosmos="nebula"] .c-glow { opacity: .8; inset: -25%; mix-blend-mode: screen; }
+.cosmos[data-cosmos="nebula"] .c-glow-1 {
+  background: radial-gradient(38% 30% at 35% 40%, rgba(255, 60, 160, .42), rgba(160, 30, 140, .18) 50%, transparent 72%);
+  animation: c-cloud-a 70s ease-in-out infinite alternate;
+}
+.cosmos[data-cosmos="nebula"] .c-glow-2 {
+  background: radial-gradient(34% 30% at 66% 58%, rgba(40, 210, 255, .34), rgba(20, 90, 200, .16) 55%, transparent 75%);
+  animation: c-cloud-b 90s ease-in-out infinite alternate;
+}
+.cosmos[data-cosmos="nebula"] .c-glow-3 {
+  background: radial-gradient(26% 20% at 52% 30%, rgba(255, 170, 70, .26), transparent 70%);
+  animation: c-cloud-a 110s ease-in-out infinite alternate-reverse;
+}
+@keyframes c-cloud-a { from { transform: rotate(0deg) scale(1); } to { transform: rotate(14deg) scale(1.15) translate3d(3%, 2%, 0); } }
+@keyframes c-cloud-b { from { transform: rotate(0deg) scale(1.1); } to { transform: rotate(-12deg) scale(.95) translate3d(-3%, -2%, 0); } }
+.cosmos[data-cosmos="nebula"] .c-near { display: none; }
+
+/* ---------------------------------------------------------------- Warp (starfield) */
+.cosmos[data-cosmos="starfield"] { --sky-a: #0a1430; --sky-b: #02040c; }
+.cosmos[data-cosmos="starfield"] .c-glow-1 { opacity: .7; background: radial-gradient(18% 18% at 50% 50%, rgba(160, 200, 255, .3), transparent 70%); }
+.cosmos[data-cosmos="starfield"] .c-near, .cosmos[data-cosmos="starfield"] .c-twinkle { display: none; }
+.cosmos[data-cosmos="starfield"] .c-far { --speed: 400s; }
+.cosmos[data-cosmos="starfield"] .c-warp { display: block !important; perspective: 500px; }
+.c-warp s {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--w);
+  height: 14vmax;
+  margin-left: calc(var(--w) / -2);
+  transform-origin: 50% 0;
+  background: linear-gradient(to bottom, rgba(170, 210, 255, 0), rgba(220, 235, 255, .9));
+  border-radius: 2px;
+  opacity: 0;
+  animation: c-warp var(--t) cubic-bezier(.5, 0, 1, .4) infinite var(--d);
+  will-change: transform, opacity;
+}
+@keyframes c-warp {
+  0% { transform: rotate(var(--a)) translate3d(0, 3vmax, -300px) scaleY(.05); opacity: 0; }
+  15% { opacity: .9; }
+  100% { transform: rotate(var(--a)) translate3d(0, 62vmax, 120px) scaleY(1.2); opacity: 1; }
+}
+
+/* ---------------------------------------------------------------- Orbit */
+.cosmos[data-cosmos="orbit"] { --sky-a: #0d1a33; --sky-b: #03050d; }
+.cosmos[data-cosmos="orbit"] .c-glow-1 { opacity: .6; background: radial-gradient(45% 40% at 78% 78%, rgba(255, 150, 110, .18), transparent 70%); }
+.cosmos[data-cosmos="orbit"] .c-planet {
+  display: block !important;
+  inset: auto;
+  right: -8vmin;
+  bottom: -10vmin;
+  width: min(62vmin, 640px);
+  aspect-ratio: 1;
+  transform: translate3d(calc(var(--px) * -18px), calc(var(--py) * -18px), 0);
+  transition: transform 0.8s cubic-bezier(.2, .7, .3, 1);
+}
+.c-bob { position: absolute; inset: 0; animation: c-bob 22s ease-in-out infinite alternate; will-change: transform; }
+@keyframes c-bob { from { transform: translate3d(0, 0, 0) rotate(-4deg); } to { transform: translate3d(-2%, -3%, 0) rotate(2deg); } }
+.c-world { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 0 40px rgba(255, 140, 100, .18)); }
+/* the moon's orbit: a disc tilted back in 3D, the moon on its rim, turned to face us */
+.c-orbit { position: absolute; inset: -12%; transform: rotateX(74deg) rotateZ(-14deg); transform-style: preserve-3d; perspective: 900px; }
+.c-moonarm { position: absolute; inset: 0; transform-style: preserve-3d; animation: c-spin 38s linear infinite; }
+.c-moon {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 7%;
+  height: 7%;
+  margin-left: -3.5%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f4f1ea, #8f8a99 60%, #2a2633);
+  transform: rotateX(-74deg);
+  animation: c-face 38s linear infinite;
+}
+@keyframes c-spin { to { transform: rotateZ(360deg); } }
+@keyframes c-face { from { transform: rotateZ(0deg) rotateX(-74deg); } to { transform: rotateZ(-360deg) rotateX(-74deg); } }
+
+/* ---------------------------------------------------------------- Aurora */
+.cosmos[data-cosmos="aurora"] { --sky-a: #04202a; --sky-b: #02070c; }
+.cosmos[data-cosmos="aurora"] .c-aurora { display: block !important; }
+.c-aurora i {
+  position: absolute;
+  inset: -10% -30% 18% -30%;
+  background: url(/images/cosmos/aurora.svg) center / 100% 100% no-repeat;
+  mix-blend-mode: screen;
+  transform-origin: 50% 100%;
+  animation: c-sway 26s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+.c-aurora i + i { inset: 0 -40% 10% -20%; opacity: .6; animation-duration: 38s; animation-direction: alternate-reverse; }
+@keyframes c-sway { 0% { transform: translate3d(-6%, 0, 0) scaleY(.92); opacity: .55; } 50% { opacity: .95; } 100% { transform: translate3d(6%, -2%, 0) scaleY(1.08); opacity: .7; } }
+.cosmos[data-cosmos="aurora"] .c-glow-3 { opacity: .8; background: linear-gradient(to top, rgba(20, 120, 110, .28), transparent 30%); }
+.cosmos[data-cosmos="aurora"] .c-near { display: none; }
+
+/* ---------------------------------------------------------------- Void */
+.cosmos[data-cosmos="void"] { --sky-a: #05050a; --sky-b: #000; }
+.cosmos[data-cosmos="void"] .c-mid, .cosmos[data-cosmos="void"] .c-near, .cosmos[data-cosmos="void"] .c-twinkle b:nth-child(n+5) { display: none; }
+.cosmos[data-cosmos="void"] .c-far { opacity: .6; --speed: 600s; }
+
+/* ---------------------------------------------------------------- phones, and stillness */
+@media (max-width: 640px) {
+  .c-near, .c-glow-3, .c-twinkle b:nth-child(n+7), .c-warp s:nth-child(2n) { display: none !important; }
+  .c-mid { --speed: 160s; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cosmos *, .cosmos *::before, .cosmos *::after { animation: none !important; transition: none !important; }
+  .c-warp s { opacity: .35; transform: rotate(var(--a)) translate3d(0, 20vmax, 0) scaleY(.6); }
+}
+/* the tab is hidden, or a game is covering the page: nothing moves (BackgroundUpdater) */
+.cosmos.c-paused *, .cosmos.c-paused { animation-play-state: paused !important; }
+
+/* the profile's background picker: each card shows the real background, still until hovered */
+.cosmos.c-preview { position: absolute; contain: strict; }
+.cosmos.c-preview *, .cosmos.c-preview { animation-play-state: paused; }
+.group:hover .cosmos.c-preview *, .group:focus-visible .cosmos.c-preview * { animation-play-state: running; }
+.cosmos.c-preview .c-planet { width: 70%; right: -10%; bottom: -25%; }

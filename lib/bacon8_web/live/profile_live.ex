@@ -818,132 +818,26 @@ defmodule Bacon8Web.ProfileLive do
                       <p class="text-gray-400">Choose how your site looks</p>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <!-- Galaxy -->
+                    <div class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                       <button
+                        :for={bg <- Bacon8Web.Components.BackgroundSelector.backgrounds()}
+                        type="button"
                         phx-click="select_background"
-                        phx-value-background="galaxy"
-                        class={"relative overflow-hidden rounded-lg border-2 transition-all duration-300 hover:scale-105 #{if @selected_background == "galaxy", do: "border-blue-500 ring-2 ring-blue-500 ring-opacity-50", else: "border-gray-700 hover:border-gray-500"}"}
+                        phx-value-background={bg.id}
+                        class={"group relative overflow-hidden rounded-lg border-2 text-left transition-colors duration-300 #{if @selected_background == bg.id, do: "border-blue-500 ring-2 ring-blue-500/50", else: "border-gray-700 hover:border-gray-500"}"}
                       >
-                        <div class="h-32 bg-gradient-to-br from-indigo-900 via-purple-900 to-black relative">
-                          <%= if @selected_background == "galaxy" do %>
-                            <div class="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                              ✓ Active
-                            </div>
-                          <% end %>
+                        <div class={["h-24 sm:h-32 relative overflow-hidden", Map.get(bg, :preview_class)]}>
+                          <%!-- a cosmos is previewed by the real thing, still until hovered --%>
+                          <div :if={bg.id in Bacon8Web.Components.Cosmos.kinds()} class="cosmos c-preview" data-cosmos={bg.id} aria-hidden="true">
+                            <Bacon8Web.Components.Cosmos.layers uid={"cwp-#{bg.id}"} />
+                          </div>
+                          <div :if={@selected_background == bg.id} class="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                            ✓ Active
+                          </div>
                         </div>
-                        <div class="bg-gray-900 p-4 text-left">
-                          <h4 class="font-bold text-white mb-1">Galaxy</h4>
-                          <p class="text-sm text-gray-400">Swirling cosmic particles with stars</p>
-                        </div>
-                      </button>
-
-                      <!-- Nebula -->
-                      <button
-                        phx-click="select_background"
-                        phx-value-background="nebula"
-                        class={"relative overflow-hidden rounded-lg border-2 transition-all duration-300 hover:scale-105 #{if @selected_background == "nebula", do: "border-blue-500 ring-2 ring-blue-500 ring-opacity-50", else: "border-gray-700 hover:border-gray-500"}"}
-                      >
-                        <div class="h-32 bg-gradient-to-br from-pink-900 via-purple-900 to-blue-900 relative">
-                          <%= if @selected_background == "nebula" do %>
-                            <div class="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                              ✓ Active
-                            </div>
-                          <% end %>
-                        </div>
-                        <div class="bg-gray-900 p-4 text-left">
-                          <h4 class="font-bold text-white mb-1">Nebula</h4>
-                          <p class="text-sm text-gray-400">Colorful gas clouds with gentle motion</p>
-                        </div>
-                      </button>
-
-                      <!-- Starfield -->
-                      <button
-                        phx-click="select_background"
-                        phx-value-background="starfield"
-                        class={"relative overflow-hidden rounded-lg border-2 transition-all duration-300 hover:scale-105 #{if @selected_background == "starfield", do: "border-blue-500 ring-2 ring-blue-500 ring-opacity-50", else: "border-gray-700 hover:border-gray-500"}"}
-                      >
-                        <div class="h-32 bg-gradient-to-b from-gray-900 to-black relative">
-                          <%= for i <- 1..20 do %>
-                            <div
-                              class="absolute w-1 h-1 bg-white rounded-full opacity-70"
-                              style={"left: #{rem(i * 17, 100)}%; top: #{rem(i * 23, 100)}%;"}
-                            >
-                            </div>
-                          <% end %>
-                          <%= if @selected_background == "starfield" do %>
-                            <div class="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                              ✓ Active
-                            </div>
-                          <% end %>
-                        </div>
-                        <div class="bg-gray-900 p-4 text-left">
-                          <h4 class="font-bold text-white mb-1">Starfield</h4>
-                          <p class="text-sm text-gray-400">Classic hyperspace scrolling stars</p>
-                        </div>
-                      </button>
-
-                      <!-- Void -->
-                      <button
-                        phx-click="select_background"
-                        phx-value-background="void"
-                        class={"relative overflow-hidden rounded-lg border-2 transition-all duration-300 hover:scale-105 #{if @selected_background == "void", do: "border-blue-500 ring-2 ring-blue-500 ring-opacity-50", else: "border-gray-700 hover:border-gray-500"}"}
-                      >
-                        <div class="h-32 bg-black relative">
-                          <%= for i <- 1..18 do %>
-                            <div
-                              class="absolute w-1 h-1 bg-white rounded-full opacity-60"
-                              style={"left: #{rem(i * 19, 100)}%; top: #{rem(i * 29, 100)}%;"}
-                            >
-                            </div>
-                          <% end %>
-                          <%= if @selected_background == "void" do %>
-                            <div class="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                              ✓ Active
-                            </div>
-                          <% end %>
-                        </div>
-                        <div class="bg-gray-900 p-4 text-left">
-                          <h4 class="font-bold text-white mb-1">Void</h4>
-                          <p class="text-sm text-gray-400">Minimal dark space with subtle stars</p>
-                        </div>
-                      </button>
-
-                      <!-- Gradient -->
-                      <button
-                        phx-click="select_background"
-                        phx-value-background="gradient"
-                        class={"relative overflow-hidden rounded-lg border-2 transition-all duration-300 hover:scale-105 #{if @selected_background == "gradient", do: "border-blue-500 ring-2 ring-blue-500 ring-opacity-50", else: "border-gray-700 hover:border-gray-500"}"}
-                      >
-                        <div class="h-32 bg-gradient-to-br from-blue-600 to-purple-600 relative">
-                          <%= if @selected_background == "gradient" do %>
-                            <div class="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                              ✓ Active
-                            </div>
-                          <% end %>
-                        </div>
-                        <div class="bg-gray-900 p-4 text-left">
-                          <h4 class="font-bold text-white mb-1">Gradient</h4>
-                          <p class="text-sm text-gray-400">Smooth color transitions (customizable)</p>
-                        </div>
-                      </button>
-
-                      <!-- Solid -->
-                      <button
-                        phx-click="select_background"
-                        phx-value-background="solid"
-                        class={"relative overflow-hidden rounded-lg border-2 transition-all duration-300 hover:scale-105 #{if @selected_background == "solid", do: "border-blue-500 ring-2 ring-blue-500 ring-opacity-50", else: "border-gray-700 hover:border-gray-500"}"}
-                      >
-                        <div class="h-32 bg-gray-900 relative">
-                          <%= if @selected_background == "solid" do %>
-                            <div class="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                              ✓ Active
-                            </div>
-                          <% end %>
-                        </div>
-                        <div class="bg-gray-900 p-4 text-left">
-                          <h4 class="font-bold text-white mb-1">Solid Color</h4>
-                          <p class="text-sm text-gray-400">Single color background (customizable)</p>
+                        <div class="bg-gray-900 p-3 sm:p-4">
+                          <h4 class="font-bold text-white mb-1">{bg.name}</h4>
+                          <p class="text-xs sm:text-sm text-gray-400">{bg.description}</p>
                         </div>
                       </button>
                     </div>

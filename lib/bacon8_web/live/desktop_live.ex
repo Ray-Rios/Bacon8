@@ -156,6 +156,24 @@ defmodule Bacon8Web.DesktopLive do
 
   # ==================== EVENT HANDLERS ====================
 
+  # New page / New post from the start menu: a draft, opened in the editor (it offers the starters).
+  def handle_event("new_content", %{"kind" => kind}, socket) when kind in ["page", "post"] do
+    user = socket.assigns.current_user
+
+    if Bacon8.Permissions.can?(user, :content) do
+      case Bacon8.Content.create_draft(String.to_existing_atom(kind), user) do
+        {:ok, record} ->
+          path = if kind == "page", do: "/pages/#{record.slug}?edit=1", else: "/blog/#{record.slug}?edit=1"
+          {:noreply, socket |> assign(show_start_menu: false) |> push_navigate(to: path)}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Couldn't start a new #{kind}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("toggle_start_menu", _params, socket) do
     {:noreply, assign(socket, show_start_menu: !socket.assigns.show_start_menu, show_notifications: false, show_audio_panel: false, show_calendar: false)}
   end

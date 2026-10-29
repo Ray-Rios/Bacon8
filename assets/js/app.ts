@@ -30,6 +30,7 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 // Import lightweight TypeScript hooks (non-blocking)
 import { TerminalTypewriter } from "./terminal_typewriter";
+import { IntroReveal, IntroTagline } from "./intro_reveal";
 import { FileDragDrop, FileUpload } from "./file_drag_drop";
 import { DeviceFingerprintHook } from "./device_fingerprint";
 import { GlassTheme } from "./glass_theme";
@@ -54,16 +55,12 @@ let liveSocket: LiveSocket | null = null;
 
 // Defer heavy Three.js and Quill imports - load them BEFORE socket connects
 // This prevents double-mount issues
-let HomeGalaxyScene: any = null;
-let NebulaScene: any = null;
-let StarfieldScene: any = null;
-let VoidScene: any = null;
-let GlobalCameraController: any = null;
 let RichEditor: any = null;
 let BlogAutosave: any = null;
 let QuillEditorHook: any = null;
 let CollaborativeQuillHook: any = null;
 let BlockEditorHook: any = null;
+let AutoGrowHook: any = null;
 
 // Heavy module loading function (called after inline hooks are defined)
 async function loadHeavyModulesAndConnect() {
@@ -78,7 +75,7 @@ async function loadHeavyModulesAndConnect() {
       import("./blog_autosave_hook"),
       import("./quill_editor_hook"),
       import("./collaborative_quill_hook"),
-      import("./block_editor_hook")
+      import("./page_builder/hook") // the page builder (2026-10-28); replaced block_editor_hook.ts
     ]);
     
     RichEditor = richEditorMod.RichEditor;
@@ -86,6 +83,7 @@ async function loadHeavyModulesAndConnect() {
     QuillEditorHook = quillMod.default;
     CollaborativeQuillHook = collabQuillMod.default;
     BlockEditorHook = blockEditorMod.default;
+    AutoGrowHook = blockEditorMod.AutoGrow;
     
     const essentialLoadTime = performance.now() - startTime;
     console.log(`✅ Essential modules loaded in ${essentialLoadTime.toFixed(0)}ms`);
@@ -98,8 +96,11 @@ async function loadHeavyModulesAndConnect() {
       QuillEditor: QuillEditorHook,
       CollaborativeQuill: CollaborativeQuillHook,
       BlockEditor: BlockEditorHook,
+      AutoGrow: AutoGrowHook,
       // Lightweight hooks (imported synchronously at top)
       TerminalTypewriter,
+      IntroReveal,
+      IntroTagline,
       FileDragDrop,
       FileUpload,
       DeviceFingerprint: DeviceFingerprintHook,
@@ -132,12 +133,6 @@ async function loadHeavyModulesAndConnect() {
       ReloadPage: (window as any)._ReloadPage,
       FullscreenContainer: (window as any)._FullscreenContainer,
       AdminSidebarResizer: (window as any)._AdminSidebarResizer,
-      // Placeholder Three.js hooks - will be replaced when loaded
-      HomeGalaxyScene: { mounted() { console.log('⏳ HomeGalaxyScene loading...'); } },
-      NebulaScene: { mounted() { console.log('⏳ NebulaScene loading...'); } },
-      StarfieldScene: { mounted() { console.log('⏳ StarfieldScene loading...'); } },
-      VoidScene: { mounted() { console.log('⏳ VoidScene loading...'); } },
-      GlobalCameraController: { mounted() { console.log('⏳ GlobalCameraController loading...'); } },
       ...PluginHooks
     };
     
@@ -156,43 +151,14 @@ async function loadHeavyModulesAndConnect() {
     liveSocket.connect();
     console.log('🚀 Phoenix LiveSocket connected (essential hooks ready)');
     
-    // PHASE 2: Load Three.js modules in background (non-blocking)
-    console.log('🎨 Loading Three.js scenes in background...');
-    Promise.all([
-      import("./threejs/galaxy-scene"),
-      import("./threejs/scenes/nebula-scene"),
-      import("./threejs/scenes/starfield-scene"),
-      import("./threejs/scenes/void-scene"),
-      import("./threejs/controls/global-camera-controller")
-    ]).then(([galaxyMod, nebulaMod, starfieldMod, voidMod, cameraMod]) => {
-      HomeGalaxyScene = galaxyMod.HomeGalaxyScene;
-      NebulaScene = nebulaMod.NebulaScene;
-      StarfieldScene = starfieldMod.StarfieldScene;
-      VoidScene = voidMod.VoidScene;
-      GlobalCameraController = cameraMod.GlobalCameraController;
-      
-      // Update hooks in the existing liveSocket
-      Hooks.HomeGalaxyScene = HomeGalaxyScene;
-      Hooks.NebulaScene = NebulaScene;
-      Hooks.StarfieldScene = StarfieldScene;
-      Hooks.VoidScene = VoidScene;
-      Hooks.GlobalCameraController = GlobalCameraController;
-      
-      const totalLoadTime = performance.now() - startTime;
-      console.log(`✅ Three.js scenes loaded in ${totalLoadTime.toFixed(0)}ms`);
-      
-      // Trigger scene initialization for any static scene containers
-      window.dispatchEvent(new CustomEvent('heavy-modules-loaded'));
-    }).catch(err => {
-      console.warn('⚠️ Three.js scenes failed to load (non-critical):', err);
-    });
-    
   } catch (error) {
     console.error('❌ Failed to load essential modules:', error);
     
     // Fallback: Connect without heavy hooks so page is still usable
     const fallbackHooks: Record<string, any> = {
       TerminalTypewriter,
+      IntroReveal,
+      IntroTagline,
       FileDragDrop,
       FileUpload,
       DeviceFingerprint: DeviceFingerprintHook,
@@ -519,156 +485,10 @@ console.log('⏳ Starting heavy module loading and LiveSocket connection...');
 loadHeavyModulesAndConnect();
 
 console.log('✅ Phoenix LiveView hooks initialization started');
-// Note: Three.js background scenes are mounted via Phoenix LiveView hooks
-// (phx-hook attributes) so we avoid manual initialization here which
-// can conflict with LiveView's hook lifecycle.
-
-// Static scene initializer: for layout-mounted background canvas elements that
-// are not part of a LiveView patch (they use data-static-scene), initialize
-// the matching Three.js hook directly so LiveView doesn't attempt to attach
-// hooks to DOM nodes it didn't render.
-const initializeStaticScenes = () => {
-  try {
-    // Get hooks from liveSocket if available
-    const hooks = liveSocket ? (liveSocket as any).opts?.hooks : null;
-    if (!hooks) {
-      console.log('⏳ Waiting for liveSocket hooks to be available...');
-      return;
-    }
-    
-    const staticEls = Array.from(document.querySelectorAll('[data-static-scene]')) as HTMLElement[];
-    staticEls.forEach((el) => {
-      const sceneName = el.getAttribute('data-static-scene');
-      if (!sceneName) return;
-
-      // Map scene names to hook constructors available in liveSocket hooks
-      const hookConstructor: any = hooks[sceneName];
-      if (!hookConstructor) {
-        console.warn('No hook registered for static scene:', sceneName);
-        return;
-      }
-
-  // If this element was already initialized
-  if ((el as any)._threeJSHook) {
-    // Check if the scene has changed
-    if ((el as any)._currentSceneName === sceneName) {
-      return;
-    }
-    
-    // Scene changed, destroy old one
-    console.log('🔄 Switching static scene to:', sceneName);
-    const oldHook = (el as any)._threeJSHook;
-    if (typeof oldHook.destroyed === 'function') {
-      try {
-        oldHook.destroyed.call(oldHook);
-      } catch (e) {
-        console.error('Error destroying old scene:', e);
-      }
-    }
-    (el as any)._threeJSHook = null;
-  }
-
-      // Create a minimal hook-like context and call mounted()
-      try {
-        const instance = Object.create(hookConstructor);
-        instance.el = el;
-        if (typeof instance.mounted === 'function') {
-          instance.mounted.call(instance);
-          // Mark the element as initialized and store instance
-          (el as any)._threeJSHook = instance;
-          (el as any)._currentSceneName = sceneName;
-          console.log('✅ Initialized static scene:', sceneName, 'on', el.id || el.tagName);
-        }
-      } catch (err) {
-        console.error('❌ Failed to initialize static scene', sceneName, err);
-      }
-    });
-  } catch (err) {
-    console.error('❌ Error initializing static scenes', err);
-  }
-};
-
-// Run after a short delay to allow LiveSocket to perform initial patches
-setTimeout(initializeStaticScenes, 250);
-
-// Re-initialize on page navigation if needed
-window.addEventListener('phx:page-loading-stop', () => {
-  setTimeout(() => {
-    if (document.querySelector('[data-static-scene]')) {
-      initializeStaticScenes();
-    }
-  }, 100);
-});
-
-// Also initialize static scenes when heavy modules finish loading
-window.addEventListener('heavy-modules-loaded', () => {
-  setTimeout(() => {
-    if (document.querySelector('[data-static-scene]')) {
-      initializeStaticScenes();
-    }
-  }, 50);
-});
-
-// MutationObserver fallback: if LiveView removes and re-inserts the canvas during a patch,
-// detect insertion and re-initialize the static scene on the new node.
-try {
-  const observer = new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      // Handle attribute changes (scene switching)
-      if (m.type === 'attributes' && m.attributeName === 'data-static-scene') {
-        setTimeout(() => initializeStaticScenes(), 50);
-        return;
-      }
-
-      if (m.type === 'childList' && m.addedNodes.length > 0) {
-        for (const node of Array.from(m.addedNodes)) {
-          if (!(node instanceof HTMLElement)) continue;
-          if (node.matches && node.matches('[data-static-scene]')) {
-            setTimeout(() => initializeStaticScenes(), 50);
-            return;
-          }
-          // Also check descendants
-          if (node.querySelector && node.querySelector('[data-static-scene]')) {
-            setTimeout(() => initializeStaticScenes(), 50);
-            return;
-          }
-        }
-      }
-    }
-  });
-
-  observer.observe(document.documentElement || document.body, { 
-    childList: true, 
-    subtree: true, 
-    attributes: true, 
-    attributeFilter: ['data-static-scene'] 
-  });
-} catch {
-  // ignore mutation observer failures
-}
-
-// Also log removals of the global background canvas for debugging
-try {
-  const removalObserver = new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      if (m.type === 'childList' && m.removedNodes.length > 0) {
-        for (const node of Array.from(m.removedNodes)) {
-          if (!(node instanceof HTMLElement)) continue;
-          if (node.id === 'global-background-canvas' || (node.querySelector && node.querySelector('#global-background-canvas'))) {
-            console.warn('🧨 global-background-canvas was removed from DOM', node);
-            try { console.trace(); } catch {
-              // Ignore trace errors
-            }
-          }
-        }
-      }
-    }
-  });
-
-  removalObserver.observe(document.documentElement || document.body, { childList: true, subtree: true });
-} catch {
-  // ignore removal observer failures
-}
+// (2026-10-28) The three.js background scenes, their static-scene initializer and the two
+// MutationObservers that watched the whole document for them are gone: the backgrounds are
+// SVG and CSS now (Bacon8Web.Components.Cosmos), and those observers ran on every change to
+// every page.
 
 // Global error diagnostics: capture unhandled errors and list phx-hook elements
 window.addEventListener('error', (event) => {

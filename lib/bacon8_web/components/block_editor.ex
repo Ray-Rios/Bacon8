@@ -45,6 +45,7 @@ defmodule Bacon8Web.Components.BlockEditor do
   attr :readonly, :boolean, default: false
   attr :min_height, :string, default: "400px"
   attr :class, :string, default: ""
+  attr :kind, :string, default: "page", doc: "page or post: which starters an empty editor offers"
 
   def block_editor(assigns) do
     # Support both :value and :content attribute names
@@ -90,6 +91,7 @@ defmodule Bacon8Web.Components.BlockEditor do
         data-placeholder={@placeholder}
         data-autosave-delay={@autosave_delay}
         data-readonly={to_string(@readonly)}
+        data-kind={@kind}
         data-initial-content={@value}
         style={"min-height: #{@min_height};"}
         class="block-editor-container"
@@ -153,17 +155,47 @@ defmodule Bacon8Web.Components.BlockEditor do
     Phoenix.HTML.raw(html)
   end
 
-  defp render_row(%{"columns" => columns} = _row) when is_list(columns) do
+  defp render_row(%{"columns" => columns} = row) when is_list(columns) do
     column_count = length(columns)
-    
-    if column_count > 1 do
-      inner = Enum.map_join(columns, "", &render_column/1)
-      ~s(<div class="content-row columns-#{column_count}">#{inner}</div>)
-    else
-      Enum.map_join(columns, "", &render_column/1)
+
+    inner =
+      if column_count > 1 do
+        cols = Enum.map_join(columns, "", &render_column/1)
+        ~s(<div class="content-row columns-#{column_count}">#{cols}</div>)
+      else
+        Enum.map_join(columns, "", &render_column/1)
+      end
+
+    case section_classes(row["settings"]) do
+      nil -> inner
+      classes -> ~s(<section class="content-section #{classes} cols-#{column_count}">#{inner}</section>)
     end
   end
   defp render_row(_), do: ""
+
+  # A row's look, set in the page builder's row gear (2026-10-28): width, spacing, background and
+  # how its columns line up. Only known values become classes; a row saved before then (no
+  # "width") renders exactly as it always did, with no wrapper.
+  @section_values %{
+    "width" => ~w(narrow normal wide full),
+    "space" => ~w(s m l),
+    "background" => ~w(none glass tint dark),
+    "align" => ~w(top center)
+  }
+  @section_prefix %{"width" => "w", "space" => "sp", "background" => "bg", "align" => "al"}
+
+  @doc false
+  def section_classes(%{"width" => _} = settings) do
+    @section_values
+    |> Enum.sort()
+    |> Enum.flat_map(fn {key, allowed} ->
+      value = settings[key]
+      if is_binary(value) and value in allowed, do: ["#{@section_prefix[key]}-#{value}"], else: []
+    end)
+    |> Enum.join(" ")
+  end
+
+  def section_classes(_), do: nil
 
   defp render_column(%{"blocks" => blocks, "width" => width}) when is_list(blocks) and is_binary(width) do
     inner = Enum.map_join(blocks, "", &render_block/1)
@@ -196,18 +228,19 @@ defmodule Bacon8Web.Components.BlockEditor do
   end
   
   defp render_block(%{"type" => "heading", "content" => content, "settings" => settings}) do
-    level = settings["level"] || 2
+    level = heading_level(settings["level"])
     ~s(<h#{level}>#{escape_html(content || "")}</h#{level}>)
   end
   defp render_block(%{"type" => "heading", "content" => content}) do
     ~s(<h2>#{escape_html(content || "")}</h2>)
   end
   
-  defp render_block(%{"type" => "image", "content" => url, "settings" => settings}) do
-    alt = settings["alt"] || ""
+  defp render_block(%{"type" => "image", "content" => url, "settings" => settings}) when is_map(settings) do
+    alt = if settings["decorative"] == true, do: "", else: settings["alt"] || ""
     caption = settings["caption"] || ""
     figcaption = if caption == "", do: "", else: "<figcaption>#{escape_html(caption)}</figcaption>"
-    ~s(<figure><img src="#{escape_html(url || "")}" alt="#{escape_html(alt)}" loading="lazy">#{figcaption}</figure>)
+    size = if settings["size"] in ["small", "medium"], do: ~s( class="img-#{settings["size"]}"), else: ""
+    ~s(<figure#{size}><img src="#{escape_html(url || "")}" alt="#{escape_html(alt)}" loading="lazy">#{figcaption}</figure>)
   end
   defp render_block(%{"type" => "image", "content" => url}) do
     ~s(<figure><img src="#{escape_html(url || "")}" alt="" loading="lazy"></figure>)
@@ -349,6 +382,17 @@ defmodule Bacon8Web.Components.BlockEditor do
     ~s(<div class="callout callout-info">#{escape_html(content || "")}</div>)
   end
   
+  # A button (the page builder, 2026-10-28): a link styled as a button. Its address must be
+  # http(s), mailto, a path on this site or #; anything else (javascript:, data:...) becomes "#".
+  defp render_block(%{"type" => "button", "content" => label} = block) do
+    settings = if is_map(block["settings"]), do: block["settings"], else: %{}
+    style = if settings["style"] == "ghost", do: "ghost", else: "primary"
+    align = if settings["align"] in ["left", "right"], do: settings["align"], else: "center"
+    href = safe_href(settings["url"])
+    ~s(<p class="content-button-wrap align-#{align}"><a class="content-button content-button-#{style}" href="#{escape_html(href)}">#{escape_html(label || "")}</a></p>)
+  end
+  defp render_block(%{"type" => "button"}), do: ""
+
   defp render_block(%{"type" => "divider"}) do
     ~s(<hr class="content-divider">)
   end
@@ -417,6 +461,31 @@ defmodule Bacon8Web.Components.BlockEditor do
         ~s(<a href="#{escape_html(url)}" target="_blank">#{escape_html(url)}</a>)
     end
   end
+
+  # 1-6 whatever was saved ("2", 2, or something odd), so it can't break out of the tag
+  defp heading_level(l) when is_integer(l) and l in 1..6, do: l
+  defp heading_level(l) when is_binary(l) do
+    case Integer.parse(l) do
+      {n, ""} when n in 1..6 -> n
+      _ -> 2
+    end
+  end
+  defp heading_level(_), do: 2
+
+  @doc false
+  def safe_href(url) when is_binary(url) do
+    url = String.trim(url)
+
+    cond do
+      url == "" -> "#"
+      Regex.match?(~r/\A(https?:\/\/|mailto:)/i, url) -> url
+      Regex.match?(~r/\A\/(?!\/)/, url) -> url
+      String.starts_with?(url, "#") -> url
+      true -> "#"
+    end
+  end
+
+  def safe_href(_), do: "#"
 
   defp escape_html(nil), do: ""
   defp escape_html(str) when is_binary(str) do

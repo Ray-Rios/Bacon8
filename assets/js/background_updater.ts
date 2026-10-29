@@ -1,136 +1,84 @@
+// The site background (2026-10-28: Bacon8Web.Components.Cosmos; assets/css/cosmos.css).
+//
+// - Switches it live when the profile's background picker saves ("update_background" /
+//   "background_update"): a cosmos kind is one attribute on #global-background-canvas (its
+//   layers come from <template id="cosmos-layers"> if the page started on a flat colour); a
+//   gradient or a solid colour empties it and paints it.
+// - Parallax: with a mouse, the star layers lean with the pointer (--px/--py, -1..1), at most
+//   once a frame. Touch screens don't get it (nothing to follow).
+// - Pauses every animation while the tab is hidden.
+
+const COSMOS = ["galaxy", "nebula", "starfield", "orbit", "aurora", "void"];
+
+/** The CSS for a flat background (pure; tested). */
+export function flatBackground(kind: string, custom: Record<string, string> = {}): string {
+  if (kind === "gradient") return `linear-gradient(135deg, ${custom.gradient_start || "#3B82F6"}, ${custom.gradient_end || "#9333EA"})`;
+  return custom.solid_color || "#0F172A";
+}
+
+/** The pointer's place as -1..1 from the middle of the window (pure; tested). */
+export function lean(x: number, y: number, w: number, h: number): [number, number] {
+  const c = (v: number) => Math.max(-1, Math.min(1, v));
+  return [c((x / Math.max(1, w)) * 2 - 1), c((y / Math.max(1, h)) * 2 - 1)];
+}
+
 export const BackgroundUpdater = {
   mounted(this: any) {
-    console.log('BackgroundUpdater hook mounted');
-
-    // Listen for background updates from LiveView
-    const handleBackgroundUpdate = (data: any) => {
-      console.log('Updating background:', data);
+    const apply = (data: any) => {
       this.updateBackground(data);
-
-      // If this is a global update, dispatch a window event for all components
-      if (data.global) {
-        window.dispatchEvent(new CustomEvent('background-update', { detail: data }));
-      }
+      if (data.global) window.dispatchEvent(new CustomEvent("background-update", { detail: data }));
     };
+    this.handleEvent("update_background", apply);
+    this.handleEvent("background_update", apply);
+    this.onGlobal = (e: any) => this.updateBackground(e.detail);
+    window.addEventListener("background-update", this.onGlobal);
 
-    this.handleEvent("update_background", handleBackgroundUpdate);
-    this.handleEvent("background_update", handleBackgroundUpdate);
+    // parallax, mouse only
+    let raf = 0;
+    let px = 0, py = 0;
+    this.onMove = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      [px, py] = lean(e.clientX, e.clientY, window.innerWidth, window.innerHeight);
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const el = document.getElementById("global-background-canvas");
+        if (!el || !el.classList.contains("cosmos")) return;
+        el.style.setProperty("--px", px.toFixed(3));
+        el.style.setProperty("--py", py.toFixed(3));
+      });
+    };
+    if (window.matchMedia?.("(hover: hover) and (pointer: fine)").matches) window.addEventListener("pointermove", this.onMove, { passive: true });
 
-    // Listen for global background updates from other components
-    window.addEventListener('background-update', (event: any) => {
-      this.updateBackground(event.detail);
-    });
+    this.onVisibility = () => document.getElementById("global-background-canvas")?.classList.toggle("c-paused", document.hidden);
+    document.addEventListener("visibilitychange", this.onVisibility);
+  },
+
+  destroyed(this: any) {
+    window.removeEventListener("background-update", this.onGlobal);
+    window.removeEventListener("pointermove", this.onMove);
+    document.removeEventListener("visibilitychange", this.onVisibility);
   },
 
   updateBackground(data: any) {
-    const backgroundType = data.background;
-    const customData = data.custom_data || {};
-
-    console.log('🖼️ Updating background:', { type: backgroundType, customData });
-
-    // Find the global background canvas
-    const canvas = document.getElementById('global-background-canvas');
-    if (!canvas) {
-      console.warn('⚠️ Global background canvas not found');
-      return;
-    }
-
-    // Clean up any existing 3D scene
-    this.cleanup3DScene(canvas);
-
-    if (backgroundType === 'gradient') {
-      // Apply gradient background
-      const startColor = customData.gradient_start || '#3B82F6';
-      const endColor = customData.gradient_end || '#9333EA';
-      const gradient = `linear-gradient(135deg, ${startColor}, ${endColor})`;
-      canvas.style.background = gradient;
-      canvas.removeAttribute('data-static-scene');
-      canvas.setAttribute('data-bg-type', 'gradient');
-      canvas.style.pointerEvents = 'none';
-      
-      // Force reflow
-      void canvas.offsetHeight;
-      
-      this.ensureCameraControlCanvas();
-      console.log('✅ Gradient applied:', { startColor, endColor });
-
-    } else if (backgroundType === 'solid') {
-      // Apply solid color background
-      const color = customData.solid_color || '#0F172A';
-      canvas.style.background = color;
-      canvas.removeAttribute('data-static-scene');
-      canvas.setAttribute('data-bg-type', 'solid');
-      canvas.style.pointerEvents = 'none';
-      
-      // Force reflow
-      void canvas.offsetHeight;
-      
-      this.ensureCameraControlCanvas();
-      console.log('✅ Solid color applied:', color);
-
-    } else {
-      // Apply 3D scene background
-      const hookName = this.getHookName(backgroundType);
-      canvas.setAttribute('data-static-scene', hookName);
-      canvas.style.background = ''; // Clear any CSS background
-      canvas.setAttribute('data-bg-type', '3d');
-      canvas.style.pointerEvents = 'auto';
-      
-      this.removeCameraControlCanvas();
-      this.initialize3DScene(canvas, hookName);
-      console.log('✅ 3D scene applied:', hookName);
-    }
-  },
-
-  cleanup3DScene(canvas: HTMLElement) {
-    // Clean up any existing Three.js scene
-    if ((canvas as any)._threeJSHook) {
-      const hook = (canvas as any)._threeJSHook;
-      console.log('🧹 Cleaning up 3D scene:', (canvas as any)._currentSceneName);
-      
-      if (typeof hook.destroyed === 'function') {
-        try {
-          hook.destroyed.call(hook);
-        } catch (e) {
-          console.error('Error destroying scene:', e);
-        }
+    const kind: string = data?.background || "galaxy";
+    const el = document.getElementById("global-background-canvas");
+    if (!el) return;
+    if (COSMOS.includes(kind)) {
+      if (!el.classList.contains("cosmos")) {
+        const tpl = document.getElementById("cosmos-layers") as HTMLTemplateElement | null;
+        el.replaceChildren(...(tpl ? Array.from(tpl.content.cloneNode(true).childNodes) : []));
+        el.className = "cosmos";
+        el.style.background = "";
       }
-      (canvas as any)._threeJSHook = null;
-      (canvas as any)._currentSceneName = null;
+      el.setAttribute("data-cosmos", kind);
+      el.setAttribute("data-bg-type", "cosmos");
+    } else {
+      el.replaceChildren();
+      el.className = "fixed inset-0 z-0 pointer-events-none background-overlay";
+      el.removeAttribute("data-cosmos");
+      el.setAttribute("data-bg-type", kind);
+      el.style.background = flatBackground(kind, data?.custom_data || {});
     }
   },
-
-  ensureCameraControlCanvas() {
-    let cameraCanvas = document.getElementById('camera-control-canvas');
-    if (!cameraCanvas) {
-      cameraCanvas = document.createElement('div');
-      cameraCanvas.id = 'camera-control-canvas';
-      cameraCanvas.setAttribute('data-static-scene', 'HomeGalaxyScene');
-      cameraCanvas.className = 'fixed inset-0 z-0 pointer-events-auto opacity-0';
-      document.body.appendChild(cameraCanvas);
-    }
-  },
-
-  removeCameraControlCanvas() {
-    const cameraCanvas = document.getElementById('camera-control-canvas');
-    if (cameraCanvas) {
-      cameraCanvas.remove();
-    }
-  },
-
-  getHookName(backgroundType: string): string {
-    switch (backgroundType) {
-      case 'galaxy': return 'HomeGalaxyScene';
-      case 'nebula': return 'NebulaScene';
-      case 'starfield': return 'StarfieldScene';
-      case 'void': return 'VoidScene';
-      default: return 'HomeGalaxyScene';
-    }
-  },
-
-  initialize3DScene(canvas: HTMLElement, hookName: string) {
-    // This will trigger the static scene initializer in app.ts
-    // The scene will be mounted automatically by the existing system
-    console.log('Initializing 3D scene:', hookName);
-  }
 };

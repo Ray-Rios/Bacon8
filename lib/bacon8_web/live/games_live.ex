@@ -48,7 +48,9 @@ defmodule Bacon8Web.GamesLive do
     ~H"""
     <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto bg-black">
       <div class="max-w-5xl mx-auto px-6 py-16">
-        <h1 class="text-3xl font-bold text-white mb-2">Games</h1>
+        <h1 class="games-title text-3xl sm:text-4xl font-extrabold mb-2" data-text="Games">
+          Games<i class="gt-glint" style="--x:12%;--y:18%;--d:.55s"></i><i class="gt-glint" style="--x:58%;--y:8%;--d:.85s"></i><i class="gt-glint" style="--x:92%;--y:62%;--d:1.1s"></i>
+        </h1>
         <p class="text-gray-400 mb-10">Pick a game to play.</p>
 
         <%!-- Play links into plugin pages, which are in their own live_session: a full page load. --%>
@@ -61,6 +63,8 @@ defmodule Bacon8Web.GamesLive do
           />
         </div>
 
+        <.hat_shot />
+
         <p :if={@games == []} class="text-gray-500">
           No games are available yet.
           <%= if @current_user.role == "admin" do %>
@@ -69,6 +73,46 @@ defmodule Bacon8Web.GamesLive do
         </p>
       </div>
     </div>
+    """
+  end
+  # The Robin Hood hat and the arrow (Blender: library/pipeline/scripts/hero_hat.py; pictures in
+  # priv/static/images/intro/): the hat flies in and an arrow from the upper left goes through it.
+  # assets/css/games_hat.css: in the empty margin at the lower right on wide screens, under the
+  # cards on narrower ones, never over them.
+  defp hat_shot(assigns) do
+    ~H"""
+    <div class="games-hat" aria-hidden="true">
+      <div class="gh-box">
+        <div class="gh-fly">
+          <div class="gh-wobble">
+            <.hat_img name="hat" class="gh-hat" />
+            <.hat_img name="pierce1" class="gh-p1" />
+            <.hat_img name="pierce2" class="gh-p2" />
+            <.hat_img name="pierce3" class="gh-p3" />
+            <.hat_img name="pierced" class="gh-pierced" />
+          </div>
+        </div>
+        <div class="gh-arrow"><.hat_img name="arrow" class="gh-arrow-img" /></div>
+        <div class="gh-fibres is-entry"><i :for={i <- 1..9} style={"--i:#{i}"}></i></div>
+        <div class="gh-fibres is-exit"><i :for={i <- 1..7} style={"--i:#{i}"}></i></div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :name, :string, required: true
+  attr :class, :string, required: true
+
+  defp hat_img(assigns) do
+    ~H"""
+    <img
+      class={["gh-img", @class]}
+      src={"/images/intro/#{@name}-720.webp"}
+      srcset={"/images/intro/#{@name}-720.webp 720w, /images/intro/#{@name}-1200.webp 1200w"}
+      sizes="(min-width: 1280px) 460px, 360px"
+      alt=""
+      decoding="async"
+    />
     """
   end
 end

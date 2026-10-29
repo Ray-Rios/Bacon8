@@ -10,16 +10,6 @@ defmodule Bacon8Web.Layouts do
 
   embed_templates "layouts/*"
 
-  @doc """
-  Returns the appropriate Phoenix LiveView hook name for a background type
-  """
-  def background_hook_name(background_type) do
-    case background_type do
-      "galaxy" -> "HomeGalaxyScene"
-      "nebula" -> "NebulaScene"
-      "starfield" -> "StarfieldScene"
-      "void" -> "VoidScene"
-      _ -> "HomeGalaxyScene"  # Default fallback
-    end
-  end
+  @doc "The background kinds drawn as a cosmos (the rest, gradient and solid, are flat colours)."
+  def cosmos_backgrounds, do: Bacon8Web.Components.Cosmos.kinds()
 end

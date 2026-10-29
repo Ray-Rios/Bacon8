@@ -10,6 +10,7 @@
 //   <b8-bacon size="20"></b8-bacon>          size in CSS px (default 1.25em of the text)
 //   <b8-bacon size="96" still></b8-bacon>    no idle sizzle or bob (still reacts)
 //   <b8-bacon size="20" calm></b8-bacon>     no hover reactions
+//   <b8-bacon size="132" pinned></b8-bacon>  sizzles but doesn't bob (the front door: forked to the page)
 //
 // The same pattern as <b8-gem> (fire_gem.ts): a shadow root (LiveView patches leave it
 // alone), one requestAnimationFrame loop for every strip on the page (only those on screen),
@@ -28,7 +29,7 @@ const SHEETS: Array<[number, string]> = [
 const CSS = `
 :host { display: inline-block; position: relative; vertical-align: -0.22em; width: var(--bacon-size, 1.25em); height: var(--bacon-size, 1.25em); line-height: 0; }
 .fl { position: absolute; inset: 0; will-change: transform; }
-:host(:not([still])) .fl.on { animation: bob var(--bob-s, 3.2s) ease-in-out infinite; animation-delay: var(--bob-d, 0s); }
+:host(:not([still]):not([pinned])) .fl.on { animation: bob var(--bob-s, 3.2s) ease-in-out infinite; animation-delay: var(--bob-d, 0s); }
 @keyframes bob {
   0%, 100% { transform: translateY(3%) rotate(-1.5deg); }
   50% { transform: translateY(-4%) rotate(1.5deg); }

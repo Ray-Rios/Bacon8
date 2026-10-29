@@ -81,6 +81,7 @@ defmodule Bacon8Web.Components.Taskbar do
             
             <!-- Quick Access Links -->
             <div class="border-t border-gray-600 p-3">
+              <.start_new :if={Bacon8.Permissions.can?(@current_user, :content)} target={@target} />
               <.start_links current_user={@current_user} />
             </div>
             
@@ -386,6 +387,22 @@ defmodule Bacon8Web.Components.Taskbar do
       <.start_link to={~p"/blog"} icon="🚬" label="Blog" />
       <.start_link :if={@current_user} to={~p"/profile"} icon="👤" label="Profile" />
       <.start_link :if={Bacon8.Permissions.staff?(@current_user)} to={Bacon8.Permissions.home_path(@current_user)} icon="⚙️" label="Admin" />
+    </div>
+    """
+  end
+
+  @doc """
+  New page / New post, for whoever may write them (`Bacon8.Permissions`, area `:content`):
+  one tap makes a draft and opens it in the editor (`DesktopLive`, "new_content").
+  """
+  attr :target, :any, default: nil
+
+  def start_new(assigns) do
+    ~H"""
+    <div id="start-new" class="grid grid-cols-2 gap-2 mb-3">
+      <button :for={{kind, label, icon} <- [{"page", "New page", "📄"}, {"post", "New post", "✍️"}]} type="button" phx-click="new_content" phx-value-kind={kind} phx-target={@target} class="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-orange-200 hover:text-white text-sm font-semibold transition-colors">
+        <span>{icon}</span><span>{label}</span>
+      </button>
     </div>
     """
   end

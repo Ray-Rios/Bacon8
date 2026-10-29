@@ -16,7 +16,14 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-28**.
+Last substantive update: **2026-10-29**.
+
+On 2026-10-29:
+
+- Bacon World: **the grill fork** (the front page's) is the new starter one-handed piercing weapon, the **Robin Hood
+  hat** is a wearable hat (a new `head` slot) and a placeable object, the **bow shoots the hat's arrow**, and the
+  **fishing bobber is a curl of bacon**. All drawn in code (`plugins/bacon_world/assets/js/crafted.ts`): no models to
+  sync. BACON_WORLD.md §2. No core files changed.
 
 On 2026-10-28:
 
@@ -24,6 +31,36 @@ On 2026-10-28:
   turn, move and remove things; admins set the lowest role per asset in game; two new games-DB tables from the
   plugin's migration `20261028000000`), **rats, goblins and orcs** with their own camps, and **bows** with endless
   arrows. Details in **`BACON_WORLD.md`** §2. No core files changed.
+- **New backgrounds: SVG and CSS, no WebGL** (`Bacon8Web.Components.Cosmos`, `assets/css/cosmos.css`,
+  `priv/static/images/cosmos/*.svg`). The three.js scenes kept a phone's main thread 14-33% busy on every page
+  while idle (two canvases). Now six cosmic kinds share one set of layers: **Deep Field** (`galaxy`, the default),
+  **Nebula**, **Warp** (`starfield`), **Orbit** (a ringed planet with a moon on a 3D-tilted orbit), **Aurora** and
+  **Void**. Depth is parallax: three star tiles drift at three speeds and, with a mouse only, lean with the pointer
+  (`BackgroundUpdater`); every animation is a transform or opacity. Phones get fewer layers, "reduce motion" stops
+  them, a hidden tab pauses them. `data-cosmos` picks the kind, so switching is one attribute; `<template
+  id="cosmos-layers">` lets a flat background switch back without a reload. The profile's picker previews the
+  real thing (`BackgroundSelector.backgrounds/0`). `User.background_preference` also accepts `orbit` and `aurora`.
+  The old scene files under `assets/js/threejs/` (all but `controls/text-target.ts`) are unused, for `git rm`.
+- **A new front door** (`Bacon8Web.HomeLive`, `assets/css/intro.css`, `IntroReveal` and `IntroTagline` in
+  `assets/js/intro_reveal.ts`). The bacon sizzles into view in a puff of steam (and keeps steaming), then one large
+  grill fork flies in and stabs it to the page, a tine through each strip. The tagline, "Bring home the bacon.", types
+  itself in like a terminal; hovering it (or tapping it, or focusing it) types "IT'S A SECRET TO EVERYBODY." instead.
+  Sign Up and Log In are there at once. The fork and the steam are Blender renders
+  (`library/pipeline/scripts/hero_forks.py`, `hero_steam.py`: a Mantaflow simulation, and `hero_sheets.py`, which
+  makes `priv/static/images/intro/` and its `intro.json`, the numbers `intro.css` uses). Scrolling fades up sections
+  on what the repository is (a WordPress replacement that hosts games), the page builder, the store and Stripe, the
+  drive, chat, security, plugins and the plugins it ships with, and the MIT licence. CSS only; without JavaScript or
+  with "reduce motion" it is all simply there. Tests: `home_intro_test.exs`, `assets/js/__tests__/cosmos_intro.test.ts`.
+- **/games**: the "Games" title has a gold, glinting shine (`assets/css/games_hat.css`), and the felt Robin Hood hat
+  that an arrow flies through (`hero_hat.py` renders) sits in the lower right, under the cards on phones and out in
+  the margin on wide screens (`GamesLive`'s `hat_shot`). The same hat is now an item in Bacon World (BACON_WORLD.md).
+- **The page builder: pages and posts are edited on a new, phone-first editor** (`assets/js/page_builder/`,
+  `Bacon8Web.Components.EditorShell`; the old `block_editor_hook.ts` is no longer loaded). New page / New post in the
+  start menu, starters for an empty page, a full-screen editing screen (title typed in place, Undo/Redo, phone preview,
+  settings in a drawer), a + between rows and in empty cells, a gear on whatever is tapped (column layouts in one tap,
+  width, spacing, background; each block's options), typing in place with a small formatting bar and Markdown-style
+  shortcuts, dropped and pasted pictures, and a Button block. The saved format only grew, so every existing page
+  renders as before. `docs/pages-blog-builder.md`, "The page builder".
 
 On 2026-10-27:
 
@@ -316,6 +353,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-27 | **Suggestions & Bugs is a plugin, `feedback`**, at `/feedback`, opened from the start menu. Members only: guests (and anyone signed out, banned or inactive) see neither the icon nor the page. Members post (with screenshots) and vote; only admins edit others' items, approve, decline and submit. | Owner's request; a plugin because a site might not want it (2026-10-25). |
 | 2026-10-27 | **Approved suggestions reach Claude by a runner on the development PC that collects them** (the site keeps the queue; nothing can push into a Claude conversation). One item at a time; the runner's token can only read submitted items and report on them, and Claude never sees it. Not GitHub issues: the hub repository is public, so members' reports and screenshots would be public, and the private plugins aren't in it. | Owner's choice of the options offered. The PC already has the code, the private plugins, Docker and the deploy script. |
 | 2026-10-27 | **Feedback fixes may deploy without the owner pressing anything**, when the owner turns on "Deploy on its own" (off by default) on `/admin/feedback/agent`, and only for a change that passed the runner's own test run and a second Claude's review and touches nothing security-sensitive (sign-in, permissions, uploads, storage, payments, webhooks, the router, deploy files, production config, dependencies, secrets, data-dropping migrations, the runner). Everything else waits for an admin's Deploy. Turning the switch on is the owner saying "deploy"; with it off, the rule that deploys happen only when the owner says stands as before. | Owner's decision ("automatic after tests"), with the holds added so a member's text can't steer a sensitive change into production unreviewed. |
+| 2026-10-28 | **Site backgrounds are SVG and CSS, never WebGL.** Six cosmic kinds (`Cosmos.kinds/0`) built from drifting SVG star tiles, gradients and CSS 3D transforms; only transform and opacity animate. | Owner's request: the three.js scenes made phones lag on every page. A game page that wants 3D draws its own. |
 | 2026-10-27 | **Behind Docker Desktop every visitor's address is the node's own, `192.168.65.3`** (the Kubernetes node's InternalIP; Docker's port forwarding replaces the client address before nginx sees it, and the ingress adds no real-IP header). It names no one, so `Bacon8.Security.blockable_ip?/1` refuses to block private, loopback and link-local addresses (the Block buttons, the honeypot, the suspicious-request plug, and the blocker plug all check it), and sign-ins are throttled by the account (`Security.throttle_key/2`) when the address names no one. Other per-address limits (registration 5 per address, the API's 200 a minute, `auth_login` 5 per 5 minutes in the router) are still shared by all visitors until real addresses are passed on. | Found from the security page, which showed internet scanners (`/blog/.env`, `wp-config.php`) as one internal address: it is not a compromised container. A shared address meant one scanner's probes, or five wrong passwords, could block or lock out every member. Real addresses need a proxy in front that passes them on (the owner's call). |
 
 ---
@@ -389,7 +427,7 @@ lib/
     controllers/api/       JSON API
 priv/repo/migrations       site DB
 priv/games_repo/migrations games DB
-assets/                    esbuild + tailwind; three.js background scenes; vendor/ shims for plugins
+assets/                    esbuild + tailwind; SVG/CSS cosmos backgrounds (cosmos.css); vendor/ shims for plugins
 plugins/                   installed plugins, one folder each (§9); bacon_world/ (a game) and bacon_store/ (a site plugin) are the examples
 library/                   gitignored: licensed source assets shared by every game (Substance .sbsar...), each kind with its LICENSES.md; never committed or deployed
   pipeline/                the Bacon8 asset pipeline (Blender scripts, B8 skeleton and human blends, animation sources), moved from RaysSpaceSim 2026-10-23 (`scripts/`, `Characters/`, `Animations/`, `out/`); not in git

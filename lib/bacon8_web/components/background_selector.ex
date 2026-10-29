@@ -1,44 +1,25 @@
 defmodule Bacon8Web.Components.BackgroundSelector do
   use Phoenix.LiveComponent
 
-  @available_backgrounds [
-    %{
-      id: "galaxy",
-      name: "Galaxy",
-      description: "Swirling cosmic particles with stars",
-      preview_class: "bg-gradient-to-br from-indigo-900 via-purple-900 to-black"
-    },
-    %{
-      id: "nebula",
-      name: "Nebula",
-      description: "Colorful gas clouds with gentle motion",
-      preview_class: "bg-gradient-to-br from-pink-900 via-purple-900 to-blue-900"
-    },
-    %{
-      id: "starfield",
-      name: "Starfield",
-      description: "Classic scrolling stars",
-      preview_class: "bg-gradient-to-b from-gray-900 to-black"
-    },
-    %{
-      id: "void",
-      name: "Void",
-      description: "Minimal dark space with subtle stars",
-      preview_class: "bg-black"
-    },
-    %{
-      id: "gradient",
-      name: "Gradient",
-      description: "Smooth color transitions (customizable)",
-      preview_class: "bg-gradient-to-br from-blue-600 to-purple-600"
-    },
-    %{
-      id: "solid",
-      name: "Solid Color",
-      description: "Single color background (customizable)",
-      preview_class: "bg-gray-900"
-    }
-  ]
+  # The cosmic backgrounds (Bacon8Web.Components.Cosmos: SVG and CSS, 2026-10-28), then the flat ones.
+  @available_backgrounds Bacon8Web.Components.Cosmos.catalogue() ++
+                           [
+                             %{
+                               id: "gradient",
+                               name: "Gradient",
+                               description: "Smooth color transitions (customizable)",
+                               preview_class: "bg-gradient-to-br from-blue-600 to-purple-600"
+                             },
+                             %{
+                               id: "solid",
+                               name: "Solid Color",
+                               description: "Single color background (customizable)",
+                               preview_class: "bg-gray-900"
+                             }
+                           ]
+
+  @doc "Every background a member can pick (the profile page lists these)."
+  def backgrounds, do: @available_backgrounds
 
   def update(assigns, socket) do
     {:ok,
@@ -58,6 +39,7 @@ defmodule Bacon8Web.Components.BackgroundSelector do
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <%= for bg <- @backgrounds do %>
           <button
+            type="button"
             phx-click="select_background"
             phx-value-background={bg.id}
             phx-target={@myself}
@@ -70,18 +52,11 @@ defmodule Bacon8Web.Components.BackgroundSelector do
             ]}
           >
             <!-- Preview -->
-            <div class={["h-32 relative", bg.preview_class]}>
-              <%= if bg.id == "starfield" || bg.id == "void" do %>
-                <div class="absolute inset-0">
-                  <%= for i <- 1..20 do %>
-                    <div
-                      class="absolute w-1 h-1 bg-white rounded-full opacity-70"
-                      style={"left: #{rem(i * 17, 100)}%; top: #{rem(i * 23, 100)}%;"}
-                    >
-                    </div>
-                  <% end %>
-                </div>
-              <% end %>
+            <div class={["h-32 relative overflow-hidden group", Map.get(bg, :preview_class)]}>
+              <%!-- a cosmos is previewed by the real thing, still until hovered --%>
+              <div :if={bg.id in Bacon8Web.Components.Cosmos.kinds()} class="cosmos c-preview" data-cosmos={bg.id} aria-hidden="true">
+                <Bacon8Web.Components.Cosmos.layers uid={"cwp-#{bg.id}"} />
+              </div>
 
               <%= if @selected_background == bg.id do %>
                 <div class="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">

@@ -49,7 +49,21 @@ defmodule Bacon8Web.PageLive do
     assigns = assign(assigns, :max_width, max_width)
 
     ~H"""
-    <div data-responsive-content class="min-h-screen pointer-events-none" style="padding-top: 30px; padding-bottom: 48px;">
+    <Bacon8Web.Components.EditorShell.shell
+        :if={@editing && @form}
+        kind={:page}
+        record={@page}
+        editor_id={"page-editor-#{@page.id}"}
+        form={@form}
+        revisions={@revisions}
+        uploads={@uploads}
+        featured_library={@featured_library}
+        saving={@saving}
+        last_saved={@last_saved}
+        dirty={InPlaceEditing.dirty?(assigns)}
+        pending_title={@pending_title}
+      />
+    <div :if={!(@editing && @form)} data-responsive-content class="min-h-screen pointer-events-none" style="padding-top: 30px; padding-bottom: 48px;">
       <div class={"w-full #{@max_width} mx-auto px-4 py-8 relative z-10 pointer-events-auto"}>
         <div class="auth-glass-panel p-8 rounded-xl">
           <!-- Featured Image -->

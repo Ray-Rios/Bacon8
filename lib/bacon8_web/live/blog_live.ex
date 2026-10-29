@@ -326,8 +326,22 @@ defmodule Bacon8Web.BlogLive do
           </div>
         </div>
 
-      <!-- Blog Post Detail View -->
-      <div :if={@view == :post_detail}>
+      <!-- Blog Post Detail View (while editing: the editor, full screen) -->
+      <Bacon8Web.Components.EditorShell.shell
+        :if={@view == :post_detail && @editing && @form}
+        kind={:post}
+        record={@post}
+        editor_id={"blog-editor-#{@post.id}"}
+        form={@form}
+        revisions={@revisions}
+        uploads={@uploads}
+        featured_library={@featured_library}
+        saving={@saving}
+        last_saved={@last_saved}
+        dirty={InPlaceEditing.dirty?(assigns)}
+        pending_title={@pending_title}
+      />
+      <div :if={@view == :post_detail && !(@editing && @form)}>
         <div class="auth-glass-panel rounded-xl p-8 mb-6">
           <!-- Back button -->
           <.link navigate={~p"/blog"} class="text-blue-400 hover:text-blue-300 mb-6 inline-block">

@@ -149,7 +149,7 @@ defmodule Bacon8.Accounts.User do
     |> validate_inclusion(:role, ["admin", "gm", "editor", "moderator", "member", "guest", "banned"])
     |> validate_inclusion(:status, ["active", "disabled", "unverified"], message: "Invalid status")
     |> validate_number(:avatar_opacity, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
-    |> validate_inclusion(:background_preference, ["galaxy", "nebula", "starfield", "void", "gradient", "solid"])
+    |> validate_inclusion(:background_preference, ["galaxy", "nebula", "starfield", "orbit", "aurora", "void", "gradient", "solid"])
     |> unique_constraint(:email)
   end
 

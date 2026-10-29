@@ -3,6 +3,10 @@
 @import "./game_card.css";
 @import "./fire_gem.css";
 @import "./sizzle_bacon.css";
+@import "./cosmos.css";
+@import "./intro.css";
+@import "./page_builder.css";
+@import "./games_hat.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -929,6 +933,47 @@ html.chrome-hidden [data-responsive-content] { top: 0 !important; bottom: 0 !imp
 .content-divider {
   @apply border-0 h-px bg-gradient-to-r from-transparent via-gray-600 to-transparent my-8;
 }
+
+/* Rows with a look, from the page builder's row gear (2026-10-28; BlockEditor.section_classes/1).
+   The editor shows the same widths (assets/css/page_builder.css). */
+.content-section { margin: 0 auto 1.5rem; border-radius: 1rem; }
+.content-section > .content-row { margin-bottom: 0; }
+.content-section.w-narrow { max-width: 600px; }
+.content-section.w-normal { max-width: 760px; }
+.content-section.w-wide { max-width: 1100px; }
+.content-section.w-full { max-width: none; }
+.content-section.sp-s { padding-top: .25rem; padding-bottom: .25rem; margin-bottom: .75rem; }
+.content-section.sp-m { padding-top: .6rem; padding-bottom: .6rem; }
+.content-section.sp-l { padding-top: 2.5rem; padding-bottom: 2.5rem; }
+.content-section.bg-glass { background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); padding-left: 1.25rem; padding-right: 1.25rem; backdrop-filter: blur(8px); }
+.content-section.bg-tint { background: linear-gradient(135deg, rgba(255, 138, 76, .14), rgba(140, 90, 230, .12)); padding-left: 1.25rem; padding-right: 1.25rem; }
+.content-section.bg-dark { background: rgba(0, 0, 0, .45); padding-left: 1.25rem; padding-right: 1.25rem; }
+.content-section.al-center > .content-row { align-items: center; }
+.content-section.al-center.cols-1 { text-align: center; }
+
+/* Buttons */
+.content-button-wrap { display: flex; margin: 1.25rem 0; }
+.content-button-wrap.align-left { justify-content: flex-start; }
+.content-button-wrap.align-center { justify-content: center; }
+.content-button-wrap.align-right { justify-content: flex-end; }
+.content-button, .prose a.content-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 46px;
+  padding: .7rem 1.6rem;
+  border-radius: 999px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform .15s ease, box-shadow .2s ease, background-color .2s ease;
+}
+.content-button-primary, .prose a.content-button-primary { color: #1d0d04; background: linear-gradient(135deg, #ffc18f, #ff8a4c 55%, #e2582a); box-shadow: 0 6px 20px rgba(255, 120, 60, .3); }
+.content-button-ghost, .prose a.content-button-ghost { color: #f7ead6; box-shadow: inset 0 0 0 1.5px rgba(247, 234, 214, .5); }
+.content-button:hover { transform: translateY(-1px); }
+
+/* Pictures set to a smaller size */
+.prose figure.img-medium { max-width: 66%; margin-left: auto; margin-right: auto; }
+.prose figure.img-small { max-width: 40%; margin-left: auto; margin-right: auto; }
+@media (max-width: 640px) { .prose figure.img-small { max-width: 66%; } }
 
 /* HTML embed blocks in content */
 .html-embed-display {

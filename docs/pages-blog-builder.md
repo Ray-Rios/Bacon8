@@ -1,6 +1,6 @@
 # Plan: the /pages and /blog builders
 
-Status: **the safety net is built (2026-10-25); the rebuild is under way: the four screens share one editing engine (2026-10-26, "One builder" below).** The owner answered the first questions the same day (below).
+Status: **the safety net is built (2026-10-25); the four screens share one editing engine (2026-10-26); the editor itself was rebuilt, phone first, as the page builder (2026-10-28, "The page builder" below).** The owner answered the first questions the same day (below).
 The owner's words: the core keeps the traditional `/pages` and `/blog`, "which need to be
 bolstered quite a bit as the build tool for both isn't production grade."
 
@@ -217,3 +217,57 @@ The body is a list of `{:heading, text}`, `{:paragraph, text}` and `{:list, [tex
 so a game can put player names in a post safely. It makes a **draft** unless `publish: true`, authored by the
 given user or the oldest admin, tagged with the plugin's slug, with a numbered slug if the title is taken.
 Staff edit it afterwards in the block editor like any post. Tests: `test/bacon8/content/plugin_posts_test.exs`.
+
+## The page builder (2026-10-28)
+
+The owner: the editor "needs to be the star of the show", redone "with mobile first in mind", "subtle reactive
+components, but minimalistic. A few + buttons or gear icons", "simple ways to create cells, rows, columns to help keep
+content centered and well maintained", and creating a page or post should be quick and easy.
+
+**Where.** `assets/js/page_builder/`: `model.ts` (the data and every change to it, pure and tested:
+`assets/js/__tests__/page_builder_model.test.ts`), `templates.ts` (the starters), `render.ts` (the canvas and the
+sheets as HTML), `ui.ts` (the sheet and the formatting bar), `html.ts` (the HTML sent beside the JSON), `hook.ts`
+(the LiveView hook, still called `BlockEditor`, and `AutoGrow` for the title). Styles: `assets/css/page_builder.css`.
+The editing screen: `Bacon8Web.Components.EditorShell`, shown by `PageLive` and `BlogLive` while editing.
+`block_editor_hook.ts` (the old editor, 2,771 lines) is no longer loaded; delete it with `git rm` when convenient
+(`block_editor_library.ts` and `block_editor_columns.ts` stay: the library window is reused, and the columns test still
+imports its file).
+
+**What it does.**
+
+- **New page / New post** in the start menu (staff with the `:content` area): a draft, opened in the editor
+  (`DesktopLive` "new_content"). The admin lists' New buttons still work too.
+- **An empty page offers starters**: Blank, Article, Landing page, Gallery, Announcement, and for posts Patch notes.
+  Each is ordinary rows of placeholder blocks.
+- **The editing screen** is full screen: a slim bar (close, Draft/Live and how saving is going, Undo, Redo, phone-width
+  preview, the settings gear, Done/Save, Publish), the title typed in place (`update_title`; a new draft's "Untitled"
+  shows as an empty box), the address under it (tap: settings), then the page. The settings panel
+  (`ContentSettings.settings/1`, unchanged) slides in from the right, or up from the bottom on a phone.
+- **Rows**: a + between rows (faint until hovered; always there on touch) adds a block or a row of 2, 3 or 4
+  columns. A row's gear: column layout in one tap (1, ½+½, ⅓+⅔, ⅔+⅓, three, ¼+½+¼, four; fewer columns move the
+  blocks into the last one kept, never lose them), width (narrow 600, normal 760, wide 1100, full), spacing, background
+  (none, glass, tint, dark), line up (top/middle; for one column, text left/centre), Up, Down, Copy, Delete. With a
+  mouse the line between two columns drags to resize them, and rows and blocks drag by their handle.
+- **Cells**: an empty cell shows its own +.
+- **Blocks**: tap to select; the gear has the block's own options and Up, Down, Copy, Delete; text-like blocks can be
+  turned into each other. Text is typed in place. Selecting words shows a small bar (bold, italic, link, heading,
+  smaller heading, list, numbered list, quote, plain); on a phone it sits above the keyboard. "# ", "## ", "- ",
+  "1. " and "> " at the start of a line make a heading, a list or a quote; "/" in an empty paragraph opens the add
+  sheet; Enter after a heading or button starts a paragraph; Backspace in an empty paragraph removes it. Pasting
+  brings words, never styles. The font, size and colour pickers are gone (pages stay consistent; old pages keep their
+  formatting). Pictures: upload (a phone offers the camera), the library, or a link; dropped or pasted files become
+  picture, gallery, video, audio or file blocks where they land. A picture without alt text shows "Add alt text".
+- **Undo and Redo** (also Ctrl/Cmd+Z, Shift+Z, Y): whole-page snapshots, one step per burst of typing.
+- **New block: Button** (label typed on it; link, look and place in its gear). The editor refuses links that aren't
+  http(s), mailto, a path here or #, and so does the server (`BlockEditor.safe_href/1`).
+
+**The saved format** is unchanged and only grew (the contract above): rows may have `settings` `width`, `space`,
+`background`, `align`; images `settings.size` (`small`/`medium`/`full`); the `button` block. New rows always carry a
+`width`, and the public render wraps only such rows in `<section class="content-section ...">`
+(`BlockEditor.section_classes/1`, known values only), so every page saved before renders exactly as it did. Heading
+levels are clamped to 1-6 on render (a saved level went straight into the tag before). Styles for the public side:
+`.content-section`, `.content-button`, `figure.img-small/medium` in `app.css`. Tests:
+`test/bacon8_web/live/page_builder_test.exs`.
+
+**Not done yet**: drag to reorder on touch screens (Up/Down in the gear instead), per-picture alt text in a gallery,
+image links, the text block's inline pictures, comparing versions.
