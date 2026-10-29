@@ -4,6 +4,7 @@ defmodule Bacon8Web.Components.Taskbar do
   """
   use Bacon8Web, :html
   import Bacon8Web.AvatarHelpers
+  alias Phoenix.LiveView.JS
 
   @doc """
   Renders the desktop taskbar with start menu and system tray
@@ -36,7 +37,7 @@ defmodule Bacon8Web.Components.Taskbar do
           
           <!-- Start Menu -->
           <div :if={@show_start_menu} 
-               class="absolute bottom-full left-0 mb-2 w-80 glass-menu rounded-lg shadow-2xl overflow-hidden">
+               class="absolute bottom-full left-0 mb-2 w-80 max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-5rem)] overflow-y-auto glass-menu rounded-lg shadow-2xl">
             <div class="p-4 border-b border-gray-600">
               <div class="flex items-center space-x-3">
                 <%= if @current_user do %>
@@ -80,18 +81,7 @@ defmodule Bacon8Web.Components.Taskbar do
             
             <!-- Quick Access Links -->
             <div class="border-t border-gray-600 p-3">
-              <div class="space-y-1">
-                <%!-- Links from active plugins (BACON8.md §9), e.g. the store --%>
-                <.link :for={item <- Bacon8.Plugins.nav_links(@current_user)} navigate={item.path} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
-                  <span><Bacon8Web.Components.Gem.icon icon={item.icon} /></span>
-                  <span class="text-sm"><%= item.label %></span>
-                  <span :if={Map.get(item, :badge)} class="ml-auto rounded-full bg-red-500 px-1.5 text-xs font-bold text-white"><%= item.badge %></span>
-                </.link>
-                <.link navigate={~p"/blog"} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
-                  <span>🚬</span>
-                  <span class="text-sm">Blog</span>
-                </.link>
-              </div>
+              <.start_links current_user={@current_user} />
             </div>
             
             <!-- Power Options -->
@@ -375,6 +365,84 @@ defmodule Bacon8Web.Components.Taskbar do
   end
 
   # Helper functions
+  @doc """
+  The start menu's pages, the same for everyone with a taskbar (signed in or not): Home, Games,
+  the plugins' pages (BACON8.md §9: Store, Chat...), Blog, and Profile and Admin for those who
+  have them. On a phone the start menu is the way round the site (2026-10-28).
+  """
+  attr :current_user, :any, default: nil
+
+  def start_links(assigns) do
+    ~H"""
+    <div class="space-y-1">
+      <.start_link to={~p"/"} icon="🏠" label="Home" />
+      <.start_link to={~p"/games"} icon="🎮" label="Games" />
+      <%!-- Links from active plugins (BACON8.md §9), e.g. the store --%>
+      <.link :for={item <- Bacon8.Plugins.nav_links(@current_user)} navigate={item.path} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
+        <span><Bacon8Web.Components.Gem.icon icon={item.icon} /></span>
+        <span class="text-sm"><%= item.label %></span>
+        <span :if={Map.get(item, :badge)} class="ml-auto rounded-full bg-red-500 px-1.5 text-xs font-bold text-white"><%= item.badge %></span>
+      </.link>
+      <.start_link to={~p"/blog"} icon="🚬" label="Blog" />
+      <.start_link :if={@current_user} to={~p"/profile"} icon="👤" label="Profile" />
+      <.start_link :if={Bacon8.Permissions.staff?(@current_user)} to={Bacon8.Permissions.home_path(@current_user)} icon="⚙️" label="Admin" />
+    </div>
+    """
+  end
+
+  attr :to, :string, required: true
+  attr :icon, :string, required: true
+  attr :label, :string, required: true
+
+  defp start_link(assigns) do
+    ~H"""
+    <.link navigate={@to} class="flex items-center space-x-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors">
+      <span><%= @icon %></span>
+      <span class="text-sm"><%= @label %></span>
+    </.link>
+    """
+  end
+
+  @doc """
+  The taskbar for visitors who aren't signed in (signed-in users get the desktop's,
+  `Bacon8Web.DesktopLive`): the start button and its menu (the site's pages, Login and Register)
+  and the clock. No server state: the menu opens and closes in the browser.
+  """
+  def guest_taskbar(assigns) do
+    ~H"""
+    <div id="taskbar" class="fixed bottom-0 left-0 w-full h-[35px] auth-glass-panel border-t border-gray-700 z-50 transition-transform duration-300 ease-in-out">
+      <div class="flex items-center justify-between h-full px-2">
+        <div id="start-menu-wrapper" class="relative h-full flex items-center" phx-click-away={JS.hide(to: "#guest-start-menu")}>
+          <button
+            type="button"
+            phx-click={JS.toggle(to: "#guest-start-menu")}
+            aria-label="Start"
+            class="start-button p-1 hover:glass-dark hover:bg-white/20 rounded transition-colors duration-200"
+          >
+            <Bacon8Web.Components.Bacon.bacon size={26} />
+          </button>
+          <div id="guest-start-menu" class="hidden absolute bottom-full left-0 mb-2 w-72 max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-5rem)] overflow-y-auto glass-menu rounded-lg shadow-2xl">
+            <div class="p-3">
+              <.start_links current_user={nil} />
+            </div>
+            <div class="border-t border-gray-600 p-3 flex gap-2">
+              <.link navigate={~p"/login"} class="flex-1 text-center px-3 py-2 rounded hover:bg-blue-700 text-blue-300 hover:text-white transition-colors text-sm">🔑 Login</.link>
+              <.link navigate={~p"/register"} class="flex-1 text-center px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors text-sm">Register</.link>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center">
+          <div id="calendar-wrapper" class="relative group h-full flex items-center">
+            <div id="taskbar-clock" class="px-2 py-[9px] rounded glass-dark text-gray-300 text-sm font-medium">
+              <div class="text-center"><div class="time">--:--</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   defp get_user_display_name(user) do
     user.name || "User"
   end

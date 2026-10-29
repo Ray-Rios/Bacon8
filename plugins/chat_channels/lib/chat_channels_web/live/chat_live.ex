@@ -1867,6 +1867,9 @@ defmodule ChatChannelsWeb.ChatLive do
             </div>
           </div>
           
+          <%!-- The one reaction picker every message's "+" opens (ChatComponents.reaction_emoji_picker/1) --%>
+          <.reaction_emoji_picker />
+
           <!-- Auto-scroll Toggle Button -->
           <button 
             id="auto-scroll-toggle" 

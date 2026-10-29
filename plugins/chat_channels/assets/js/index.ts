@@ -281,7 +281,8 @@ const SidebarResizer = {
       const savedWidth = localStorage.getItem('forum_sidebar_width');
       const savedCollapsed = localStorage.getItem('forum_sidebar_collapsed');
       
-      if (savedCollapsed === 'true') {
+      // a phone starts with the channel list closed (it would cover most of the screen)
+      if (savedCollapsed === 'true' || (savedCollapsed === null && window.innerWidth < 640)) {
         // Start collapsed
         el.style.width = '0px';
         el.style.display = 'none';
@@ -324,7 +325,7 @@ const SidebarResizer = {
     // Re-apply state on updates (since phx-update="ignore" might be removed)
     this.updated = () => {
       const savedCollapsed = localStorage.getItem('forum_sidebar_collapsed');
-      if (savedCollapsed === 'true') {
+      if (savedCollapsed === 'true' || (savedCollapsed === null && window.innerWidth < 640)) {
         el.style.width = '0px';
         el.style.display = 'none';
         if (content) content.style.display = 'none';
@@ -430,4 +431,79 @@ const SidebarResizer = {
   }
 };
 
-export const hooks = { MessageList, ChatInput, SidebarResizer, Sortable };
+// The page's one reaction picker (ChatComponents.reaction_emoji_picker/1). A message's "+" button
+// dispatches "chat:react" with the message's id: the picker opens beside that button (above it when
+// there's room, kept on screen), and an emoji sends "toggle_reaction" for that message.
+const ReactionPicker = {
+  mounted(this: any) {
+    const el = this.el as HTMLElement;
+    this.messageId = null;
+    const hide = () => {
+      el.classList.add('hidden');
+      this.messageId = null;
+    };
+    this.onReact = (e: CustomEvent) => {
+      const id = e.detail?.id;
+      if (!id) return;
+      if (this.messageId === id && !el.classList.contains('hidden')) return hide();
+      this.messageId = id;
+      el.classList.remove('hidden');
+      const btn = (e.target as HTMLElement).getBoundingClientRect();
+      const w = el.offsetWidth, h = el.offsetHeight, pad = 8;
+      const left = Math.max(pad, Math.min(btn.left, window.innerWidth - w - pad));
+      const top = btn.top - h - 6 >= pad ? btn.top - h - 6 : Math.min(btn.bottom + 6, window.innerHeight - h - pad);
+      el.style.left = `${left}px`;
+      el.style.top = `${Math.max(pad, top)}px`;
+    };
+    window.addEventListener('chat:react', this.onReact as EventListener);
+    el.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      const cat = t.closest('[data-cat]') as HTMLElement | null;
+      if (cat) {
+        el.querySelectorAll('.emoji-category').forEach((g) => g.classList.toggle('hidden', (g as HTMLElement).dataset.category !== cat.dataset.cat));
+        return;
+      }
+      const b = t.closest('[data-emoji]') as HTMLElement | null;
+      if (b && this.messageId) {
+        this.pushEvent('toggle_reaction', { message_id: this.messageId, emoji: b.dataset.emoji });
+        hide();
+      }
+    });
+    this.onDown = (e: Event) => {
+      if (el.classList.contains('hidden')) return;
+      const t = e.target as HTMLElement;
+      if (el.contains(t) || t.closest('[phx-click*="chat:react"]')) return;
+      hide();
+    };
+    document.addEventListener('pointerdown', this.onDown, true);
+    this.onKey = (e: KeyboardEvent) => e.key === 'Escape' && hide();
+    window.addEventListener('keydown', this.onKey);
+    // the list scrolling under it would leave it pointing at nothing
+    this.onScroll = () => !el.classList.contains('hidden') && hide();
+    document.getElementById('messages')?.addEventListener('scroll', this.onScroll, { passive: true });
+  },
+  destroyed(this: any) {
+    window.removeEventListener('chat:react', this.onReact);
+    document.removeEventListener('pointerdown', this.onDown, true);
+    window.removeEventListener('keydown', this.onKey);
+    document.getElementById('messages')?.removeEventListener('scroll', this.onScroll);
+  },
+};
+
+// An input's emoji picker (ChatComponents.emoji_picker/1): one listener for all its buttons,
+// which only carry their emoji (data-emoji), inserted into the textarea named by data-target.
+const EmojiPicker = {
+  mounted(this: any) {
+    const el = this.el as HTMLElement;
+    el.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('[data-emoji]') as HTMLElement | null;
+      if (!b) return;
+      const target = document.querySelector(el.dataset.target || '');
+      target?.dispatchEvent(new CustomEvent('insert-text', { detail: { text: b.dataset.emoji } }));
+      el.classList.add('hidden');
+      el.style.display = '';
+    });
+  },
+};
+
+export const hooks = { MessageList, ChatInput, SidebarResizer, Sortable, ReactionPicker, EmojiPicker };

@@ -11,13 +11,16 @@
   
   <.flash_group flash={@flash} />
   
-  <!-- Desktop (taskbar + windows) - renders for authenticated users -->
+  <!-- Desktop (taskbar + windows) for signed-in users; visitors get the taskbar and its start
+       menu too, the way round the site on a phone (2026-10-28) -->
   <%= if assigns[:current_user] do %>
     <.live_component 
       module={Bacon8Web.DesktopLive} 
       id="bacon8-desktop"
       current_user={@current_user}
     />
+  <% else %>
+    <Bacon8Web.Components.Taskbar.guest_taskbar />
   <% end %>
   
   <main class="relative z-10 w-full pb-12">

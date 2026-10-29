@@ -28,4 +28,26 @@ defmodule Bacon8Web.TaskbarStartMenuTest do
     assert html |> String.split("phx-value-app=\"file_manager\"") |> length() == 2,
            "File Manager should be pinned in the start menu only, not also on the taskbar"
   end
+
+  # 2026-10-28: on a phone the navbar has no room for the site's links, so the start menu is how
+  # you get round, and visitors who aren't signed in get the taskbar too.
+  test "the start menu lists the site's pages; Admin only for staff" do
+    {:ok, view, _} = live(signed_in(person("member")), "/blog")
+    html = view |> element("[aria-label='Start']") |> render_click()
+
+    for path <- ["/", "/games", "/blog", "/profile"], do: assert(html =~ ~s(href="#{path}"), "no link to #{path}")
+    refute html =~ ">Admin<"
+
+    {:ok, view, _} = live(signed_in(person("admin")), "/blog")
+    html = view |> element("[aria-label='Start']") |> render_click()
+    assert html =~ ">Admin<"
+  end
+
+  test "visitors get the taskbar, with the pages and Login and Register" do
+    {:ok, _view, html} = live(build_conn(), "/blog")
+    assert html =~ ~s(id="taskbar")
+    assert html =~ ~s(id="guest-start-menu")
+    for path <- ["/", "/games", "/blog", "/login", "/register"], do: assert(html =~ ~s(href="#{path}"), "no link to #{path}")
+    refute html =~ ~s(href="/profile")
+  end
 end

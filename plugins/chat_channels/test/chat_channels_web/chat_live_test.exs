@@ -254,6 +254,26 @@ defmodule ChatChannelsWeb.ChatLiveTest do
       assert ChatChannels.get_message(msg.id).content == "mine, not yours"
     end
 
+    test "a full channel stays light: one reaction picker for the page, not one per message", %{me: me, channel: channel} do
+      # (2026-10-28: each message and reply carried its own ~1,100-button picker; 25 messages made
+      # an 8 MB first update and 31,000 elements, and froze phones for 15-20 s)
+      for i <- 1..25 do
+        m = message_fixture(channel, me, "message #{i}", 100 - i)
+        message_fixture(channel, me, "reply to #{i}", 50 - i, %{reply_to_id: m.id})
+      end
+
+      {:ok, view, html} = live(signed_in(me), "/chat/#{channel.id}")
+      assert html =~ "message 25"
+      assert length(String.split(html, ~s(phx-hook="ReactionPicker"))) == 2
+      # the whole page, 25 messages and their replies, in well under a megabyte
+      assert byte_size(html) < 600_000
+
+      # a reaction picked in the shared picker lands on the message named
+      [m | _] = ChatChannels.list_messages(channel.id)
+      render_hook(view, "toggle_reaction", %{"message_id" => m.id, "emoji" => "👍"})
+      assert Enum.any?(ChatChannels.get_message(m.id) |> Bacon8.Repo.preload(:reactions) |> Map.get(:reactions), &(&1.emoji == "👍"))
+    end
+
     test "pinned messages show above the list for everyone in the channel", %{me: me, channel: channel} do
       msg = message_fixture(channel, me, "read me first", 0, %{is_pinned: true})
       {:ok, _view, html} = live(signed_in(me), "/chat/#{channel.id}")
