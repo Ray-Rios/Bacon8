@@ -161,3 +161,63 @@ b8-spin:not(:defined) { background: var(--still) center / contain no-repeat; }
   .ss-body { padding: 0.25rem 1rem 1.5rem; gap: 1.1rem; }
   .ss-stage { max-height: 38vh; }
 }
+/* The receipt (2026-10-29): one purchase, its items and total, with a stamp for its state. The
+   same card the front page shows ("Order #8008"); BaconStoreWeb.StoreComponents.receipt/1. Used on
+   /store/orders, the order page, the library and /admin/bacon_store/orders. */
+.rc {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 26rem;
+  padding: 1.15rem 1.3rem 1rem;
+  border-radius: 1.1rem;
+  color: #d8d2e2;
+  background: linear-gradient(160deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .025));
+  border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .06);
+  backdrop-filter: blur(10px);
+}
+a.rc { display: block; transition: border-color .15s, transform .15s; }
+a.rc:hover { border-color: rgba(255, 138, 76, .5); transform: translateY(-1px); }
+.rc-head { display: flex; align-items: center; gap: .5rem; padding-bottom: .75rem; border-bottom: 1px dashed rgba(255, 255, 255, .18); margin-bottom: .3rem; font-weight: 700; color: #fbf3e6; padding-right: 6.5rem; }
+.rc-date { display: block; font-size: .75rem; font-weight: 500; color: rgba(216, 210, 226, .55); }
+.rc-buyer { display: block; font-size: .75rem; font-weight: 500; color: rgba(216, 210, 226, .7); word-break: break-all; }
+.rc-line, .rc-total { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: .5rem 0; }
+.rc-line span:first-child { min-width: 0; display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.rc-line .rc-note { flex-basis: 100%; font-size: .72rem; color: #fca5a5; }
+.rc-line .rc-tag { font-size: .66rem; padding: .05rem .45rem; border-radius: 999px; background: rgba(255, 255, 255, .08); color: rgba(216, 210, 226, .75); }
+.rc-line span:last-child { white-space: nowrap; }
+.rc-total { margin-top: .25rem; border-top: 1px dashed rgba(255, 255, 255, .18); font-weight: 800; color: #fbf3e6; font-size: 1.08rem; }
+.rc-stamp {
+  position: absolute;
+  right: .9rem;
+  top: .8rem;
+  padding: .15rem .7rem;
+  border: 2.5px solid currentColor;
+  border-radius: .4rem;
+  font-weight: 900;
+  font-size: .85rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  transform: rotate(-11deg);
+  opacity: .9;
+}
+.rc-stamp.is-paid { color: #8be05f; }
+.rc-stamp.is-pending { color: #f5c46b; }
+.rc-stamp.is-void { color: #9ca3af; }
+.rc-stamp.is-disputed { color: #fb923c; }
+.rc-stamp.is-lost { color: #f87171; }
+.rc-foot { margin-top: .4rem; font-size: .8rem; color: rgba(216, 210, 226, .6); }
+.rc-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); }
+.rc-grid .rc { max-width: none; }
+
+/* the cart */
+.cart-btn { position: relative; display: inline-flex; align-items: center; gap: .45rem; padding: .55rem .95rem; border-radius: 999px; font-weight: 600; font-size: .9rem; color: #fff; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .14); }
+.cart-btn:hover { background: rgba(255, 255, 255, .14); }
+.cart-btn b { min-width: 1.3rem; height: 1.3rem; padding: 0 .3rem; border-radius: 999px; display: inline-grid; place-items: center; font-size: .75rem; color: #1d0d04; background: linear-gradient(135deg, #ffc18f, #ff8a4c); }
+.cart-row { display: flex; align-items: center; gap: .8rem; padding: .7rem 0; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.cart-row:last-child { border-bottom: 0; }
+.cart-thumb { flex: none; width: 3rem; height: 3rem; border-radius: .7rem; display: grid; place-items: center; font-size: 1.4rem; background: rgba(255, 255, 255, .06); overflow: hidden; }
+.cart-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.cart-x { flex: none; width: 2rem; height: 2rem; border-radius: 999px; color: rgba(255, 255, 255, .55); }
+.cart-x:hover { color: #fff; background: rgba(255, 255, 255, .1); }

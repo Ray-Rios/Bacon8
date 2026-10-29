@@ -1,11 +1,13 @@
 defmodule BaconStoreWeb.StoreLibraryLive do
   @moduledoc """
   /store/library - what the user owns from the store (BACON8.md §8):
-  downloads with their current files, license keys, and items and passes.
+  downloads with their current files, license keys, and items and passes, and (2026-10-29) the
+  latest purchases as receipts.
   """
   use Bacon8Web, :live_view
 
   import BaconStoreWeb.StoreComponents
+  alias BaconStore.Store
   alias BaconStore.Store.{Catalog, Library}
 
   on_mount {Bacon8Web.UserAuth, :require_authenticated_user}
@@ -19,6 +21,7 @@ defmodule BaconStoreWeb.StoreLibraryLive do
        page_title: "Library",
        tz: timezone(socket),
        lib: lib,
+       receipts: Store.list_user_receipts(socket.assigns.current_user, 3),
        empty?: lib.downloads == [] and lib.keys == [] and lib.grants == []
      )}
   end
@@ -38,8 +41,9 @@ defmodule BaconStoreWeb.StoreLibraryLive do
   @impl true
   def render(assigns) do
     ~H"""
+    <.store_styles />
     <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto bg-black">
-      <div class="mx-auto max-w-4xl px-6 py-12">
+      <div class="mx-auto max-w-4xl px-4 sm:px-6 py-12">
         <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 class="text-4xl font-bold tracking-tight text-white">Library</h1>
@@ -122,6 +126,16 @@ defmodule BaconStoreWeb.StoreLibraryLive do
               </div>
               <span class={["text-sm", active?(g.state) && "text-green-300", !active?(g.state) && "text-gray-500"]}>{state_text(g.state, @tz)}</span>
             </div>
+          </div>
+        </section>
+
+        <section :if={@receipts != []} class="mb-12">
+          <div class="mb-4 flex items-baseline justify-between gap-3">
+            <h2 class="text-xl font-semibold text-white">Recent orders</h2>
+            <.link navigate={~p"/store/orders"} class="text-sm text-blue-400 hover:underline">All purchases</.link>
+          </div>
+          <div class="rc-grid">
+            <.receipt :for={r <- @receipts} receipt={r} tz={@tz} href={~p"/store/orders/#{r.lead.id}"} />
           </div>
         </section>
 

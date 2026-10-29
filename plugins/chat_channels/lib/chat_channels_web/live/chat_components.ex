@@ -43,7 +43,7 @@ defmodule ChatChannelsWeb.ChatComponents do
           <%= avatar_tag(@message.user, size_class: "w-10 h-10 cursor-pointer") %>
           
           <!-- User Hover Card -->
-          <div class="absolute left-0 top-full mt-2 w-96 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 opacity-0 invisible group-hover/avatar:opacity-100 group-hover/avatar:visible transition-all duration-200 p-4 pointer-events-none group-hover/avatar:pointer-events-auto">
+          <div class="absolute left-0 top-full mt-2 w-96 max-w-[calc(100vw-2rem)] bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 opacity-0 invisible group-hover/avatar:opacity-100 group-hover/avatar:visible transition-all duration-200 p-4 pointer-events-none group-hover/avatar:pointer-events-auto">
             <div class="flex items-start space-x-4 mb-3">
               <%= avatar_tag(@message.user, size_class: "w-32 h-32") %>
               <div class="flex-1 min-w-0">
@@ -157,7 +157,7 @@ defmodule ChatChannelsWeb.ChatComponents do
           <%= if @editing_message_id == @message.id do %>
             <p class="text-gray-500 italic text-sm">(Editing in form below...)</p>
           <% else %>
-            <p class="text-gray-700 dark:text-gray-300"><%= @message.content %></p>
+            <p class="text-gray-700 dark:text-gray-300 break-words [overflow-wrap:anywhere]"><%= @message.content %></p>
           <% end %>
 
           <%!-- Attachments --%>
@@ -810,6 +810,10 @@ defmodule ChatChannelsWeb.ChatComponents do
     ~H"""
           <div class="p-2 border-b border-cyan-500/30 flex items-center justify-between dark-glass shadow-sm h-14 relative z-30">
             <div class="flex items-center gap-3 flex-1 min-w-0">
+              <%!-- The channel list, always one tap away (on a phone it slides over the chat) --%>
+              <button type="button" phx-click="toggle_sidebar" id="chat-channels-toggle" class="flex-none w-10 h-10 rounded-lg flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10" title="Channels" aria-label="Channels">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+              </button>
               <form phx-change="validate_channel_icon" phx-drop-target={@uploads.channel_icon.ref} class="flex items-center relative group/icon-upload">
                 <.live_file_input upload={@uploads.channel_icon} class="hidden" id="channel-icon-input" />
                 

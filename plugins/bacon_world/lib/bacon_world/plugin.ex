@@ -23,7 +23,8 @@ defmodule BaconWorld.Plugin do
       name: "Bacon World",
       icon: "🕹️",
       description: "Multiplayer 3D arcade lobby. Create or select a character to jump in.",
-      path: "/games/bacon_world"
+      path: "/games/bacon_world",
+      kind: "browser"
     }
   end
 

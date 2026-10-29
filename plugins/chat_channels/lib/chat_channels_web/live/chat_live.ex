@@ -1814,7 +1814,7 @@ defmodule ChatChannelsWeb.ChatLive do
           </div>
         </div>
       <% else %>
-      <div class="flex-1 flex flex-row overflow-hidden">
+      <div class="flex-1 flex flex-row overflow-hidden relative">
         <%!-- Sidebar with glass theme --%>
     <.chat_sidebar allow_invites={@allow_invites} current_channel={@current_channel} current_user={@current_user} pending_invites={@pending_invites} private_channels={@private_channels} public_channels={@public_channels} sidebar_open={@sidebar_open} />
         
@@ -1826,8 +1826,9 @@ defmodule ChatChannelsWeb.ChatLive do
           title="Click to expand sidebar"
         ></div>
 
-        <%!-- Main chat area with glass theme --%>
-        <div class="flex-1 flex flex-col">
+        <%!-- Main chat area with glass theme. min-w-0: a long word or link wraps instead of
+             widening the column past the screen (phones, 2026-10-29) --%>
+        <div id="chat-main" class="flex-1 min-w-0 flex flex-col">
           <%!-- Channel header with glass theme --%>
     <.channel_header can_moderate={@can_moderate} current_channel={@current_channel} current_user={@current_user} uploads={@uploads} />
 

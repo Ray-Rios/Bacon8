@@ -275,14 +275,16 @@ const SidebarResizer = {
     const MAX_WIDTH = 500;
     const COLLAPSE_THRESHOLD = 80; // Below this, collapse completely
     const clickThreshold = 5; // Pixels to distinguish click from drag
+    // On a phone the channel list slides over the chat (CSS: assets/css/mobile.css) and starts closed
+    const phone = () => window.matchMedia('(max-width: 767px)').matches;
 
     // Initialize sidebar state from localStorage
     const initSidebar = () => {
       const savedWidth = localStorage.getItem('forum_sidebar_width');
       const savedCollapsed = localStorage.getItem('forum_sidebar_collapsed');
       
-      // a phone starts with the channel list closed (it would cover most of the screen)
-      if (savedCollapsed === 'true' || (savedCollapsed === null && window.innerWidth < 640)) {
+      // a phone starts with the channel list closed (it would cover the chat)
+      if (savedCollapsed === 'true' || phone()) {
         // Start collapsed
         el.style.width = '0px';
         el.style.display = 'none';
@@ -306,7 +308,10 @@ const SidebarResizer = {
       el.style.display = 'none';
       if (content) content.style.display = 'none';
       if (collapsedHandle) collapsedHandle.classList.remove('hidden');
-      localStorage.setItem('forum_sidebar_collapsed', 'true');
+      this.phoneOpen = false;
+      el.classList.remove('is-open');
+      // a phone's open/closed doesn't change what a desktop remembers
+      if (!phone()) localStorage.setItem('forum_sidebar_collapsed', 'true');
     };
 
     const expand = (width?: number) => {
@@ -316,16 +321,32 @@ const SidebarResizer = {
       el.style.display = 'flex';
       if (content) content.style.display = 'block';
       if (collapsedHandle) collapsedHandle.classList.add('hidden');
+      if (phone()) {
+        this.phoneOpen = true;
+        el.classList.add('is-open');
+        return;
+      }
       localStorage.setItem('forum_sidebar_collapsed', 'false');
       if (width) {
         localStorage.setItem('forum_sidebar_width', width.toString());
       }
     };
 
+    // A phone: picking a channel, or tapping outside the list, closes it
+    el.addEventListener('click', (e) => {
+      if (phone() && (e.target as HTMLElement).closest('[phx-click="switch_channel"]')) setTimeout(collapse, 0);
+    });
+    this.onOutside = (e: Event) => {
+      const t = e.target as HTMLElement;
+      if (!phone() || !this.phoneOpen || el.contains(t) || t.closest('#chat-channels-toggle')) return;
+      collapse();
+    };
+    document.addEventListener('pointerdown', this.onOutside);
+
     // Re-apply state on updates (since phx-update="ignore" might be removed)
     this.updated = () => {
       const savedCollapsed = localStorage.getItem('forum_sidebar_collapsed');
-      if (savedCollapsed === 'true' || (savedCollapsed === null && window.innerWidth < 640)) {
+      if (this.phoneOpen ? false : savedCollapsed === 'true' || phone()) {
         el.style.width = '0px';
         el.style.display = 'none';
         if (content) content.style.display = 'none';
@@ -412,7 +433,7 @@ const SidebarResizer = {
 
     // Listen for toggle_sidebar event from the hamburger menu button
     this.handleEvent('toggle_sidebar', () => {
-      const isCollapsed = localStorage.getItem('forum_sidebar_collapsed') === 'true';
+      const isCollapsed = phone() ? !this.phoneOpen : localStorage.getItem('forum_sidebar_collapsed') === 'true';
       if (isCollapsed) {
         expand();
       } else {
@@ -428,6 +449,9 @@ const SidebarResizer = {
     }
 
     handle.addEventListener('mousedown', onMouseDown);
+  },
+  destroyed(this: any) {
+    if (this.onOutside) document.removeEventListener('pointerdown', this.onOutside);
   }
 };
 

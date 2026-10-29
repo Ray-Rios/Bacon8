@@ -8,13 +8,18 @@ defmodule BaconStoreWeb.StoreLive do
   `/store/p/<slug>` comes here (`StoreProductLive`).
 
   `?category=<slug>` picks a tab; `?category=gems` shows only Gem packs.
+
+  **The cart** (2026-10-29): "Add to cart" on a sheet, the Cart button (`?cart=1`) opens the cart's
+  sheet, which pays for everything at once by card (one checkout) or with Gems
+  (`BaconStore.Store.start_basket_checkout/3`, `buy_basket_with_gems/2`): one order number, one
+  receipt.
   """
   use Bacon8Web, :live_view
 
   import BaconStoreWeb.StoreComponents
   alias Bacon8.Entitlements
   alias BaconStore.{Store, Wallet}
-  alias BaconStore.Store.{Catalog, Fulfilment}
+  alias BaconStore.Store.{Cart, Catalog, Fulfilment}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -32,7 +37,11 @@ defmodule BaconStoreWeb.StoreLive do
        images: [],
        shown: nil,
        check: nil,
-       confirming: false
+       confirming: false,
+       cart_open: false,
+       cart: [],
+       cart_ids: Cart.ids(user),
+       cart_confirming: false
      )}
   end
 
@@ -52,8 +61,19 @@ defmodule BaconStoreWeb.StoreLive do
         slug -> Catalog.storefront(slug)
       end
 
-    {:noreply, socket |> assign(tab: tab, products: products, query: Map.take(params, ["category"])) |> show_item(params["item"])}
+    {:noreply,
+     socket
+     |> assign(tab: tab, products: products, query: Map.take(params, ["category"]))
+     |> show_item(params["item"])
+     |> show_cart(params["cart"] == "1")}
   end
+
+  defp show_cart(socket, true) do
+    user = socket.assigns[:current_user]
+    assign(socket, cart_open: true, cart: Cart.products(user), cart_ids: Cart.ids(user), cart_confirming: false, balance: user && Wallet.balance(user))
+  end
+
+  defp show_cart(socket, false), do: assign(socket, cart_open: false, cart_confirming: false)
 
   # The sheet: the item named in the URL, or none.
   defp show_item(socket, slug) when is_binary(slug) do
@@ -95,6 +115,45 @@ defmodule BaconStoreWeb.StoreLive do
   @impl true
   def handle_event("open_item", %{"slug" => slug}, socket) when is_binary(slug),
     do: {:noreply, push_patch(socket, to: here(socket, %{"item" => slug}))}
+
+  def handle_event("open_cart", _params, socket), do: {:noreply, push_patch(socket, to: here(socket, %{"cart" => "1"}))}
+
+  def handle_event("add_to_cart", _params, %{assigns: %{item: %{} = item, current_user: %{} = user}} = socket) do
+    case Cart.add(user, item) do
+      :ok ->
+        {:noreply, socket |> assign(cart_ids: Cart.ids(user)) |> put_flash(:info, "#{item.name} is in your cart.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, Store.reason_text(reason))}
+    end
+  end
+
+  def handle_event("add_to_cart", _params, socket), do: {:noreply, push_navigate(socket, to: ~p"/login")}
+
+  def handle_event("remove_from_cart", %{"id" => id}, %{assigns: %{current_user: %{} = user}} = socket) do
+    Cart.remove(user, id)
+    {:noreply, assign(socket, cart: Cart.products(user), cart_ids: Cart.ids(user), cart_confirming: false)}
+  end
+
+  def handle_event("pay_cart_card", _params, %{assigns: %{current_user: %{} = user}} = socket) do
+    case Store.start_basket_checkout(user, Cart.products(user)) do
+      {:ok, _orders, url} -> {:noreply, go(socket, url)}
+      {:error, reason} -> {:noreply, socket |> put_flash(:error, Store.reason_text(reason)) |> show_cart(true)}
+    end
+  end
+
+  def handle_event("confirm_cart_gems", _params, socket), do: {:noreply, assign(socket, cart_confirming: true)}
+  def handle_event("cancel_cart_gems", _params, socket), do: {:noreply, assign(socket, cart_confirming: false)}
+
+  def handle_event("pay_cart_gems", _params, %{assigns: %{current_user: %{} = user}} = socket) do
+    case Store.buy_basket_with_gems(user, Cart.products(user)) do
+      {:ok, [order | _]} ->
+        {:noreply, socket |> put_flash(:info, "Bought. It's all in your library.") |> push_navigate(to: ~p"/store/orders/#{order.id}")}
+
+      {:error, reason} ->
+        {:noreply, socket |> put_flash(:error, Store.reason_text(reason)) |> show_cart(true)}
+    end
+  end
 
   def handle_event("close_item", _params, socket) do
     to = if socket.assigns.query == %{}, do: ~p"/store", else: here(socket, %{})
@@ -179,6 +238,9 @@ defmodule BaconStoreWeb.StoreLive do
               <.link navigate={~p"/store/library"} class="text-blue-400 hover:underline">Library</.link>
               <.link navigate={~p"/store/orders"} class="text-blue-400 hover:underline">Purchases</.link>
             </div>
+            <button type="button" phx-click="open_cart" class="cart-btn" id="cart-button" aria-label="Your cart">
+              🛒 Cart <b :if={MapSet.size(@cart_ids) > 0}>{MapSet.size(@cart_ids)}</b>
+            </button>
           </div>
         </div>
 
@@ -217,8 +279,18 @@ defmodule BaconStoreWeb.StoreLive do
       </div>
     </div>
 
+    <.cart_sheet
+      :if={@cart_open && !@item}
+      cart={@cart}
+      balance={@balance}
+      confirming={@cart_confirming}
+      card_open?={@card_open?}
+      signed_in={!!@current_user}
+    />
+
     <.item_sheet
       :if={@item}
+      in_cart={MapSet.member?(@cart_ids, @item.id)}
       item={@item}
       images={@images}
       shown={@shown}
@@ -239,6 +311,7 @@ defmodule BaconStoreWeb.StoreLive do
   attr :balance, :integer, default: nil
   attr :confirming, :boolean, default: false
   attr :card_open?, :boolean, default: false
+  attr :in_cart, :boolean, default: false
 
   defp item_sheet(assigns) do
     art = Catalog.art(assigns.item)
@@ -305,6 +378,7 @@ defmodule BaconStoreWeb.StoreLive do
                   Pay {Store.format_price(@item.price_cents, @item.currency)}
                 </button>
                 <p :if={not @card_open?} class="text-xs text-yellow-300">Card purchases open soon.</p>
+                <.cart_add in_cart={@in_cart} />
               <% else %>
                 <%= case @check do %>
                   <% :ok -> %>
@@ -347,6 +421,7 @@ defmodule BaconStoreWeb.StoreLive do
                           </button>
                       <% end %>
                     <% end %>
+                    <.cart_add in_cart={@in_cart} />
                   <% {:error, :already_owned} -> %>
                     <div class="rounded-xl border border-green-800 bg-green-950/40 px-4 py-3 text-green-200">✓ You own this.</div>
                     <.link navigate={~p"/store/library"} class="block w-full rounded-xl bg-gray-800 px-4 py-3 text-center font-semibold text-white hover:bg-gray-700">
@@ -365,6 +440,106 @@ defmodule BaconStoreWeb.StoreLive do
 
             <div class="mt-5"><.small_print /></div>
           </aside>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # "Add to cart" under the pay buttons, or where the cart is when it's already in it.
+  attr :in_cart, :boolean, default: false
+
+  defp cart_add(assigns) do
+    ~H"""
+    <button :if={!@in_cart} type="button" phx-click="add_to_cart" class="w-full rounded-xl border border-white/15 px-4 py-3 font-semibold text-gray-100 transition hover:bg-white/10">
+      🛒 Add to cart
+    </button>
+    <button :if={@in_cart} type="button" phx-click="open_cart" class="w-full rounded-xl border border-green-800 bg-green-950/30 px-4 py-3 font-semibold text-green-200 transition hover:bg-green-950/60">
+      ✓ In your cart · view cart
+    </button>
+    """
+  end
+
+  # The cart's sheet: what's in it, the totals, pay for it all by card or with Gems.
+  attr :cart, :list, required: true
+  attr :balance, :integer, default: nil
+  attr :confirming, :boolean, default: false
+  attr :card_open?, :boolean, default: false
+  attr :signed_in, :boolean, default: false
+
+  defp cart_sheet(assigns) do
+    assigns =
+      assign(assigns,
+        card: Store.basket_price(assigns.cart, :card),
+        gems: Store.basket_price(assigns.cart, :gems)
+      )
+
+    ~H"""
+    <div id="cart-sheet" class="ss" phx-hook="StoreSheet" role="dialog" aria-modal="true" aria-label="Your cart" style="--sc-tint:rgba(255,138,76,.18)">
+      <div class="ss-backdrop" data-sheet-close></div>
+      <div class="ss-panel" tabindex="-1">
+        <div class="ss-grab" data-sheet-close><i></i></div>
+        <button type="button" class="ss-x" data-sheet-close aria-label="Close">✕</button>
+        <div class="mx-auto w-full max-w-xl px-5 pb-8 pt-2 sm:px-8">
+          <h2 class="text-2xl font-bold text-white">Your cart</h2>
+          <p :if={!@signed_in} class="mt-4 text-gray-400"><.link navigate={~p"/login"} class="text-blue-400 hover:underline">Sign in</.link> to fill a cart.</p>
+          <p :if={@signed_in && @cart == []} class="mt-4 text-gray-400">Nothing here yet. Open an item and press Add to cart.</p>
+
+          <div :if={@cart != []} class="mt-4">
+            <div :for={p <- @cart} class="cart-row" id={"cart-#{p.id}"}>
+              <div class="cart-thumb">
+                <img :if={Catalog.cover(p)} src={media_url(Catalog.cover(p))} alt="" />
+                <span :if={!Catalog.cover(p)}><.kind_glyph kind={p.kind} size={26} /></span>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="truncate font-semibold text-white">{p.name}</div>
+                <div class="text-xs text-gray-500">{Catalog.kind_label(p.kind)}</div>
+              </div>
+              <div class="text-right text-sm text-gray-200">
+                <div :if={p.price_cents}>{Store.format_price(p.price_cents, p.currency)}</div>
+                <div :if={p.price_gems && p.kind != "gem_pack"} class="text-xs text-sky-300"><Bacon8Web.Components.Gem.gems amount={p.price_gems} /></div>
+              </div>
+              <button type="button" class="cart-x" phx-click="remove_from_cart" phx-value-id={p.id} aria-label={"Remove #{p.name}"}>✕</button>
+            </div>
+
+            <div class="mt-5 space-y-3">
+              <button
+                :if={@card}
+                type="button"
+                phx-click="pay_cart_card"
+                phx-disable-with="Opening checkout…"
+                disabled={not @card_open?}
+                class="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Pay with card · {Store.format_price(@card.cents, @card.currency)}
+              </button>
+              <p :if={@card && not @card_open?} class="text-xs text-yellow-300">Card purchases open soon.</p>
+              <p :if={!@card} class="text-xs text-gray-400">Something here can only be bought with Gems.</p>
+
+              <%= cond do %>
+                <% is_nil(@gems) -> %>
+                  <p :if={@card} class="text-xs text-gray-500">Gem packs, and items without a Gem price, are paid by card.</p>
+                <% (@balance || 0) < @gems.gems -> %>
+                  <button type="button" disabled class="w-full cursor-not-allowed rounded-xl border border-sky-800 px-4 py-3 font-semibold text-sky-300 opacity-50">
+                    Pay with Gems · <Bacon8Web.Components.Gem.gems amount={@gems.gems} />
+                  </button>
+                  <p class="text-xs text-gray-400">You have <Bacon8Web.Components.Gem.gems amount={@balance || 0} />.</p>
+                <% @confirming -> %>
+                  <div class="rounded-xl border border-sky-700 bg-sky-950/40 p-4">
+                    <p class="text-sm text-gray-200">Spend <Bacon8Web.Components.Gem.gems amount={@gems.gems} /> of your <Bacon8Web.Components.Gem.gems amount={@balance} />?</p>
+                    <div class="mt-3 flex gap-2">
+                      <button type="button" phx-click="pay_cart_gems" phx-disable-with="Buying…" class="flex-1 rounded-lg bg-sky-600 px-3 py-2 font-semibold text-white hover:bg-sky-500">Confirm</button>
+                      <button type="button" phx-click="cancel_cart_gems" class="rounded-lg bg-gray-800 px-3 py-2 text-gray-200 hover:bg-gray-700">Cancel</button>
+                    </div>
+                  </div>
+                <% true -> %>
+                  <button type="button" phx-click="confirm_cart_gems" class="w-full rounded-xl border border-sky-600 px-4 py-3 font-semibold text-sky-300 transition hover:bg-sky-950/60">
+                    Pay with Gems · <Bacon8Web.Components.Gem.gems amount={@gems.gems} />
+                  </button>
+              <% end %>
+            </div>
+            <div class="mt-5"><.small_print /></div>
+          </div>
         </div>
       </div>
     </div>

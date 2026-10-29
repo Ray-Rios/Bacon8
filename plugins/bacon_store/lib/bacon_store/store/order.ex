@@ -12,6 +12,11 @@ defmodule BaconStore.Store.Order do
   paid and fulfilled in one transaction.
 
   There is no refunded state: sales are final (BACON8.md §2).
+
+  **Baskets** (2026-10-29): a purchase of several items is several orders, one per item, sharing a
+  `basket_id` and a `number` (the receipt's "Order #8008"; `BaconStore.Store.Basket`). A card
+  basket is one checkout, so its orders also share `provider_ref`. A single purchase is a basket
+  of one.
   """
   use Ecto.Schema
 
@@ -36,6 +41,8 @@ defmodule BaconStore.Store.Order do
     field :paid_at, :utc_datetime_usec
     field :fulfilled_at, :utc_datetime_usec
     field :failure_reason, :string
+    field :basket_id, :binary_id
+    field :number, :integer
     belongs_to :user, Bacon8.Accounts.User
     belongs_to :product, BaconStore.Store.Product
     timestamps(type: :utc_datetime_usec)

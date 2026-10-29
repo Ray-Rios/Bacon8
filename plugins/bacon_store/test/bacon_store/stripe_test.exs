@@ -109,6 +109,17 @@ defmodule BaconStore.Payments.StripeTest do
     assert Plug.Conn.Query.encode(params) =~ "line_items[0][price_data][unit_amount]=2500"
   end
 
+  test "a basket is one checkout with a line per item, tagged with its number" do
+    order = %{id: "ord_1", currency: "usd", amount_cents: 499, product_name: "Soundtrack"}
+    lines = [%{name: "Soundtrack", amount_cents: 499}, %{name: "Art book", amount_cents: 999}]
+    params = Stripe.checkout_params(order, success_url: "/s", cancel_url: "/c", lines: lines, basket_id: "bsk_1", number: 8008)
+
+    assert params["client_reference_id"] == "bsk_1"
+    assert %{"unit_amount" => "499", "product_data" => %{"name" => "Soundtrack"}} = params["line_items"]["0"]["price_data"]
+    assert %{"unit_amount" => "999", "product_data" => %{"name" => "Art book"}} = params["line_items"]["1"]["price_data"]
+    assert params["metadata"] == %{"order_id" => "ord_1", "basket_id" => "bsk_1", "order_number" => "8008"}
+  end
+
   test "Stripe is unavailable without a secret key" do
     Application.delete_env(:bacon8, Stripe)
     assert {:error, :not_configured} = BaconStore.Payments.provider("stripe")

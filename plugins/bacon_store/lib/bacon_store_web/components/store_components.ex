@@ -277,6 +277,75 @@ defmodule BaconStoreWeb.StoreComponents do
   end
 
   @doc """
+  A purchase as a receipt card (2026-10-29): "Order #8008", each item with its price, the total and
+  a stamp for its state (Paid, Pending, Void, Disputed, Charged back), like the front page's.
+  `receipt` is `BaconStore.Store.receipt/1`. With `href` the card is a link; `show_buyer` adds the
+  buyer's email (admins); `tz` sets the date's time zone.
+  """
+  attr :receipt, :map, required: true
+  attr :href, :string, default: nil
+  attr :patch, :boolean, default: false, doc: "the link patches (same LiveView) rather than navigates"
+  attr :tz, :string, default: "Etc/UTC"
+  attr :show_buyer, :boolean, default: false
+  attr :id, :string, default: nil
+  slot :inner_block
+
+  def receipt(assigns) do
+    ~H"""
+    <.link :if={@href} id={@id} navigate={!@patch && @href} patch={@patch && @href} class="rc">
+      <.receipt_body receipt={@receipt} tz={@tz} show_buyer={@show_buyer} />
+      {render_slot(@inner_block)}
+    </.link>
+    <div :if={!@href} id={@id} class="rc">
+      <.receipt_body receipt={@receipt} tz={@tz} show_buyer={@show_buyer} />
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  attr :receipt, :map, required: true
+  attr :tz, :string, required: true
+  attr :show_buyer, :boolean, default: false
+
+  defp receipt_body(assigns) do
+    ~H"""
+    <div class="rc-head">
+      <Bacon8Web.Components.Bacon.bacon size={22} still calm />
+      <span>
+        Order #{@receipt.number || String.slice(@receipt.lead.id, 0, 6)}
+        <span class="rc-date">{local_datetime(@receipt.inserted_at, @tz)}</span>
+        <span :if={@show_buyer && @receipt.user} class="rc-buyer">{@receipt.user.email}</span>
+      </span>
+    </div>
+    <div :for={o <- @receipt.orders} class="rc-line">
+      <span>
+        <.kind_glyph kind={o.product && o.product.kind} size={16} />
+        {o.product_name}
+        <span :if={o.status != @receipt.status} class="rc-tag">{stamp_label(o.status)}</span>
+        <span :if={o.status == "paid" && o.failure_reason} class="rc-note">Paid; being delivered.</span>
+      </span>
+      <span>{BaconStore.Store.order_price(o)}</span>
+    </div>
+    <div class="rc-total"><span>Total</span><span>{@receipt.total}</span></div>
+    <div class={["rc-stamp", stamp_class(@receipt.status)]}>{stamp_label(@receipt.status)}</div>
+    """
+  end
+
+  @doc "The stamp on a receipt for an order status."
+  def stamp_label(status) when status in ["paid", "fulfilled"], do: "Paid"
+  def stamp_label("awaiting_payment"), do: "Pending"
+  def stamp_label(status) when status in ["failed", "cancelled"], do: "Void"
+  def stamp_label("disputed"), do: "Disputed"
+  def stamp_label("charged_back"), do: "Charged back"
+  def stamp_label(other), do: to_string(other)
+
+  defp stamp_class(status) when status in ["paid", "fulfilled"], do: "is-paid"
+  defp stamp_class("awaiting_payment"), do: "is-pending"
+  defp stamp_class("disputed"), do: "is-disputed"
+  defp stamp_class("charged_back"), do: "is-lost"
+  defp stamp_class(_), do: "is-void"
+
+  @doc """
   Small print under Buy buttons. The linked pages are CMS pages (/admin/pages),
   seeded as unpublished placeholders on 2026-10-21; publish them before taking
   real payments.

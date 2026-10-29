@@ -14,21 +14,21 @@ store.
 | Path | What it is |
 |---|---|
 | `lib/bacon_store/plugin.ex` | The plugin: mount `"store"`, admin nav, entitlement kinds, and the hooks core calls |
-| `lib/bacon_store/store.ex`, `store/` | Products, orders, checkout, delivery (`Fulfilment`), the library, the `Sweeper` |
+| `lib/bacon_store/store.ex`, `store/` | Products, orders, checkout, delivery (`Fulfilment`), the library, the `Sweeper`, the `Cart` and baskets (several items in one purchase, one receipt number; 2026-10-29) |
 | `lib/bacon_store/wallet.ex`, `wallet/` | The double-entry Gem ledger |
 | `lib/bacon_store/chat.ex` | The store's only contact with Chat Channels (channel passes and slots), found when called so the store builds without chat |
 | `lib/bacon_store/payments.ex`, `payments/` | Providers (`Stripe`, `Fake`), the webhook event inbox |
 | `lib/bacon_store_web/routes.ex` | All routes, below |
 | `lib/bacon_store_web/live/` | Store pages; `admin/` for products and orders |
 | `lib/bacon_store_web/controllers/` | Product media and downloads, payment webhooks |
-| `priv/repo/migrations/` | The store's tables. Moved from core unchanged (same versions) |
+| `priv/repo/migrations/` | The store's tables. The first three moved from core unchanged (same versions); `20261029100000` adds baskets, order numbers and the cart |
 | `test/` | Run with the core suite |
 
 ## Routes
 
 | Path | |
 |---|---|
-| `/store` (glass cards; `?item=<slug>` opens an item's sheet), `/store/p/:slug` (redirects to the sheet), `/store/library`, `/store/orders[/:id]`, `/store/fake-checkout/:ref` | pages (`site`) |
+| `/store` (glass cards; `?item=<slug>` opens an item's sheet, `?cart=1` the cart's), `/store/p/:slug` (redirects to the sheet), `/store/library`, `/store/orders[/:id]`, `/store/fake-checkout/:ref` | pages (`site`) |
 | `/store/media/:id`, `/store/download/:id` | product images and downloads (`site`, `:drive_files` pipeline) |
 | `POST /api/store/webhooks/:provider` | payment webhooks (`site_api`, `:webhooks` pipeline) |
 | `/admin/bacon_store/products[/new\|/:id]`, `/admin/bacon_store/orders[/:id]` | admin |

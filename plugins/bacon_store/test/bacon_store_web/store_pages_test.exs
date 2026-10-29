@@ -62,6 +62,37 @@ defmodule BaconStoreWeb.StorePagesTest do
     assert Repo.get_by(Store.Product, name: "Sword") == nil
   end
 
+  test "two items into the cart, paid with Gems at once: one receipt, in the library and on the admin's orders" do
+    {song, _img, _file} = on_sale_download()
+    {:ok, art} = Catalog.create_product(%{kind: "download", name: "Art Book", price_gems: 200, active: true})
+    user = verified()
+    {:ok, _} = Wallet.grant(user, 1000, idempotency_key: "cart-test")
+
+    {:ok, view, _} = live(signed_in(user), "/store?item=#{song.slug}")
+    view |> element("button", "Add to cart") |> render_click()
+    {:ok, view, _} = live(signed_in(user), "/store?item=#{art.slug}")
+    view |> element("button", "Add to cart") |> render_click()
+    assert render(view) =~ "In your cart"
+
+    {:ok, view, html} = live(signed_in(user), "/store?cart=1")
+    assert html =~ "Your cart" and html =~ "Song Pack" and html =~ "Art Book"
+    view |> element("#cart-sheet button", "Pay with Gems") |> render_click()
+    view |> element("#cart-sheet button", "Confirm") |> render_click()
+    {path, _} = assert_redirect(view)
+    assert "/store/orders/" <> _ = path
+    assert Wallet.balance(user) == 500
+
+    [receipt] = Store.list_user_receipts(user)
+    {:ok, _, html} = live(signed_in(user), path)
+    assert html =~ "Order ##{receipt.number}" and html =~ "Song Pack" and html =~ "Art Book" and html =~ "rc-stamp"
+
+    {:ok, _, html} = live(signed_in(user), "/store/library")
+    assert html =~ "Recent orders" and html =~ "Order ##{receipt.number}"
+
+    {:ok, _, html} = live(signed_in(verified(%{role: "admin", is_admin: true})), "/admin/bacon_store/orders")
+    assert html =~ "Order ##{receipt.number}" and html =~ user.email
+  end
+
   test "a buyer finds a product, buys it with Gems, and downloads it from the library" do
     {p, _img, file} = on_sale_download()
     user = verified()

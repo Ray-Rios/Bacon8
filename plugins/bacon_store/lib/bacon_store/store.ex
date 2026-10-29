@@ -1,7 +1,8 @@
 defmodule BaconStore.Store do
   @moduledoc """
   The store (BACON8.md §8): Gem packs and digital products (downloads, game
-  items, access passes, license keys). One Buy button per product, no cart.
+  items, access passes, license keys). Buy one item from its sheet, or several at once from the
+  cart (`BaconStore.Store.Cart`, 2026-10-29): a basket of orders with one receipt number.
   What's for sale lives in `BaconStore.Store.Catalog`; what a purchase delivers
   in `BaconStore.Store.Fulfilment`.
 
@@ -136,7 +137,74 @@ defmodule BaconStore.Store do
   def reason_text(:not_for_card), do: "This can only be bought with Gems."
   def reason_text(:not_for_gems), do: "This can't be bought with Gems."
   def reason_text(:unknown_provider), do: "Card payments aren't available yet."
+  def reason_text(:empty_basket), do: "Your cart is empty."
+  def reason_text(:duplicate_item), do: "Each item can be in the cart once."
+  def reason_text(:mixed_currency), do: "These items are priced in different currencies: buy them separately."
+  def reason_text(:cart_full), do: "Your cart is full (#{BaconStore.Store.Cart.max_items()} items)."
+  def reason_text({%Product{name: name}, reason}), do: "#{name}: #{reason_text(reason)}"
   def reason_text(_), do: "Something went wrong. Please try again."
+
+  # ---------------------------------------------------------------------------
+  # Baskets: one or more items in one purchase (2026-10-29)
+  # ---------------------------------------------------------------------------
+  #
+  # Each item is its own order (delivery, keys and disputes stay per item); the orders of one
+  # purchase share a basket_id and a number, and a card basket is one provider checkout.
+
+  @doc """
+  Can `user` buy all of `products` together, by `:card` or with `:gems`? `:ok`, `{:error, reason}`
+  for the whole basket (`can_buy/1`'s reasons, `:empty_basket`, `:duplicate_item`,
+  `:mixed_currency`), or `{:error, {product, reason}}` for the first item that can't be bought
+  (`purchase_check/2`'s reasons, `:not_for_card`, `:not_for_gems`).
+  """
+  def basket_check(user, products, how) when how in [:card, :gems] do
+    with :ok <- can_buy(user),
+         :ok <- if(products == [], do: {:error, :empty_basket}, else: :ok),
+         :ok <- if(Enum.uniq_by(products, & &1.id) == products, do: :ok, else: {:error, :duplicate_item}),
+         :ok <- each_item(user, products, how) do
+      if how == :card and length(Enum.uniq_by(products, & &1.currency)) > 1, do: {:error, :mixed_currency}, else: :ok
+    end
+  end
+
+  defp each_item(user, products, how) do
+    Enum.reduce_while(products, :ok, fn p, :ok ->
+      case item_check(user, p, how) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, {p, reason}}}
+      end
+    end)
+  end
+
+  defp item_check(user, product, :card) do
+    with :ok <- purchase_check(user, product) do
+      if is_integer(product.price_cents), do: :ok, else: {:error, :not_for_card}
+    end
+  end
+
+  defp item_check(user, product, :gems) do
+    with :ok <- purchase_check(user, product) do
+      if is_integer(product.price_gems) and product.kind != "gem_pack", do: :ok, else: {:error, :not_for_gems}
+    end
+  end
+
+  @doc "What a basket costs: `%{cents: n, currency: c}` by card, `%{gems: n}` in Gems (nil when an item has no such price)."
+  def basket_price(products, :card) do
+    if Enum.all?(products, &is_integer(&1.price_cents)),
+      do: %{cents: Enum.sum(Enum.map(products, & &1.price_cents)), currency: (List.first(products) || %{currency: "usd"}).currency},
+      else: nil
+  end
+
+  def basket_price(products, :gems) do
+    if products != [] and Enum.all?(products, &(is_integer(&1.price_gems) and &1.kind != "gem_pack")),
+      do: %{gems: Enum.sum(Enum.map(products, & &1.price_gems))},
+      else: nil
+  end
+
+  # The next receipt number, shared by every order of one basket.
+  defp next_number do
+    %{rows: [[n]]} = Repo.query!("SELECT nextval('store_order_number_seq')")
+    n
+  end
 
   # ---------------------------------------------------------------------------
   # Buying with a card
@@ -148,53 +216,80 @@ defmodule BaconStore.Store do
   (built from the order id when not given). A license key is reserved for
   the order until it's paid, fails or is cancelled.
 
-  Returns `{:ok, order, redirect_url}`.
+  Returns `{:ok, order, redirect_url}`. One product is a basket of one: see
+  `start_basket_checkout/3`.
   """
   def start_checkout(user, %Product{} = product, opts \\ []) do
+    case start_basket_checkout(user, [product], opts) do
+      {:ok, [order], url} -> {:ok, order, url}
+      {:error, {%Product{}, reason}} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  One hosted checkout for several products (the cart): an order per product, sharing a basket and
+  a number, every key reserved at once. `{:ok, orders, redirect_url}` or one of `basket_check/3`'s
+  errors (`:unknown_provider` when card payments aren't set up).
+  """
+  def start_basket_checkout(user, products, opts \\ []) when is_list(products) do
     provider_name = Keyword.get(opts, :provider, BaconStore.Payments.default_provider())
 
-    with :ok <- purchase_check(user, product),
-         :ok <- if(is_integer(product.price_cents), do: :ok, else: {:error, :not_for_card}),
+    with :ok <- basket_check(user, products, :card),
          {:ok, provider} <- BaconStore.Payments.provider(provider_name),
-         {:ok, order} <- create_card_order(user, product, provider.name()) do
+         {:ok, orders} <- create_card_basket(user, products, provider.name()) do
+      [lead | _] = orders
+
       urls = [
-        success_url: Keyword.get(opts, :success_url, "/store/orders/#{order.id}"),
-        cancel_url: Keyword.get(opts, :cancel_url, "/store/orders/#{order.id}")
+        success_url: Keyword.get(opts, :success_url, "/store/orders/#{lead.id}"),
+        cancel_url: Keyword.get(opts, :cancel_url, "/store/orders/#{lead.id}"),
+        lines: Enum.map(orders, &%{name: &1.product_name, amount_cents: &1.amount_cents}),
+        basket_id: lead.basket_id,
+        number: lead.number
       ]
 
-      case provider.create_checkout(order, urls) do
+      case provider.create_checkout(lead, urls) do
         {:ok, %{redirect_url: url, provider_ref: ref}} ->
-          order = order |> Ecto.Changeset.change(provider_ref: ref) |> Repo.update!()
-          {:ok, order, url}
+          Repo.update_all(from(o in Order, where: o.basket_id == ^lead.basket_id), set: [provider_ref: ref, updated_at: DateTime.utc_now()])
+          {:ok, Enum.map(orders, &%{&1 | provider_ref: ref}), url}
 
         {:error, reason} ->
-          Fulfilment.release(order)
-          order |> Ecto.Changeset.change(status: "failed", failure_reason: "checkout: #{inspect(reason)}") |> Repo.update!()
+          for o <- orders do
+            Fulfilment.release(o)
+            o |> Ecto.Changeset.change(status: "failed", failure_reason: "checkout: #{inspect(reason)}") |> Repo.update!()
+          end
+
           {:error, {:checkout_failed, reason}}
       end
     end
   end
 
-  defp create_card_order(user, product, provider_name) do
+  defp create_card_basket(user, products, provider_name) do
     Repo.transaction(fn ->
       now = DateTime.utc_now()
+      basket_id = Ecto.UUID.generate()
+      number = next_number()
 
-      order =
-        Repo.insert!(%Order{
-          user_id: user.id,
-          product_id: product.id,
-          status: "awaiting_payment",
-          provider: provider_name,
-          product_name: product.name,
-          amount_cents: product.price_cents,
-          currency: product.currency,
-          gems: if(product.kind == "gem_pack", do: gems_for(product, now), else: 0),
-          terms_accepted_at: now
-        })
+      for product <- products do
+        order =
+          Repo.insert!(%Order{
+            user_id: user.id,
+            product_id: product.id,
+            basket_id: basket_id,
+            number: number,
+            status: "awaiting_payment",
+            provider: provider_name,
+            product_name: product.name,
+            amount_cents: product.price_cents,
+            currency: product.currency,
+            gems: if(product.kind == "gem_pack", do: gems_for(product, now), else: 0),
+            terms_accepted_at: now
+          })
 
-      case Fulfilment.reserve(order, product) do
-        :ok -> order
-        {:error, reason} -> Repo.rollback(reason)
+        case Fulfilment.reserve(order, product) do
+          :ok -> order
+          {:error, reason} -> Repo.rollback({product, reason})
+        end
       end
     end)
   end
@@ -209,48 +304,67 @@ defmodule BaconStore.Store do
   `:not_for_gems` and `:insufficient_gems`).
   """
   def buy_with_gems(user, %Product{} = product) do
-    with :ok <- purchase_check(user, product),
-         :ok <- if(is_integer(product.price_gems) and product.kind != "gem_pack", do: :ok, else: {:error, :not_for_gems}) do
+    case buy_basket_with_gems(user, [product]) do
+      {:ok, [order]} -> {:ok, order}
+      {:error, {%Product{}, reason}} -> {:error, reason}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Buys several products with Gems at once: every item is paid and delivered, or none is (one
+  transaction). `{:ok, orders}`, `{:error, :insufficient_gems}`, or one of `basket_check/3`'s errors.
+  """
+  def buy_basket_with_gems(user, products) when is_list(products) do
+    with :ok <- basket_check(user, products, :gems) do
       Repo.transaction(fn ->
         now = DateTime.utc_now()
+        basket_id = Ecto.UUID.generate()
+        number = next_number()
 
-        order =
-          Repo.insert!(%Order{
-            user_id: user.id,
-            product_id: product.id,
-            status: "paid",
-            provider: "gems",
-            product_name: product.name,
-            amount_gems: product.price_gems,
-            currency: "gems",
-            gems: 0,
-            terms_accepted_at: now,
-            paid_at: now
-          })
+        Enum.map_reduce(products, [], fn product, events ->
+          order =
+            Repo.insert!(%Order{
+              user_id: user.id,
+              product_id: product.id,
+              basket_id: basket_id,
+              number: number,
+              status: "paid",
+              provider: "gems",
+              product_name: product.name,
+              amount_gems: product.price_gems,
+              currency: "gems",
+              gems: 0,
+              terms_accepted_at: now,
+              paid_at: now
+            })
 
-        spend =
-          Wallet.spend(user, product.price_gems,
-            idempotency_key: "order:#{order.id}:spend",
-            reference_type: "store_order",
-            reference_id: order.id,
-            memo: product.name
-          )
+          spend =
+            Wallet.spend(user, product.price_gems,
+              idempotency_key: "order:#{order.id}:spend",
+              reference_type: "store_order",
+              reference_id: order.id,
+              memo: product.name
+            )
 
-        case spend do
-          {:ok, _} -> :ok
-          {:ok, _, :duplicate} -> :ok
-          {:error, reason} -> Repo.rollback(reason)
-        end
+          case spend do
+            {:ok, _} -> :ok
+            {:ok, _, :duplicate} -> :ok
+            {:error, reason} -> Repo.rollback(reason)
+          end
 
-        case Fulfilment.deliver(order, product) do
-          {:ok, events} -> {mark_fulfilled!(order), events}
-          {:error, reason} -> Repo.rollback(reason)
-        end
+          case Fulfilment.deliver(order, product) do
+            {:ok, new} -> {mark_fulfilled!(order), events ++ new}
+            {:error, reason} -> Repo.rollback({product, reason})
+          end
+        end)
       end)
       |> case do
-        {:ok, {order, events}} ->
-          after_commit(order, events)
-          {:ok, order}
+        {:ok, {orders, events}} ->
+          Enum.each(orders, &after_commit(&1, []))
+          Enum.each(events, &Bacon8.Plugins.notify/1)
+          BaconStore.Store.Cart.remove_all(user.id, Enum.map(orders, & &1.product_id))
+          {:ok, orders}
 
         {:error, reason} ->
           {:error, reason}
@@ -272,15 +386,68 @@ defmodule BaconStore.Store do
     end
   end
 
-  def get_order_by_ref(provider, ref), do: Repo.get_by(Order, provider: provider, provider_ref: ref)
+  @doc "The first order of the checkout `ref` (a basket's orders share it)."
+  def get_order_by_ref(provider, ref),
+    do: Repo.one(from o in Order, where: o.provider == ^provider and o.provider_ref == ^ref, order_by: [asc: o.inserted_at], limit: 1)
+
+  @doc "Every order of `order`'s basket, in the order they were added (an order from before baskets is a basket of one)."
+  def basket(%Order{basket_id: nil} = order), do: [Repo.preload(order, :product)]
+
+  def basket(%Order{basket_id: basket_id}),
+    do: Repo.all(from o in Order, where: o.basket_id == ^basket_id, order_by: [asc: o.inserted_at, asc: o.id], preload: [:product])
+
+  @doc "The basket that order `id` belongs to, if it is this user's: its orders, or nil."
+  def get_user_basket(%User{} = user, id) do
+    case get_user_order(user, id) do
+      nil -> nil
+      order -> basket(order)
+    end
+  end
+
+  @doc """
+  A basket's receipt: `%{number, lead (its first order), orders, total, status, inserted_at}`. `total` is
+  what was paid (`Store.order_price/1` for one order, else the sum). `status` is the orders' status
+  when they agree (they move together), else the first's.
+  """
+  def receipt([%Order{} = lead | _] = orders) do
+    %{
+      number: lead.number,
+      lead: lead,
+      orders: orders,
+      total: receipt_total(orders),
+      status: lead.status,
+      inserted_at: lead.inserted_at,
+      user: Map.get(lead, :user)
+    }
+  end
+
+  defp receipt_total([%Order{provider: "gems"} | _] = orders), do: format_gems(Enum.sum(Enum.map(orders, &(&1.amount_gems || 0))))
+
+  defp receipt_total([%Order{currency: currency} | _] = orders),
+    do: format_price(Enum.sum(Enum.map(orders, &(&1.amount_cents || 0))), currency)
+
+  @doc "The user's purchases as receipts (`receipt/1`), newest first."
+  def list_user_receipts(%User{} = user, limit \\ 50) do
+    user |> list_user_orders(limit * 4) |> group_receipts() |> Enum.take(limit)
+  end
+
+  @doc "Every purchase as receipts, newest first, for admins (`list_orders/1`'s options)."
+  def list_receipts(opts \\ []), do: opts |> list_orders() |> group_receipts()
+
+  # Orders newest first -> receipts newest first, each receipt's orders in the order they were added.
+  defp group_receipts(orders) do
+    orders
+    |> Enum.chunk_by(&(&1.basket_id || &1.id))
+    |> Enum.map(fn chunk -> chunk |> Enum.sort_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.id}) |> receipt() end)
+  end
 
   def list_user_orders(%User{id: user_id}, limit \\ 50) do
-    Repo.all(from o in Order, where: o.user_id == ^user_id, order_by: [desc: o.inserted_at], limit: ^limit, preload: [:product])
+    Repo.all(from o in Order, where: o.user_id == ^user_id, order_by: [desc: o.inserted_at, desc: o.id], limit: ^limit, preload: [:product])
   end
 
   @doc "Every order, newest first, for admins. Options: `:status`, `:limit` (100)."
   def list_orders(opts \\ []) do
-    query = from o in Order, order_by: [desc: o.inserted_at], limit: ^Keyword.get(opts, :limit, 100), preload: [:user, :product]
+    query = from o in Order, order_by: [desc: o.inserted_at, desc: o.id], limit: ^Keyword.get(opts, :limit, 100), preload: [:user, :product]
 
     case Keyword.get(opts, :status) do
       nil -> Repo.all(query)
@@ -356,19 +523,26 @@ defmodule BaconStore.Store do
   """
   def apply_event(%Event{} = event) do
     Repo.transaction(fn ->
-      case Repo.one(order_query(event)) do
-        nil -> Repo.rollback(:unknown_order)
-        order -> transition(order, event)
+      # every order of the checkout's basket (one, for a single purchase), locked
+      case Repo.all(order_query(event)) do
+        [] -> Repo.rollback(:unknown_order)
+        orders -> transition_basket(orders, event)
       end
     end)
     |> case do
-      {:ok, {:changed, order, events}} ->
-        after_commit(order, events)
+      {:ok, {:changed, [order | _] = orders, events}} ->
+        Enum.each(orders, &after_commit(&1, []))
+        Enum.each(events, &Bacon8.Plugins.notify/1)
 
-        # A dispute can arrive before the completion that tells us the
-        # payment's id; now that we know it, apply any that are waiting.
-        if event.type == :checkout_completed and order.provider_payment_ref,
-          do: BaconStore.Payments.replay_waiting(order.provider, order.provider_payment_ref)
+        if event.type == :checkout_completed do
+          # what was bought leaves the cart
+          BaconStore.Store.Cart.remove_all(order.user_id, Enum.map(orders, & &1.product_id))
+
+          # A dispute can arrive before the completion that tells us the
+          # payment's id; now that we know it, apply any that are waiting.
+          if order.provider_payment_ref,
+            do: BaconStore.Payments.replay_waiting(order.provider, order.provider_payment_ref)
+        end
 
         :ok
 
@@ -381,12 +555,44 @@ defmodule BaconStore.Store do
   end
 
   defp order_query(%Event{provider: provider, provider_ref: ref}) when is_binary(ref),
-    do: from(o in Order, where: o.provider == ^provider and o.provider_ref == ^ref, lock: "FOR UPDATE")
+    do: from(o in Order, where: o.provider == ^provider and o.provider_ref == ^ref, order_by: [asc: o.inserted_at, asc: o.id], lock: "FOR UPDATE")
 
   defp order_query(%Event{provider: provider, payment_ref: ref}) when is_binary(ref),
-    do: from(o in Order, where: o.provider == ^provider and o.provider_payment_ref == ^ref, lock: "FOR UPDATE")
+    do: from(o in Order, where: o.provider == ^provider and o.provider_payment_ref == ^ref, order_by: [asc: o.inserted_at, asc: o.id], lock: "FOR UPDATE")
 
   defp order_query(_), do: from(o in Order, where: false)
+
+  # Money taken for a basket: it must be what the whole basket costs; then each order is paid and
+  # delivered as one order always was (below). Other events apply to every order of the basket.
+  defp transition_basket(orders, %Event{type: :checkout_completed} = e) do
+    total = Enum.sum(Enum.map(orders, &(&1.amount_cents || 0)))
+    currency = hd(orders).currency
+
+    cond do
+      not Enum.any?(orders, &(&1.status in ["awaiting_payment", "cancelled", "failed"])) ->
+        :unchanged
+
+      e.amount_cents != total or String.downcase(e.currency || "") != currency ->
+        Repo.rollback({:amount_mismatch, %{expected: {total, currency}, got: {e.amount_cents, e.currency}}})
+
+      true ->
+        collect(orders, &transition(&1, %{e | amount_cents: &1.amount_cents}))
+    end
+  end
+
+  defp transition_basket(orders, e), do: collect(orders, &transition(&1, e))
+
+  defp collect(orders, fun) do
+    {changed, events} =
+      Enum.reduce(orders, {[], []}, fn order, {changed, events} ->
+        case fun.(order) do
+          {:changed, o, ev} -> {[o | changed], events ++ ev}
+          :unchanged -> {changed, events}
+        end
+      end)
+
+    if changed == [], do: :unchanged, else: {:changed, Enum.reverse(changed), events}
+  end
 
   # Money taken: check it's what the order says, then pay and deliver. Also
   # from cancelled/failed: the buyer may have left our page and still paid in

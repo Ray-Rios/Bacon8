@@ -46,7 +46,7 @@ defmodule BaconStore.Payments.Stripe do
   def create_checkout(order, opts) do
     params = checkout_params(order, opts)
 
-    case post("/checkout/sessions", params, idempotency_key: "checkout-#{order.id}") do
+    case post("/checkout/sessions", params, idempotency_key: "checkout-#{opts[:basket_id] || order.id}") do
       {:ok, %{"id" => id, "url" => url}} -> {:ok, %{redirect_url: url, provider_ref: id}}
       {:ok, other} -> {:error, {:unexpected_response, other}}
       {:error, reason} -> {:error, reason}
@@ -54,27 +54,38 @@ defmodule BaconStore.Payments.Stripe do
   end
 
   @doc false
-  # The Checkout Session form fields for an order. Public for tests.
+  # The Checkout Session form fields for an order, or a basket of them (`opts[:lines]`, one line
+  # per item, 2026-10-29). Public for tests.
   def checkout_params(order, opts) do
+    lines = opts[:lines] || [%{name: order.product_name, amount_cents: order.amount_cents}]
+    meta = %{"order_id" => order.id} |> put_if("basket_id", opts[:basket_id]) |> put_if("order_number", opts[:number] && to_string(opts[:number]))
+
     %{
       "mode" => "payment",
-      "client_reference_id" => order.id,
+      "client_reference_id" => opts[:basket_id] || order.id,
       "success_url" => absolute(Keyword.fetch!(opts, :success_url)),
       "cancel_url" => absolute(Keyword.fetch!(opts, :cancel_url)),
-      "line_items" => %{
-        "0" => %{
-          "quantity" => "1",
-          "price_data" => %{
-            "currency" => order.currency,
-            "unit_amount" => Integer.to_string(order.amount_cents),
-            "product_data" => %{"name" => order.product_name}
-          }
-        }
-      },
-      "metadata" => %{"order_id" => order.id},
-      "payment_intent_data" => %{"metadata" => %{"order_id" => order.id}}
+      "line_items" =>
+        lines
+        |> Enum.with_index()
+        |> Map.new(fn {line, i} ->
+          {Integer.to_string(i),
+           %{
+             "quantity" => "1",
+             "price_data" => %{
+               "currency" => order.currency,
+               "unit_amount" => Integer.to_string(line.amount_cents),
+               "product_data" => %{"name" => line.name}
+             }
+           }}
+        end),
+      "metadata" => meta,
+      "payment_intent_data" => %{"metadata" => meta}
     }
   end
+
+  defp put_if(map, _key, nil), do: map
+  defp put_if(map, key, value), do: Map.put(map, key, value)
 
   defp absolute("/" <> _ = path), do: Bacon8Web.Endpoint.url() <> path
   defp absolute(url), do: url

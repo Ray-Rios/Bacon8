@@ -19,7 +19,8 @@ defmodule BaconStoreWeb.FakeCheckoutLive do
     with true <- BaconStore.Payments.fake_enabled?(),
          %Store.Order{} = order <- Store.get_order_by_ref("fake", ref),
          true <- order.user_id == user.id do
-      {:ok, assign(socket, page_title: "Test checkout", order: order)}
+      orders = Store.basket(order)
+      {:ok, assign(socket, page_title: "Test checkout", order: order, orders: orders, total: Enum.sum(Enum.map(orders, & &1.amount_cents)))}
     else
       _ -> {:ok, socket |> put_flash(:error, "That checkout isn't available.") |> push_navigate(to: ~p"/store")}
     end
@@ -28,7 +29,8 @@ defmodule BaconStoreWeb.FakeCheckoutLive do
   @impl true
   def handle_event("pay", _params, socket) do
     order = socket.assigns.order
-    Fake.complete(order.provider_ref, order.amount_cents, order.currency)
+    # the whole basket is one payment
+    Fake.complete(order.provider_ref, socket.assigns.total, order.currency)
     {:noreply, push_navigate(socket, to: ~p"/store/orders/#{order.id}")}
   end
 
@@ -39,8 +41,8 @@ defmodule BaconStoreWeb.FakeCheckoutLive do
   end
 
   def handle_event("cancel", _params, socket) do
-    {:ok, order} = Store.cancel_unpaid(socket.assigns.order)
-    {:noreply, push_navigate(socket, to: ~p"/store/orders/#{order.id}")}
+    Enum.each(socket.assigns.orders, &Store.cancel_unpaid/1)
+    {:noreply, push_navigate(socket, to: ~p"/store/orders/#{socket.assigns.order.id}")}
   end
 
   def handle_event(event, _params, socket) when event in ["toggle_calendar", "toggle_start_menu", "open_app"],
@@ -53,8 +55,11 @@ defmodule BaconStoreWeb.FakeCheckoutLive do
       <div class="max-w-md mx-auto px-6 py-16">
         <div class="glass-dark rounded-lg p-6 border border-yellow-600">
           <div class="text-xs uppercase tracking-wide text-yellow-400 mb-2">Test checkout - no real money</div>
-          <h1 class="text-2xl font-bold text-white mb-1">{@order.product_name}</h1>
-          <p class="text-gray-300 mb-6">{Store.format_price(@order.amount_cents, @order.currency)}</p>
+          <h1 class="text-2xl font-bold text-white mb-1">{if length(@orders) == 1, do: @order.product_name, else: "Order ##{@order.number}"}</h1>
+          <ul :if={length(@orders) > 1} class="mb-3 space-y-1 text-sm text-gray-300">
+            <li :for={o <- @orders} class="flex justify-between gap-4"><span>{o.product_name}</span><span>{Store.format_price(o.amount_cents, o.currency)}</span></li>
+          </ul>
+          <p class="text-gray-300 mb-6">{Store.format_price(@total, @order.currency)}</p>
           <div class="flex flex-col gap-3">
             <button phx-click="pay" class="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white font-semibold">Pay</button>
             <button phx-click="decline" class="px-4 py-2 rounded bg-red-700 hover:bg-red-800 text-white">Card declined</button>
