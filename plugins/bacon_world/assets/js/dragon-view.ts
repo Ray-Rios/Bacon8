@@ -7,6 +7,7 @@
 // mobs-view.ts and mounts.ts only say whether it flies and ask for one-shots (Bite,
 // Claw, TailSwipe, Breath, Roar, Hit, Death).
 import * as THREE from '../../../../assets/js/vendor/three';
+import { LightPool } from './light-pool';
 import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from '../../../../assets/js/vendor/three-loaders';
 import { modelUrl } from './asset-url';
 import { UNITS_PER_METRE } from './controls-math';
@@ -344,6 +345,25 @@ export class DragonRig {
 // ---------------------------------------------------------------------------
 
 let FLAME_TEX: THREE.Texture | null = null;
+// One flame material per size, made once and never disposed (a new material of a kind is a shader
+// to build; disposing the last one throws the program away).
+const FLAME_MATS = new Map<number, THREE.PointsMaterial>();
+function flameMaterial(size: number): THREE.PointsMaterial {
+  let m = FLAME_MATS.get(size);
+  if (!m) {
+    m = new THREE.PointsMaterial({
+      size,
+      map: flameTexture(),
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      sizeAttenuation: true,
+    });
+    FLAME_MATS.set(size, m);
+  }
+  return m;
+}
 
 function flameTexture(): THREE.Texture {
   if (FLAME_TEX) return FLAME_TEX;
@@ -371,7 +391,8 @@ export class FireBreath {
   private life = 0.9;
   private emitting = 0; // seconds left to emit
   private next = 0;
-  private light: THREE.PointLight;
+  /** A light from the world's pool while the flame burns (light-pool.ts), else none. */
+  private light: THREE.PointLight | null = null;
   private tmp = new THREE.Vector3();
   private dir = new THREE.Vector3();
   private back = new THREE.Vector3();
@@ -385,26 +406,18 @@ export class FireBreath {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
-    const mat = new THREE.PointsMaterial({
-      size,
-      map: flameTexture(),
-      vertexColors: true,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      sizeAttenuation: true,
-    });
-    this.points = new THREE.Points(geo, mat);
+    this.points = new THREE.Points(geo, flameMaterial(size));
     this.points.frustumCulled = false;
     this.points.name = 'FireBreath';
-    this.light = new THREE.PointLight(0xff8a30, 0, reach * 0.9, 1.6);
+    // NO LIGHT OF ITS OWN (2026-10-30): adding one to the scene made every lit material recompile,
+    // which was the long freeze on a drake's first breath. It borrows a pooled one while it burns.
     scene.add(this.points);
-    scene.add(this.light);
   }
 
   /** Breathe for `seconds`. */
   start(seconds: number) {
     this.emitting = seconds;
+    if (!this.light) this.light = LightPool.get()?.take(0xff8a30, 0, this.reach * 0.9) ?? null;
   }
 
   get active(): boolean {
@@ -454,15 +467,22 @@ export class FireBreath {
     }
     (this.points.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
     (this.points.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
-    this.light.position.copy(this.tmp).addScaledVector(this.dir, this.reach * 0.3);
-    this.light.intensity = this.emitting > 0 ? 40 + Math.random() * 25 : Math.max(0, this.light.intensity - dt * 120);
-    if (!lit && this.emitting <= 0) this.light.intensity = 0;
+    if (this.light) {
+      this.light.position.copy(this.tmp).addScaledVector(this.dir, this.reach * 0.3);
+      this.light.intensity = this.emitting > 0 ? 40 + Math.random() * 25 : Math.max(0, this.light.intensity - dt * 120);
+      // burnt out: the light goes back to the pool
+      if (!lit && this.emitting <= 0) {
+        LightPool.get()?.give(this.light);
+        this.light = null;
+      }
+    }
   }
 
   dispose() {
     this.scene.remove(this.points);
-    this.scene.remove(this.light);
+    LightPool.get()?.give(this.light);
+    this.light = null;
     this.points.geometry.dispose();
-    (this.points.material as THREE.Material).dispose();
+    // the material is shared (flameMaterial) and kept
   }
 }

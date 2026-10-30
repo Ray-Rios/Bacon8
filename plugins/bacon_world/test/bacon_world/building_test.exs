@@ -99,6 +99,16 @@ defmodule BaconWorld.BuildingTest do
       assert {:error, _} = Building.delete(other, @zone, id)
     end
 
+    test "a smash is a delete that every client shatters" do
+      Phoenix.PubSub.subscribe(Bacon8.PubSub, Building.topic(@zone))
+      m = user("member")
+      {:ok, %{id: id}} = Building.place(m, nil, @zone, at("P_Barrel", 3.0, 3.0))
+      assert {:ok, %{asset: "P_Barrel"}} = Building.delete(m, @zone, id, smash: true)
+      assert_receive {:build_removed, ^id, "P_Barrel", :smashed}
+      refute_received {:build_removed, ^id, "P_Barrel"}
+      assert Building.list(@zone) == []
+    end
+
     test "refuses what it should" do
       m = user("member")
       assert {:error, _} = Building.place(m, nil, @zone, at("mob:goblin", 1.0, 1.0))

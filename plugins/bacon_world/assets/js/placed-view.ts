@@ -80,6 +80,14 @@ interface Part {
   local: THREE.Matrix4;
 }
 
+// The copies' bounds are computed by three.js on the first raycast and then kept: a piece placed or
+// moved outside them could not be clicked (2026-10-30: "buildable objects cannot be selected to be
+// moved"). Every write forgets them, so the next pick measures again.
+function stale(im: THREE.InstancedMesh) {
+  im.boundingSphere = null;
+  im.boundingBox = null;
+}
+
 /** Every copy of one kind of piece: an InstancedMesh per part, slot n = placement ids[n]. */
 interface Bucket {
   asset: string;
@@ -109,6 +117,8 @@ const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _s = new THREE.Vector3();
 const Y = new THREE.Vector3(0, 1, 0);
+const X = new THREE.Vector3(1, 0, 0);
+const _qt = new THREE.Quaternion();
 
 export class PlacedView {
   /** In the village's group (metres). */
@@ -189,7 +199,10 @@ export class PlacedView {
           if (moved) this.writeSlot(b, slot, moved.hidden ? null : moved.p);
         }
         b.ids.pop();
-        for (const m of b.meshes) m.count = b.ids.length;
+        for (const m of b.meshes) {
+          m.count = b.ids.length;
+          stale(m);
+        }
       }
     }
     if (e.marker) this.group.remove(e.marker);
@@ -255,6 +268,25 @@ export class PlacedView {
       if (id) return id;
     }
     return null;
+  }
+
+  /**
+   * What a placed model is made of, for smashing it (smash-fx.ts): its parts (geometry, material,
+   * place in the model) and the placement's own matrix, in this group's metres. Null for a marker.
+   */
+  pieces(id: string): { parts: { geo: THREE.BufferGeometry; mat: THREE.Material | THREE.Material[]; local: THREE.Matrix4 }[]; matrix: THREE.Matrix4; box: THREE.Box3 } | null {
+    const e = this.entries.get(id);
+    if (!e?.bucket || e.hidden) return null;
+    const [sx, sy, sz] = sizeOf(e.p);
+    const matrix = new THREE.Matrix4().compose(new THREE.Vector3(e.p.x, e.p.y, e.p.z), new THREE.Quaternion().setFromAxisAngle(Y, e.p.rot), new THREE.Vector3(sx, sy, sz));
+    return { parts: e.bucket.parts, matrix, box: e.bucket.box.clone().applyMatrix4(matrix) };
+  }
+
+  /** Draws a placement nudged by (dx, dz) metres and tipped by `tilt` radians (a smash hit); jiggle(id, 0, 0, 0) puts it back. */
+  jiggle(id: string, dx: number, dz: number, tilt: number) {
+    const e = this.entries.get(id);
+    if (!e?.bucket || e.hidden) return;
+    this.writeSlot(e.bucket, e.bucket.ids.indexOf(id), { ...e.p, x: e.p.x + dx, z: e.p.z + dz }, tilt);
   }
 
   /** How many draw calls the placed models take (one per part of each kind present). */
@@ -398,17 +430,20 @@ export class PlacedView {
     b.cap = cap;
   }
 
-  private writeSlot(b: Bucket, slot: number, p: Placement | null) {
+  private writeSlot(b: Bucket, slot: number, p: Placement | null, tilt = 0) {
     if (slot < 0) return;
     if (p) {
       const [sx, sy, sz] = sizeOf(p);
-      _m.compose(_v.set(p.x, p.y, p.z), _q.setFromAxisAngle(Y, p.rot), _s.set(sx, sy, sz));
+      _q.setFromAxisAngle(Y, p.rot);
+      if (tilt) _q.multiply(_qt.setFromAxisAngle(X, tilt));
+      _m.compose(_v.set(p.x, p.y, p.z), _q, _s.set(sx, sy, sz));
     }
     b.parts.forEach((part, i) => {
       const im = b.meshes[i];
       if (!im) return;
       im.setMatrixAt(slot, p ? new THREE.Matrix4().multiplyMatrices(_m, part.local) : ZERO);
       im.instanceMatrix.needsUpdate = true;
+      stale(im);
     });
   }
 

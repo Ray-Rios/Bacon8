@@ -167,11 +167,18 @@ export class MobsView {
     }
   }
 
+  /** The server spoke of a creature we never got (the world state was missed): ask again. */
+  onUnknown?: () => void;
+
   motion(list: Array<[string, number, number, number, number, number]>) {
     const now = this.time;
     for (const [id, x, z, h, vx, vz] of list) {
       const e = this.mobs.get(id);
-      if (!e || e.view.state === 'dead') continue;
+      if (!e) {
+        this.onUnknown?.();
+        continue;
+      }
+      if (e.view.state === 'dead') continue;
       e.net = { x, z, h, vx, vz, at: now };
     }
   }
@@ -179,6 +186,8 @@ export class MobsView {
   event(ev: MobEvent) {
     const id = ev.id ?? ev.mob?.id;
     let e = id ? this.mobs.get(id) : undefined;
+    // an attack or a hit from something we never drew: we missed the world state
+    if (!e && id && ev.t !== 'spawn' && ev.t !== 'gone') this.onUnknown?.();
     switch (ev.t) {
       case 'spawn':
         if (ev.mob) {

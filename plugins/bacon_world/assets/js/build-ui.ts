@@ -29,6 +29,8 @@ export interface BuildCallbacks {
   rule: (asset: string, role: string) => void;
   data: (patch: Record<string, any>) => void;
   snap: (on: boolean) => void;
+  /** The smash toggle (2026-10-30): clicks hit and shatter instead of picking up. */
+  smash?: (on: boolean) => void;
   cancel: () => void;
   close: () => void;
 }
@@ -40,6 +42,9 @@ const CSS = `
 .bwg .bld{right:16px;top:70px;width:330px;max-width:calc(100% - 24px);display:none;max-height:calc(100% - 150px);flex-direction:column}
 .bwg .bld.open{display:flex}
 .bwg .bld .srch{padding:6px 8px 4px;display:flex;gap:6px}
+.bwg .bld .srch .smash{flex:none;font-size:11px;padding:1px 8px}
+.bwg .bld .srch .smash.on{background:rgba(220,70,50,.4);border-color:#e0664f;color:#ffe2d8}
+.bwg .bld.smashing .list,.bwg .bld.smashing .cats{opacity:.45}
 .bwg .bld input[type=text],.bwg .bld input[type=number]{flex:1;min-width:0;font:inherit;color:#e8dcc0;background:#0a0908;border:1px solid #4b3f2b;border-radius:2px;padding:3px 6px;user-select:text;-webkit-user-select:text}
 .bwg .bld input:focus{outline:none;border-color:#c9a65e}
 .bwg .bld .cats{display:flex;flex-wrap:wrap;gap:3px;padding:0 8px 6px}
@@ -104,6 +109,7 @@ export class BuildWindow {
   private role = '';
   private selected: string | null = null;
   private unmove: () => void;
+  private smashBtn: HTMLElement;
 
   constructor(root: HTMLElement, private cb: BuildCallbacks) {
     this.style = document.createElement('style');
@@ -131,7 +137,7 @@ export class BuildWindow {
     this.keys = h('div', { class: 'keys' });
     this.el = h('div', { class: 'w bld' },
       h('div', { class: 't' }, h('b', {}, 'Build'), h('span', { class: 'x', onclick: () => this.cb.close() }, '✕')),
-      h('div', { class: 'srch' }, this.search),
+      h('div', { class: 'srch' }, this.search, (this.smashBtn = h('button', { class: 'btn smash', title: 'Smash (X): clicks hit and break what you may remove. Ctrl+Z still puts it back.', onclick: () => this.cb.smash?.(!this.smashBtn.classList.contains('on')) }, '🔨 Smash'))),
       this.cats, this.list, this.heldEl, this.keys);
     // the list scrolls with the wheel, not the camera
     this.el.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
@@ -208,6 +214,12 @@ export class BuildWindow {
     this.heldEl.classList.add('on');
   }
 
+  /** Shows the smash toggle on or off (the hook owns the state). */
+  setSmash(on: boolean) {
+    this.smashBtn.classList.toggle('on', on);
+    this.el.classList.toggle('smashing', on);
+  }
+
   focusSearch() {
     this.search.focus();
     this.search.select();
@@ -238,7 +250,7 @@ export class BuildWindow {
       '<kbd>Click</kbd> something placed to pick it up, <kbd>click</kbd> again to set it down (<kbd>Shift</kbd>: place another). ' +
       'Holding it: <kbd>right button</kbd> turns it gently (<kbd>Shift</kbd>: the other way), <kbd>wheel</kbd> or <kbd>Q</kbd>/<kbd>E</kbd> in steps, ' +
       '<kbd>PgUp</kbd>/<kbd>PgDn</kbd> raise and lower (<kbd>Shift</kbd>: a storey), <kbd>[</kbd>/<kbd>]</kbd> size. ' +
-      '<kbd>Right-click</kbd> something to remove it; <kbd>Ctrl+Z</kbd> undoes. <kbd>Esc</kbd> drops what you hold; <kbd>`</kbd> leaves build mode.' +
+      '<kbd>Right-click</kbd> something to remove it, or <kbd>X</kbd> (🔨 Smash) and click it until it breaks; <kbd>Ctrl+Z</kbd> undoes. <kbd>Esc</kbd> drops what you hold; <kbd>`</kbd> leaves build mode.' +
       (this.role ? ` <span style="color:#cdbf9f">You build as ${this.role}.</span>` : '');
   }
 

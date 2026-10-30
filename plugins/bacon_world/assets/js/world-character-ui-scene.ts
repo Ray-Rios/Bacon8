@@ -46,6 +46,8 @@ import type { MobsView } from './mobs-view';
 import type { NpcsView } from './npcs-view';
 import { STARTER_GEAR, type Gear } from './wardrobe';
 import { setCatalog } from './items';
+import { LightPool } from './light-pool';
+import { warmUp, watchShaders } from './warmup';
 
 // One stylesheet: the game's DOM isn't selectable text, its inputs are.
 function ensureNoSelectStyle() {
@@ -593,6 +595,8 @@ export const WorldCharacterUIScene = {
     // Re-sync other players in case presence state changed while offline.
     if (this.worldInitialized && this.state?.uiState === 'world') {
       void this.syncOtherPlayers();
+      // and the creatures, merchants and placements: events sent while we were away are gone
+      this.resyncWorld?.('reconnected');
     }
   },
 
@@ -683,7 +687,14 @@ export const WorldCharacterUIScene = {
       this.hideFront();
 
       if (!this.worldInitialized) {
-        void this.initializeWorldMode();
+        // once: entering takes seconds (the character's model downloads first), and every state
+        // update meanwhile used to start another entry (2026-10-30: three of them, each asking for the
+        // whole world and starting its own position heartbeat)
+        if (!this.worldEntering) {
+          this.worldEntering = this.initializeWorldMode().finally(() => {
+            this.worldEntering = null;
+          });
+        }
       } else {
         void this.syncOtherPlayers();
       }
@@ -834,6 +845,8 @@ export const WorldCharacterUIScene = {
     }
 
     this.createWorldOverlayUI();
+    // the effect lights, in the scene from the start so the light count never changes (light-pool.ts)
+    LightPool.install(this.scene);
     if (!this.nameplates) {
       this.nameplates = new Nameplates();
       this.scene.add(this.nameplates.group);
@@ -933,8 +946,21 @@ export const WorldCharacterUIScene = {
       this.skySystem = new SkySystem(this.scene, this.ambientLight);
     }
 
+    // Every effect's shader built now, with the world's final lights, rather than on the frame it
+    // first appears (warmup.ts); and a console note for any that slips through.
+    if (this.renderer && !this.warmedUp) {
+      this.warmedUp = true;
+      try {
+        warmUp(this.renderer, this.scene, this.camera);
+      } catch {
+        // a warm-up is an optimisation; the game runs without it
+      }
+      this.stopShaderWatch = watchShaders(this.renderer);
+    }
+
     // Fallback heartbeat so position keeps sending even when tab is backgrounded
     // (requestAnimationFrame throttles to ~1fps in background tabs)
+    if (this.positionHeartbeatInterval) clearInterval(this.positionHeartbeatInterval);
     this.positionHeartbeatInterval = setInterval(() => {
       if (!this.worldInitialized || !this.el?.isConnected) {
         clearInterval(this.positionHeartbeatInterval);
@@ -1944,7 +1970,7 @@ export const WorldCharacterUIScene = {
     this.npcsView?.plateIds?.().forEach((id: string) => keep.add(id));
     this.buildPlateIds?.().forEach((id: string) => keep.add(id));
     this.nameplates.prune(keep);
-    this.nameplates.update(this.camera);
+    this.nameplates.update(this.camera, this.renderer?.domElement?.clientHeight || 0);
   },
 
   clearPanels(this: any) {

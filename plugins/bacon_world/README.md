@@ -67,7 +67,7 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/mobs-view.ts` | Creatures on the client: models (skeletons, goblins and orcs on the male's rig, rats on their own, dragons, the Kraken), weapons, smoothing, corpses; dragons (Baconator: moves, breath, roar) |
 | `assets/js/dragon-view.ts` | The B8 dragon: loading, a rig that picks its own locomotion (ground or air), one-shots, fire breath, the mounts' hue shift |
 | `assets/js/two-hand.ts` | Two-handed weapons (2026-10-27): the guard and swings as poses of the weapon (grip, haft, edge, torso turn), which `human-factory.ts` (`twoHandDrive`) puts both arms on |
-| `assets/js/build-world.ts`, `build-ui.ts`, `placed-view.ts` | Build mode (the backquote key): the mixin (holding, snapping, the mouse and keys, undo, talking to the server), its searchable window, and the placed objects (models from the village's GLBs, instanced per kind since 2026-10-28, their colliders, spawn and NPC markers, binding stones' 100 m circles) |
+| `assets/js/build-world.ts`, `build-ui.ts`, `placed-view.ts` | Build mode (the backquote key): the mixin (holding, snapping, the mouse and keys, undo, smash mode (X), talking to the server), its searchable window, and the placed objects (models from the village's GLBs, instanced per kind since 2026-10-28, their colliders, spawn and NPC markers, binding stones' 100 m circles) |
 | `assets/js/group-world.ts`, `group-ui.ts` | Groups: the group window, the invitation, /invite /g /disband /kick /makeleader /accept /decline, a groupmate's share of experience and coins |
 | `assets/js/rat-view.ts` | The B8 rat (2026-10-28): its rig and clips, the gait from the speed, bites and flinches over it, the plague rat's tint |
 | `assets/js/arrows.ts` | Arrows in flight (bows, goblin archers): a shallow arc at 45 m/s, following what they hit, sticking where they land |
@@ -78,6 +78,8 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/skill-tree-canvas.ts` | The tree drawn in SVG (pan, zoom), icons, ability dragging; shared by the game and the editor |
 | `assets/js/skill-tree-editor.ts` | The `BaconWorldSkillTreeEditor` hook (the admin editor) |
 | `assets/js/spell-fx.ts` | Spell effects: casting glow, fireball, heal, roots, recall, spin. Lights are pooled and materials shared: adding or removing a light recompiles every shader (a multi-second freeze) |
+| `assets/js/light-pool.ts`, `warmup.ts` | (2026-10-30) The effect lights, four added once and shared by spells and the drakes' breath; and shader warm-up, which compiles every effect material kind while the world loads, plus a watchdog that logs any shader compiled later during play |
+| `assets/js/smash-fx.ts` | (2026-10-30) Build mode's smash: hits, dust, and pieces shattered into bits cut from their own triangles (instanced, with the placed copies' materials, so no new shaders); `hitsFor` by size |
 | `assets/js/npcs-view.ts` | Merchants on the client: built as humans, picked by proxy cylinders, face you while trading |
 | `assets/js/wardrobe.ts` | Gear slots, what each worn item puts on the body and hides, and the bone corrections (joint offsets, relaxed fingers) |
 | `assets/js/crafted.ts` | Models drawn in code, no files to sync: the grill fork, the Robin Hood hat (and `wearHat`, which seats it on a body's head bone), the arrow and the bacon bobber |

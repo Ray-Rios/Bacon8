@@ -608,6 +608,7 @@ defmodule BaconWorldWeb.PlayLive do
 
   def handle_info({:build_placed, view}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.placed(view, socket)}
   def handle_info({:build_removed, id, asset}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.removed(id, asset, socket)}
+  def handle_info({:build_removed, id, asset, :smashed}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.smashed(id, asset, socket)}
   def handle_info({:fish_bite, token}, socket), do: {:noreply, BaconWorldWeb.FishingEvents.bite(token, socket)}
   def handle_info({:fish_escape, token}, socket), do: {:noreply, BaconWorldWeb.FishingEvents.escape(token, socket)}
 

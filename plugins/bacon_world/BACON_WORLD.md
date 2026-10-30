@@ -18,7 +18,7 @@ Related documents:
   deployment.
 - Facts dated. The owner's decisions are recorded, not re-argued.
 
-Last update: **2026-10-29**.
+Last update: **2026-10-30**.
 
 ---
 
@@ -87,6 +87,16 @@ flat round island.
 - **Binding stones** (`P_Waystone`, admin-only; one by the village square): within 100 m only GMs and admins may
   build (`Building.protected?/4`). **R** beside one binds you there; Recall and respawn use the bind.
 - Placed creatures are spawn points (count 1-12, spread 0-40 m); placed merchants trade with their template's stock.
+- **Smashing** (2026-10-30, not yet deployed): **X** in build mode (or the window's 🔨 Smash button) turns clicks
+  into hits. The piece shakes and puffs dust. After `hitsFor` hits (1-6, by size) it shatters into bits made from
+  its own triangles (`smash-fx.ts`), which fly, bounce, settle and sink away after about five seconds. The server
+  sees one `build_delete` with `smash: true`, under the same permission as a right-click remove, and broadcasts
+  `{:build_removed, id, asset, :smashed}` so every client in the zone shatters it. Ctrl+Z puts it back. The hit
+  count is the client's own; only the delete is the server's. Creature spawns and NPCs have nothing to break and
+  simply go.
+- **Picking placed things** (2026-10-30 fix): an InstancedMesh measures its bounds on the first raycast and keeps
+  them. A piece placed or moved outside those bounds could not be clicked, so it could not be picked up.
+  `placed-view.ts` now forgets the bounds on every write (`stale()`).
 
 ### Combat and creatures
 
@@ -120,10 +130,33 @@ flat round island.
 - Player names are Bacon8 blue, red with PvP on. Windows are draggable (`window-drag.ts`); the game's card on
   /games has Baconator's head on its front.
 
+### Loading, hitches and names (2026-10-30, not yet deployed)
+
+- **Entering the world**: `fetch_mobs` (creatures, camps, placements, merchants, water; about 200 KB) used to
+  give up after 5 s and draw an *empty* world: terrain only, with creatures that could hit you but weren't drawn.
+  World entry also ran up to three times at once (each sent its own `fetch_mobs` and its own position heartbeat).
+  Now: one entry at a time (`worldEntering`) and one heartbeat. `loadWorldState` waits 30 s a try, retries with
+  backoff and never treats "no answer" as "nothing there". A "Loading the world..." note shows meanwhile. A creature
+  the client doesn't know (`mobsView.onUnknown`), or a LiveView reconnect, triggers a resync (`resyncWorld`, at most
+  every 8 s).
+- **The map's edge**: the skirts along the map's own edge used to be vertical curtains with copied up-normals. They
+  were painted and lit like flat grass, which made a streaky band round the perimeter. They are now a sloped rock
+  apron (`APRON_RUN`, 0.7 m out per metre down) with outward normals. The map's four corners have a small wedge
+  where two aprons don't meet.
+- **First-use freezes** (a drake's first breath took seconds): three.js compiles a shader the first time a material
+  kind is drawn. It also recompiles *every* lit material when the number of lights in the scene changes, and each
+  breath used to add and remove its own light. Fixes: `light-pool.ts` (four lights added once, handed out and taken
+  back; spells and breaths share it); `warmup.ts` (compiles a stand-in of every effect material kind against the
+  scene's lights while the world loads); and `watchShaders()`, which logs `[bacon world] shader compiled during play:
+  <type>` for any program built later. A new effect that shows that line needs a stand-in in `warmUp`.
+- **Nameplates**: a name never gets smaller than 15 px on screen (it used to shrink into a few pixels). The texture is
+  mipmapped, so far names don't shimmer, and they show to 90 m. Overlapping names are culled each frame: the nearer
+  one wins, and the target always shows.
+
 ### Tests
 
 The plugin's Elixir tests run with the hub's suite; the JavaScript tests run with
-`plugins/bacon_world/assets/js/__tests__/run.sh` (115 pass on 2026-10-29). Look-checks are done in the three.js
+`plugins/bacon_world/assets/js/__tests__/run.sh` (121 pass on 2026-10-30). Look-checks are done in the three.js
 harness (see §8).
 
 ## 3. The owner's decisions (settled; don't re-litigate)
@@ -387,9 +420,29 @@ the harness and in tests, not by a person playing.
 - PvP reach is checked against Presence positions (up to 100 ms old) with 0.8 m slack. Creature and PvP hits write
   the player's HP to the games DB on every hit; batch them if fights get big.
 - Spell targeting of other players for harm (a PvP fireball) isn't wired; heal works on players.
-- **Spell lights are pooled (three).** A fourth effect at once goes without a light. New effects must use
-  `takeLight`/`giveLight` and shared materials; never add or remove lights or dispose shared materials (either
-  recompiles every lit material and freezes the game for seconds).
+- **Effect lights are pooled (four, `light-pool.ts`, shared by spells and the drakes' breath).** A fifth effect at
+  once goes without a light. New effects must take and give lights from `LightPool` and use shared materials.
+  Never add or remove lights, and never dispose shared materials: either recompiles every lit material and freezes
+  the game for seconds. Give a new material kind a stand-in in `warmup.ts`. The shader watchdog's console line says
+  when one was missed.
+- **Still possible first-use waits**: the first time a model is *downloaded* (a drake is 7 MB, a body 2-3 MB),
+  that is a network wait, not a shader one. Preloading owned mounts' models and the commonest creatures at world
+  entry would hide it.
+
+**Smashing: how far it can go.** Today's bits are cosmetic: each client cuts the piece's own mesh on a grid and
+throws the shells about. Possible next levels, cheapest first:
+
+1. *Pre-fractured pieces*: cut each kind of piece once in Blender (Cell Fracture, Voronoi) in the asset pipeline,
+   with inside faces and an inside material, saved as `<asset>_frac.glb`. `smash-fx.ts` would use those chunks when
+   present and fall back to the grid cut.
+2. *Real physics for the bits*: Rapier (WASM) or cannon-es on the client, so bits tumble, stack and collide with
+   the ground, the walls and each other. Still client-only and cosmetic.
+3. *Damage that lasts*: placements get HP on the server (by material: wood, stone), hits are server events (players,
+   spells, a dragon's breath), and pieces show cracked or damaged states before they break. Structural rules (a roof
+   falls when its walls go) would come after that. Only the destroyed state need ever be authoritative; the debris
+   can stay client-side at every level.
+
+The hit sounds borrow `bone_break` and `bone_collapse`; wood and stone breaking sounds are wanted.
 
 **Sound.** Real CC0 recordings are wanted for: surf, a cast, a splash, a reel, the Kraken's water (a big splash,
 a whirlpool, a wet slap, ink), a bow's twang, an arrow's thud, rat squeaks, goblin chatter and orc grunts. The

@@ -8,6 +8,8 @@
 //   right button, held        turns what you hold, gently (Shift: the other way)
 //   wheel, Q / E              turn it in steps; PgUp / PgDn raise and lower; [ ] size
 //   right click (no drag)     removes the thing under the cursor; Ctrl+Z puts it back
+//   X, or 🔨 Smash            smash mode: a click hits what is under the cursor; enough hits
+//                             (by its size) shatter it (smash-fx.ts) for everyone; Ctrl+Z still works
 //   Esc                       puts down nothing: what you held goes back; again: leave
 //
 // Right-dragging still steers and left-dragging still turns the camera (the owner: right-button
@@ -17,6 +19,7 @@ import * as THREE from '../../../../assets/js/vendor/three';
 import { UNITS_PER_METRE } from './controls-math';
 import { BuildWindow, type CatalogueEntry } from './build-ui';
 import { BINDING_RADIUS_M, PlacedView, isModel, type Placement } from './placed-view';
+import { SmashFx, hitsFor } from './smash-fx';
 
 const U = UNITS_PER_METRE;
 const TURN_RATE = Math.PI / 4; // radians a second while the right button is held: gentle
@@ -24,6 +27,7 @@ const STEP = Math.PI / 12; // 15 degrees a wheel notch or Q/E press
 const GRID = 1.5;
 const STOREY = 3;
 const UNDO_MS = 5 * 60_000;
+const SHAKE_S = 0.28;
 
 function reply(hook: any, event: string, payload: object, fallback: any = { ok: false, error: 'No answer from the server.' }): Promise<any> {
   return new Promise((resolve) => {
@@ -107,6 +111,8 @@ export const BuildWorld = {
       this.placedView = new PlacedView(source);
       this.placedView.ground = (x: number, z: number) => this.groundAt(x * U, z * U) / U;
       this.placedView.onColliders = () => this.rebuildColliders?.();
+      this.smashFx = new SmashFx(this.placedView.ground);
+      this.placedView.group.add(this.smashFx.group);
       // the village's group is in metres (scaled); without one, a scaled group of our own
       if (dressing?.group) dressing.group.add(this.placedView.group);
       else {
@@ -122,6 +128,10 @@ export const BuildWorld = {
 
   teardownBuild(this: any) {
     this.buildExit?.();
+    this.smashFx?.clear();
+    this.smashFx = null;
+    this.smashHits = null;
+    this.smashShake = null;
     this.placedView?.group.parent?.remove(this.placedView.group);
     this.placedView = null;
     this.buildWindow?.dispose();
@@ -136,8 +146,16 @@ export const BuildWorld = {
     if (p.npc) void this.npcsView?.put(p.npc);
   },
 
-  onBuildRemoved(this: any, payload: { id: string; asset: string }) {
+  onBuildRemoved(this: any, payload: { id: string; asset: string; smashed?: boolean }) {
     if (this.buildHeld?.id === payload.id) this.buildDropHeld(false);
+    if (this.smashShake?.id === payload.id) this.smashShake = null;
+    this.smashHits?.delete(payload.id);
+    // smashed: it shatters where it stood (our own smash, then the broadcast: the second finds it gone)
+    const parts = payload.smashed ? this.placedView?.pieces(payload.id) : null;
+    if (parts && this.smashFx) {
+      this.smashFx.shatter(payload.asset, parts.parts, parts.matrix, parts.box);
+      this.audio?.play('bone_collapse', 0.7);
+    }
     this.placedView?.remove(payload.id);
     if (payload.asset?.startsWith('npc:')) {
       this.npcsView?.drop(`p:${payload.id}`);
@@ -175,6 +193,7 @@ export const BuildWorld = {
           this.buildRefreshHeld();
         },
         cancel: () => this.buildDropHeld(true),
+        smash: (on: boolean) => this.buildSetSmash(on),
         close: () => this.buildExit(),
       });
       this.buildSnap = true;
@@ -199,6 +218,7 @@ export const BuildWorld = {
   buildExit(this: any) {
     if (!this.buildMode) return;
     this.buildDropHeld(true);
+    this.buildSetSmash(false);
     this.buildMode = false;
     this.buildWindow?.close();
     this.placedView?.setMarkers(false);
@@ -376,6 +396,12 @@ export const BuildWorld = {
   /** A left click in build mode (not the end of a camera drag): true when it was ours. */
   buildLeftClick(this: any, e: MouseEvent): boolean {
     if (!this.buildMode) return false;
+    if (this.buildSmashing) {
+      const id = this.buildPickAt(e);
+      if (!id) return false;
+      void this.buildSmashHit(id);
+      return true;
+    }
     if (this.buildHeld) {
       void this.buildCommit(e.shiftKey);
       return true;
@@ -432,6 +458,11 @@ export const BuildWorld = {
     }
     if (e.code === 'KeyF' && e.ctrlKey) return false;
     if (e.code === 'Enter' && !held) return false;
+    if (!held && e.code === 'KeyX' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      this.buildSetSmash(!this.buildSmashing);
+      return true;
+    }
     if (!held) {
       if (e.code === 'KeyB' || (e.key === 'f' && e.shiftKey)) {
         this.buildWindow?.focusSearch();
@@ -493,6 +524,19 @@ export const BuildWorld = {
   // ---------------------------------------------------------------- per frame
 
   tickBuild(this: any, dt: number) {
+    // the bits of anything smashed (ours or anyone's) fly on whether or not we're building
+    this.smashFx?.update(dt);
+    const shake = this.smashShake;
+    if (shake) {
+      shake.t += dt;
+      const k = Math.max(0, 1 - shake.t / SHAKE_S) * shake.amp;
+      if (k <= 0) {
+        this.placedView?.jiggle(shake.id, 0, 0, 0);
+        this.smashShake = null;
+      } else {
+        this.placedView?.jiggle(shake.id, Math.sin(shake.t * 71) * k, Math.cos(shake.t * 53) * k, Math.sin(shake.t * 64) * k * 0.5);
+      }
+    }
     if (!this.buildMode) return;
     const held: Held | null = this.buildHeld;
     if (held && this.buildRotating) {
@@ -562,14 +606,7 @@ export const BuildWorld = {
   async buildDelete(this: any, id: string) {
     const p: Placement | null = this.placedView?.get(id);
     const entry = p ? this.buildWindow?.entry(p.asset) : null;
-    if (entry && !entry.allowed) {
-      this.combatLog(`Only a ${entry.min_role} or higher may remove ${entry.name.toLowerCase()}.`, '#FF9B7A');
-      return;
-    }
-    if (p && !this.buildMayTown() && this.buildInTown(p.x, p.z, id)) {
-      this.combatLog(`Only GMs and admins may build within ${BINDING_RADIUS_M} m of a binding stone.`, '#FF9B7A');
-      return;
-    }
+    if (!this.buildMayRemove(id)) return;
     const res = await reply(this, 'build_delete', { id });
     if (!res.ok) {
       this.combatLog(res.error || "That can't be removed.", '#FF9B7A');
@@ -579,6 +616,68 @@ export const BuildWorld = {
     this.buildRemember({ kind: 'deleted', p: res.placement });
     this.combatLog(`Removed ${entry?.name?.toLowerCase() || 'it'}. Ctrl+Z puts it back.`, '#B8B8B8');
     this.audio?.play('click', 0.4);
+  },
+
+  /** May we remove (or smash) this placement? Says why not in the log. */
+  buildMayRemove(this: any, id: string): boolean {
+    const p: Placement | null = this.placedView?.get(id);
+    const entry = p ? this.buildWindow?.entry(p.asset) : null;
+    if (entry && !entry.allowed) {
+      this.combatLog(`Only a ${entry.min_role} or higher may remove ${entry.name.toLowerCase()}.`, '#FF9B7A');
+      return false;
+    }
+    if (p && !this.buildMayTown() && this.buildInTown(p.x, p.z, id)) {
+      this.combatLog(`Only GMs and admins may build within ${BINDING_RADIUS_M} m of a binding stone.`, '#FF9B7A');
+      return false;
+    }
+    return true;
+  },
+
+  buildSetSmash(this: any, on: boolean) {
+    on = !!on && !!this.buildMode;
+    if (on === !!this.buildSmashing) return;
+    this.buildSmashing = on;
+    if (on && this.buildHeld) this.buildDropHeld(true);
+    this.buildWindow?.setSmash(on);
+    const canvas: HTMLElement | undefined = this.renderer?.domElement;
+    if (canvas) canvas.style.cursor = on ? 'crosshair' : '';
+    if (this.buildMode) this.combatLog(on ? 'Smash: click something to hit it until it breaks. X to stop.' : 'Smashing off.', on ? '#FFB38A' : '#B8B8B8');
+  },
+
+  /** A smash-mode click: a hit; enough of them (hitsFor, by size) break it for good (undo still works). */
+  async buildSmashHit(this: any, id: string) {
+    if (this.smashBusy === id || !this.buildMayRemove(id)) return;
+    const parts = this.placedView?.pieces(id);
+    // creature spawns and NPCs have nothing to break: they just go, as a right click would
+    if (!parts) {
+      void this.buildDelete(id);
+      return;
+    }
+    this.smashHits = this.smashHits || new Map<string, number>();
+    const need = hitsFor(parts.box);
+    const n = (this.smashHits.get(id) || 0) + 1;
+    this.smashHits.set(id, n);
+    const size = parts.box.getSize(new THREE.Vector3());
+    const mid = parts.box.getCenter(new THREE.Vector3());
+    this.smashFx?.hit(mid.setY(parts.box.min.y + size.y * 0.45), Math.max(size.x, size.z));
+    if (this.smashShake && this.smashShake.id !== id) this.placedView?.jiggle(this.smashShake.id, 0, 0, 0);
+    this.smashShake = { id, t: 0, amp: Math.min(0.12, 0.03 + 0.02 * Math.max(size.x, size.z)) * (0.6 + 0.4 * (n / need)) };
+    if (n < need) {
+      this.audio?.play('bone_break', 0.45);
+      return;
+    }
+    this.smashBusy = id;
+    const res = await reply(this, 'build_delete', { id, smash: true });
+    this.smashBusy = null;
+    this.smashHits.delete(id);
+    if (!res.ok) {
+      this.combatLog(res.error || "That can't be smashed.", '#FF9B7A');
+      return;
+    }
+    const entry = this.buildWindow?.entry(res.placement.asset);
+    this.onBuildRemoved({ id, asset: res.placement.asset, smashed: true });
+    this.buildRemember({ kind: 'deleted', p: res.placement });
+    this.combatLog(`Smashed ${entry?.name?.toLowerCase() || 'it'}. Ctrl+Z puts it back.`, '#FFB38A');
   },
 
   async buildSetRule(this: any, asset: string, role: string) {

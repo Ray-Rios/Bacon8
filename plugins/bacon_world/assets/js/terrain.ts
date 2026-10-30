@@ -174,6 +174,9 @@ type Chunk = { ci: number; cj: number; mesh: THREE.Mesh; step: number; geos: Map
 
 const indexCache = new Map<number, THREE.BufferAttribute>();
 
+/** How far the map-edge apron runs out for each metre it drops (rock, not a wall or a ramp). */
+const APRON_RUN = 0.7;
+
 /** The index buffer for a chunk `m` quads across: the grid, then a skirt round its four edges. */
 function chunkIndex(m: number): THREE.BufferAttribute {
   let attr = indexCache.get(m);
@@ -347,18 +350,33 @@ export class TerrainView {
         nrm(i, j, at);
       }
     }
-    // skirts: down a little inside the map (hides the seams between levels), down to below the
-    // sea along the map's own edge (so the world doesn't look cut off from a mount)
+    // skirts: straight down a little inside the map (hides the seams between levels). Along the
+    // map's own edge, a sloped apron of rock out and down to below the sea, so the world doesn't
+    // look cut off from a mount. The apron has its own normals: copied up-normals painted and lit
+    // a vertical curtain like flat grass, which was the streaky band round the map's edge.
     const per = Math.ceil(this.n / CHUNK);
     const edgeOfMap = [ch.cj === 0, ch.ci === per - 1, ch.cj === per - 1, ch.ci === 0];
+    const OUT = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // each edge's outward direction (x, z)
     const top = (e: number, t: number) => (e === 0 ? t : e === 1 ? t * v + m : e === 2 ? m * v + (m - t) : (m - t) * v);
     const drop = step * c * 1.5 + U;
     const floor = hf.info.sea - 60 * U;
     for (let e = 0; e < 4; e++) {
       for (let t = 0; t < v; t++) {
         const src = top(e, t) * 3, at = (v * v + e * v + t) * 3;
+        if (edgeOfMap[e]) {
+          const [ox, oz] = OUT[e];
+          const d = Math.max(pos[src + 1] - floor, drop);
+          pos[at] = pos[src] + ox * d * APRON_RUN;
+          pos[at + 1] = pos[src + 1] - d;
+          pos[at + 2] = pos[src + 2] + oz * d * APRON_RUN;
+          const l = Math.hypot(1, APRON_RUN);
+          nor[at] = ox / l;
+          nor[at + 1] = APRON_RUN / l;
+          nor[at + 2] = oz / l;
+          continue;
+        }
         pos[at] = pos[src];
-        pos[at + 1] = edgeOfMap[e] ? Math.min(pos[src + 1] - drop, floor) : pos[src + 1] - drop;
+        pos[at + 1] = pos[src + 1] - drop;
         pos[at + 2] = pos[src + 2];
         nor[at] = nor[src];
         nor[at + 1] = nor[src + 1];

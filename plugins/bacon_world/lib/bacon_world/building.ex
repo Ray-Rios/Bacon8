@@ -252,14 +252,21 @@ defmodule BaconWorld.Building do
     end
   end
 
-  @doc "Deletes a placement. `{:ok, view}` (what was deleted, for an undo) or `{:error, message}`."
-  def delete(user, zone, id) do
+  @doc """
+  Deletes a placement. `{:ok, view}` (what was deleted, for an undo) or `{:error, message}`.
+
+  `smash: true` (build mode's smash toggle) is the same delete, broadcast as
+  `{:build_removed, id, asset, :smashed}` so every client shatters it instead of letting it vanish.
+  The debris is the clients' own; only the delete is the server's.
+  """
+  def delete(user, zone, id, opts \\ []) do
     with %Placement{} = p <- get(zone, id) || {:error, "That isn't there any more."},
          true <- can_place?(user, p.asset) || {:error, "You aren't allowed to remove #{(asset(p.asset) || %{name: "that"}).name}."},
          :ok <- town_ok(user, zone, [{p.x, p.z}], p.id),
          {:ok, _} <- GamesRepo.delete(p) do
       if String.starts_with?(p.asset, "mob:"), do: Mobs.put_points(zone, p.id, [])
-      Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_removed, p.id, p.asset})
+      msg = if opts[:smash], do: {:build_removed, p.id, p.asset, :smashed}, else: {:build_removed, p.id, p.asset}
+      Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), msg)
       {:ok, view(p)}
     else
       {:error, %Ecto.Changeset{}} -> {:error, "That couldn't be removed."}

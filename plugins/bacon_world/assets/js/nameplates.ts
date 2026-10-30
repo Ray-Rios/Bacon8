@@ -43,12 +43,12 @@ const SUB_PX = 32;
 const PAD = 10;
 // Old-school EverQuest's names: a plain, bold Arial-style sans with a dark outline.
 const FONT = 'Arial, "Liberation Sans", Helvetica, sans-serif';
-// World height of one name line near the camera; further away a plate grows to
-// stay readable, up to FAR_GROW times, and past MAX_DISTANCE it is hidden.
+// World height of one name line near the camera. Further away a name never gets smaller than
+// MIN_LINE_PX on screen (2026-10-30: it used to shrink with distance past ~23 m until it was a few
+// pixels tall and unreadable), and past MAX_DISTANCE it is hidden.
 const LINE_M = 0.15;
-const GROW_FROM_M = 9;
-const FAR_GROW = 2.6;
-const MAX_DISTANCE_M = 75;
+const MIN_LINE_PX = 15;
+const MAX_DISTANCE_M = 90;
 
 class Plate {
   readonly sprite: THREE.Sprite;
@@ -62,14 +62,21 @@ class Plate {
   height = 2.4 * UNITS_PER_METRE;
   host: THREE.Object3D;
   target = false;
+  /** From the last place(): distance to the camera, and world units per screen pixel there. */
+  dist = 0;
+  perPx = 0;
 
   constructor(host: THREE.Object3D) {
     this.host = host;
     this.canvas = document.createElement('canvas');
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.colorSpace = THREE.SRGBColorSpace;
-    this.texture.minFilter = THREE.LinearFilter;
-    this.texture.generateMipmaps = false;
+    // Drawn large (46 px) and shown smaller: mipmaps and trilinear filtering keep the shrunk text
+    // smooth. Without them every far name shimmered and broke into pixels (2026-10-30).
+    this.texture.minFilter = THREE.LinearMipmapLinearFilter;
+    this.texture.magFilter = THREE.LinearFilter;
+    this.texture.generateMipmaps = true;
+    this.texture.anisotropy = 4;
     // Drawn over everything (as in EverQuest), so a name never disappears into a head,
     // a hat or the corpse it belongs to.
     this.material = new THREE.SpriteMaterial({ map: this.texture, transparent: true, depthWrite: false, depthTest: false });
@@ -119,15 +126,20 @@ class Plate {
     this.aspect = width / height;
   }
 
-  place(camera: THREE.Camera, tmp: THREE.Vector3) {
+  /** `screenH`: the canvas height in CSS pixels (for the names' smallest size on screen). */
+  place(camera: THREE.Camera, tmp: THREE.Vector3, screenH: number) {
     const h = this.host;
     this.sprite.position.set(h.position.x, h.position.y + this.height, h.position.z);
     const d = tmp.copy(this.sprite.position).sub(camera.position).length();
     const far = MAX_DISTANCE_M * UNITS_PER_METRE;
     this.sprite.visible = h.visible !== false && d < far;
     if (!this.sprite.visible) return;
-    const grow = Math.min(FAR_GROW, Math.max(1, d / (GROW_FROM_M * UNITS_PER_METRE)));
-    const lineH = LINE_M * UNITS_PER_METRE * grow * (this.target ? 1.12 : 1);
+    // world units per screen pixel at this distance (a perspective camera; others keep the world size)
+    const fov = (camera as THREE.PerspectiveCamera).isPerspectiveCamera ? (camera as THREE.PerspectiveCamera).fov : 0;
+    const perPx = fov > 0 && screenH > 0 ? (2 * d * Math.tan((fov * Math.PI) / 360)) / screenH : 0;
+    this.dist = d;
+    this.perPx = perPx;
+    const lineH = Math.max(LINE_M * UNITS_PER_METRE, MIN_LINE_PX * perPx) * (this.target ? 1.12 : 1);
     const totalH = lineH * (this.lines === 2 ? 1 + SUB_PX / NAME_PX : 1) * 1.3;
     this.sprite.scale.set(totalH * this.aspect, totalH, 1);
     // Fade out over the last fifth of the range.
@@ -182,9 +194,37 @@ export class Nameplates {
     for (const id of [...this.plates.keys()]) if (!keep.has(id)) this.remove(id);
   }
 
-  /** Call once a frame, after everything has moved and before rendering. */
-  update(camera: THREE.Camera) {
-    this.plates.forEach((p) => p.place(camera, this.tmp));
+  /** Call once a frame, after everything has moved and before rendering. `screenH`: the canvas's CSS height. */
+  update(camera: THREE.Camera, screenH = 0) {
+    this.plates.forEach((p) => p.place(camera, this.tmp, screenH));
+    this.declutter(camera, screenH);
+  }
+
+  /**
+   * Far names keep a readable size, so a crowd far off would pile its names into one smear. Nearer
+   * names (and the target's) win: a name that would overlap one already shown is hidden this frame.
+   */
+  private declutter(camera: THREE.Camera, screenH: number) {
+    const cam = camera as THREE.PerspectiveCamera;
+    if (!cam.isPerspectiveCamera || screenH <= 0) return;
+    const screenW = screenH * cam.aspect;
+    const shown: number[] = []; // x0, y0, x1, y1 per kept plate, in pixels
+    const order = [...this.plates.values()].filter((p) => p.sprite.visible && p.perPx > 0);
+    order.sort((a, b) => (a.target === b.target ? a.dist - b.dist : a.target ? -1 : 1));
+    for (const p of order) {
+      const v = this.tmp.copy(p.sprite.position).project(camera);
+      if (v.z > 1) continue; // behind the camera
+      const w = p.sprite.scale.x / p.perPx, h = p.sprite.scale.y / p.perPx;
+      const x = (v.x * 0.5 + 0.5) * screenW, y = (0.5 - v.y * 0.5) * screenH; // the plate's bottom middle
+      // a little slack, so names that only touch both stay
+      const x0 = x - w * 0.45, x1 = x + w * 0.45, y0 = y - h * 0.85, y1 = y - h * 0.15;
+      let hit = false;
+      for (let i = 0; i < shown.length && !hit; i += 4) {
+        hit = x0 < shown[i + 2] && x1 > shown[i] && y0 < shown[i + 3] && y1 > shown[i + 1];
+      }
+      if (hit && !p.target) p.sprite.visible = false;
+      else shown.push(x0, y0, x1, y1);
+    }
   }
 
   clear() {

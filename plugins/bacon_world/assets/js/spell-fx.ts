@@ -3,6 +3,7 @@
 // swirl of Recall, the ring of a spin attack. Additive particles and a light or two;
 // everything cleans itself up. Positions are world (scene) units.
 import * as THREE from '../../../../assets/js/vendor/three';
+import { LightPool } from './light-pool';
 import { UNITS_PER_METRE } from './controls-math';
 
 const U = UNITS_PER_METRE;
@@ -113,40 +114,29 @@ const tmp = new THREE.Vector3();
 // THE LIGHTS ARE POOLED, AND NEVER LEAVE THE SCENE. three.js builds every lit material's shader for
 // the number of lights in the scene, so adding a light (a fireball's glow, a burst) and removing it
 // again made every material in the village and on every character recompile, twice: the game froze
-// for 2-5 s as each spell landed, Recall included (2026-10-26). These lights are always there, at
-// intensity 0 when nobody is using them, so the count never changes. (`visible = false` would
-// change it too.)
-const POOLED_LIGHTS = 3;
+// for 2-5 s as each spell landed, Recall included (2026-10-26). Since 2026-10-30 the pool is the
+// world's, shared with the dragons' fire breath (light-pool.ts).
 
 export class SpellFx {
   private live: Fx[] = [];
-  private lights: THREE.PointLight[] = [];
-  private lightBusy = new Set<THREE.PointLight>();
+  private mine = new Set<THREE.PointLight>();
+  private pool: LightPool;
 
   constructor(private scene: THREE.Scene) {
-    for (let i = 0; i < POOLED_LIGHTS; i++) {
-      const l = new THREE.PointLight(0xffffff, 0, 1, 1.6);
-      l.name = `SpellFxLight${i}`;
-      this.lights.push(l);
-      scene.add(l);
-    }
+    this.pool = LightPool.install(scene);
   }
 
   /** A pooled light, lit (null when all are busy: the effect goes without one). */
   private takeLight(color: THREE.Color, intensity: number, distance: number): THREE.PointLight | null {
-    const l = this.lights.find((x) => !this.lightBusy.has(x));
-    if (!l) return null;
-    this.lightBusy.add(l);
-    l.color.copy(color);
-    l.intensity = intensity;
-    l.distance = distance;
+    const l = this.pool.take(color, intensity, distance);
+    if (l) this.mine.add(l);
     return l;
   }
 
   private giveLight(l: THREE.PointLight | null) {
     if (!l) return;
-    l.intensity = 0;
-    this.lightBusy.delete(l);
+    this.pool.give(l);
+    this.mine.delete(l);
   }
 
   update(dt: number) {
@@ -160,7 +150,7 @@ export class SpellFx {
   clear() {
     this.live.forEach((f) => f.dispose());
     this.live = [];
-    for (const l of this.lights) this.giveLight(l);
+    for (const l of [...this.mine]) this.giveLight(l);
   }
 
   /** Sparks circling the caster's hands while a spell is cast. Stop it with the handle. */

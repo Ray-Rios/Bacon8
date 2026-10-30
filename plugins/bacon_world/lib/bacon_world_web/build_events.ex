@@ -11,13 +11,14 @@ defmodule BaconWorldWeb.BuildEvents do
       (metres, radians). Replies `%{ok, placement}`.
     * `"build_move"` `%{id, x, y, z, rot, scale, data}` - moves, turns, resizes or retunes one.
     * `"build_delete"` `%{id}` - removes one. Replies `%{ok, placement}` (what it was, so the
-      client can undo it by placing it again).
+      client can undo it by placing it again). `%{id, smash: true}` (the smash toggle) is the
+      same, and everyone's client shatters it.
     * `"build_rule"` `%{asset, role}` - admins: the lowest role that may place an asset.
     * `"bind_stone"` - bind your soul at the binding stone you stand by (within 5 m): Recall and
       death bring you back there. Replies `%{ok, bind}` (scene units) or the reason it can't.
 
   Pushed to the client: `"build_placed"` (a placement, new or changed) and `"build_removed"`
-  `%{id, asset}`, for everyone in the zone. Placements arrive first with `"fetch_mobs"`.
+  `%{id, asset}` (with `smashed: true` when it was smashed), for everyone in the zone. Placements arrive first with `"fetch_mobs"`.
 
   Nothing here trusts the client: the role, the asset and the numbers are all checked by
   `BaconWorld.Building`. A burst limit (`@burst` changes in `@window_ms`) keeps a stuck key or a
@@ -63,8 +64,9 @@ defmodule BaconWorldWeb.BuildEvents do
     act(socket, fn _me, zone -> Building.move(socket.assigns.current_user, zone, id, params) end)
   end
 
-  def handle_event("build_delete", %{"id" => id}, socket) do
-    act(socket, fn _me, zone -> Building.delete(socket.assigns.current_user, zone, id) end)
+  def handle_event("build_delete", %{"id" => id} = params, socket) do
+    smash = params["smash"] == true
+    act(socket, fn _me, zone -> Building.delete(socket.assigns.current_user, zone, id, smash: smash) end)
   end
 
   def handle_event("build_rule", %{"asset" => asset, "role" => role}, socket) do
@@ -94,6 +96,9 @@ defmodule BaconWorldWeb.BuildEvents do
 
   @doc "A placement was removed."
   def removed(id, asset, socket), do: push_event(socket, "build_removed", %{id: id, asset: asset})
+
+  @doc "A placement was smashed: removed, and shattered on every client."
+  def smashed(id, asset, socket), do: push_event(socket, "build_removed", %{id: id, asset: asset, smashed: true})
 
   # In the world, alive, not over the burst limit: run `fun` and reply with its placement.
   defp act(socket, fun) do

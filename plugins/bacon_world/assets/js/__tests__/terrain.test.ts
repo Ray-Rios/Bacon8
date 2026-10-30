@@ -3,7 +3,7 @@
 // terrain. The server's side is plugins/bacon_world/test/bacon_world/terrain_test.exs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeHeights, Heightfield, type TerrainInfo } from '../terrain';
+import { decodeHeights, Heightfield, TerrainView, type TerrainInfo } from '../terrain';
 import { keepOnLand, nearWater, waterKindAt, waterNameAt, waterYAt, type WaterLayout } from '../water';
 import { UNITS_PER_METRE as U } from '../controls-math';
 
@@ -102,4 +102,31 @@ test('water.ts with a terrain: kinds, names, the bank, keeping people out of dee
   const m: WaterLayout = { ...w, lakes: [{ id: 'millpond', name: 'the Millpond', x: 0, z: 0, rx: 1 * U, rz: 1 * U }] };
   assert.equal(waterNameAt(m, 0, 0), 'the Millpond');
   assert.ok(Math.abs(waterYAt(m, 0, 0) - 0.03 * U) < 1e-9);
+});
+
+test("the map's edge: a sloped apron of rock outwards and down, lit as a slope (2026-10-30)", () => {
+  const hf = world();
+  const view = new TerrainView(hf) as any;
+  const ch = view.chunks[0]; // the one chunk: all four of its sides are the map's edge
+  const g = view.geometry(ch, 1);
+  const pos = g.getAttribute('position'), nor = g.getAttribute('normal');
+  const v = 64 + 1;
+  const x0 = hf.info.x0, x1 = hf.info.x0 + 4 * hf.cell, z0 = hf.info.z0, z1 = hf.info.z0 + 4 * hf.cell;
+  // edge e's skirt copy starts at v*v + e*v: 0 north (z-), 1 east (x+), 2 south (z+), 3 west (x-)
+  const out = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  for (let e = 0; e < 4; e++) {
+    for (const t of [0, 32, 64]) {
+      const at = v * v + e * v + t;
+      const [ox, oz] = out[e];
+      // outside the map, below the sea
+      if (ox < 0) assert.ok(pos.getX(at) < x0);
+      if (ox > 0) assert.ok(pos.getX(at) > x1);
+      if (oz < 0) assert.ok(pos.getZ(at) < z0);
+      if (oz > 0) assert.ok(pos.getZ(at) > z1);
+      assert.ok(pos.getY(at) < hf.info.sea);
+      // its normal leans outwards: steep enough to paint as rock, not grass on a wall
+      assert.ok(nor.getX(at) * ox + nor.getZ(at) * oz > 0.5);
+      assert.ok(nor.getY(at) > 0.3 && nor.getY(at) < 0.75);
+    }
+  }
 });

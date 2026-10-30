@@ -74,9 +74,9 @@ function playKind(audio: any, kind: string, at: THREE.Vector3, gain: number, rat
   else audio?.playAt(kind, at, gain, rate);
 }
 
-function reply(hook: any, event: string, payload: any, fallback: any = { ok: false }): Promise<any> {
+function reply(hook: any, event: string, payload: any, fallback: any = { ok: false }, timeoutMs = 5000): Promise<any> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(fallback), 5000);
+    const timer = setTimeout(() => resolve(fallback), timeoutMs);
     try {
       hook.pushEvent(event, payload, (res: any) => {
         clearTimeout(timer);
@@ -159,24 +159,87 @@ export const GameWorld = {
       this.scene.add(this.arrows.group);
     }
     this.applyGround?.();
-    void reply(this, 'fetch_mobs', {}, { mobs: [], camps: [], merchants: [] }).then((res: any) => {
-      if (!this.mobsView) return;
-      this.mobsView.setAll(res.mobs || []);
-      this.camps = res.camps || [];
-      // the sea and the lakes (water.ts, fishing-world.ts)
-      if (res.water) this.initWater(res.water);
-      // the village's, the people's, the water's and build mode's colliders (build-world.ts)
-      this.rebuildColliders();
-      void this.npcsView?.setAll(res.merchants || []).then(() => this.rebuildColliders());
-      // camps that are placements now: only their ground is drawn here
-      if (this.dressing) this.dressing.campsOff = new Set(this.camps.filter((c: any) => c.placed).map((c: any) => c.id));
-      if (this.dressing && this.camps.length) void this.dressing.addCamps(this.camps).then(() => {
-        if (this.dressing) this.rebuildColliders();
-      });
-      // what players put in the world in build mode (BaconWorld.Building)
-      this.initPlaced(res.placements || []);
-    });
+    // a creature the server talks about that we never got: the world state was missed (resync)
+    this.mobsView.onUnknown = () => this.resyncWorld('unknown creature');
+    this.loadWorldState('enter');
     this.updateHUD();
+  },
+
+  /**
+   * The zone's state, from the server: every creature, the camps, the merchants, the water and
+   * everything placed in build mode (`fetch_mobs`).
+   *
+   * 2026-10-30: this used to be asked once, with a 5-second wait, and an unanswered request was
+   * taken as an empty world. Entering is when the browser is busiest (the terrain, the village,
+   * every model), so the answer was often read too late: players got the terrain and nothing else,
+   * and were hit by creatures that were never drawn. Now a missing answer is never "empty": it is
+   * asked again (up to 30 s a try, then backing off), a note says the world is still loading, and
+   * it is asked again after a reconnect or when the server mentions a creature we don't know.
+   */
+  loadWorldState(this: any, why: string) {
+    if (this.worldStateBusy) return;
+    this.worldStateBusy = true;
+    const attempt = (n: number) => {
+      void reply(this, 'fetch_mobs', {}, null, 30000).then((res: any) => {
+        if (!this.mobsView) {
+          this.worldStateBusy = false;
+          return;
+        }
+        if (!res || !Array.isArray(res.mobs)) {
+          this.setWorldLoadingNote?.(true);
+          const wait = Math.min(2000 * 2 ** n, 20000);
+          console.warn(`[bacon world] no world state yet (${why}, try ${n + 1}); asking again in ${wait / 1000}s`);
+          setTimeout(() => (this.mobsView ? attempt(n + 1) : (this.worldStateBusy = false)), wait);
+          return;
+        }
+        this.worldStateBusy = false;
+        this.worldStateAt = performance.now();
+        this.setWorldLoadingNote?.(false);
+        this.applyWorldState(res);
+      });
+    };
+    attempt(0);
+  },
+
+  /** Asks for the world state again (after a reconnect, or an unknown creature), at most every 8 s. */
+  resyncWorld(this: any, why: string) {
+    if (!this.mobsView || this.worldStateBusy) return;
+    if (this.worldStateAt && performance.now() - this.worldStateAt < 8000) return;
+    this.worldStateAt = performance.now();
+    this.loadWorldState(why);
+  },
+
+  applyWorldState(this: any, res: any) {
+    this.mobsView.setAll(res.mobs || []);
+    this.camps = res.camps || [];
+    // the sea and the lakes (water.ts, fishing-world.ts): once
+    if (res.water && !this.water) this.initWater(res.water);
+    // the village's, the people's, the water's and build mode's colliders (build-world.ts)
+    this.rebuildColliders();
+    void this.npcsView?.setAll(res.merchants || []).then(() => this.rebuildColliders());
+    // camps that are placements now: only their ground is drawn here
+    if (this.dressing) this.dressing.campsOff = new Set(this.camps.filter((c: any) => c.placed).map((c: any) => c.id));
+    if (this.dressing && this.camps.length) void this.dressing.addCamps(this.camps).then(() => {
+      if (this.dressing) this.rebuildColliders();
+    });
+    // what players put in the world in build mode (BaconWorld.Building)
+    this.initPlaced(res.placements || []);
+  },
+
+  /** A small note while the world's state hasn't arrived ("Loading the world..."). */
+  setWorldLoadingNote(this: any, on: boolean) {
+    const layer: HTMLElement | null = this.nameplateLayer || this.el;
+    let note: HTMLElement | null = this.el?.querySelector?.('#bw-world-loading') || null;
+    if (!on) {
+      note?.remove();
+      return;
+    }
+    if (note || !layer) return;
+    note = document.createElement('div');
+    note.id = 'bw-world-loading';
+    note.textContent = 'Loading the world...';
+    note.style.cssText = 'position:absolute;top:56px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:8px;background:rgba(10,14,24,0.78);color:#e8ecf4;font:600 13px system-ui,sans-serif;z-index:30;pointer-events:none';
+    layer.appendChild(note);
   },
 
   teardownGame(this: any) {
