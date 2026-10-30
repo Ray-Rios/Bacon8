@@ -36,5 +36,18 @@ defmodule BaconStore.Payments.Provider do
   """
   @callback event_from_payload(payload :: map()) :: {:ok, BaconStore.Payments.Event.t()} | :ignore | {:error, term()}
 
-  @optional_callbacks available?: 0, event_from_payload: 1
+  @doc """
+  Closes an open checkout so it can no longer be paid (2026-10-29c). `:ok` (closed, or already
+  closed unpaid), `{:error, :already_paid}`, or `{:error, reason}` (couldn't reach the provider).
+  """
+  @callback expire_checkout(provider_ref :: String.t()) :: :ok | {:error, term()}
+
+  @doc """
+  Asks the provider where a checkout stands (2026-10-29c), so the hub never has to wait for a
+  webhook to be right: `{:ok, %{state: :open | :paid | :processing | :expired, amount_cents:,
+  currency:, payment_ref:}}` or `{:error, reason}`.
+  """
+  @callback checkout_status(provider_ref :: String.t()) :: {:ok, map()} | {:error, term()}
+
+  @optional_callbacks available?: 0, event_from_payload: 1, expire_checkout: 1, checkout_status: 1
 end

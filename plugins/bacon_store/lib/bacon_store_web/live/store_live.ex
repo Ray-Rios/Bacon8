@@ -13,6 +13,11 @@ defmodule BaconStoreWeb.StoreLive do
   sheet, which pays for everything at once by card (one checkout) or with Gems
   (`BaconStore.Store.start_basket_checkout/3`, `buy_basket_with_gems/2`): one order number, one
   receipt.
+
+  **Buying with things in the cart** (2026-10-29c): an item's Pay buttons while the cart holds
+  other things put the item in the cart and open it, so one checkout pays for everything (the
+  buyer can still take things out). A checkout the buyer left unfinished (Back from the
+  provider's page) shows as a banner here: continue paying, or cancel it.
   """
   use Bacon8Web, :live_view
 
@@ -24,6 +29,8 @@ defmodule BaconStoreWeb.StoreLive do
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns[:current_user]
+    # Back from the provider's page: settle what it already knows (paid, or closed) first.
+    if user && connected?(socket), do: Enum.each(Store.open_checkouts(user), &Store.reconcile(&1.orders))
 
     {:ok,
      assign(socket,
@@ -41,7 +48,8 @@ defmodule BaconStoreWeb.StoreLive do
        cart_open: false,
        cart: [],
        cart_ids: Cart.ids(user),
-       cart_confirming: false
+       cart_confirming: false,
+       open_checkouts: Store.open_checkouts(user)
      )}
   end
 
@@ -113,6 +121,16 @@ defmodule BaconStoreWeb.StoreLive do
   defp here(socket, extra), do: "/store?" <> URI.encode_query(Map.merge(socket.assigns.query, extra))
 
   @impl true
+  def handle_event("cancel_checkout", %{"id" => id}, %{assigns: %{current_user: %{} = user}} = socket) do
+    socket =
+      case Store.cancel_checkout(user, id) do
+        {:ok, _} -> put_flash(socket, :info, "Checkout cancelled. Nothing was charged.")
+        {:error, reason} -> put_flash(socket, :error, Store.reason_text(reason))
+      end
+
+    {:noreply, assign(socket, open_checkouts: Store.open_checkouts(user), owned: owned_ids(user), balance: Wallet.balance(user))}
+  end
+
   def handle_event("open_item", %{"slug" => slug}, socket) when is_binary(slug),
     do: {:noreply, push_patch(socket, to: here(socket, %{"item" => slug}))}
 
@@ -171,9 +189,11 @@ defmodule BaconStoreWeb.StoreLive do
     user = socket.assigns.current_user
 
     with %{kind: "gem_pack"} = pack <- Store.get_product(id),
+         :alone <- with_cart(socket, pack),
          {:ok, _order, url} <- Store.start_checkout(user, pack) do
       {:noreply, go(socket, url)}
     else
+      {:cart, socket} -> {:noreply, socket}
       {:error, :not_signed_in} -> {:noreply, push_navigate(socket, to: ~p"/login")}
       {:error, reason} -> {:noreply, put_flash(socket, :error, Store.reason_text(reason))}
       _ -> {:noreply, put_flash(socket, :error, Store.reason_text(:not_for_sale))}
@@ -181,18 +201,32 @@ defmodule BaconStoreWeb.StoreLive do
   end
 
   def handle_event("buy_card", _params, %{assigns: %{item: %{} = item}} = socket) do
-    case Store.start_checkout(socket.assigns.current_user, item) do
+    with :alone <- with_cart(socket, item) do
+      Store.start_checkout(socket.assigns.current_user, item)
+    end
+    |> case do
+      {:cart, socket} -> {:noreply, socket}
       {:ok, _order, url} -> {:noreply, go(socket, url)}
       {:error, :not_signed_in} -> {:noreply, push_navigate(socket, to: ~p"/login")}
       {:error, reason} -> {:noreply, socket |> put_flash(:error, Store.reason_text(reason)) |> refresh()}
     end
   end
 
-  def handle_event("confirm_gems", _params, socket), do: {:noreply, assign(socket, confirming: true)}
+  def handle_event("confirm_gems", _params, %{assigns: %{item: %{} = item}} = socket) do
+    case with_cart(socket, item) do
+      {:cart, socket} -> {:noreply, socket}
+      :alone -> {:noreply, assign(socket, confirming: true)}
+    end
+  end
+
   def handle_event("cancel_gems", _params, socket), do: {:noreply, assign(socket, confirming: false)}
 
   def handle_event("buy_gems", _params, %{assigns: %{item: %{} = item}} = socket) do
-    case Store.buy_with_gems(socket.assigns.current_user, item) do
+    with :alone <- with_cart(socket, item) do
+      Store.buy_with_gems(socket.assigns.current_user, item)
+    end
+    |> case do
+      {:cart, socket} -> {:noreply, socket}
       {:ok, _order} ->
         {:noreply,
          socket
@@ -209,6 +243,27 @@ defmodule BaconStoreWeb.StoreLive do
     do: {:noreply, socket}
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  # Paying for one item while the cart holds others: put it with them and open the cart, so it's
+  # one purchase (2026-10-29c). `:alone` when the cart has nothing else (or nobody's signed in).
+  defp with_cart(%{assigns: %{current_user: %{} = user}} = socket, product) do
+    others = user |> Cart.ids() |> MapSet.delete(product.id) |> MapSet.size()
+
+    if others == 0 do
+      :alone
+    else
+      case Cart.add(user, product) do
+        :ok ->
+          note = "#{product.name} is in your cart with #{others} other #{if others == 1, do: "item", else: "items"}. Pay for them together, or take out what you don't want."
+          {:cart, socket |> put_flash(:info, note) |> push_patch(to: here(socket, %{"cart" => "1"}))}
+
+        {:error, reason} ->
+          {:cart, put_flash(socket, :error, Store.reason_text(reason))}
+      end
+    end
+  end
+
+  defp with_cart(_socket, _product), do: :alone
 
   @doc false
   # A provider's hosted checkout is another site; the fake one is a page here.
@@ -241,6 +296,16 @@ defmodule BaconStoreWeb.StoreLive do
             <button type="button" phx-click="open_cart" class="cart-btn" id="cart-button" aria-label="Your cart">
               🛒 Cart <b :if={MapSet.size(@cart_ids) > 0}>{MapSet.size(@cart_ids)}</b>
             </button>
+          </div>
+        </div>
+
+        <div :for={r <- @open_checkouts} id={"open-checkout-#{r.lead.id}"} class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-yellow-700/60 bg-yellow-950/30 px-4 py-3">
+          <p class="text-sm text-yellow-100">
+            Unfinished checkout: Order #{r.number} · {r.total} · {length(r.orders)} {if length(r.orders) == 1, do: "item", else: "items"}. Not paid yet.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <a :if={Store.resumable?(r)} href={r.lead.checkout_url} class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500">Continue to payment</a>
+            <button type="button" phx-click="cancel_checkout" phx-value-id={r.lead.id} class="rounded-lg bg-gray-800 px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700">Cancel it</button>
           </div>
         </div>
 
@@ -291,6 +356,7 @@ defmodule BaconStoreWeb.StoreLive do
     <.item_sheet
       :if={@item}
       in_cart={MapSet.member?(@cart_ids, @item.id)}
+      others={@cart_ids |> MapSet.delete(@item.id) |> MapSet.size()}
       item={@item}
       images={@images}
       shown={@shown}
@@ -312,6 +378,7 @@ defmodule BaconStoreWeb.StoreLive do
   attr :confirming, :boolean, default: false
   attr :card_open?, :boolean, default: false
   attr :in_cart, :boolean, default: false
+  attr :others, :integer, default: 0
 
   defp item_sheet(assigns) do
     art = Catalog.art(assigns.item)
@@ -367,6 +434,9 @@ defmodule BaconStoreWeb.StoreLive do
             <div class="mt-6"><.price_tags product={@item} size="lg" /></div>
 
             <div class="mt-5 space-y-3">
+              <p :if={@others > 0 and @check in [:ok, nil]} id="sheet-cart-note" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300">
+                You have {@others} other {if @others == 1, do: "item", else: "items"} in your cart: paying adds this one and opens the cart, so it's all one purchase.
+              </p>
               <%= if @item.kind == "gem_pack" do %>
                 <button
                   type="button"

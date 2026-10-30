@@ -9,6 +9,11 @@ defmodule BaconStoreWeb.Admin.OrdersLive do
   Since 2026-10-29 purchases show as receipts (`StoreComponents.receipt/1`): one card per purchase
   with its number, buyer, items and total, a purchase of several items (the cart) being one
   receipt; the detail shows each item's order.
+
+  Since 2026-10-29c the list shows purchases (paid for) by default; "Checkouts open" and
+  "Abandoned checkouts" (closed unpaid: never purchases) are their own views, beside each status.
+  An order paid for something its buyer already owned (two checkouts paid at once) says so, for a
+  refund in Stripe, instead of offering to deliver it again.
   """
   use Bacon8Web, :live_view
   import BaconStoreWeb.StoreComponents, only: [receipt: 1, store_styles: 1]
@@ -24,8 +29,8 @@ defmodule BaconStoreWeb.Admin.OrdersLive do
      assign(socket,
        page_title: "Admin - Orders",
        statuses: Order.statuses(),
-       filter_status: nil,
-       receipts: Store.list_receipts(),
+       filter: "purchases",
+       receipts: Store.list_receipts(view: "purchases"),
        events: Payments.recent_events(25),
        order: nil,
        basket: nil
@@ -43,9 +48,9 @@ defmodule BaconStoreWeb.Admin.OrdersLive do
   def handle_params(_params, _uri, socket), do: {:noreply, assign(socket, order: nil, basket: nil)}
 
   @impl true
-  def handle_event("filter_status", %{"status" => status}, socket) do
-    status = if status in socket.assigns.statuses, do: status, else: nil
-    {:noreply, assign(socket, filter_status: status, receipts: Store.list_receipts(status: status))}
+  def handle_event("filter_status", %{"status" => filter}, socket) do
+    filter = if filter in Store.admin_views() or filter in Enum.map(socket.assigns.statuses, &("status:" <> &1)), do: filter, else: "purchases"
+    {:noreply, assign(socket, filter: filter, receipts: Store.list_receipts(filter_opts(filter)))}
   end
 
   def handle_event("retry_delivery", %{"id" => id}, socket) do
@@ -55,7 +60,7 @@ defmodule BaconStoreWeb.Admin.OrdersLive do
 
       {:noreply,
        socket
-       |> assign(order: Store.get_order(order.id), basket: Store.receipt(Store.basket(order) |> Bacon8.Repo.preload(:user)), receipts: Store.list_receipts(status: socket.assigns.filter_status))
+       |> assign(order: Store.get_order(order.id), basket: Store.receipt(Store.basket(order) |> Bacon8.Repo.preload(:user)), receipts: Store.list_receipts(filter_opts(socket.assigns.filter)))
        |> put_flash(:info, "Delivered.")}
     else
       {:error, reason} -> {:noreply, put_flash(socket, :error, "Still can't deliver: #{inspect(reason)}")}
@@ -66,7 +71,7 @@ defmodule BaconStoreWeb.Admin.OrdersLive do
   def handle_event("refresh", _params, socket) do
     {:noreply,
      assign(socket,
-       receipts: Store.list_receipts(status: socket.assigns.filter_status),
+       receipts: Store.list_receipts(filter_opts(socket.assigns.filter)),
        events: Payments.recent_events(25)
      )}
   end
@@ -82,6 +87,11 @@ defmodule BaconStoreWeb.Admin.OrdersLive do
       _ -> "bg-gray-700 text-gray-300"
     end
   end
+
+  defp filter_opts("status:" <> status), do: [status: status]
+  defp filter_opts(view), do: [view: view]
+
+  defp duplicate?(o), do: o.failure_reason == Store.duplicate_note()
 
   defp status_label(status), do: status |> String.replace("_", " ") |> String.capitalize()
 
@@ -106,8 +116,11 @@ defmodule BaconStoreWeb.Admin.OrdersLive do
             <div class="flex items-center gap-3">
               <form phx-change="filter_status">
                 <select name="status" class="bg-gray-700 border-gray-600 text-white rounded-lg px-3 py-2 text-sm">
-                  <option value="">All orders</option>
-                  <option :for={s <- @statuses} value={s} selected={@filter_status == s}>{status_label(s)}</option>
+                  <option value="purchases" selected={@filter == "purchases"}>Purchases (paid for)</option>
+                  <option value="open" selected={@filter == "open"}>Checkouts open</option>
+                  <option value="abandoned" selected={@filter == "abandoned"}>Abandoned checkouts</option>
+                  <option value="all" selected={@filter == "all"}>Everything</option>
+                  <option :for={s <- @statuses} value={"status:" <> s} selected={@filter == "status:" <> s}>Status: {status_label(s)}</option>
                 </select>
               </form>
               <button phx-click="refresh" class="px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm">Refresh</button>
@@ -140,7 +153,10 @@ defmodule BaconStoreWeb.Admin.OrdersLive do
                     <div class="flex justify-between gap-3"><dt class="text-gray-500">Terms accepted</dt><dd class="text-gray-200">{when_(o.terms_accepted_at)}</dd></div>
                     <div :if={o.failure_reason} class="sm:col-span-2 flex justify-between gap-3"><dt class="text-gray-500">Reason</dt><dd class="text-red-300 text-right">{o.failure_reason}</dd></div>
                   </dl>
-                  <div :if={o.status == "paid"} class="mt-3 flex flex-wrap items-center gap-3">
+                  <p :if={o.status == "paid" and duplicate?(o)} class="mt-3 text-sm text-yellow-200">
+                    The buyer paid twice for this. Refund this payment (its payment ref is above) in the Stripe dashboard.
+                  </p>
+                  <div :if={o.status == "paid" and not duplicate?(o)} class="mt-3 flex flex-wrap items-center gap-3">
                     <button phx-click="retry_delivery" phx-value-id={o.id} class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold">
                       Retry delivery
                     </button>

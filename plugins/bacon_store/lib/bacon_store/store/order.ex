@@ -17,6 +17,11 @@ defmodule BaconStore.Store.Order do
   `basket_id` and a `number` (the receipt's "Order #8008"; `BaconStore.Store.Basket`). A card
   basket is one checkout, so its orders also share `provider_ref`. A single purchase is a basket
   of one.
+
+  **Unfinished checkouts** (2026-10-29c): a card basket is "awaiting_payment" only while its
+  provider checkout is open (30 minutes). Starting another checkout, cancelling, coming back
+  through the provider's cancel link, or the checkout closing all settle it: "cancelled" or
+  "failed" with `paid_at` nil, which the buyer's Purchases leaves out (it was never a purchase).
   """
   use Ecto.Schema
 
@@ -43,6 +48,10 @@ defmodule BaconStore.Store.Order do
     field :failure_reason, :string
     field :basket_id, :binary_id
     field :number, :integer
+    # A card basket's open checkout (2026-10-29c): where to send the buyer to finish paying, and
+    # when the provider closes it.
+    field :checkout_url, :string
+    field :checkout_expires_at, :utc_datetime_usec
     belongs_to :user, Bacon8.Accounts.User
     belongs_to :product, BaconStore.Store.Product
     timestamps(type: :utc_datetime_usec)

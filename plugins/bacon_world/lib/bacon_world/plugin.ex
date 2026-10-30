@@ -31,6 +31,27 @@ defmodule BaconWorld.Plugin do
   @impl true
   def routes, do: BaconWorldWeb.Routes
 
+  @doc """
+  The front page's status corner (`Bacon8.GameStatus`, 2026-10-29): every zone, the characters in
+  it (Presence on its topic, cluster-wide), and whether it is up. A zone with creatures is up while
+  its zone process runs (`BaconWorld.Mobs.Zone`, kept alive by a keeper); the others are served
+  by the hub itself, so they are up when it is.
+  """
+  @impl true
+  def game_stats do
+    import Ecto.Query
+
+    zones =
+      Bacon8.GamesRepo.all(from z in BaconWorld.Zone, order_by: [asc: z.inserted_at], select: %{id: z.id, name: z.name, slug: z.slug})
+      |> Enum.map(fn z ->
+        players = "bacon_world:zone:#{z.id}" |> Bacon8Web.Presence.list() |> map_size()
+        up = if z.slug in BaconWorld.Mobs.zone_slugs(), do: :global.whereis_name({BaconWorld.Mobs.Zone, z.slug}) != :undefined, else: true
+        %{name: z.name || z.slug, online: up, players: players}
+      end)
+
+    %{online: Enum.any?(zones, & &1.online), zones: zones, current_players: Enum.sum(Enum.map(zones, & &1.players))}
+  end
+
   @impl true
   def previous_slugs, do: ["web_lobby"]
 

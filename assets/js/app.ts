@@ -31,6 +31,7 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 // Import lightweight TypeScript hooks (non-blocking)
 import { TerminalTypewriter } from "./terminal_typewriter";
 import { IntroReveal, IntroTagline } from "./intro_reveal";
+import { GameTicker } from "./game_ticker";
 import { FileDragDrop, FileUpload } from "./file_drag_drop";
 import { DeviceFingerprintHook } from "./device_fingerprint";
 import { GlassTheme } from "./glass_theme";
@@ -101,6 +102,7 @@ async function loadHeavyModulesAndConnect() {
       TerminalTypewriter,
       IntroReveal,
       IntroTagline,
+      GameTicker,
       FileDragDrop,
       FileUpload,
       DeviceFingerprint: DeviceFingerprintHook,
@@ -159,6 +161,7 @@ async function loadHeavyModulesAndConnect() {
       TerminalTypewriter,
       IntroReveal,
       IntroTagline,
+      GameTicker,
       FileDragDrop,
       FileUpload,
       DeviceFingerprint: DeviceFingerprintHook,

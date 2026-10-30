@@ -333,7 +333,7 @@ defmodule BaconStoreWeb.StoreComponents do
 
   @doc "The stamp on a receipt for an order status."
   def stamp_label(status) when status in ["paid", "fulfilled"], do: "Paid"
-  def stamp_label("awaiting_payment"), do: "Pending"
+  def stamp_label("awaiting_payment"), do: "Unpaid"
   def stamp_label(status) when status in ["failed", "cancelled"], do: "Void"
   def stamp_label("disputed"), do: "Disputed"
   def stamp_label("charged_back"), do: "Charged back"

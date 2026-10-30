@@ -10,6 +10,9 @@ defmodule BaconWorld.Mobs do
 
   @zones ["lobby"]
 
+  @doc "The zones that have creatures (a zone process each)."
+  def zone_slugs, do: @zones
+
   @doc "The plugin's processes: a keeper per zone with creatures."
   def children, do: Enum.map(@zones, &{Keeper, &1})
 

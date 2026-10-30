@@ -138,6 +138,16 @@ defmodule Bacon8.Plugin do
   @doc "Entitlement kinds this plugin grants or checks (BACON8.md §8)."
   @callback entitlement_kinds() :: [String.t()]
 
+  @doc """
+  Live numbers for the game's status on the front page (2026-10-29, `Bacon8.GameStatus`), or nil
+  for the hub's own: its world servers' heartbeats (`game_servers`) and its characters. A plugin
+  whose game runs inside the hub (Bacon World: zones and Presence) returns
+  `%{online: boolean, zones: [%{name: String.t(), online: boolean, players: integer}],
+  current_players: integer}`, optionally `total_players` (else the hub counts the accounts with a
+  character in the game). Called at most every few seconds; keep it cheap and don't crash.
+  """
+  @callback game_stats() :: map() | nil
+
   @doc "Runs once, on the node where an admin activates the plugin."
   @callback on_activate() :: :ok | {:error, term()}
 
@@ -231,6 +241,8 @@ defmodule Bacon8.Plugin do
       @impl true
       def entitlement_kinds, do: []
       @impl true
+      def game_stats, do: nil
+      @impl true
       def on_activate, do: :ok
       @impl true
       def on_deactivate, do: :ok
@@ -240,7 +252,7 @@ defmodule Bacon8.Plugin do
       defoverridable game: 0, routes: 0, previous_slugs: 0, mount: 0, requires: 0, children: 0,
                      retains_user_data?: 1, storage_refs: 0, nav_links: 1, profile_tabs: 1,
                      raw_body_paths: 0, admin_tools: 0, admin_dashboard: 0, admin_nav: 0, desktop_apps: 1,
-                     entitlement_kinds: 0, on_activate: 0, on_deactivate: 0, hub_event: 1
+                     entitlement_kinds: 0, game_stats: 0, on_activate: 0, on_deactivate: 0, hub_event: 1
     end
   end
 end

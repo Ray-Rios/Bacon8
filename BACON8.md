@@ -18,6 +18,30 @@ what you read before changing it.
 
 Last substantive update: **2026-10-29**.
 
+On 2026-10-29 (d):
+
+- **The front page's corner shows the games live** (§9 "Game status"): lower left, one game at a time, a small
+  picture-only card beside its name, online or not, its zones or servers and who is in each, players now and in all.
+  `Bacon8Web.Components.GameTicker`, `Bacon8.GameStatus` (a 15-second cache), and a new optional plugin callback,
+  `game_stats/0` (Bacon World: its zones and Presence). A game without one is measured from its world servers'
+  heartbeats and its characters (RaysSpaceSim).
+- RaysSpaceSim got four flyable ships chosen at stands on its station deck (its own repository's RAYSSPACESIM.md
+  §7b).
+
+On 2026-10-29 (c), from the owner trying the store's card checkout:
+
+- **Unfinished checkouts are settled, and Purchases lists only what was paid for** (§8 "Unfinished
+  checkouts"). Leaving Stripe's page with Back used to leave an order at "Pending" for a day or two, and a second
+  checkout could be opened beside it. Now a buyer has one open checkout at a time (starting another closes the old
+  one at Stripe first), a Stripe session lives 31 minutes, the cancel link closes it, the store and Purchases show
+  an unfinished checkout with "Continue to payment" and "Cancel", and the hub asks Stripe where a checkout stands
+  (`Store.reconcile/1`) before cancelling or showing it as waiting, so a late webhook never costs a payment.
+- **Pay on an item while the cart holds other things** puts the item in the cart and opens it: one checkout for
+  all of it.
+- **Money taken for something the buyer already owns** (two checkouts paid at once) is flagged on the admin's
+  order for a refund in Stripe instead of being delivered twice.
+- Store migration `20261029120000` (`checkout_url`, `checkout_expires_at`).
+
 On 2026-10-29 (b), from the owner's review on a phone:
 
 - **Phones: /admin and /chat fit the screen.** Below 768 px the admin sidebar is a drawer behind an "Admin menu"
@@ -378,6 +402,9 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-27 | **Suggestions & Bugs is a plugin, `feedback`**, at `/feedback`, opened from the start menu. Members only: guests (and anyone signed out, banned or inactive) see neither the icon nor the page. Members post (with screenshots) and vote; only admins edit others' items, approve, decline and submit. | Owner's request; a plugin because a site might not want it (2026-10-25). |
 | 2026-10-27 | **Approved suggestions reach Claude by a runner on the development PC that collects them** (the site keeps the queue; nothing can push into a Claude conversation). One item at a time; the runner's token can only read submitted items and report on them, and Claude never sees it. Not GitHub issues: the hub repository is public, so members' reports and screenshots would be public, and the private plugins aren't in it. | Owner's choice of the options offered. The PC already has the code, the private plugins, Docker and the deploy script. |
 | 2026-10-27 | **Feedback fixes may deploy without the owner pressing anything**, when the owner turns on "Deploy on its own" (off by default) on `/admin/feedback/agent`, and only for a change that passed the runner's own test run and a second Claude's review and touches nothing security-sensitive (sign-in, permissions, uploads, storage, payments, webhooks, the router, deploy files, production config, dependencies, secrets, data-dropping migrations, the runner). Everything else waits for an admin's Deploy. Turning the switch on is the owner saying "deploy"; with it off, the rule that deploys happen only when the owner says stands as before. | Owner's decision ("automatic after tests"), with the holds added so a member's text can't steer a sensitive change into production unreviewed. |
+| 2026-10-29 | **The front page shows the games' live status** (lower left, one game at a time). Games report it through an optional `game_stats/0`; without one the hub measures what it already knows (server heartbeats, characters). | Owner's request. Visitors see the platform is alive before signing up; the hub never asks a game server for anything. |
+| 2026-10-29 | **A buyer has one open card checkout at a time, open for 31 minutes; an unpaid checkout is not a purchase.** Starting another, Cancel, the provider's cancel link or the time running out closes it at the provider; the provider is asked first, so a payment is delivered, never cancelled. Purchases lists only paid orders; admins see open and abandoned checkouts in their own views. | Owner's report: Back from Stripe left "Pending" orders in his purchase history, and Buy ignored the cart. |
+| 2026-10-29 | **The one refund there is: a duplicate payment.** Sales stay final, but money taken for something the buyer already owned is flagged for the owner to refund in Stripe (the hub never refunds by itself). | Two checkouts paid at once is the provider's money for nothing; a chargeback would follow. Rare now that only one checkout is open. |
 | 2026-10-29 | **A game that needs a download has its own page**, an ordinary CMS page picked on the game's admin section; its card on /games opens it. In-browser games open the game. | Owner's request: RaysSpaceSim (a download) needs an editable page; Bacon World plays in the browser. |
 | 2026-10-29 | **The store sells several items in one purchase** (a cart; one receipt with one order number). Each item stays its own order underneath. | Owner's request: the front page shows a multi-item order, and the store only sold one item at a time. |
 | 2026-10-28 | **Site backgrounds are SVG and CSS, never WebGL.** Six cosmic kinds (`Cosmos.kinds/0`) built from drifting SVG star tiles, gradients and CSS 3D transforms; only transform and opacity animate. | Owner's request: the three.js scenes made phones lag on every page. A game page that wants 3D draws its own. |
@@ -751,7 +778,8 @@ removed rather than kept as a `fixed` route.
 | Baskets (2026-10-29) | **Several items in one purchase.** The cart is `store_cart_items` (`BaconStore.Store.Cart`: one of each product, 20 at most, it follows the buyer between devices); "Add to cart" on an item's sheet, the Cart button opens `?cart=1`. Paying is `Store.start_basket_checkout/3` (one provider checkout: Stripe gets a line per item, `client_reference_id` the basket) or `Store.buy_basket_with_gems/2` (one transaction: all paid and delivered, or none). **Each item is still its own order**, so delivery, license keys, disputes and "Retry delivery" work per item as before; the orders of one purchase share `basket_id`, `number` (from `store_order_number_seq`, starting at 8001) and, by card, `provider_ref` (no longer unique). A completed checkout must pay the basket's total; a dispute is on the whole payment, so it holds every item. `start_checkout/3` and `buy_with_gems/2` are baskets of one. Bought items leave the cart. **Receipts:** `Store.receipt/1`, `list_user_receipts/2`, `list_receipts/1`; `StoreComponents.receipt/1` is the front page's card (number, items, total, a stamp: Paid, Pending, Void, Disputed, Charged back) on `/store/orders`, `/store/orders/:id`, the library's "Recent orders" and `/admin/bacon_store/orders` (with the buyer; the detail shows each item's order). Migration `20261029100000` makes every existing order a basket of one with a number |
 | The Gem (2026-10-25) | The currency has its own 3D gem, rendered in Blender (`library/pipeline/scripts/fire_gem.py`, Cycles turntable, 48 frames; `gem_sheets.py` adds the star glints and makes the sprite sheets `priv/static/images/gem/gem-64/160/288.webp` and the still `gem.webp`). On pages it is `<b8-gem>` (`assets/js/fire_gem.ts`): it turns and floats, and hovering makes it react a different way each time (whirl, hop, flare of embers, sparkles, wobble). Templates use `Bacon8Web.Components.Gem`: `<.gem size={20} />`, `<.gems amount={1500} />`, and `<.icon icon={item.icon} />` where `"gem"` is the gem (the Store's navbar link, Products in the admin sidebar). Amounts on the store pages, the Gem packs (bigger pack, bigger gem) and gem-pack products all use it; `Store.format_gems/1` stays for plain text |
 | Card | `Store.start_checkout/3` reserves a license key until the order is paid, fails or is cancelled. Paid but undeliverable (keys ran out) stays "paid" with a reason; `/admin/bacon_store/orders` has "Retry delivery" |
-| Expiry | `BaconStore.Store.Sweeper` (every 5 min, advisory lock): ends timed items and passes (a pass's channel membership goes with it), cancels card orders unpaid for 48 h |
+| Expiry | `BaconStore.Store.Sweeper` (every 5 min, advisory lock): ends timed items and passes (a pass's channel membership goes with it), settles card checkouts whose 31 minutes are up (`Store.settle_stale_checkouts/1`, 2026-10-29c), and as a last resort cancels card orders still unpaid after 48 h |
+| Unfinished checkouts (2026-10-29c) | **One open card checkout per buyer, 31 minutes long.** A Stripe session is created with `expires_at` (Stripe allows 30 min to 24 h) and the buyer's email; the basket keeps its `checkout_url` and `checkout_expires_at`. Optional provider callbacks `expire_checkout/1` (Stripe: `POST /v1/checkout/sessions/:id/expire`) and `checkout_status/1` (`GET /v1/checkout/sessions/:id`). `start_basket_checkout/3` calls `settle_open_checkouts/1` first: each waiting basket is closed at the provider and cancelled ("replaced by a newer checkout"), or, if the provider says it was paid, delivered (and the new basket's check then sees what was bought). `cancel_checkout/2`: the buyer's Cancel and the provider's cancel link (`/store/orders/:id?checkout=cancelled`). `reconcile/1` asks the provider and applies what it says as an event (`reconcile:<ref>` in `payment_events`, so the real webhook later changes nothing): run when the buyer comes back (`?checkout=done`), opens a waiting order, the store or Purchases. A provider that can't be reached leaves the checkout open and refuses a new one (`:checkout_open`). **Purchases and the library's "Recent orders" list only orders with `paid_at`**; `Store.open_checkouts/1` is the unfinished one, shown on `/store` (a banner) and Purchases with "Continue to payment" and "Cancel"; the stamp says "Unpaid". Admin `/admin/bacon_store/orders` views: Purchases (default), Checkouts open, Abandoned checkouts, Everything, and each status. **Pay with other things in the cart** adds the item to the cart and opens it (`StoreLive.with_cart/2`). **Paid for something already owned**: the order stays "paid" with `Store.duplicate_note/0`, nothing is delivered twice, and the admin's order says to refund that payment in Stripe. The fake provider follows the same rules (a closed checkout can't be paid; its Cancel goes through the cancel link). Store migration `20261029120000` |
 | Pages | `/store` (category tabs, glass cards, Gem packs, the item sheet; 2026-10-28), `/store/p/:slug` (redirects to the sheet since 2026-10-28), `/store/library` (downloads, keys, items and passes), `GET /store/media/:id` (images), `GET /store/download/:id` (buyers only, attachment) |
 | Admin | `/admin/bacon_store/products` (all products, new-product buttons per kind, categories), `/admin/bacon_store/products/new?kind=…` and `/admin/bacon_store/products/:id` (`BaconStoreWeb.Admin.ProductEditor`: text, prices, delivery, images, files, keys) |
 | Accounts | `Accounts.delete_user/1` anonymizes a user with orders, ledger entries or keys instead of deleting the row |
@@ -980,6 +1008,7 @@ defmodule Bacon8.Plugin do
   @callback admin_nav() :: [%{label: String.t(), path: String.t(), icon: String.t()}]
   @callback desktop_apps(user) :: [%{label, path, icon}]  # §10; start-menu apps for this user (2026-10-27)
   @callback entitlement_kinds() :: [String.t()]           # §8
+  @callback game_stats() :: map() | nil                   # "Game status" below (2026-10-29)
   @callback on_activate() :: :ok | {:error, term()}
   @callback on_deactivate() :: :ok
   @callback hub_event(tuple()) :: :ok                     # see "Hub events"
@@ -1110,6 +1139,20 @@ browser, or a download with **the game's page**, a CMS page its Play button open
 `uploads/public/game_cards/<slug>/` (files no saved card uses are deleted on save); "Reset" goes
 back to the folder. /games updates live. Bacon World's section is on `/admin/bacon_world`,
 RaysSpaceSim's on `/admin/rays_space_sim/card`.
+
+**Game status (2026-10-29).** The front page's lower-left corner (`Bacon8Web.Components.GameTicker`, styles
+`assets/css/game_ticker.css`, hook `assets/js/game_ticker.ts`) shows every active game in turn: the card's first
+picture small and alone (it links where Play goes), the name, Online/Offline, up to three zones or servers with who
+is in each, "N playing now" and "N players". It turns every 6 seconds, pauses under the pointer, keeps its place when
+the numbers refresh, and can be hidden for the visit (sessionStorage). Compact on phones (no zone list).
+`Bacon8.GameStatus.snapshot/1` builds the list: a plugin's `game_stats/0` when it returns one
+(`%{online:, zones: [%{name:, online:, players:}], current_players:}`, optionally `total_players`), otherwise the
+hub's records: world servers with a fresh heartbeat are the zones (editor-run dev shards left out), running instances
+add up to one line ("Holo-sims (N)"). `total_players` is the accounts with a character in the game. Cached 15 s in an
+ETS table the `Bacon8.GameStatus` process owns (the caller computes, so a crowd costs one computation per 15 s);
+`HomeLive` refreshes on a 15 s timer. A crashing plugin or a database blip gives that game "Offline" rather than
+taking the page down. Bacon World's `game_stats/0`: each `bacon_world_zones` row, `map_size` of Presence on
+`bacon_world:zone:<id>`, up while its creatures' zone process runs (zones without creatures are served by the hub).
 
 **Game rows.** `activate/2` registers a plugin's `games` row; `Bacon8.Plugins.ensure_game/1`
 creates it on demand for plugins active by default that were never toggled (plugins call it to

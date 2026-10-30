@@ -15,6 +15,14 @@ defmodule BaconStore.Store do
   Buying with Gems: `buy_with_gems/2` spends the Gems and delivers in one
   transaction; nothing is left half done.
 
+  **Unfinished checkouts** (2026-10-29c): a buyer has at most one open card checkout. Starting
+  another closes the old one at the provider first (`settle_open_checkouts/1`); so do the buyer's
+  Cancel (`cancel_checkout/2`), the provider's cancel link, and the sweeper once a checkout's 31
+  minutes are up (`settle_stale_checkouts/1`). Before anything is closed or shown as waiting, the
+  provider is asked where the checkout stands (`reconcile/1`), so a payment whose webhook is late
+  is delivered rather than cancelled. A closed, unpaid checkout was never a purchase: Purchases
+  leaves it out; admins see it under "Abandoned checkouts".
+
   Sales are final: there's no refund path. While the buyer's bank disputes a
   payment, what the order delivered is taken away; it comes back if the hub
   wins and is gone for good if it loses (`Fulfilment.revoke/3`,
@@ -140,6 +148,8 @@ defmodule BaconStore.Store do
   def reason_text(:empty_basket), do: "Your cart is empty."
   def reason_text(:duplicate_item), do: "Each item can be in the cart once."
   def reason_text(:mixed_currency), do: "These items are priced in different currencies: buy them separately."
+  def reason_text(:checkout_open), do: "Your last checkout couldn't be closed, so a new one wasn't started. Try again in a minute."
+  def reason_text(:already_paid), do: "That checkout was already paid. It's in your purchases."
   def reason_text(:cart_full), do: "Your cart is full (#{BaconStore.Store.Cart.max_items()} items)."
   def reason_text({%Product{name: name}, reason}), do: "#{name}: #{reason_text(reason)}"
   def reason_text(_), do: "Something went wrong. Please try again."
@@ -235,23 +245,33 @@ defmodule BaconStore.Store do
   def start_basket_checkout(user, products, opts \\ []) when is_list(products) do
     provider_name = Keyword.get(opts, :provider, BaconStore.Payments.default_provider())
 
-    with :ok <- basket_check(user, products, :card),
+    # One open checkout per buyer: close (or, if it was paid, deliver) the last one first, then
+    # check the basket, so nothing paid a moment ago is bought twice.
+    with :ok <- can_buy(user),
          {:ok, provider} <- BaconStore.Payments.provider(provider_name),
+         :ok <- settle_open_checkouts(user),
+         :ok <- basket_check(user, products, :card),
          {:ok, orders} <- create_card_basket(user, products, provider.name()) do
       [lead | _] = orders
 
       urls = [
-        success_url: Keyword.get(opts, :success_url, "/store/orders/#{lead.id}"),
-        cancel_url: Keyword.get(opts, :cancel_url, "/store/orders/#{lead.id}"),
+        success_url: Keyword.get(opts, :success_url, "/store/orders/#{lead.id}?checkout=done"),
+        cancel_url: Keyword.get(opts, :cancel_url, "/store/orders/#{lead.id}?checkout=cancelled"),
         lines: Enum.map(orders, &%{name: &1.product_name, amount_cents: &1.amount_cents}),
         basket_id: lead.basket_id,
-        number: lead.number
+        number: lead.number,
+        email: user.email
       ]
 
       case provider.create_checkout(lead, urls) do
-        {:ok, %{redirect_url: url, provider_ref: ref}} ->
-          Repo.update_all(from(o in Order, where: o.basket_id == ^lead.basket_id), set: [provider_ref: ref, updated_at: DateTime.utc_now()])
-          {:ok, Enum.map(orders, &%{&1 | provider_ref: ref}), url}
+        {:ok, %{redirect_url: url, provider_ref: ref} = created} ->
+          expires = created[:expires_at]
+
+          Repo.update_all(from(o in Order, where: o.basket_id == ^lead.basket_id),
+            set: [provider_ref: ref, checkout_url: url, checkout_expires_at: expires, updated_at: DateTime.utc_now()]
+          )
+
+          {:ok, Enum.map(orders, &%{&1 | provider_ref: ref, checkout_url: url, checkout_expires_at: expires}), url}
 
         {:error, reason} ->
           for o <- orders do
@@ -427,12 +447,46 @@ defmodule BaconStore.Store do
     do: format_price(Enum.sum(Enum.map(orders, &(&1.amount_cents || 0))), currency)
 
   @doc "The user's purchases as receipts (`receipt/1`), newest first."
-  def list_user_receipts(%User{} = user, limit \\ 50) do
-    user |> list_user_orders(limit * 4) |> group_receipts() |> Enum.take(limit)
+  # Only what was paid for (paid_at is set when money is taken, and stays through disputes):
+  # unfinished checkouts are `open_checkouts/1`, abandoned ones were never purchases.
+  def list_user_receipts(%User{id: user_id}, limit \\ 50) do
+    Repo.all(
+      from o in Order,
+        where: o.user_id == ^user_id and not is_nil(o.paid_at),
+        order_by: [desc: o.inserted_at, desc: o.id],
+        limit: ^(limit * 4),
+        preload: [:product]
+    )
+    |> group_receipts()
+    |> Enum.take(limit)
   end
 
-  @doc "Every purchase as receipts, newest first, for admins (`list_orders/1`'s options)."
+  @doc "The user's card checkouts still waiting for payment, as receipts, newest first (normally one)."
+  def open_checkouts(%User{id: user_id}) do
+    Repo.all(
+      from o in Order,
+        where: o.user_id == ^user_id and o.status == "awaiting_payment",
+        order_by: [desc: o.inserted_at, desc: o.id],
+        preload: [:product]
+    )
+    |> group_receipts()
+  end
+
+  def open_checkouts(_), do: []
+
+  @doc "Can the buyer still go back and pay for this open checkout?"
+  def resumable?(%{lead: %Order{status: "awaiting_payment", checkout_url: url} = o}, now \\ DateTime.utc_now()),
+    do: is_binary(url) and (is_nil(o.checkout_expires_at) or DateTime.compare(o.checkout_expires_at, now) == :gt)
+
+  @doc """
+  Every purchase as receipts, newest first, for admins. `:view`: `"purchases"` (paid for, the
+  default), `"open"` (checkouts waiting for payment), `"abandoned"` (closed unpaid), `"all"`; or
+  `:status` and `:limit` as `list_orders/1`.
+  """
   def list_receipts(opts \\ []), do: opts |> list_orders() |> group_receipts()
+
+  @admin_views ~w(purchases open abandoned all)
+  def admin_views, do: @admin_views
 
   # Orders newest first -> receipts newest first, each receipt's orders in the order they were added.
   defp group_receipts(orders) do
@@ -448,6 +502,14 @@ defmodule BaconStore.Store do
   @doc "Every order, newest first, for admins. Options: `:status`, `:limit` (100)."
   def list_orders(opts \\ []) do
     query = from o in Order, order_by: [desc: o.inserted_at, desc: o.id], limit: ^Keyword.get(opts, :limit, 100), preload: [:user, :product]
+
+    query =
+      case Keyword.get(opts, :view, "all") do
+        "purchases" -> from o in query, where: not is_nil(o.paid_at)
+        "open" -> from o in query, where: o.status == "awaiting_payment"
+        "abandoned" -> from o in query, where: is_nil(o.paid_at) and o.status in ["cancelled", "failed"]
+        _ -> query
+      end
 
     case Keyword.get(opts, :status) do
       nil -> Repo.all(query)
@@ -608,13 +670,17 @@ defmodule BaconStore.Store do
                                  provider_payment_ref: e.payment_ref || order.provider_payment_ref)
         |> Repo.update!()
 
-      case Fulfilment.deliver(paid, Repo.get!(Product, paid.product_id)) do
-        {:ok, events} ->
-          {:changed, mark_fulfilled!(paid), events}
+      product = Repo.get!(Product, paid.product_id)
 
-        {:error, reason} ->
-          Logger.error("Store: order #{paid.id} paid but not delivered: #{inspect(reason)}")
-          {:changed, paid |> Ecto.Changeset.change(failure_reason: delivery_failure(reason)) |> Repo.update!(), []}
+      # Paid for something the buyer already owns (two checkouts paid at once, say): say so
+      # rather than deliver a second copy; the admin page shows it for a refund decision.
+      case duplicate_check(paid, product) do
+        {:duplicate, reason} ->
+          Logger.warning("Store: order #{paid.id} paid for something the buyer already owns")
+          {:changed, paid |> Ecto.Changeset.change(failure_reason: reason) |> Repo.update!(), []}
+
+        :ok ->
+          deliver_paid(paid, product)
       end
     else
       Repo.rollback({:amount_mismatch, %{expected: {order.amount_cents, order.currency}, got: {e.amount_cents, e.currency}}})
@@ -648,6 +714,29 @@ defmodule BaconStore.Store do
   # Anything else is a re-delivery or an event for a later state: nothing to do.
   defp transition(_order, _event), do: :unchanged
 
+  @duplicate_note "Paid twice: the buyer already owned this. Refund this payment in Stripe (the item stays delivered once)."
+
+  defp duplicate_check(%Order{} = order, %Product{} = product) do
+    case Fulfilment.check(Repo.get!(User, order.user_id), product) do
+      {:error, :already_owned} -> {:duplicate, @duplicate_note}
+      _ -> :ok
+    end
+  end
+
+  @doc false
+  def duplicate_note, do: @duplicate_note
+
+  defp deliver_paid(paid, product) do
+    case Fulfilment.deliver(paid, product) do
+      {:ok, events} ->
+        {:changed, mark_fulfilled!(paid), events}
+
+      {:error, reason} ->
+        Logger.error("Store: order #{paid.id} paid but not delivered: #{inspect(reason)}")
+        {:changed, paid |> Ecto.Changeset.change(failure_reason: delivery_failure(reason)) |> Repo.update!(), []}
+    end
+  end
+
   defp mark_fulfilled!(order),
     do: order |> Ecto.Changeset.change(status: "fulfilled", fulfilled_at: DateTime.utc_now(), failure_reason: nil) |> Repo.update!()
 
@@ -661,14 +750,159 @@ defmodule BaconStore.Store do
   end
 
   @doc "The buyer abandoned checkout on our side (back button on the fake page, or a cancel URL)."
-  def cancel_unpaid(%Order{status: "awaiting_payment"} = order) do
+  def cancel_unpaid(order, why \\ nil)
+
+  def cancel_unpaid(%Order{status: "awaiting_payment"} = order, why) do
     Fulfilment.release(order)
-    order = order |> Ecto.Changeset.change(status: "cancelled") |> Repo.update!()
+    order = order |> Ecto.Changeset.change(status: "cancelled", failure_reason: why) |> Repo.update!()
     Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(order), {:order_updated, order})
     {:ok, order}
   end
 
-  def cancel_unpaid(order), do: {:ok, order}
+  def cancel_unpaid(order, _why), do: {:ok, order}
+
+  # ---------------------------------------------------------------------------
+  # Unfinished checkouts (2026-10-29c)
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Closes every checkout of `user`'s still waiting for payment, before a new one starts. A
+  checkout the provider says was paid is delivered instead (`reconcile/1`). `:ok`, or
+  `{:error, :checkout_open}` when the provider couldn't be asked, so two payable checkouts never
+  exist at once.
+  """
+  def settle_open_checkouts(%User{} = user) do
+    user
+    |> open_baskets()
+    |> Enum.reduce_while(:ok, fn orders, :ok ->
+      case close_basket(orders, "replaced by a newer checkout") do
+        {:ok, _} -> {:cont, :ok}
+        {:error, :already_paid} -> {:cont, :ok}
+        {:error, _} -> {:halt, {:error, :checkout_open}}
+      end
+    end)
+  end
+
+  @doc """
+  The buyer cancels an unfinished checkout (the Cancel button, or the provider's cancel link
+  that brings them back). `{:ok, orders}` (cancelled, or already settled), `{:error,
+  :already_paid}` (it was paid: now delivered), `{:error, :not_found}` or `{:error, reason}`.
+  """
+  def cancel_checkout(%User{} = user, order_id) do
+    case get_user_basket(user, order_id) do
+      nil -> {:error, :not_found}
+      [%Order{status: "awaiting_payment"} | _] = orders -> close_basket(orders, "cancelled by the buyer")
+      orders -> {:ok, orders}
+    end
+  end
+
+  @doc """
+  Asks the provider where a waiting basket's checkout stands and acts on it: paid -> paid and
+  delivered (as its webhook would), expired -> failed, open -> nothing. Returns the state, or
+  `:unknown` (a provider that can't say, or couldn't be reached).
+  """
+  def reconcile([%Order{provider_ref: ref, provider: provider_name} | _] = orders) when is_binary(ref) do
+    with {:ok, provider} <- provider_for(provider_name),
+         true <- function_exported?(provider, :checkout_status, 1),
+         {:ok, %{state: state} = status} <- provider.checkout_status(ref) do
+      case state do
+        :paid -> ingest_status(:checkout_completed, "reconcile:" <> ref, orders, status)
+        :expired -> ingest_status(:checkout_failed, "reconcile-expired:" <> ref, orders, status)
+        _ -> :ok
+      end
+
+      state
+    else
+      _ -> :unknown
+    end
+  end
+
+  def reconcile(_orders), do: :unknown
+
+  @doc """
+  For the sweeper: closes card checkouts whose time is up (their `checkout_expires_at`, or 35
+  minutes for ones started before it was kept). Paid ones are delivered, the rest cancelled.
+  Returns how many baskets were settled.
+  """
+  def settle_stale_checkouts(now \\ DateTime.utc_now()) do
+    legacy = DateTime.add(now, -35 * 60, :second)
+
+    Repo.all(
+      from o in Order,
+        where:
+          o.status == "awaiting_payment" and
+            ((not is_nil(o.checkout_expires_at) and o.checkout_expires_at < ^now) or
+               (is_nil(o.checkout_expires_at) and o.inserted_at < ^legacy)),
+        order_by: [asc: o.inserted_at, asc: o.id]
+    )
+    |> Enum.group_by(&(&1.basket_id || &1.id))
+    |> Enum.count(fn {_basket, orders} ->
+      case close_basket(orders, "checkout timed out") do
+        {:ok, _} -> true
+        {:error, :already_paid} -> true
+        _ -> false
+      end
+    end)
+  end
+
+  # A user's waiting card baskets, each a list of orders.
+  defp open_baskets(%User{id: user_id}) do
+    Repo.all(from o in Order, where: o.user_id == ^user_id and o.status == "awaiting_payment", order_by: [asc: o.inserted_at, asc: o.id])
+    |> Enum.group_by(&(&1.basket_id || &1.id))
+    |> Map.values()
+  end
+
+  # Close a waiting basket's checkout at the provider, then cancel its orders. If the provider
+  # says it was paid, deliver it instead ({:error, :already_paid}). A provider that can't be
+  # reached leaves it waiting ({:error, reason}); one the hub no longer knows (the fake, switched
+  # off) is cancelled here only.
+  defp close_basket([lead | _] = orders, why) do
+    result =
+      case {lead.provider_ref, provider_for(lead.provider)} do
+        {ref, {:ok, provider}} when is_binary(ref) ->
+          if function_exported?(provider, :expire_checkout, 1), do: provider.expire_checkout(ref), else: :ok
+
+        _ ->
+          :ok
+      end
+
+    case result do
+      :ok ->
+        cancelled = Enum.map(orders, fn o -> elem(cancel_unpaid(Repo.get!(Order, o.id), why), 1) end)
+        {:ok, cancelled}
+
+      {:error, :already_paid} ->
+        reconcile(orders)
+        {:error, :already_paid}
+
+      {:error, reason} ->
+        Logger.warning("Store: couldn't close checkout #{lead.provider_ref}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp provider_for(name) do
+    case BaconStore.Payments.provider(name) do
+      {:ok, mod} ->
+        Code.ensure_loaded(mod)
+        {:ok, mod}
+
+      error -> error
+    end
+  end
+
+  defp ingest_status(type, event_id, [lead | _], status) do
+    BaconStore.Payments.ingest(%Event{
+      type: type,
+      provider: lead.provider,
+      provider_event_id: event_id,
+      provider_ref: lead.provider_ref,
+      payment_ref: status[:payment_ref],
+      amount_cents: status[:amount_cents],
+      currency: status[:currency],
+      raw: %{"source" => "checkout_status", "state" => to_string(status[:state]), "ref" => lead.provider_ref}
+    })
+  end
 
   @doc """
   Cancels card orders left awaiting payment for more than `hours` (default

@@ -18,6 +18,11 @@ defmodule BaconStore.Payments.Stripe do
   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
   `checkout.session.async_payment_failed`, `checkout.session.expired`,
   `charge.dispute.created` and `charge.dispute.closed`.
+
+  Unfinished checkouts (2026-10-29c): a session lives 31 minutes (`expires_at`; Stripe
+  allows 30 minutes to 24 hours), `expire_checkout/1` closes one early (a newer checkout, the
+  buyer's Cancel, the cancel link), and `checkout_status/1` asks Stripe where one stands, so the
+  hub settles a checkout even when a webhook is late or never configured.
   """
   @behaviour BaconStore.Payments.Provider
 
@@ -26,6 +31,12 @@ defmodule BaconStore.Payments.Stripe do
   @api "https://api.stripe.com/v1"
   # Stripe's default: refuse signatures older than five minutes (replays).
   @tolerance_seconds 300
+  # How long a Checkout Session stays payable. Stripe's minimum is 30 minutes after creation;
+  # a minute more so a slow request never lands under it.
+  @session_minutes 31
+
+  @doc "Minutes a checkout stays open."
+  def session_minutes, do: @session_minutes
 
   @impl true
   def name, do: "stripe"
@@ -47,7 +58,7 @@ defmodule BaconStore.Payments.Stripe do
     params = checkout_params(order, opts)
 
     case post("/checkout/sessions", params, idempotency_key: "checkout-#{opts[:basket_id] || order.id}") do
-      {:ok, %{"id" => id, "url" => url}} -> {:ok, %{redirect_url: url, provider_ref: id}}
+      {:ok, %{"id" => id, "url" => url} = s} -> {:ok, %{redirect_url: url, provider_ref: id, expires_at: unix(s["expires_at"])}}
       {:ok, other} -> {:error, {:unexpected_response, other}}
       {:error, reason} -> {:error, reason}
     end
@@ -80,8 +91,61 @@ defmodule BaconStore.Payments.Stripe do
            }}
         end),
       "metadata" => meta,
-      "payment_intent_data" => %{"metadata" => meta}
+      "payment_intent_data" => %{"metadata" => meta},
+      "expires_at" => Integer.to_string(opts[:expires_at] || System.system_time(:second) + @session_minutes * 60)
     }
+    |> put_if("customer_email", opts[:email])
+  end
+
+  defp unix(t) when is_integer(t), do: DateTime.from_unix!(t)
+  defp unix(_), do: nil
+
+  # Checkout Session ids only ("cs_test_...", "cs_live_..."): they go into a URL path.
+  defp session_id?(ref), do: is_binary(ref) and Regex.match?(~r/\Acs_[A-Za-z0-9_]+\z/, ref)
+
+  @impl true
+  def expire_checkout(ref) do
+    if session_id?(ref) do
+      case post("/checkout/sessions/#{ref}/expire", %{}, []) do
+        {:ok, %{"status" => "expired"}} -> :ok
+        # Only an open session can be expired: find out what it is instead.
+        _ ->
+          case checkout_status(ref) do
+            {:ok, %{state: :expired}} -> :ok
+            {:ok, %{state: state}} when state in [:paid, :processing] -> {:error, :already_paid}
+            {:ok, %{state: :open}} -> {:error, :still_open}
+            {:error, reason} -> {:error, reason}
+          end
+      end
+    else
+      {:error, :bad_ref}
+    end
+  end
+
+  @impl true
+  def checkout_status(ref) do
+    if session_id?(ref) do
+      case request(:get, "/checkout/sessions/#{ref}", nil, []) do
+        {:ok, %{} = s} -> {:ok, session_state(s)}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:error, :bad_ref}
+    end
+  end
+
+  @doc false
+  # Public for tests.
+  def session_state(s) do
+    state =
+      case {s["status"], s["payment_status"]} do
+        {"complete", p} when p in ["paid", "no_payment_required"] -> :paid
+        {"complete", _} -> :processing
+        {"expired", _} -> :expired
+        _ -> :open
+      end
+
+    %{state: state, amount_cents: s["amount_total"], currency: s["currency"], payment_ref: s["payment_intent"]}
   end
 
   defp put_if(map, _key, nil), do: map
@@ -90,14 +154,17 @@ defmodule BaconStore.Payments.Stripe do
   defp absolute("/" <> _ = path), do: Bacon8Web.Endpoint.url() <> path
   defp absolute(url), do: url
 
-  defp post(path, params, opts) do
+  defp post(path, params, opts), do: request(:post, path, params, opts)
+
+  defp request(method, path, params, opts) do
     headers =
       [
         {"authorization", "Bearer " <> (secret_key() || "")},
         {"content-type", "application/x-www-form-urlencoded"}
       ] ++ if(key = opts[:idempotency_key], do: [{"idempotency-key", key}], else: [])
 
-    request = Finch.build(:post, @api <> path, headers, Plug.Conn.Query.encode(params))
+    body = if method == :get, do: nil, else: Plug.Conn.Query.encode(params || %{})
+    request = Finch.build(method, @api <> path, headers, body)
 
     case Finch.request(request, Bacon8.Finch, receive_timeout: 20_000) do
       {:ok, %Finch.Response{status: status, body: body}} when status in 200..299 ->

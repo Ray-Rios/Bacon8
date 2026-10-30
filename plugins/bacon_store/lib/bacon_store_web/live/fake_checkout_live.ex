@@ -18,7 +18,9 @@ defmodule BaconStoreWeb.FakeCheckoutLive do
 
     with true <- BaconStore.Payments.fake_enabled?(),
          %Store.Order{} = order <- Store.get_order_by_ref("fake", ref),
-         true <- order.user_id == user.id do
+         true <- order.user_id == user.id,
+         # a closed checkout can't be paid, as at a real provider (2026-10-29c)
+         "awaiting_payment" <- order.status do
       orders = Store.basket(order)
       {:ok, assign(socket, page_title: "Test checkout", order: order, orders: orders, total: Enum.sum(Enum.map(orders, & &1.amount_cents)))}
     else
@@ -40,9 +42,9 @@ defmodule BaconStoreWeb.FakeCheckoutLive do
     {:noreply, push_navigate(socket, to: ~p"/store/orders/#{order.id}")}
   end
 
+  # Like a real provider's cancel link: back to the order, which closes the checkout.
   def handle_event("cancel", _params, socket) do
-    Enum.each(socket.assigns.orders, &Store.cancel_unpaid/1)
-    {:noreply, push_navigate(socket, to: ~p"/store/orders/#{socket.assigns.order.id}")}
+    {:noreply, push_navigate(socket, to: ~p"/store/orders/#{socket.assigns.order.id}?checkout=cancelled")}
   end
 
   def handle_event(event, _params, socket) when event in ["toggle_calendar", "toggle_start_menu", "open_app"],

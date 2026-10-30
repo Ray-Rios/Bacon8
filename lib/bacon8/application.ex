@@ -47,6 +47,8 @@ defmodule Bacon8.Application do
       # /admin/plugins across the cluster by Plugins.Runtime.
       {DynamicSupervisor, name: Bacon8.PluginSupervisor, strategy: :one_for_one},
       Bacon8.Plugins.Runtime,
+      # The front page's game status corner: owns its cache table (Bacon8.GameStatus)
+      Bacon8.GameStatus,
       Bacon8Web.Endpoint
     ] ++ redis_children()
 

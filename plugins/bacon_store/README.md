@@ -14,14 +14,14 @@ store.
 | Path | What it is |
 |---|---|
 | `lib/bacon_store/plugin.ex` | The plugin: mount `"store"`, admin nav, entitlement kinds, and the hooks core calls |
-| `lib/bacon_store/store.ex`, `store/` | Products, orders, checkout, delivery (`Fulfilment`), the library, the `Sweeper`, the `Cart` and baskets (several items in one purchase, one receipt number; 2026-10-29) |
+| `lib/bacon_store/store.ex`, `store/` | Products, orders, checkout, delivery (`Fulfilment`), the library, the `Sweeper`, the `Cart` and baskets (several items in one purchase, one receipt number; 2026-10-29), unfinished checkouts (one open per buyer, 31 minutes, settled by asking the provider; 2026-10-29c) |
 | `lib/bacon_store/wallet.ex`, `wallet/` | The double-entry Gem ledger |
 | `lib/bacon_store/chat.ex` | The store's only contact with Chat Channels (channel passes and slots), found when called so the store builds without chat |
 | `lib/bacon_store/payments.ex`, `payments/` | Providers (`Stripe`, `Fake`), the webhook event inbox |
 | `lib/bacon_store_web/routes.ex` | All routes, below |
 | `lib/bacon_store_web/live/` | Store pages; `admin/` for products and orders |
 | `lib/bacon_store_web/controllers/` | Product media and downloads, payment webhooks |
-| `priv/repo/migrations/` | The store's tables. The first three moved from core unchanged (same versions); `20261029100000` adds baskets, order numbers and the cart |
+| `priv/repo/migrations/` | The store's tables. The first three moved from core unchanged (same versions); `20261029100000` adds baskets, order numbers and the cart; `20261029120000` the checkout's address and closing time |
 | `test/` | Run with the core suite |
 
 ## Routes
@@ -53,3 +53,11 @@ set `read_env: false`).
 Production activates it through `BACON8_ACTIVE_PLUGINS` (`bacon_world,bacon_store,...`);
 an admin can switch it on or off at `/admin/plugins`. While it's off, `/store` and the
 webhooks answer 404 (Stripe retries), and its data stays.
+
+## Checkouts and the Stripe dashboard
+
+A card checkout stays open 31 minutes and a buyer has one at a time (BACON8.md §8 "Unfinished
+checkouts"). The hub asks Stripe where a checkout stands whenever it matters, so it is right even
+when a webhook is late; the webhook endpoint should still have the six events in §8. For Stripe's
+own receipt emails, turn on "Successful payments" under the dashboard's customer emails: the
+checkout passes the buyer's email.

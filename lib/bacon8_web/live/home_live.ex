@@ -10,11 +10,16 @@ defmodule Bacon8Web.HomeLive do
   Everything moves with CSS (assets/css/intro.css: transforms and opacity, nothing that
   repaints); `IntroReveal` (assets/js/intro_reveal.ts) fades each section up as it comes into
   view. Without JavaScript, or with "reduce motion", it is all simply there.
+
+  The lower-left corner (2026-10-29) shows the games one at a time, live: a small picture-only
+  card, the name, online or not, its zones and who is in them, players now and in all
+  (`Bacon8Web.Components.GameTicker`, `Bacon8.GameStatus`; refreshed every 15 seconds).
   """
   use Bacon8Web, :live_view
 
   import Bacon8Web.Components.Bacon, only: [bacon: 1]
   import Bacon8Web.Components.Gem, only: [gem: 1]
+  import Bacon8Web.Components.GameTicker, only: [ticker: 1]
 
   @repo "https://github.com/Ray-Rios/Bacon8"
   # the typed tagline: change the words here; the typing counts its letters (--n) itself
@@ -24,9 +29,13 @@ defmodule Bacon8Web.HomeLive do
     if socket.assigns.current_user do
       {:ok, push_navigate(socket, to: ~p"/games")}
     else
-      {:ok, assign(socket, page_title: "Bringing home the bacon", repo: @repo, tagline: @tagline)}
+      if connected?(socket), do: :timer.send_interval(Bacon8.GameStatus.ttl_ms(), :game_status)
+      {:ok, assign(socket, page_title: "Bringing home the bacon", repo: @repo, tagline: @tagline, games: Bacon8.GameStatus.snapshot())}
     end
   end
+
+  def handle_info(:game_status, socket), do: {:noreply, assign(socket, games: Bacon8.GameStatus.snapshot())}
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   def render(assigns) do
     ~H"""
@@ -244,6 +253,7 @@ defmodule Bacon8Web.HomeLive do
         </div>
       </section>
     </div>
+    <.ticker games={@games} />
     """
   end
 
