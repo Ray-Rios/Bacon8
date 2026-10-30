@@ -4,6 +4,20 @@ defmodule ChatChannelsWeb.ChatLive do
   alias Phoenix.PubSub
   import ChatChannelsWeb.ChatComponents
 
+  # What a message may carry. An allowlist of file types that cannot run script in a browser: pictures,
+  # audio, video, documents, text and data files, source code, archives. Never HTML, SVG, XML, JS or other
+  # active content (`Bacon8.SafePath.active_content?/1`), and no programs or installers (.exe .msi .bat
+  # .cmd .ps1 .sh .jar .apk .dmg). Served with nosniff, so a text file is shown or downloaded, never run.
+  @attachment_types ~w(
+    .jpg .jpeg .png .gif .webp .avif .bmp .tif .tiff .heic
+    .mp4 .webm .mov .avi .mkv .ogv .m4v
+    .mp3 .wav .ogg .oga .opus .m4a .aac .flac
+    .pdf .rtf .doc .docx .xls .xlsx .ppt .pptx .odt .ods .odp .epub
+    .txt .md .markdown .log .csv .tsv .json .yaml .yml .toml .ini .cfg
+    .gd .cs .cpp .h .py .ex .exs .ts .lua .sql .diff .patch
+    .zip .tar .gz .tgz .7z .rar .bz2 .xz
+  )
+
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
@@ -73,19 +87,19 @@ defmodule ChatChannelsWeb.ChatLive do
       )
       |> stream(:messages, [], dom_id: fn m -> "messages-#{m.id}" end)
       |> allow_upload(:forum_attachment,
-        accept: ~w(.jpg .jpeg .png .gif .webp .pdf .mp4 .webm .mov .avi .mp3 .wav .ogg .m4a .flac .zip .tar .gz),
+        accept: @attachment_types,
         max_entries: 5,
         max_file_size: 100_000_000,
         auto_upload: true
       )
       |> allow_upload(:reply_attachment,
-        accept: ~w(.jpg .jpeg .png .gif .webp .pdf .mp4 .webm .mov .avi .mp3 .wav .ogg .m4a .flac .zip .tar .gz),
+        accept: @attachment_types,
         max_entries: 5,
         max_file_size: 100_000_000,
         auto_upload: true
       )
       |> allow_upload(:edit_attachment,
-        accept: ~w(.jpg .jpeg .png .gif .webp .pdf .mp4 .webm .mov .avi .mp3 .wav .ogg .m4a .flac .zip .tar .gz),
+        accept: @attachment_types,
         max_entries: 5,
         max_file_size: 100_000_000,
         auto_upload: true
