@@ -417,6 +417,8 @@ page) lists the sources; the 3D models' credits sit beside them on the models vo
 - [`BACON8.md`](BACON8.md): engineering context, decisions, invariants and workflow. Read it
   before changing the hub.
 - [`BACON_WORLD.md`](plugins/bacon_world/BACON_WORLD.md): Bacon World's state, decisions and next steps.
+- [`plugins/Bacon8_Plugin_Integration.md`](plugins/Bacon8_Plugin_Integration.md): how to integrate a game or any
+  software (the games API, the plugin contract, a checklist for AI agents).
 - `plugins/*/README.md`: each plugin's reference.
 - [`docs/pages-blog-builder.md`](docs/pages-blog-builder.md): the page and blog builder.
 - [`Handy_Command_Samples.md`](Handy_Command_Samples.md): the maintainer's deploy and operations cheat sheet.

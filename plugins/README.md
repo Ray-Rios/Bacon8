@@ -3,6 +3,10 @@
 Each folder here is a Bacon8 plugin, WordPress-style: drop a folder in, deploy, then
 activate it on **/admin/plugins**. See BACON8.md §9 for the full contract.
 
+**Bringing in a game or other software from outside (Godot, Unity, a web app...)? Start with
+[`Bacon8_Plugin_Integration.md`](Bacon8_Plugin_Integration.md)**: the requirements, the games API, what a plugin can
+add, and a checklist an AI agent can follow.
+
 ```
 plugins/<slug>/
   README.md

@@ -89,6 +89,7 @@ uploads/
 # ============================================================
 /plugins/*
 !/plugins/README.md
+!/plugins/Bacon8_Plugin_Integration.md
 !/plugins/bacon_world/
 !/plugins/bacon_store/
 !/plugins/chat_channels/
