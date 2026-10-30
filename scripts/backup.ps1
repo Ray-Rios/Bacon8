@@ -13,7 +13,7 @@
     - k3s secrets, .env files, priv\cert   (never in Git, by design)
     - library\        the art pipeline: its sources (its scripts are also on GitHub, Secret_Bacon) (textures and makehuman only
                       with -IncludeDownloads: they are several GB and can be downloaded again)
-    - RaysSpaceSim\   its own repository plus its Content (minus Unreal's caches)
+    - plugins\rays_space_sim\unreal\   the Unreal project: its own repository plus its Content (minus Unreal's caches)
     - handoff\, docs\, brand\ and every other file in the folder
 
   It leaves out what can be rebuilt: _build, deps, node_modules, priv\static\assets, tmp,
@@ -76,8 +76,8 @@ if (-not $SkipDatabase) {
 # ---------------------------------------------------------------- 2. the files
 $skipDirs = @(
   "$Source\_build", "$Source\deps", "$Source\assets\node_modules", "$Source\priv\static\assets", "$Source\tmp",
-  "$Source\RaysSpaceSim\Binaries", "$Source\RaysSpaceSim\Intermediate", "$Source\RaysSpaceSim\Saved",
-  "$Source\RaysSpaceSim\DerivedDataCache", ".elixir_ls", "node_modules",
+  "$Source\plugins\rays_space_sim\unreal\Binaries", "$Source\plugins\rays_space_sim\unreal\Intermediate", "$Source\plugins\rays_space_sim\unreal\Saved",
+  "$Source\plugins\rays_space_sim\unreal\DerivedDataCache", ".elixir_ls", "node_modules",
   # editor caches, locked while the editor is open (Visual Studio's search index)
   ".vs", "__pycache__"
 )
@@ -99,7 +99,7 @@ if ($left -and [int]$left.Groups[2].Value -gt 0) {
 }
 
 # what GitHub doesn't have yet, in each repository here
-foreach ($repo in @($Source, "$Source\RaysSpaceSim", "$Source\library\pipeline\scripts")) {
+foreach ($repo in @($Source, "$Source\plugins\rays_space_sim", "$Source\plugins\rays_space_sim\unreal", "$Source\library\pipeline\scripts")) {
   if (-not (Test-Path "$repo\.git")) { continue }
   Push-Location $repo
   try {

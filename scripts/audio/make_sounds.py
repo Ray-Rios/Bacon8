@@ -7,8 +7,8 @@ loops or presets from anywhere else are used.
 Writes (from the repository root):
     priv/static/audio/ui/*.mp3       desktop and site sounds (served at /audio/ui/...)
     priv/static/audio/music/*.mp3    the Bacon8 sting
-and, when the game repository is checked out beside this one (./RaysSpaceSim):
-    RaysSpaceSim/SourceAssets/Audio/{SFX,UI,Music}/*.wav   48 kHz 16-bit, for import into Unreal
+and, when the game repository is checked out at plugins/rays_space_sim/unreal:
+    unreal/SourceAssets/Audio/{SFX,UI,Music}/*.wav   48 kHz 16-bit, for import into Unreal
 
 Run in a throwaway container from the repository root (nothing is built on the PC):
 
@@ -30,7 +30,7 @@ from synth import SR  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 HUB = ROOT / "priv" / "static" / "audio"
-GAME = ROOT / "RaysSpaceSim" / "SourceAssets" / "Audio"
+GAME = ROOT / "plugins" / "rays_space_sim" / "unreal" / "SourceAssets" / "Audio"
 
 
 # ================================================================ instruments
@@ -638,12 +638,12 @@ def main():
             write_mp3(HUB / f"{name}.mp3", x, 160 if name.startswith("music/") else 128)
             if args.wav_preview:
                 write_wav(Path(args.wav_preview).resolve() / f"{name.replace('/', '_')}.wav", x)
-    if (ROOT / "RaysSpaceSim").is_dir():
+    if (ROOT / "plugins" / "rays_space_sim" / "unreal").is_dir():
         for name, make in GAME_SOUNDS.items():
             if args.only in name:
                 write_wav(GAME / f"{name}.wav", make())
     else:
-        print("no ./RaysSpaceSim - skipping the game's sounds")
+        print("no plugins/rays_space_sim/unreal - skipping the game's sounds")
 
 
 if __name__ == "__main__":

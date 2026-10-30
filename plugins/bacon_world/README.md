@@ -3,13 +3,13 @@
 A small multiplayer 3D world that runs in the browser: make a character, walk around
 the village with other players, chat with people nearby, fight the skeletons outside
 town with either hand, loot what they carried, and level up. There are no classes:
-everyone starts the same and will grow through one shared skill tree.
+everyone starts the same and grows through one shared skill tree.
 
 It is also Bacon8's **reference plugin**. Copy this folder to start your own
 (see `plugins/README.md` and BACON8.md §9).
 
-**Where it stands, the owner's decisions and what's next: [`BACON_WORLD.md`](../../BACON_WORLD.md)**
-at the repository root. This file is the module-by-module reference.
+**Where it stands, the owner's decisions and what's next: [`BACON_WORLD.md`](BACON_WORLD.md)**
+beside this file. This file is the module-by-module reference.
 
 It was called **Web Lobby** (slug `web_lobby`) until 2026-10-21. Old links
 (`/games/web_lobby/...`) answer 301 to `/games/bacon_world/...`, and the migrations below
@@ -21,7 +21,7 @@ renamed its tables, its game row and its `plugin_states` row.
 |---|---|
 | `lib/bacon_world/plugin.ex` | The plugin: name, version, its game card, its routes |
 | `lib/bacon_world/world.ex` | Characters, zones, positions |
-| `lib/bacon_world/combat.ex` | HP/MP, PvP flags, respawn (server-authoritative); spells later (Throw Stone is retired) |
+| `lib/bacon_world/combat.ex` | HP/MP, PvP flags, respawn (server-authoritative; Throw Stone is retired) |
 | `lib/bacon_world/items.ex` | The item catalogue: weapons with EverQuest-style DMG/DLY, shields, a torch, junk, underwear and cloth armour |
 | `lib/bacon_world/inventory.ex`, `inventory_item.ex` | What a character carries: two hands, five worn slots, 24 bag slots, coins |
 | `lib/bacon_world/merchants.ex` | NPC traders: Tilda the clothier, Old Bram the angler (fishing poles, the hunting bow), their stock, reach and prices; the NPC templates build mode places, and placed NPCs as merchants |
@@ -80,6 +80,7 @@ renamed its tables, its game row and its `plugin_states` row.
 | `assets/js/spell-fx.ts` | Spell effects: casting glow, fireball, heal, roots, recall, spin. Lights are pooled and materials shared: adding or removing a light recompiles every shader (a multi-second freeze) |
 | `assets/js/npcs-view.ts` | Merchants on the client: built as humans, picked by proxy cylinders, face you while trading |
 | `assets/js/wardrobe.ts` | Gear slots, what each worn item puts on the body and hides, and the bone corrections (joint offsets, relaxed fingers) |
+| `assets/js/crafted.ts` | Models drawn in code, no files to sync: the grill fork, the Robin Hood hat (and `wearHat`, which seats it on a body's head bone), the arrow and the bacon bobber |
 | `assets/js/items.ts`, `nameplates.ts`, `asset-url.ts` | Weapon models (and procedural ones: the fishing pole) and icons (an item's `icon_url` wins); names over heads; versioned model URLs |
 | `priv/static/icons/` | Plugin-shipped item icons (the fishing pole, fish and junk; `library/pipeline/scripts/fishing_icons.py`), served at `/plugins/bacon_world/icons/` |
 | `assets/js/lobby-audio.ts` | Sound: recorded effects, placed in the world (pan, distance, low-pass), nature beds, music by mood, the UI's roll-over and click |

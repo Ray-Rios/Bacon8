@@ -15,8 +15,8 @@ animated icon's sprite sheets; the desktop's Start button and the navbar's Games
 `<b8-bacon>`, not these files. To change the bacon, re-render and rerun `bacon_sheets.py`, then this build.
 | `og-image.png` | 1200x630 PNG | preview card when a link to the site is shared |
 | `brand.json` | | site name, one-line description, colours |
-| `../RaysSpaceSim/Brand/game-icon.png` | 1024x1024 PNG | game exe icon, launcher icon (in the game repository) |
-| `../RaysSpaceSim/Brand/splash.png` | 720x370 PNG (keep the bottom 70 px plain) | game startup splash, editor splash |
+| `../plugins/rays_space_sim/unreal/Brand/game-icon.png` | 1024x1024 PNG | game exe icon, launcher icon (in the game repository) |
+| `../plugins/rays_space_sim/unreal/Brand/splash.png` | 720x370 PNG (keep the bottom 70 px plain) | game startup splash, editor splash |
 
 Build (in a throwaway container, from the repository root):
 

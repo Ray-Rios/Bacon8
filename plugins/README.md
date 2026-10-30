@@ -57,6 +57,8 @@ Rules of the road:
   `.gitignore` ignores every plugin folder except the ones it ships, so it stays out
   of the public repo, and `.dockerignore` keeps its `.git`, `k3s/` and scripts out of
   images. Switch it on from the first boot with `BACON8_ACTIVE_PLUGINS`.
+  A private plugin may also nest the game's own project in a subfolder (RaysSpaceSim keeps its Unreal
+  project in `unreal/`, a second git repository); `.dockerignore` keeps `plugins/*/unreal` out of images too.
 
 `bacon_world/` is the reference game plugin and `bacon_store/` the reference site plugin:
 copy the closer one to start your own.

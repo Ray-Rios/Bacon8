@@ -5,7 +5,7 @@ defmodule Bacon8.Repo.Migrations.NotificationSources do
   # plugin, so the hub stops knowing about channels: a notification says what it came from
   # (`source_kind` and `source_id`, both the plugin's own) and carries the address to open
   # in its metadata (`path`). `channel_id` and its foreign key stay, unused, until the last
-  # phase of docs/chat-channels-plugin.md moves the chat tables out of the core.
+  # phase of the chat_channels plugin move moves the chat tables out of the core.
   #
   # The backfill is for any mention notification that was stored with a channel. (There
   # should be none: mentions crashed before they were saved, because they read a user field

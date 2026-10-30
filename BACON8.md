@@ -18,269 +18,32 @@ what you read before changing it.
 
 Last substantive update: **2026-10-29**.
 
-On 2026-10-29 (d):
+**Where things stand.** The dated change notes that used to open this file (2026-10-20 to 2026-10-29) were
+removed on 2026-10-29: `git log` has them, and what is still true of each change lives in the section it
+belongs to (the decisions log in §2, the subsystem sections, the invariants). To read the old text:
+`git log -p --follow -- BACON8.md`. The most recent work, so you know where to look:
 
-- **The front page's corner shows the games live** (§9 "Game status"): lower left, one game at a time, a small
-  picture-only card beside its name, online or not, its zones or servers and who is in each, players now and in all.
-  `Bacon8Web.Components.GameTicker`, `Bacon8.GameStatus` (a 15-second cache), and a new optional plugin callback,
-  `game_stats/0` (Bacon World: its zones and Presence). A game without one is measured from its world servers'
-  heartbeats and its characters (RaysSpaceSim).
-- RaysSpaceSim got four flyable ships chosen at stands on its station deck (its own repository's RAYSSPACESIM.md
-  §7b).
-
-On 2026-10-29 (c), from the owner trying the store's card checkout:
-
-- **Unfinished checkouts are settled, and Purchases lists only what was paid for** (§8 "Unfinished
-  checkouts"). Leaving Stripe's page with Back used to leave an order at "Pending" for a day or two, and a second
-  checkout could be opened beside it. Now a buyer has one open checkout at a time (starting another closes the old
-  one at Stripe first), a Stripe session lives 31 minutes, the cancel link closes it, the store and Purchases show
-  an unfinished checkout with "Continue to payment" and "Cancel", and the hub asks Stripe where a checkout stands
-  (`Store.reconcile/1`) before cancelling or showing it as waiting, so a late webhook never costs a payment.
-- **Pay on an item while the cart holds other things** puts the item in the cart and opens it: one checkout for
-  all of it.
-- **Money taken for something the buyer already owns** (two checkouts paid at once) is flagged on the admin's
-  order for a refund in Stripe instead of being delivered twice.
-- Store migration `20261029120000` (`checkout_url`, `checkout_expires_at`).
-
-On 2026-10-29 (b), from the owner's review on a phone:
-
-- **Phones: /admin and /chat fit the screen.** Below 768 px the admin sidebar is a drawer behind an "Admin menu"
-  button and the page gets the full width (tables scroll inside their box); the chat's channel list slides over the
-  chat from a ☰ button and closes when you pick a channel; long words and links in messages wrap instead of
-  widening the column past the screen. `assets/css/mobile.css`, `AdminSidebarResizer` (`app.ts`), the chat plugin's
-  `SidebarResizer`.
-- **The page builder's pictures upload by HTTP** (`POST /editor/media`, `Bacon8Web.EditorMediaController`), shrunk
-  in the browser to 2560 px first. They used to go as base64 inside a LiveView event: a phone photo made a frame
-  big enough to drop the connection, so the picture never arrived and a page opened with the Edit button came back
-  closed. The editor also survives a dropped connection now (`?edit=1` in the address, its words re-sent), its
-  "Uploading…" state is never saved, and the site's navbar and taskbar step aside while it is open (Done and
-  Publish were hidden under them on phones). Multipart bodies may be 26 MB (`endpoint.ex`).
-- **The store sells several items at once** (§8 "Baskets"): a cart, one checkout or one Gem payment for all of it,
-  and every purchase is a receipt with a number ("Order #8008", from 8001), shown on Purchases, the order page, the
-  library and `/admin/bacon_store/orders`. Store migration `20261029100000`.
-- **The front page's claims, checked.** Fixed in the copy: refunds (there are none, decisions log 2026-10-16) and
-  chat "in every zone". Built so they're true: the receipts above, the **audit log** (`/admin/audit`, written by
-  role changes, plugins switched on and off, pages and posts published, unpublished and deleted, blocks and
-  unblocks, store deliveries retried, channels), and **items and passes in the game API**
-  (`GET /api/games/:slug/entitlements`, `.../entitlements/check?kind=&key=`, §9).
-- **Download games have a page** (§9 "Game cards"): a game's card says whether it plays in the browser or is a
-  download, and a download game's card opens a CMS page chosen on its admin section. RaysSpaceSim's,
-  `/pages/rays-space-sim`, is created by migration `20261029110000` and assigned.
-
-On 2026-10-29:
-
-- Bacon World: **the grill fork** (the front page's) is the new starter one-handed piercing weapon, the **Robin Hood
-  hat** is a wearable hat (a new `head` slot) and a placeable object, the **bow shoots the hat's arrow**, and the
-  **fishing bobber is a curl of bacon**. All drawn in code (`plugins/bacon_world/assets/js/crafted.ts`): no models to
-  sync. BACON_WORLD.md §2. No core files changed.
-
-On 2026-10-28:
-
-- Bacon World: **build mode** (the backquote key: a searchable window of what the account's role may place, pick up,
-  turn, move and remove things; admins set the lowest role per asset in game; two new games-DB tables from the
-  plugin's migration `20261028000000`), **rats, goblins and orcs** with their own camps, and **bows** with endless
-  arrows. Details in **`BACON_WORLD.md`** §2. No core files changed.
-- **New backgrounds: SVG and CSS, no WebGL** (`Bacon8Web.Components.Cosmos`, `assets/css/cosmos.css`,
-  `priv/static/images/cosmos/*.svg`). The three.js scenes kept a phone's main thread 14-33% busy on every page
-  while idle (two canvases). Now six cosmic kinds share one set of layers: **Deep Field** (`galaxy`, the default),
-  **Nebula**, **Warp** (`starfield`), **Orbit** (a ringed planet with a moon on a 3D-tilted orbit), **Aurora** and
-  **Void**. Depth is parallax: three star tiles drift at three speeds and, with a mouse only, lean with the pointer
-  (`BackgroundUpdater`); every animation is a transform or opacity. Phones get fewer layers, "reduce motion" stops
-  them, a hidden tab pauses them. `data-cosmos` picks the kind, so switching is one attribute; `<template
-  id="cosmos-layers">` lets a flat background switch back without a reload. The profile's picker previews the
-  real thing (`BackgroundSelector.backgrounds/0`). `User.background_preference` also accepts `orbit` and `aurora`.
-  The old scene files under `assets/js/threejs/` (all but `controls/text-target.ts`) are unused, for `git rm`.
-- **A new front door** (`Bacon8Web.HomeLive`, `assets/css/intro.css`, `IntroReveal` and `IntroTagline` in
-  `assets/js/intro_reveal.ts`). The bacon sizzles into view in a puff of steam (and keeps steaming), then one large
-  grill fork flies in and stabs it to the page, a tine through each strip. The tagline, "Bringing home the bacon.", types
-  itself in like a terminal; hovering it (or tapping it, or focusing it) types "IT'S A SECRET TO EVERYBODY." instead.
-  Sign Up and Log In are there at once. The fork and the steam are Blender renders
-  (`library/pipeline/scripts/hero_forks.py`, `hero_steam.py`: a Mantaflow simulation, and `hero_sheets.py`, which
-  makes `priv/static/images/intro/` and its `intro.json`, the numbers `intro.css` uses). Scrolling fades up sections
-  on what the repository is (a WordPress replacement that hosts games), the page builder, the store and Stripe, the
-  drive, chat, security, plugins and the plugins it ships with, and the MIT licence. CSS only; without JavaScript or
-  with "reduce motion" it is all simply there. Tests: `home_intro_test.exs`, `assets/js/__tests__/cosmos_intro.test.ts`.
-- **/games**: the "Games" title has a gold, glinting shine (`assets/css/games_hat.css`), and the felt Robin Hood hat
-  that an arrow flies through (`hero_hat.py` renders) sits in the lower right, under the cards on phones and out in
-  the margin on wide screens (`GamesLive`'s `hat_shot`). The same hat is now an item in Bacon World (BACON_WORLD.md).
-- **The page builder: pages and posts are edited on a new, phone-first editor** (`assets/js/page_builder/`,
-  `Bacon8Web.Components.EditorShell`; the old `block_editor_hook.ts` is no longer loaded). New page / New post in the
-  start menu, starters for an empty page, a full-screen editing screen (title typed in place, Undo/Redo, phone preview,
-  settings in a drawer), a + between rows and in empty cells, a gear on whatever is tapped (column layouts in one tap,
-  width, spacing, background; each block's options), typing in place with a small formatting bar and Markdown-style
-  shortcuts, dropped and pasted pictures, and a Button block. The saved format only grew, so every existing page
-  renders as before. `docs/pages-blog-builder.md`, "The page builder".
-
-On 2026-10-27:
-
-- **Suggestions & Bugs, and a queue that hands work to Claude** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27d.md`):
-  a new site plugin, `plugins/feedback`, at `/feedback`, opened from a 💡 icon in the start menu. Members
-  (never guests) post suggestions and bug reports about the site or a game, with screenshots (picked,
-  dropped or pasted), and vote them up or down. Admins edit, approve, decline or mark duplicates, and
-  **Submit to Claude**. Claude's runner, a PowerShell script on the development PC run every 10 minutes
-  by a scheduled task (`plugins/feedback/agent/`), takes one submitted item at a time over a token-only
-  API, has Claude Code fix it headless, runs the tests itself in Docker, has a second Claude review the
-  diff, commits, and then deploys (auto-deploy on, nothing sensitive) or holds it for an admin's Deploy
-  button, reporting each step on the item. The plugin's README has the whole loop and its safety rules.
-  The start menu now shows plugins' apps (`desktop_apps/1`, which takes the user), the hook milestone 5
-  planned.
-- **The start menu no longer offers Terminal, Calculator, Notepad, Media Player or Settings**
-  (`lib/bacon8_web/components/taskbar.ex`, `lib/bacon8_web/live/desktop_live.ex`,
-  `lib/bacon8_web/components/window.ex`): five apps whose windows were decorative only (a static
-  prompt, buttons with no handlers, a textarea that saved nothing). File Manager is now the only
-  app pinned to the start menu, and the extra File Explorer button that duplicated it on the
-  taskbar itself is gone (Suggestions & Bugs #1).
-- **The vote box shows how many voted each way, not just the net score** (`plugins/feedback`:
-  `lib/feedback.ex`, `lib/feedback_web/live/components.ex`). Voting itself already worked (an
-  up and a down vote net to the same score as neither, which read as "voting does nothing");
-  `Feedback.Item` gained virtual `upvotes`/`downvotes`, filled in alongside `my_vote` by one
-  query over `feedback_votes`, and the arrows now show "N▲ M▼" under the score (Suggestions &
-  Bugs #2).
-
-On 2026-10-26:
-
-- **The site icon is two strips of bacon** (owner's request, from a reference picture; the model is
-  original). Modelled and rendered in Blender (`library/pipeline/scripts/bacon_strips.py`: procedural
-  strips at 45 degrees, lengthwise fat stripes, crisp rippled edges, a curled end; Cycles), as a 48-frame
-  loop in which the strips sizzle (ripples run along them, the edges tremble) rather than a turntable.
-  `bacon_sheets.py` makes the sprite sheets (`priv/static/images/bacon/bacon-64/160/288.webp`, the still
-  `bacon.webp`) and the brand masters `brand/bacon8-mark.png` and `.svg` (the SVG wraps the PNG), from
-  which `scripts/brand/build_brand_assets.py` (`build_hub()` only) rebuilt the favicon and app icons.
-  On pages it is `<b8-bacon>` (`assets/js/sizzle_bacon.ts`, the `<b8-gem>` pattern): it sizzles slowly
-  and bobs, and hovering makes it react a different way each time (a spatter of grease, wisps of steam, a
-  hop in the pan, crackling fat with a heat flare, a sizzling shiver). Templates use
-  `Bacon8Web.Components.Bacon`: `<.bacon size={26} />`; the icon string `"bacon"` works wherever `"gem"`
-  does. It is the desktop's **Start button** (was the B8 mark) and the navbar's **Games** link (was 🎮).
-  Uncommitted: `handoff/CLAUDE_CODE_PROMPT_2026-10-26a.md`.
-- **Open pages pick up a deploy by themselves** (`handoff/CLAUDE_CODE_PROMPT_2026-10-26b.md`). Players had
-  to hard-refresh Bacon World after every deploy: no LiveView asked `static_changed?`, and plain static
-  files (the game's sounds, pictures and plugin files, asked for without `?vsn=`) were cached for a year.
-  Now every LiveView mounts `Bacon8Web.StaticReload` (`use Bacon8Web, :live_view`), which reloads the
-  page on reconnect when `app.js`/`app.css` changed, and the `/` `Plug.Static` keeps unversioned files an
-  hour, then revalidates them by ETag (digested files stay immutable for a year). Invariant 18.
-- **Bacon World**: two-handers held in proper guard poses, an island in a sea with a fishing pond and
-  fishing, spells no longer freeze the game, screenshots no longer open the menu, and the owner's other
-  bug reports (same handoff). Details in **`BACON_WORLD.md`** §2.
-- **Bacon World's starter zone is a real landscape, Crater Lake** (`handoff/CLAUDE_CODE_PROMPT_2026-10-26c.md`):
-  the owner's World Creator heightfield, made into game files by `library/pipeline/scripts/terrain_build.py`
-  (`World/Terrain/` on the models volume: 3 MB to the browser) and read by both the server and the browser,
-  with the village on a flattened pad by the bay. `/models` now versions `.bin` files too. Production needs
-  the owner's models sync to get it; without the files the game stays on its flat island. The owner's
-  plan to build the world in game (placing and deleting anything, by role; admin-only binding stones with
-  no-build zones) is in **`BACON_WORLD.md`** §3 and §7.
-
-On 2026-10-25:
-
-- **Sound for both games** (`handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`): Bacon World's sound
-  bolstered (placed sound, spells, dragons, flight, beds, music by mood, the UI); RaysSpaceSim
-  given a whole soundscape (`UCosmicAudioSubsystem`, 93 events, music by mood). All CC0, built
-  and loudness-normalised by `library/pipeline/scripts/audio/build_audio_v2.py`. Details in
-  **`BACON_WORLD.md`** §2 and RaysSpaceSim's `RAYSSPACESIM.md` §7a. The hub half is committed
-  (`575aac6`); RaysSpaceSim's half (C++, 352 sounds, FLAC sources) is **still uncommitted in its
-  own repository** and needs `Scripts/compile_editor.sh` (see §13).
-- **Tests for the forum and for pages and blog** (`test/bacon8/forum/*`, `content_test.exs`,
-  139 tests; `37d84ea`), and the bugs they found, fixed: publishing a page or post crashed
-  without an explicit `published_at`; a draft with no body crashed; renaming rewrote the URL;
-  channel names weren't unique; a channel's owner couldn't moderate it without a member row;
-  posting to a missing channel crashed; comment approval did nothing. 364 tests pass.
-- **The forum is now the `chat_channels` plugin** (phases 1 and 2 of
-  [`docs/chat-channels-plugin.md`](docs/chat-channels-plugin.md)): `plugins/chat_channels`,
-  mounted at `/chat`, the navbar link says "Chat", and `/forum` answers 301 to it. It
-  **supersedes ADR 0001 on one point** (ADR 0001 kept the forum in the core). The seams were
-  cut: account removal goes through a hub event, notifications are generic (`source_kind`,
-  `source_id`, `metadata.path`), invitations are listed on the Chat page with a count badge on
-  the nav link (the plugin contract gained an optional `:badge`), the Bacon Store reaches chat
-  through `BaconStore.Chat` (so it still builds without it) and RaysSpaceSim now
-  `requires/0` it. **Production's `BACON8_ACTIVE_PLUGINS` and the default list now name
-  `chat_channels`.** Moving it also fixed things that had never worked: **@mention
-  notifications** (they read a user field that doesn't exist), **marking a notification read**
-  and **"Mark all read"** (microseconds in a whole-second column), **the notification list**
-  after its channel association went, and the old mention link. 409 tests pass.
-- **Pages and blog: the safety net is built, and it found security and data bugs, now fixed**
-  (`docs/pages-blog-builder.md`): drafts were readable by anyone at `/blog/<slug>`; viewing a
-  draft and a slug nobody has both crashed; the inline media upload and remove handlers had two
-  **path-traversal holes** (staff-reachable), now `Bacon8.Content.InlineMedia` on `Bacon8.SafePath`
-  (`Uploads.delete_file/1` and `file_exists?/1` confined too); GMs and editors couldn't open drafts of
-  pages they may edit. Two dead editors (`PageEditorLive`, `BlogEditorLive`, 1,300 lines) were
-  deleted. 511 tests pass. The path fix was then reviewed by a second session (next item). The owner's
-  answers (2026-10-25): tests first; only admins, GMs and editors write content; keep the rows, columns
-  and blocks model.
-- **Second review of the upload and delete paths** (cloud session; uncommitted, for Claude Code to verify
-  and commit: `handoff/CLAUDE_CODE_PROMPT_2026-10-25b.md`). `InlineMedia.remove/2` and `SafePath` held up
-  under attack (home-directory, encoded, doubled-slash, backslash and NUL URLs, a folder whose name starts
-  another's, a symlink). It found four gaps elsewhere, now fixed: **any member could delete other people's
-  uploads** through /profile's "delete previous avatar" (a browser-sent URL went straight to
-  `Uploads.delete_file/1`; "select" saved any string), now only the user's own avatar files; **a member
-  creating a chat channel could set its `icon_path`**, and deleting the channel then removed that path's
-  whole folder anywhere under uploads/, now never cast, only the channel's own icon folder accepted
-  (`Channel.put_icon/2`, `icon_path?/2`) and re-checked before deleting; **`.rss` and `.atom` were served
-  inline** as XML a browser runs, and `InlineMedia` accepted active content at all (staff-reachable), both
-  closed; and `Uploads.delete_file/1` now takes only `/uploads/` URLs and never the drive's blobs. 26 new
-  tests (15 fail on the old code); 554 pass. The fixes need their own second reader: Claude Code, via the
-  handoff. A production query in the handoff checks whether any channel row already names a foreign file.
-- **Glass** (`1fbeae7`): menus and popups are frosted (`.glass-menu`), palette swatches and the
-  tint picker are textured glass, and the personal glass colour reaches Bacon World's windows
-  (`--bwg-*`). The decisions-log row below has the detail. A follow-up fixed **preset buttons
-  doing nothing once a custom tint was set**: the custom colour outranks the theme everywhere,
-  so choosing a preset now clears it (`ProfileLive.glass_theme_choice/2`, tested).
-- `docs/adr/` was deleted in `95aba50`; its links now point at git history.
+- **Front door and backgrounds.** The bacon-and-fork intro and the live game-status corner (`HomeLive`,
+  `GameTicker`; §9 "Game status"). Backgrounds are SVG and CSS, not WebGL (`Components.Cosmos`).
+- **Page builder.** Pages and posts are edited in place on a phone-first editor (`assets/js/page_builder/`,
+  `docs/pages-blog-builder.md`). Pictures upload by HTTP (`POST /editor/media`).
+- **Store.** A cart and numbered receipts; unfinished checkouts are settled (§8 "Baskets", "Unfinished checkouts").
+- **Games platform.** Game cards with a kind (browser or download) and a page (§9). `GET /api/games/:slug/entitlements`
+  reports a player's items and passes. `Bacon8.GameStatus` and the optional plugin callback `game_stats/0`.
+- **Admin.** `/admin/audit` shows the audit log; below 768 px the admin sidebar is a drawer.
+- **Plugins.** `bacon_store`, `bacon_world`, `chat_channels` (the forum, at `/chat`) and `feedback` (Suggestions &
+  Bugs, with a queue that hands work to Claude; its README has the loop) ship with the hub. `rays_space_sim` is a
+  private plugin with the Unreal project nested inside it (§4, §9).
 
 **Next session, start here:**
 
-1. **Done 2026-10-25 (`ee57a5e`)**: GMs and editors reach `/admin/pages` and `/admin/blog-management` only.
-   `Bacon8.Permissions` maps roles to areas; pages mount with `{UserAuth, {:require_area, :content}}`;
-   sidebar/navbar filter by area (`admin_access_test.exs` guards every other admin route). The block
-   editor now has one docked sticky toolbar (many columns no longer squeeze it).
-2. **Pages and blog**: read `docs/pages-blog-builder.md`. The four editing surfaces now share one engine
-   (`Bacon8Web.ContentEditing`, 2026-10-26; new pages/posts start as drafts; admin editors handle media and autosave).
-   Done 2026-10-26 from the production-grade list: SEO, image alt text, RSS and comment moderation (see
-   `docs/pages-blog-builder.md`); the column-shrink bug is fixed. Also done 2026-10-26: revisions,
-   scheduled publishing, preview links, the image library, and **one editing UI: pages and posts are edited in place
-   (`Bacon8Web.InPlaceEditing`); the admin screens only list/create/publish/schedule/delete** (see the docs). Plugins and games may post to the blog: `Content.post_from_plugin/3` exists, and
-   no plugin calls it yet (RaysSpaceSim patch notes would). The editor's column squeeze is solved by the docked
-   toolbar, so no column cap. The path-handling review is done (`69f6f43`).
-3. **Chat is finished** (2026-10-26): self-contained plugin, own tables and settings, dead code gone,
-   components split out, `/chat/invite/:code`, voice/video/stream tested. Optional: split `ChatLive`'s handlers.
-   RaysSpaceSim audio compiles and is committed (`9cc6ec3`) but has not been played in the editor or cooked.
-4. The standing rules are in `BACON_WORLD.md` §6 and the owner's notes: build and test only in
-   Docker; commit with explicit file lists; **the deploy builds from the working tree, so check
-   `git status` for another session's uncommitted work before deploying**.
+1. The standing rules are in `plugins/bacon_world/BACON_WORLD.md` §6 and the owner's notes: build and test only in
+   Docker; commit with explicit file lists; **the deploy builds from the working tree, so check `git status` for
+   another session's uncommitted work before deploying**.
+2. Known debt (§13) is ordered by how much it hurts; the first item is core code with no tests.
+3. Plugin work has its own notebook: `BACON_WORLD.md` for Bacon World, `plugins/*/README.md` for the others,
+   `plugins/rays_space_sim/unreal/RAYSSPACESIM.md` for the Unreal game.
 
-On 2026-10-24:
-
-- Bacon World: the male rebuilt on MakeHuman like the female (body, wardrobe, sliders, hair,
-  animation packs); player names blue, red with PvP on. Then his posture (lower back and
-  shoulders), the skeleton creatures rebuilt on his rig, and one-handed axe and hammer heads
-  facing the way they swing; then his hands, his lean, the torch arm and a narrower shoulder
-  slider. Details in **`BACON_WORLD.md`** §2.
-- **The Gem**: the currency's own fiery gem, rendered in Blender, turns and floats wherever Gems
-  appear and as the Store's navbar icon; hovering makes it react (§8, "The Gem").
-- **/games shows each game as a card with a front and a back** (hover turns it over; the front
-  cycles pictures). Each plugin ships its card in `priv/static/card/` (served from
-  `/plugins/<slug>/`) and edits it on its admin page; §9 "A plugin's own files and its game card".
-- Bacon World: the skill tree (K; Path of Exile style, Recall at the centre), Q-X skills and a
-  2x10 spell bar, a stablemaster to choose your mount, and Bacon World's first admin page,
-  **/admin/bacon_world/skills** (the tree editor, linked from `admin_nav/0`; its table
-  `bacon_world_skill_trees` comes with a plugin migration). Details in **`BACON_WORLD.md`** §2.
-- §14 now lists the assistant tooling: the Unreal, Blender and Docker MCP servers on the
-  development PC and what each is for.
-
-On 2026-10-23:
-
-- Bacon World: underwear and clothes became items (cloth armour), the first NPC merchant,
-  EverQuest coins, the female v3, PvP melee and multiplayer animation fixes; Throw Stone is
-  gone. Then Black Desert-style body sliders, posture, hands and dagger grips, R to interact.
-  Details in **`BACON_WORLD.md`** §2.
-
-Before that:
-
-- **2026-10-22**: Bacon World got its own notebook, **`BACON_WORLD.md`** (state, the owner's
-  decisions, next steps); §9 here keeps only the plugin-level summary. The female human was
-  rebuilt on MakeHuman's CC0 assets.
-
-- **2026-10-21**: the store became the **Bacon Store** plugin (ADR 0001 phases 2 and 3; §8,
-  §9), and Web Lobby was renamed **Bacon World** (phase 1).
-- **2026-10-20**: the move to Bacon8 finished; brand assets now come from `brand/`.
 
 ---
 
@@ -361,7 +124,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-15 | **Existing Lobby characters are not migrated**; the old site-DB tables are dropped. | Owner's decision: nothing worth keeping. |
 | 2026-10-15 | **Plugins are activated from an admin Plugins page** (`/admin/plugins`), WordPress-style: no redeploy to turn one on or off. Installed plugins' routes are always compiled in and gated per request. | Owner's decision. |
 | 2026-10-15 | **Plugin slug and game slug are separate.** The plugin slug is the folder name (underscores, maps to the module name); the game slug defaults to it but a plugin may keep an existing one (RaysSpaceSim stays `rays-space-sim`, which its clients use). Game slugs may now contain underscores. | Needed for `web_lobby`, and so existing game clients don't break. |
-| 2026-10-16 | **RaysSpaceSim becomes a private plugin**: a new private repository cloned into `plugins/rays_space_sim`. The hub ignores every plugin folder it doesn't ship. The Unreal project stays its own repository at `/RaysSpaceSim/`. | Owner's decision. The hub sees it exactly as it sees Web Lobby. |
+| 2026-10-16 | **RaysSpaceSim becomes a private plugin**: a new private repository cloned into `plugins/rays_space_sim`. The hub ignores every plugin folder it doesn't ship. ~~The Unreal project stays its own repository at `/RaysSpaceSim/`.~~ (Moved 2026-10-29, see the last row of this section's 2026-10-29 entries.) | Owner's decision. The hub sees it exactly as it sees Web Lobby. |
 | 2026-10-16 | **The hub's game tables use game-neutral names:** `holo_sim_id` → `instance_id`, `holo_sim_location` → `instance_location` (columns, schemas, API JSON), and `PUT .../characters/:id/holo_location` → `.../instance_location`, **renamed now** with the game client updated in step. Old servers' `holo_sim_id` input and the old route are still accepted during the changeover. | Owner's decision ("rename now"). Accepting the old input keeps a running instance from re-registering as a world server mid-deploy. |
 | 2026-10-16 | **`BACON8_ACTIVE_PLUGINS`** (comma-separated) sets which plugins are active until an admin toggles them. Production lists its plugins there. | Owner's decision. A private plugin is on from the first boot without the hub's config naming it. |
 | 2026-10-16 | **Migrations squashed to one baseline per database** (`20250101000001_site_baseline`, `20260809100000_games_baseline`, and one per plugin), generated from production's schema. Production already records those versions, so it runs none of them. | A fresh install now builds the real schema instead of replaying a year of drift (the `cms_options` and `subscriptions` mismatches came from that). |
@@ -382,7 +145,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-17 | **Renamed to Bacon8 everywhere, stored names included**: modules (`Bacon8`, `Bacon8Web`), OTP app and release `bacon8`, node names, the session cookie, database names, the Kubernetes namespace, objects and volumes, the container user, and the game side (the Unreal account plugin becomes `Bacon8Account`, with `-Bacon8*` flags and `BACON8_*` variables). Data moves into the new names by dump and restore; the old deployment and its domain are retired. The repository starts a fresh history. This is milestone 6 (§12), done early. | Owner's decision: a name of its own, clearly apart from the Phoenix framework it is built on. A new domain signs everyone out anyway, so renaming the cookie and the other stored names at the same time cost nothing extra. |
 | 2026-10-20 | **The move is finished**: production has run under the new names since 2026-10-18, the game and launcher are rebuilt against them, and the old deployment, its volumes and the old working copy are deleted. The legacy wire names it kept alive (`holo_sim_id`, `PUT .../holo_location`) and the game's CoreRedirects for the old plugin are removed. | Every client and server in use was rebuilt, so nothing sends the old names. |
 | 2026-10-20 | **Removed: the GraphQL API, `POST /api/auth/authenticate` and `GET /api/auth/users`.** Nothing used them. The GraphQL `login` and `/authenticate` checked passwords without the lockout, rate limit or banned/unverified checks the real login applies (and `/authenticate` said which of email or password was wrong); `/users` listed every account's email to anyone. | Security: they were open doors with no callers. |
-| 2026-10-20 | **Brand assets come from masters in `brand/`** (and the game's `RaysSpaceSim/Brand/`), turned into every icon, favicon, manifest and splash by `scripts/brand/build_brand_assets.py`. The masters are placeholders until the real artwork exists. The Phoenix favicon and the Start button image are gone. | One drop-in point for the artwork; and the old images were other companies' marks. |
+| 2026-10-20 | **Brand assets come from masters in `brand/`** (and the game's `plugins/rays_space_sim/unreal/Brand/`), turned into every icon, favicon, manifest and splash by `scripts/brand/build_brand_assets.py`. The masters are placeholders until the real artwork exists. The Phoenix favicon and the Start button image are gone. | One drop-in point for the artwork; and the old images were other companies' marks. |
 | 2026-10-20 | **Brand:** ~~the logo is the "B8" monogram~~ (the icon became bacon, 2026-10-26, below; the wordmark "Bacon8" in the navbar is unchanged). The colours are blue `#247DF1`, cream `#E7F1FD` and near-black `#14100F`. The one-line description is "The kitchen sink." | Owner's decision. |
 | 2026-10-26 | **The site icon is two strips of bacon at 45 degrees**, rendered in 3D: the favicon and app icons, the desktop's Start button and the navbar's Games link. On pages it sizzles and reacts to hovering like the Gem (`<b8-bacon>`). Supersedes the B8 monogram as the icon. | Owner's request. |
 | 2026-10-20 | **All flagged third-party material is removed** and replaced with our own or CC0 work: synthesized sound effects and music (`scripts/audio/`), an original default avatar, no third-party fonts, and new character models (next row). The removed files wait in a gitignored holding folder until the owner deletes them. | Owner's decision; it was placeholder content. |
@@ -406,6 +169,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-29 | **A buyer has one open card checkout at a time, open for 31 minutes; an unpaid checkout is not a purchase.** Starting another, Cancel, the provider's cancel link or the time running out closes it at the provider; the provider is asked first, so a payment is delivered, never cancelled. Purchases lists only paid orders; admins see open and abandoned checkouts in their own views. | Owner's report: Back from Stripe left "Pending" orders in his purchase history, and Buy ignored the cart. |
 | 2026-10-29 | **The one refund there is: a duplicate payment.** Sales stay final, but money taken for something the buyer already owned is flagged for the owner to refund in Stripe (the hub never refunds by itself). | Two checkouts paid at once is the provider's money for nothing; a chargeback would follow. Rare now that only one checkout is open. |
 | 2026-10-29 | **A game that needs a download has its own page**, an ordinary CMS page picked on the game's admin section; its card on /games opens it. In-browser games open the game. | Owner's request: RaysSpaceSim (a download) needs an editable page; Bacon World plays in the browser. |
+| 2026-10-29 | **The Unreal project lives inside its plugin**, at `plugins/rays_space_sim/unreal/` (its own nested git; it was `/RaysSpaceSim/` beside `plugins/`). One game, one folder, one name. Scripts find it through the plugin's own location, not the hub root. | Owner's request: two folders with the same name was confusing. |
 | 2026-10-29 | **The store sells several items in one purchase** (a cart; one receipt with one order number). Each item stays its own order underneath. | Owner's request: the front page shows a multi-item order, and the store only sold one item at a time. |
 | 2026-10-28 | **Site backgrounds are SVG and CSS, never WebGL.** Six cosmic kinds (`Cosmos.kinds/0`) built from drifting SVG star tiles, gradients and CSS 3D transforms; only transform and opacity animate. | Owner's request: the three.js scenes made phones lag on every page. A game page that wants 3D draws its own. |
 | 2026-10-27 | **Behind Docker Desktop every visitor's address is the node's own, `192.168.65.3`** (the Kubernetes node's InternalIP; Docker's port forwarding replaces the client address before nginx sees it, and the ingress adds no real-IP header). It names no one, so `Bacon8.Security.blockable_ip?/1` refuses to block private, loopback and link-local addresses (the Block buttons, the honeypot, the suspicious-request plug, and the blocker plug all check it), and sign-ins are throttled by the account (`Security.throttle_key/2`) when the address names no one. Other per-address limits (registration 5 per address, the API's 200 a minute, `auth_login` 5 per 5 minutes in the router) are still shared by all visitors until real addresses are passed on. | Found from the security page, which showed internet scanners (`/blog/.env`, `wp-config.php`) as one internal address: it is not a compromised container. A shared address meant one scanner's probes, or five wrong passwords, could block or lock out every member. Real addresses need a proxy in front that passes them on (the owner's call). |
@@ -484,16 +248,17 @@ priv/games_repo/migrations games DB
 assets/                    esbuild + tailwind; SVG/CSS cosmos backgrounds (cosmos.css); vendor/ shims for plugins
 plugins/                   installed plugins, one folder each (§9); bacon_world/ (a game) and bacon_store/ (a site plugin) are the examples
 library/                   gitignored: licensed source assets shared by every game (Substance .sbsar...), each kind with its LICENSES.md; never committed or deployed
-  pipeline/                the Bacon8 asset pipeline (Blender scripts, B8 skeleton and human blends, animation sources), moved from RaysSpaceSim 2026-10-23 (`scripts/`, `Characters/`, `Animations/`, `out/`); not in git
+  pipeline/                the Bacon8 asset pipeline (Blender scripts, B8 skeleton and human blends, animation sources), moved out of the RaysSpaceSim project 2026-10-23 (`scripts/`, `Characters/`, `Animations/`, `out/`); not in git
   makehuman/               CC0 MakeHuman sources for the humans
 k3s/                       kustomize base + overlays (dev, prod)
 config/runtime.exs         all deploy-time configuration via env vars
 ```
 
 **Not part of the hub:** any plugin folder other than `plugins/bacon_world`, `plugins/bacon_store`, `plugins/chat_channels` and `plugins/feedback` (gitignored; a
-private plugin is its own repository), and a game repository checked out at the root
-(`/RaysSpaceSim/`, gitignored). RaysSpaceSim's deploy and build scripts, k8s manifests,
-code map, mix task and admin pages moved into its private plugin on 2026-10-16.
+private plugin is its own repository). RaysSpaceSim's deploy and build scripts, k8s manifests,
+code map, mix task and admin pages are in its private plugin (2026-10-16), and so is the Unreal
+project itself: `plugins/rays_space_sim/unreal/` is a second, nested git repository (2026-10-29).
+The plugin's `.gitignore` and the root `.dockerignore` (`plugins/*/unreal`) keep it out of both.
 
 ---
 
@@ -1294,55 +1059,30 @@ Ordered roughly by how much it hurts.
 
 - **Much of the core still has no tests.** Found 2026-10-25 by module name (indirect cover may
   exist): `Security`, `RateLimiter`, `Uploads` (apart from its path functions), `UserFileUpload`,
-  `UserSession`, `Moderation`, `Email`, `Mailer`, `Entitlements`, `Calendar`, `Desktop`, `Audit`,
+  `UserSession`, `Moderation`, `Email`, `Mailer`, `Calendar`, `Desktop`,
   `Avatar`, `Storage` and the media code. There are no LiveView tests for the profile, the admin
   dashboard, user management or the SQL console. Covered so far: the forum (now the plugin), pages
   and blog (the context, the public pages, both admin pages, the inline media), `SafePath`,
   notifications. Security-sensitive areas (§14) deserve tests before they are touched.
-- **RaysSpaceSim's half of the 2026-10-25 sound delivery is uncommitted** in its repository
-  (a C++ audio subsystem, 352 sounds, FLAC sources; `handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`).
-  It has not been compiled or verified by Claude Code.
-- **Chat Channels is finished** (`docs/chat-channels-plugin.md`, all four phases). `ChatLive` is ~2,050 lines of
-  handlers; splitting those by feature is optional. The store's own channel-pass tests need chat installed.
-- **Comments** (2026-10-26) exist, are moderated (`/admin/comments`), have one-level replies, notify staff and
-  the person replied to, and let a member edit or delete their own.
+- `ChatLive` (the `chat_channels` plugin) is ~2,050 lines of handlers; splitting them by feature is optional.
+  The store's own channel-pass tests need chat installed.
 - **RaysSpaceSim's settings still live in the hub's prod configmap** (`HOLOSIM_*`,
   `WORLD_*`, and `deploy-game.sh` writes `HOLOSIM_IMAGE` there), so a game deploy edits a
   hub file. Move them to a configmap the plugin's `k3s/` owns and have the hub deployment
   read it with `envFrom` (`optional: true`).
-- ~~Third-party material served to players~~ (removed from the repository and replaced
-  2026-10-20 with original sounds and music, an original default avatar, no third-party
-  fonts and CC0-based characters). **Still to do in production:** delete the old files
-  from the uploads and models volumes, and sync the new models.
+- **Old third-party files may still sit in production's volumes.** The repository stopped serving third-party
+  material on 2026-10-20 (original sounds, music and default avatar; no third-party fonts; CC0-based characters).
+  Still to do in production: delete the old files from the uploads and models volumes and sync the new models.
 - **The legal pages are unpublished drafts.** Publish them from `/admin/pages` after the
   lawyer's review, and before the store takes live payments.
 - **Game releases are Development builds**: the console works for players and the window
   title carries debug info. Ship Shipping builds (`CLIENT_CONFIG=Shipping`).
 - A few core comments still mention RaysSpaceSim as history. Harmless; don't add new ones.
-- ~~Legacy wire names (`holo_sim_id`, `PUT .../holo_location`)~~ (removed 2026-10-20, once
-  every client and server had been rebuilt).
-
 - **The `assets.setup`, `assets.build`, `assets.deploy` and `lint` mix aliases (and so
   `mix setup`) call `scripts/dev-assets.sh`, which no longer exists.** Assets are built
   only inside the image (`Dockerfile.multistage`); nothing is built on the development PC
   (decisions log). Point the aliases at a container build, or drop them.
 
-- ~~`mix.lock` is not committed~~ (committed 2026-10-15).
-- ~~Dead quota columns on `users`~~ (`storage_quota_bytes`, `storage_used_bytes`,
-  `subscription_tier`, `subscription_features`; dropped 2026-10-16, migration
-  `20261016210000`). Quota comes from `Bacon8.Drive.quota_bytes/1`.
-- ~~The test suite can't run~~: `test/test_helper.exs` and `test/support/data_case.ex`
-  added 2026-10-15 (sandboxes both repos; `user_fixture/1`, `tmp_upload/1`).
-- ~~`cms_options` schema and migration disagreed~~ (fixed 2026-10-15): fresh databases got a
-  table `Settings.Option` couldn't use, and production's had a unique `key` column nothing
-  set, which would have broken the second new setting. Fixed in production, and the site
-  baseline now has the schema's shape.
-- ~~Scheduler engine wrote a column that didn't exist~~ (fixed 2026-10-15):
-  `earliest_finish_at` added to `tasks` and `Scheduler.Task`.
-- ~~`subscriptions` schema didn't match the table~~ (fixed 2026-10-15): the schema said
-  `cancelled_at` (the column is `canceled_at`; now `source: :canceled_at`) and seven
-  declared fields had no column. Added in production; in the site baseline.
-- ~~The root `Dockerfile` used `FROM elixir:latest`~~ (pinned to `elixir:1.19`).
 - **`Bacon8.LogBufferBackend` is a legacy `:gen_event` Logger backend**, deprecated since
   Elixir 1.15. It works (and now normalises the `:warn` level it is still handed), but should
   become an Erlang `:logger` handler.

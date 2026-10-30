@@ -2,7 +2,7 @@ defmodule ChatChannels.Plugin do
   @moduledoc """
   Chat Channels: text, voice, video and stream channels, messages, replies,
   reactions, pins, invites, custom emojis and per-channel membership. It was the
-  hub's forum until 2026-10-25 (docs/chat-channels-plugin.md).
+  hub's forum until 2026-10-25 (plugins/chat_channels/README.md).
 
   It is a *site* plugin: it mounts at `/chat`, and the hub reaches it only through
   plugin hooks. Games that build things per channel (RaysSpaceSim's Holo-sims)

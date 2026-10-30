@@ -1,121 +1,65 @@
-# Plan: the /pages and /blog builders
+# Pages and blog: how the builder works
 
-Status: **the safety net is built (2026-10-25); the four screens share one editing engine (2026-10-26); the editor itself was rebuilt, phone first, as the page builder (2026-10-28, "The page builder" below).** The owner answered the first questions the same day (below).
-The owner's words: the core keeps the traditional `/pages` and `/blog`, "which need to be
-bolstered quite a bit as the build tool for both isn't production grade."
+The core keeps the traditional `/pages` and `/blog`. Only admins, GMs and editors write them (members comment).
+Pages and posts are edited **in place**, on the public address, with the page builder (last section). The admin
+screens (`/admin/pages`, `/admin/blog-management`) list, start, publish, schedule and delete; staff with the
+`:content` area reach them (`Bacon8.Permissions`; `admin_access_test.exs` guards every other admin route).
 
-## What exists (measured)
+## The pieces
 
-There are **four places content is edited**, and they overlap:
+| | Where |
+|---|---|
+| Public pages and in-place editing | `Bacon8Web.PageLive` (`/pages/:slug`), `BlogLive` (`/blog/:slug`); both hand their editing events to `Bacon8Web.InPlaceEditing` |
+| Shared editing events (media, body, autosave) | `Bacon8Web.ContentEditing` (`lib/bacon8_web/live/content_editing.ex`) |
+| Admin lists | `AdminLive.Pages`, `AdminLive.BlogManagement` |
+| The editing screen and settings panel | `Components.EditorShell`, `Components.ContentSettings` |
+| The editor (JavaScript) | `assets/js/page_builder/`; `block_editor_library.ts` (the image library window) and `block_editor_columns.ts` |
+| Public rendering of blocks | `Components.BlockEditor` |
+| Context and schemas | `Bacon8.Content`, `Page`, `Post`, `Comment`, `Content.InlineMedia`, `Content.Library`, `Content.Revisions`, `Content.Publisher` |
 
-| | Lines | Who can use it |
-|---|---|---|
-| `AdminLive.Pages`, `/admin/pages` (a form with the block editor) | 312 | admins (`is_admin`) |
-| `AdminLive.BlogManagement`, `/admin/blog-management` (a form, tags, featured image, media picker, autosave) | 605 | admins |
-| Inline editing on `PageLive`, `/pages/:slug` (the block editor in place, autosave, title) | 382 | admins, GMs, editors |
-| Inline editing on `BlogLive`, `/blog/:slug` (the same) | 592 | admins, GMs, editors |
-| `Components.BlockEditor` (the block builder both use; mostly JavaScript) | 453 | |
-| Context and schemas: `Bacon8.Content`, `Page`, `Post`, `Comment`, and the new `Content.InlineMedia` | about 400 | |
+A page's body is JSON in the `pages.content` text column: rows, then columns (with a width), then blocks. Block
+types the editor knows: text, html, quote, callout, divider, embed, api and button, among others. The seven legal
+pages (terms, privacy, refunds, copyright, contact, credits, gems) are seeded by a migration as unpublished
+placeholders, and the credits page is edited by migrations (textures, MakeHuman), so **the JSON shape is a contract**
+other code writes to. Do not change it without a migration.
 
-`PageEditorLive` and `BlogEditorLive` (about 1,300 lines) were a fifth and sixth copy; they were
-routed nowhere and referenced by nothing, and were deleted 2026-10-25.
+## Security (found by the tests, 2026-10-25, and fixed)
 
-A page's body is JSON in the `pages.content` text column: rows, then columns (with a width),
-then blocks. Block types the editor knows: text, html, quote, callout, divider, embed, api
-and button, among others. The seven legal pages (terms, privacy, refunds, copyright, contact,
-credits, gems) are seeded by a migration as unpublished placeholders, and the credits page is
-edited by migrations (textures, MakeHuman), so **the JSON shape is a contract** other code
-writes to. Do not change it without a migration.
+- **Drafts are for staff only** (admins, GMs, editors). Everyone else is sent to the blog; a slug nobody has does the
+  same instead of crashing.
+- **Uploads and removals are confined.** The inline media handlers had two path-traversal holes (the temp file was
+  named from the client's file name; "remove" joined any `/uploads/public/...` URL without resolving `..`). Both now
+  go through `Bacon8.Content.InlineMedia` and `Bacon8.SafePath`: a page can remove only its own uploads, an upload
+  over 25 MB is refused, and `store/2` refuses types a browser runs (BACON8.md invariant 4).
+  `Uploads.delete_file/1` and `file_exists?/1` are confined too.
+- A second session attacked `remove/2` and it held; the review found gaps elsewhere (avatars, chat channel icons,
+  `.rss`/`.atom` served inline), now fixed (see BACON8.md's decisions log).
 
-## Found and fixed by the tests (2026-10-25)
+## Tests
 
-Context (`37d84ea`): publishing without an explicit `published_at` crashed; a draft with no body
-crashed on the `NOT NULL` column; renaming rewrote the URL (so the inline title edit changed a
-page's address); `approve_comment` approved nothing.
+| File | Covers |
+|---|---|
+| `test/bacon8/content_test.exs` | the context: slugs, publishing, drafts, listing, comments |
+| `test/bacon8/safe_path_test.exs` | `SafePath`: resolve, inside?, filename, active content (it guards every upload) |
+| `test/bacon8/content/inline_media_test.exs` | storing and removing inline media, with hostile names and URLs; refused types; size |
+| `test/bacon8/uploads_paths_test.exs` | URL to path, delete, exists, all confined; never the drive's blobs |
+| `test/bacon8_web/plugs/uploads_guard_test.exs` | what `/uploads` serves inline and what it sandboxes |
+| `test/bacon8_web/live/page_live_test.exs`, `blog_live_test.exs` | who sees what; the edit button; editing in place; media events |
+| `test/bacon8_web/live/admin_pages_test.exs`, `admin_blog_management_test.exs` | access; starting, listing, publishing, scheduling, deleting |
+| `test/bacon8_web/live/in_place_editing_test.exs`, `content_editing_test.exs` | settings, publishing, schedule, versions, deleting, featured image, the library in the editor |
+| `test/bacon8/content/library_test.exs`, `plugin_posts_test.exs` | the image library; posts from plugins |
+| `test/bacon8_web/live/page_builder_test.exs`, `assets/js/__tests__/page_builder_model.test.ts` | the page builder (server side; the editor's model) |
+| `test/bacon8_web/controllers/editor_media_controller_test.exs` | the HTTP upload |
 
-The editors and public pages:
+## Not covered, or open
 
-- **Drafts were public.** `/blog/:slug` showed any post by its slug, drafts included, to anyone,
-  signed in or not. A draft is now for staff only (admins, GMs, editors); everyone else is sent to
-  the blog. The public pages already hid drafts, but only from non-admins: GMs and editors, who may
-  edit a page, couldn't open their own drafts. Same rule now.
-- **A slug nobody has crashed** the blog page (a raise); it sends the visitor to the blog.
-- **Viewing a draft crashed** the post page (it formats `published_at`, which a draft hasn't got).
-  It shows "Draft, not published", and dates fall back to the day the post was written.
-- **Two path-traversal holes** in the inline media handlers of `PageLive` and `BlogLive`, reachable by
-  staff: the temp file was named from the client's file name (`../../x` wrote, then deleted,
-  a file outside the temp directory), and "remove" joined any `/uploads/public/...` URL onto the
-  uploads directory without resolving `..`, so it could delete any file the app could. Both now go
-  through `Bacon8.Content.InlineMedia` and `Bacon8.SafePath`; a page can remove only its own
-  uploads, and an upload over 25 MB is refused. `Uploads.delete_file/1` and `file_exists?/1` had the
-  same flaw (their callers pass trusted URLs, but they are now confined too).
-  **Reviewed 2026-10-25 by a second session** (`handoff/CLAUDE_CODE_PROMPT_2026-10-25b.md`): `remove/2`
-  held under attack. The review added six tests here, made `store/2` refuse types a browser runs
-  (BACON8.md invariant 4) and refuse oversized base64 before decoding, and found gaps outside this
-  module (the avatar buttons on /profile, chat channel icons, `.rss`/`.atom` served inline; BACON8.md,
-  2026-10-25).
-
-## Tests that exist now
-
-| File | Tests | Covers |
-|---|---|---|
-| `test/bacon8/content_test.exs` | 34 | the context: slugs, publishing, drafts, listing, comments |
-| `test/bacon8/safe_path_test.exs` | 16 | `SafePath`: resolve, inside?, filename, active content (it guards every upload) |
-| `test/bacon8/content/inline_media_test.exs` | 20 | storing and removing inline media, with hostile names and URLs; refused types; size |
-| `test/bacon8/uploads_paths_test.exs` | 11 | URL to path, delete, exists, all confined; never the drive's blobs; `/uploads/` URLs only |
-| `test/bacon8_web/plugs/uploads_guard_test.exs` | 3 | what `/uploads` serves inline and what it sandboxes (2026-10-25 review) |
-| `test/bacon8_web/live/page_live_test.exs` | 20 | who sees a page; the edit button; editing in place; media events |
-| `test/bacon8_web/live/blog_live_test.exs` | 16 | the list, a post, drafts, editing in place, media events |
-| `test/bacon8_web/live/admin_pages_test.exs` | access; starting, listing, publishing, scheduling, deleting a page |
-| `test/bacon8_web/live/admin_blog_management_test.exs` | access; starting, listing, publishing, scheduling, deleting a post |
-| `test/bacon8_web/live/in_place_editing_test.exs` | settings, publishing, schedule, versions, deleting, featured image, the library in the editor |
-| `test/bacon8/content/library_test.exs` | the image library |
-
-## Still not covered or not looked at
-
-- **The block editor itself** (`Components.BlockEditor`, mostly JavaScript): rendering of every block
-  type, the JSON shape, `render_blocks/1`. The seeded legal pages and the credits migrations depend
-  on that shape.
-- The blog's featured-image upload, the media picker, the social share component, `PageLive.Index`.
-- **Permissions are inconsistent, and it is the owner's call.** GMs and editors may edit in place on
-  the public pages (and now see drafts there), but the admin pages need `is_admin`, so they can't
-  open `/admin/pages` or `/admin/blog-management`. The admin pages sit in the admin sidebar beside the
-  SQL console and user management, so simply opening them to GMs and editors is not free. The tests pin
-  today's behaviour (`admin_pages_test.exs`, `admin_blog_management_test.exs`).
-- **Comments have no moderation UI** (`approve_comment/1` works now, and nothing calls it); there is
-  no spam state; the model has `is_approved` only.
-- Slugs: a collision says "has already been taken" and the user must choose another; nothing suffixes
-  it. Posts cut the slug at 100 characters, pages don't. `Content.list_posts_by_type/1` and the
-  `:post_type` filter are stubs.
-- `Content.list_user_media/1` carries a `rescue` for a missing `folder_path` column: the schema and
-  the database have drifted before.
-
-## Decisions so far (owner, 2026-10-25)
-
-- **Start with tests for the editors**, so the rebuild has a safety net.
-- **Who writes:** admins, GMs and editors only. Members don't write pages or posts. (So there is no
-  member-facing editor, and comment moderation is a staff job.)
-- **Keep the rows, columns and blocks model.** Every existing page keeps working, and no
-  content migration is needed.
-
-## Still to ask
-
-1. **What is wrong in daily use?** The most useful input is a list of what annoyed the owner in the
-   editors; it decides the order better than an audit.
-2. **What does "production grade" need to include?** A suggested list to pick from: revisions and
-   undo; scheduled publishing; SEO fields and a sitemap that follows published pages; an image
-   library with alt text; preview before publishing; categories and tags on posts; an RSS feed;
-   comment moderation with spam control.
-3. **Is the blog per-site content only**, or may games (plugins) post to it (patch notes)?
-
-## Suggested order
-
-1. ~~Tests for the editors and the public pages~~ (done 2026-10-25, above).
-2. **Ask the owner** the three questions under "Still to ask", and decide the permissions question above.
-3. Collapse the four editing surfaces into one builder (the admin pages and the inline editors share
-   one block editor today but not one save path), keeping the block model.
-4. Fix what the owner listed, then add the production-grade items they pick, one at a time, each with
-   tests and a deploy.
+- The editor's rendering of every block type and `render_blocks/1` are lightly tested. The seeded legal pages and
+  the credits migrations depend on the JSON shape.
+- The social share component and `PageLive.Index`.
+- Slugs: a collision says "has already been taken" and the user chooses another (posts cut the slug at 100
+  characters, pages don't). `Content.list_posts_by_type/1` and the `:post_type` filter are stubs.
+- `Content.list_user_media/1` carries a `rescue` for a missing `folder_path` column: the schema and the database
+  have drifted before.
 
 ## One builder (2026-10-26)
 
@@ -229,9 +173,7 @@ content centered and well maintained", and creating a page or post should be qui
 sheets as HTML), `ui.ts` (the sheet and the formatting bar), `html.ts` (the HTML sent beside the JSON), `hook.ts`
 (the LiveView hook, still called `BlockEditor`, and `AutoGrow` for the title). Styles: `assets/css/page_builder.css`.
 The editing screen: `Bacon8Web.Components.EditorShell`, shown by `PageLive` and `BlogLive` while editing.
-`block_editor_hook.ts` (the old editor, 2,771 lines) is no longer loaded; delete it with `git rm` when convenient
-(`block_editor_library.ts` and `block_editor_columns.ts` stay: the library window is reused, and the columns test still
-imports its file).
+The old editor (`block_editor_hook.ts`) was deleted 2026-10-29; `block_editor_library.ts` and `block_editor_columns.ts` stay.
 
 **What it does.**
 

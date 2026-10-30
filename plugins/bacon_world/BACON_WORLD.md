@@ -47,725 +47,84 @@ so it can be rebuilt and changed.
 
 ## 2. State on 2026-10-29
 
-> **Hub note from Claude Code, 2026-10-25.** Everything listed below up to and including the
-> 24f delivery (skill tree, stable, game cards, the Gem) is **committed and deployed**, and
-> so is the hub half of the 25a sound delivery (`575aac6`). Wording below that says "not yet
-> deployed" for older items is stale. The player's personal glass colour now reaches this
-> game's windows through `--bwg-*` CSS variables (set by `assets/js/glass_theme.ts` and the
-> root layout; unset on the default theme, so the game keeps its own look). The Frosted and
-> preset colours on /profile work again (a custom tint used to override them).
+This section used to be a dated log of every delivery (2026-10-22 to 2026-10-29, about 720 lines, with the
+tuning numbers and the owner's play-test notes). It was replaced on 2026-10-29 by the inventory below. The log
+is in git: `git log -p --follow -- plugins/bacon_world/BACON_WORLD.md` (the last commit that still had it is the
+one before "Docs: current state"). Look there when a symptom looks familiar, for example a two-handed grip that
+"was fixed" before. The lessons that came out of it are in §6 and §7.
 
-**Deployed (through `1eb78e8`, 2026-10-21):**
+Everything below is committed and deployed. Production needs the models synced
+(`sync-models-to-k8s.sh`) for the terrain and the large models; without the terrain files the game falls back to a
+flat round island.
 
-- fighting, skeleton creatures, EverQuest looting, inventory, levels;
-- real recorded sounds;
-- character select and the creator with looks;
-- the lobby village;
-- RaysSpaceSim-style controls and EverQuest-style mouse handling.
+### The world
 
-**Committed 2026-10-22, not yet deployed (models not yet synced):**
+- **Crater Lake** is the starter zone: the owner's World Creator heightfield (4096 m square, heights -306 to
+  +689 m), built into game files by `library/pipeline/scripts/terrain_build.py` (`World/Terrain/` on the models
+  volume). The town's centre is the game's origin and its ground is height 0. The server (`BaconWorld.Terrain`,
+  `BaconWorld.Water`) answers height, water and walkable questions; the browser (`terrain.ts`, `terrain-world.ts`)
+  draws 32 x 32 chunks with level of detail, painted by slope and height. One water plane is the sea and every lake.
+- **Water**: wading to 1.2 m; deeper water is swum (slower, no jumping, fighting or fishing), **C** swims down and
+  **Space** up. Mounts swim too. `water.ts` mirrors `BaconWorld.Water` with the same tests on both sides.
+- **Fishing**: Old Bram, Angler, sells the pole; **R** casts and reels in; the Millpond and the sea have their own
+  catches. The bobber is a curl of bacon (`crafted.ts`).
+- **Sound**: placed sound (pan, distance, low-pass, a voice cap, a master compressor), spell schools, dragon and
+  mount voices, beds and music by mood. CC0 sources, built by `library/pipeline/scripts/audio/build_audio_v2.py`.
+  Real surf, splash and kraken recordings are still wanted.
+- **The sky and the glass**: the sun and moon sit in the sky; the player's personal glass colour reaches the game's
+  windows through `--bwg-*` CSS variables (unset on the default theme).
 
-| Handoff prompt (`handoff/`) | What it brought |
-|---|---|
-| `CLAUDE_CODE_PROMPT_2026-10-22b.md` | Skeletons now attack and can be hit (the BEAM's monotonic clock is usually negative; timers started at 0). A remote-desktop mouse filter (`mouse-filter.ts`) replaces the camera-smoothing option, which is gone. Effects, nature and music volume sliders. New grass footsteps. |
-| `CLAUDE_CODE_PROMPT_2026-10-22c.md` | The female rebuilt on MakeHuman (CC0), with 31 MakeHuman hair styles, MakeHuman clothes fitted to her, strand lashes and a brow card. Hair-style aliases (client and server). Garments hide the parts of garments under them. And these docs. |
+### Building (the owner's "build mode")
 
-**Committed, deployed and synced 2026-10-23:** `handoff/CLAUDE_CODE_PROMPT_2026-10-23.md` (below).
-The owner's testing of it led to the next delivery.
+- The backquote key toggles build mode (`build-world.ts`, `build-ui.ts`, `placed-view.ts`; server
+  `BaconWorld.Building`, `BuildEvents`; tables `bacon_world_placements`, `bacon_world_asset_rules`,
+  `bacon_world_seeds`). A searchable window lists the catalogue (128 models: props, trees and plants, rocks,
+  building pieces, every creature kind, NPC templates). Place, Shift-place, pick up, turn, raise, size, remove, undo.
+- **Who may place what**: each asset has a lowest role (`admin > gm > moderator > editor > member`); admins change it
+  in the window. Every check is on the server, with a burst limit.
+- **The village and the camps are placements**, seeded once from `priv/seed/*.json` (`Building.ensure_seeded/1`).
+  What builders move or delete stays that way. Drawn instanced (one draw call per kind and part).
+- **Binding stones** (`P_Waystone`, admin-only; one by the village square): within 100 m only GMs and admins may
+  build (`Building.protected?/4`). **R** beside one binds you there; Recall and respawn use the bind.
+- Placed creatures are spawn points (count 1-12, spread 0-40 m); placed merchants trade with their template's stock.
 
-**Delivered 2026-10-29 (a), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-29a.md`): **the site's hat, fork, arrow and
-bacon come into the game.** The owner: the front page's hat and arrow (now on /games) should be "a wearable hat and
-placeable object", the arrow "the bow's projectile"; "make the grill fork the new starter 1h piercing weapon"; "the bacon
-can be brought in game too... as the fishing bobber". All four are drawn in code, from the same shapes as the site's
-Blender renders (`library/pipeline/scripts/hero_hat.py`, `hero_forks.py`), in a new `crafted.ts`: **no models to sync**.
+### Combat and creatures
 
-- **The grill fork** (`grill_fork`, set `dagger`, Piercing, DMG 4 / DLY 8, reach 0.6 m, model `GrillFork`): a 0.6 m
-  barbecue fork, walnut handle with brass ferrule and cap, steel shank and two tines. It replaces the Worn Dagger in the
-  starter kit (the Worn Dagger stays in the catalogue, so characters who have one keep it). Held in the weapon grip like
-  the dagger (`items.ts` PROCEDURAL).
-- **The Robin Hood hat** (`robin_hood_hat`, armour, AC 1, 75c, sold by Tilda): the hero hat's crown, brim, band, a red
-  feather and a quill. **A new worn slot, `head`** (`Inventory` `@equipment`, `Items` `@wear_slots`, the inventory window's
-  Head box, `wardrobe.ts` `GearSlot`). Worn, it rides the head bone (`crafted.ts` `wearHat`, placed from the skeleton's
-  bind pose so it suits either body, `HAT_FIT` tuned in the harness: female up 8.5 cm, scale 1.15; male up 10 cm, back
-  1.2 cm, scale 1.25); `model-manager.ts` `setGear` puts it on and takes it off, so other players see it too. **Placeable**:
-  `X_RobinHat` in the build catalogue (Props, members), drawn from the same code (`world-dressing.ts` `template()`).
-- **The bow's arrow** is the hat's arrow (`makeArrowModel`: a 0.79 m shaft, crest bands, a nock, a four-sided head, three
-  vanes, one red), in the hand and in flight (`arrows.ts` uses `items.ts` `makeArrow`).
-- **The fishing bobber** is two wavy strips of bacon, meat and fat by vertex colour (`makeBaconBobber`, `water.ts`).
-- Icons (128 px, `priv/static/icons/grill_fork.png`, `robin_hood_hat.png`), rendered from the same code.
-- Checked: the four models in a three.js preview, the hat on both bodies in the harness (`?hat=1`, `?hatfit=up,fwd,tilt,scale`)
-  from the front, side and back.
-- Tests: Elixir `inventory_test.exs` (the login gear now has `head`; new: the fork in the starter kit, the hat only on the
-  head, on and off), JS `crafted.test.ts` (6: sizes and directions, the hat's faces point outward, the bobber, `hatOnHead`).
+- Melee for both hands (arcs 90 degrees one-handed, 110 two-handed), looting EverQuest style (G takes everything),
+  levels, coins, con colours, PvP with red names. Bows never run out of arrows (cone hit along the aim; arrows fly
+  and stick for four seconds).
+- **Spells and skills**: mana, cast times, a spell bar (2x10) and skills on Q E F Z X; the **skill tree** (K, Path of
+  Exile style, one tree for everyone; the editor is `/admin/bacon_world/skills`).
+- **Groups** (`BaconWorld.Groups`): up to 20, `/invite`, `/accept`, `/disband`, `/makeleader`, `/g`; experience is
+  split by level (`Groups.shares/2`), loot by anyone in the killer's group, coins split among those near.
+- **Creatures**: skeletons, giant and plague rats, goblins and goblin archers, orcs and orc warlords, and two
+  bosses: **Baconator**, the dragon (level 12, his own camp on the plateau NE of the crater), and the **Kraken**
+  (level 16, roams the deep water of Crater Lake; its specials are grab, ink and maelstrom, wound up so players can
+  see them coming). Camps are placements now.
+- **Mounts** (entitlement kind `bacon_world_mount`, sold in the Bacon Store; the stablemaster Rowena Ashby chooses
+  one): three drakes that fly (double-tap Space, like RaysSpaceSim) and the Abyssal Kraken that swims. Riders fight
+  with the mount's moves (claw and fire breath; tentacle lash and maelstrom).
 
-**Delivered 2026-10-28 (b), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-28b.md`): **the village as placements,
-binding stones, groups, and the store's glass cards.** The owner's brief: convert the village and the existing camps into
-placements, where only admins and GMs may edit the town round a binding stone (100 m, up from the plan's 70 m); EverQuest
-groups of up to 20 (invite, disband...; no raids), experience divided by the members and their levels; and, on the site,
-every purchasable item as a glass card like the games' cards, the item in 3D, a sheet that slides up to buy it.
+### Characters and items
 
-- **The village and the camps are placements** (`BaconWorld.Building.ensure_seeded/1`, migration `20261028100000`:
-  `bacon_world_seeds`). The layout `world-dressing.ts` draws was captured from the client itself into
-  `priv/seed/village.json` (344 pieces: houses, plinths, fences, stalls, lamps, trees...), `camps_island.json` (210) and
-  `camps_crater_lake.json` (642; pieces and the camps' creatures as spawn placements). The first time a zone starts, the
-  rows go in once (a row in `bacon_world_seeds` in the same transaction: never twice, even on two nodes), each stood on
-  the ground, `data.origin` saying where it came from (`"village"`, `"camp:<id>"`), stretched pieces keeping their
-  `data.s` [x, y, z] (gables, crags) through moves. From then on what builders move or delete stays that way; the
-  client stops drawing those pieces itself (`villageOff`, `campsOff`) and the zone stops spawning the seeded camps'
-  creatures from code. The village is also a new building piece: `X_Plinth` (a house's stone plinth).
-- **Drawn instanced** (`placed-view.ts` rewritten): one InstancedMesh per part of each kind of piece, so the village's
-  pieces cost a draw call per kind and part (about 150), not per piece. Lamps glow at night like the code's did. Checked
-  in the harness: the seeded village renders the same as the code's (plus its binding stone).
-- **Binding stones**: a placed waystone (`P_Waystone`, admin-only) is one; the village's stands by the square. **Within
-  100 m of one only GMs and admins may place, move or remove anything** (`Building.protected?/4`, checked on the server
-  for the old and the new spot; the ghost turns red for members; build mode draws the 100 m circle). **R** beside a stone
-  (5 m) binds you there (`"bind_stone"`, `settings["bind"]`): Recall and respawning after death take you back to it
-  (`Combat.respawn_point/2`; another zone's bind sends you to the zone's spawn).
-- **Groups** (`BaconWorld.Groups`, a GenServer with an ETS table; `BaconWorldWeb.GroupEvents`; `group-ui.ts`,
-  `group-world.ts`). Up to 20. **Invite** your target (the window's button) or `/invite Name`; the invitee gets an
-  Accept / Decline box (`/accept`, `/decline`, or `/invite` again, as in EverQuest; it lapses after a minute). The leader
-  **kicks** (`/disband Name`, `/kick`, the row's ✕), hands the **lead** over (`/makeleader`, ♛), **disbands**
-  (`/disband`); anyone **leaves** (`/disband` as a member, `/leave`, the button). The lead passes on when the leader
-  leaves; a group of one ends. Logging out, closing the tab or a dropped connection leaves the group (each member's
-  LiveView is monitored); zoning keeps it. **/g** talks to the group. The group window lists the members with the
-  leader's crown, their level and a health bar (from the zone; "away" for one elsewhere); click a row to target them.
-  - **Experience, EverQuest style** (`Groups.shares/2`): the kill's experience against the highest-level member who
-    earns any, plus 2% a member beyond the first, split in proportion to level (a level 20 earns twice a level 10's
-    share). Members the creature cons grey to get nothing and don't count; nor do the dead or anyone more than 100 m
-    from the killer. Alone it is the kill's experience as before. Each member's own LiveView awards its share
-    (`{:group_xp, ...}`), so levels, presence and the HUD update the same way.
-  - **Loot**: anyone in the killer's group may loot during the lock minute, one looter at a time (`Brain.loot_open/4`);
-    the corpse's coins are split evenly among the group members near (the looter keeps the odd coppers; "as your
-    split").
-- **The store's 3D mounts**: `BaconWorld.Plugin.store_art/2` tells the Bacon Store to show each mount turning in 3D
-  (sheets in `priv/static/store/`, rendered from the game's own models by `library/pipeline/scripts/store_turntables.py`;
-  the dragons tinted like `dragon-view.ts` tints them). See BACON8.md §8 for the cards.
-- Tests: 130 Elixir in the plugin (11 new: seeding once, the 100 m rule for members and GMs, binding, keeping a piece's
-  stretch; groups: invite, accept, leave, kick, lead, disband, 20 at most, a closed tab, the experience split, group
-  loot), 109 JS (7 new: `placed-view.test.ts`, `groups.test.ts`).
+- Two bodies, both built on MakeHuman's CC0 assets (§5): the female and the male, with Black Desert style body
+  sliders, MakeHuman hair styles and clothes. Everyone starts in underwear; clothes are cloth armour items.
+- **Items** (`items.ex`, `inventory.ex`): weapons by set (dagger, sword, axe, maul, spear, halberd, staff, bow,
+  fishing pole), armour in slots including **head**, EverQuest coins, merchants (Tilda Threadwell, Clothier; Old Bram;
+  the stablemaster; villagers). **The grill fork** (the site's front-page fork) is the starter one-handed piercing
+  weapon and the **Robin Hood hat** is a wearable (head slot) and placeable object; both, the bow's arrow and the
+  bacon bobber are drawn in code (`crafted.ts`), so there is nothing to sync.
+- **Two-handed weapons** are held by posing the weapon, not the arms (`two-hand.ts`, `human-factory.ts`
+  `twoHandDrive`): both hands are put on the weapon every frame with a two-bone IK. If a grip looks wrong, render
+  both bodies standing, running and through every swing before changing anything (§6).
+- Player names are Bacon8 blue, red with PvP on. Windows are draggable (`window-drag.ts`); the game's card on
+  /games has Baconator's head on its front.
 
-**Delivered 2026-10-28 (a), committed** (`669dca8`; `handoff/CLAUDE_CODE_PROMPT_2026-10-28a.md`): **build mode, rats, goblins
-and orcs, and the bow.** The owner's brief: the backquote key puts the character into build mode; clicking something your role may use
-picks it up and moves it; held, the right button turns it gently; a right-click alone deletes it; a searchable menu of
-what can be brought into the world; GMs and admins place NPCs and creatures. More creatures than skeletons and bosses:
-rats, goblins and orcs. And a bow that never runs out of arrows.
+### Tests
 
-- **Build mode** (`build-world.ts`, `build-ui.ts`, `placed-view.ts`; server `BaconWorld.Building`,
-  `BaconWorldWeb.BuildEvents`, migration `20261028000000`: `bacon_world_placements`, `bacon_world_asset_rules`).
-  - The backquote key (`` ` ``, left of 1) toggles it (the cursor goes free; the pointer can't be captured while it is on). A window on the right lists
-    the catalogue: the 90 props (split into Props, Trees & plants, Rocks), the 36 building pieces, every creature kind
-    and four NPC templates (villager, clothier, angler, stablemaster), searchable (every word, by name, category or
-    id; Enter takes the first match) and filterable by category. Entries the role may not use are hidden (a lock button
-    shows them, with the role they need).
-  - Pick an entry: a green ghost rides the ground under the cursor (red when not allowed). **Left click** sets it down;
-    **Shift+click** sets it down and keeps another in hand. **Left click on a placed thing** picks it up (it keeps where
-    the cursor caught it). Holding: the **right button held turns it gently** (45 degrees a second; Shift the other way),
-    the **wheel** or **Q/E** turn it 15 degrees, **PgUp/PgDn** raise and lower it 0.25 m (Shift: a 3 m storey),
-    **[ ]** size it (0.5-2), **Delete** removes it, **Esc** puts it back. **Right-click** (no drag) on a placed thing
-    removes it; **Ctrl+Z** undoes the last place, move or removal (25 deep, 5 minutes). Right-drag still steers and
-    left-drag still turns the camera. Building pieces snap to a 1.5 m grid and right angles (a checkbox; Alt ignores it).
-  - Creature spawns: a GM sets how many (1-12) and the spread (0-40 m); the zone (`Mobs.put_points/3`) spawns them at
-    once and respawns them there. In build mode a red ring and post mark each spawn, with its name; picking up a placed
-    creature (or its marker) moves the spawn, right-clicking one removes it. NPCs: a blue post, an optional name; a
-    placed merchant trades with its template's stock (`Merchants.templates/0`, `Merchants.placed/2`; ids `"p:<id>"`).
-  - **Who may place what**: each asset has a lowest role (`admin > gm > moderator > editor > member`); guests and the
-    banned never place anything. Defaults: props and building pieces for members, creatures and NPCs for GMs, the
-    bosses and the waystone for admins. **Admins change it in the window**, row by row (a role dropdown); stored in
-    `bacon_world_asset_rules`. Being allowed to place a kind means moving and removing any copy of it, whoever placed
-    it (the owner, 2026-10-26). Every check is on the server; a burst limit (40 changes in 10 s) is the only throttle.
-  - Placed props and pieces block walking (box, circle or two boxes either side of a doorway, from each model's extent;
-    floors, stairs, roofs, rugs and doors don't), client-side like the village's. Copies share geometry and one prepared
-    material per template material (surface textures applied once).
-  - Everyone in the zone sees every change at once (`bacon_world:build:<zone>`); placements arrive with `fetch_mobs`.
-  - Not yet: the village built in code (`world-dressing.ts`) and the code camps are not placements, so they can't be
-    moved; see §7.
-- **Rats, goblins and orcs** (`BaconWorld.Mobs.Spawns`; models `Mobs/B8_Rat.glb`, `B8_Goblin.glb`, `B8_Orc.glb`):
-  - **giant rat** (1-2, packs of five or six, quick, bites) and **plague rat** (3-4, bigger, sickly fur, glowing eyes):
-    an original model built from code (`library/pipeline/scripts/build_rat.py`: one loft from the nose to the tail tip
-    so the fur's UVs run along the body, ears, eyes, incisors, whiskers, four legs with toes; a 22-bone rig; a fur
-    texture and normal map painted in UV space; six keyed clips: Idle, Walk, Run, Bite, Hit, Death). `rat-view.ts`
-    picks the gait from the speed and lays the bite and flinch over it. Drops rat tails and pelts.
-  - **goblin** (2-4) and **goblin archer** (3-4, keeps to its 16 m reach and shoots: the client draws each arrow),
-    **orc** (5-7) and **orc warlord** (9-10, 210 HP + 30 a level, may drop the Ashwood Longbow): the MakeHuman male
-    reshaped (`build_greenskins.py`: his shape keys baked to a thin pot-bellied goblin or a huge orc; the head sculpted
-    by fields: long swept-back pointed ears, a hooked nose, a pointed chin and a bigger head; a jutting wide jaw, a heavy
-    brow, a flat broad nose and tusks; the skin his albedo recoloured and mottled, warts on goblins; his eye materials
-    retinted yellow or ember red; MakeHuman shorts or trousers and boots in dirty colours, the skin under them cut away;
-    a belt, a leather harness (strips laid on the body by ray casts), a pouch, a skull, a spiked pauldron). They keep his
-    rig, so they play his packs and hold the weapons in his grips, like the skeletons. Game scale 0.72 (goblin, about
-    1.3 m) and 1.12 (orc, about 2 m). Drops: goblin ears, tarnished trinkets, orc tusks, orcish war belts, and their
-    weapons (three new ones: the Orcish Cleaver, the Orcish Greataxe, the Spiked Club).
-  - **Camps** (new themes in `world-dressing.ts`): `warren` (spoiled stores and burrows), `goblin` (ragged tents round a
-    fire, a crooked stake fence, loot), `orc` (a stockade with a gateway toward town, war tents, braziers, banners,
-    weapon racks, a forge, skulls). Crater Lake: the Rat Nest (128, 112), the Drowned Cellars (-160, -696), the Goblin
-    Thicket (-152, -128), the Goblin Camp (104, -272), the Orc Warcamp (608, -360), the Warlord's Hold (888, -200), all
-    flat dry spots from the heightfield. Both worlds: the Rat Warren (62, 30) by the village; the round island also gets
-    a goblin camp (-96, 72).
-- **Bows** (`items.ex`: `hunting_bow` (Old Bram sells it, 60c), `goblin_shortbow`, `ashwood_longbow`; `ranged: true`;
-  set `"bow"`): two-handed, held in the left hand (`heldLeft`), drawn in code (`items.ts` BOWS: limbs bent back toward
-  the archer, a leather grip, horn nocks, a string whose middle follows the drawing hand each frame, an arrow nocked on
-  it while drawn). The library's Bow_Idle_Loop / Bow_Draw / Bow_Release clips (both bodies); the left button looses at
-  the end of the draw (0.84 s), the right button is a slower, harder shot. **Arrows never run out.** The server
-  (`Melee.ranged?/1`, `Brain.melee/4`) hits one thing along where the archer looks: a 30 degree cone out to the bow's
-  reach (26-38 m), the selected target within 60 degrees. `arrows.ts` draws each arrow (45 m/s, a shallow arc) to what
-  it hit, or on to the end of its reach, where it sticks for four seconds; the numbers show as it lands. Other players'
-  shots and the goblin archers' fly too.
-- Other fixes on the way: NPC names were pruned and rebuilt every frame (the hook's nameplate pruning didn't keep
-  them); creature hits and deaths sound like bone only for the skeletons now.
-- Icons (128 px, `priv/static/icons/`): the three bows and the six new drops (`library/pipeline/scripts/icons_0428.py`).
-- Tests: 119 Elixir (plugin; 11 new: `building_test.exs` and the new kinds and bows in `mobs_test.exs`), 102 JS (9 new:
-  `build-mode.test.ts`, `bow.test.ts`). The creatures, the bow on both bodies, arrows, placed objects and the whole
-  build-mode flow (place, Shift-place, turn, pick up, move, remove, undo) were checked in a three.js harness.
-
-**Delivered 2026-10-27 (c), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27c.md`): **fixes from the owner's
-second try of 27b.** Delivery (b) said the two-handers were checked "walking"; they were not checked running, where
-they failed. This time every two-hander was rendered on both bodies standing, running, and through the swings.
-
-- **Two-handers while moving.** The arms folded and flailed when running (all but the spear): the weapon's pose was
-  held in the upright body frame while the run clip leans and twists the chest, so the hands' targets ran away from
-  the shoulders. The pose is now held in the chest's frame (`human-factory.ts` `twoHandDrive`: `chestRestQ`,
-  `chestRestOff`), aimed half way between the chest and the body; a two-hander standing still takes the neutral
-  idle (the library stances twisted the chest).
-- **Faster swings**: a light swing 0.55-0.95 s (was up to 1.6 s), a heavy one at most 1.2 s.
-- **The spear and halberd** guard is in front of the body (the rear hand sat behind the hip); the sweep and the
-  sword/axe/maul windups are lower, beside the head instead of in front of the face.
-- **The fishing pole** is held like the other two-handers now (`two-hand.ts` ROD: both hands on the cork, the
-  elbows down, for both bodies) and its cast is a pose too: back over the shoulder, a flick forward.
-- **Under water**: the dark murk is gone; it was also what froze the game (switching the fog's kind rebuilds every
-  shader). Now only the existing fog's colour and distances ease toward a light blue-green (`world-dressing.ts`
-  `underwater`), with no rebuild.
-- **The Kraken's head no longer wobbles** when it starts, stops or creeps along: its swimming stroke keeps its own
-  phase (a change of pace no longer jumps it), the swim and land blends ease in and out, small speed changes are
-  ignored, and it turns slowly (`kraken-view.ts`, `mobs-view.ts`).
-- **The mount merchant's window closes** when the player walks away (`game-world.ts`), like the other merchants'.
-- Tests: 695 Elixir, 93 JS (1 new: a jittery Kraken moves no more than a smooth one).
-
-**Delivered 2026-10-27 (b), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27b.md`): **from the owner's first ride on
-the Kraken: diving, a roaming boss, and two-handed weapons started over.**
-
-- **Two-handed weapons, from scratch** (`two-hand.ts`, `human-factory.ts` `twoHandDrive`). The owner: the male's
-  two-handed positions were "messed up beyond all repair", his arms twisting and contorting in the swings. The
-  library's two-handed clips no longer move the arms at all. Each two-hander's guard and swings are poses of the
-  *weapon* (where the grip is, which way the haft and the edge point, how far the torso turns and leans), eased
-  between; every frame both hands are put on it: the main hand at the grip, the off hand up the haft (`HOLD.off`),
-  each hand turned by the weapon's own frame (so a wrist can't wring through 180 degrees), each arm by an IK that
-  keeps the elbow a true hinge toward its pole, the forearm's and the upper arm's roll shared with their twist
-  bones, the clavicle lifted when the hands go overhead. Swords, axes and mauls: a middle guard, a falling cut, a
-  rising cut, an overhead; spears and halberds: two thrusts and a sweep; the quarterstaff: a jab and a swing. The
-  legs keep their clips (standing still, the old swing's footwork). The fishing pole keeps its own guard. Both
-  bodies; checked in the harness at rest, walking and through every swing.
-- **Diving**: in deep water **C** swims down (to just over the bottom), **Space** swims up, and at the surface Space
-  jumps out. Under the surface the world turns a murky blue-green and closes in. The server takes positions down
-  to the bottom (`Terrain.bottom_units/3`).
-- **Mounts swim**: any mount in deep water swims (the drakes no longer walk on it): a drake low in the water at
-  half its pace, its back at the waterline; the Kraken at its 22 m/s; both dive with C and rise with Space.
-- **The boss Kraken is half as big again** (2.1 times the model: the mantle stands ~23 m out of the water; reach
-  16 m, specials' ranges 33-39 m, the maelstrom drags 9 m) and **roams the deep water on its own** (`roam`:
-  anywhere deep within 300 m of its spawn, a new heading when the deep water ends; a chase ends back where it
-  began).
-- **The Kraken model**: whole fins (webbed between the rays, no holes or torn fringe), a higher saddle; the mount
-  is a little bigger (0.4) with the rider up on its head, not in it. **The Tentacle Lash animates** (it had picked
-  arms that didn't exist).
-- Tests: 695 Elixir (1 new), 92 JS (4 new).
-
-**Delivered 2026-10-27 (a), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-27a.md`): **the Kraken, a second
-boss and a mount, and mounts that fight.** The owner's brief: a kraken in the middle of Crater Lake, "the stuff of
-nightmares", highly detailed like Baconator, sold in the store as a mount that can't fly but swims very fast; and
-every mount should attack (the dragons breathe fire and claw; the Kraken's moves were left to us). His reference
-art only set the mood: the design is ours.
-
-- **The model** (`library/pipeline/scripts/build_kraken.py`, `kraken_shape.py`, `kraken_skin.py`; built headless in
-  Blender like the dragon): a towering, ragged mantle with a crest of spines, thorns, torn bony fins full of holes and
-  old wounds (gashes, claw rakes, sucker-ring scars, barnacle crusts); a head with heavy lids over two great gold eyes
-  with slit pupils (on their own bones: they follow their target) and clusters of small red eyes; a lamprey maw, three
-  rings of hooked teeth round a black beak; eight webbed arms with two zigzag rows of suckers on stalks and hooks at
-  their tips; two 17 m hunting tentacles ending in hooked, serrated clubs with a bone blade and a barb. Bioluminescent
-  spots (lines down the arms and flanks, rings round the eyes, lures round the maw, glowing arm tips) are an emission
-  map the client pulses. About 98k triangles (44k of body, the rest teeth, hooks, spines and fins), 4096/2048/512 maps
-  (WebP in the GLB), 124 bones, no clips:
-  `Mobs/B8_Kraken.glb` on the models volume.
-- **It moves itself** (`kraken-view.ts`, `KrakenRig`, the same API as the dragon's rig): every arm writhes on its own
-  phase; swimming gathers them into a spear and pulses the mantle; one-shots for lash, slam, grab, squeeze, ink,
-  maelstrom, roar, hit and death (it sinks). Effects: an ink cloud and a whirlpool on the water.
-- **The boss** (`BaconWorld.Mobs.Spawns` "kraken", level 16, 1.4 times the model's size, so the mantle stands ~15 m out
-  of the water): it lives in the deep middle of the crater's lake (`kraken_deep`, Crater Lake only) and never leaves
-  deep water (`aquatic`). Unlike every other creature it goes for swimmers (riders in the air are still out of reach).
-  Its arms lash and slam (11 m); every 9-13 s a **special**, wound up so you can see it coming: **grab** (a tentacle
-  seizes its target, holds you fast 3.5 s and squeezes each second), **ink** (a cone: your screen goes black for a few
-  seconds) and **maelstrom** (everyone within 24 m is battered and dragged toward it; the long windup is the time to
-  swim clear). Specials are a new, general mechanism (`specials` on a kind); the client applies their effects to
-  whoever they hit (held, blinded, dragged). Loot: ink sacs, abyssal hooks, its beak (rare), and sometimes an Abyssal
-  Harpoon, a Krakenfang Cutlass or a Barnacled Buckler.
-- **Fighting while swimming is allowed now** (it was refused in (d)): the Kraken is out in the deep water.
-- **The Abyssal Kraken mount** (`BaconWorld.Mounts` "abyssal_kraken", $25, scale 0.3): can't fly; 22 m/s in deep water
-  (a quarter more sprinting), a slow 4 m/s heave on land. `ensure_store_products/0` creates its store product, off.
-- **Mounts fight**: while riding, the attack buttons are the mount's moves (`"mount_attack"`, creatures only):
-  drakes **Claw Swipe** (left) and **Fire Breath** (right: a 10 m cone, up to six creatures); the Kraken **Tentacle
-  Lash** (left, a wide sweep) and **Maelstrom** (right: everything within 7.5 m is battered and held 3 s). Everyone
-  sees the move.
-- Sounds: the Kraken uses the dragon's recordings pitched down. Real CC0 water sounds (a big splash, a whirlpool, a
-  wet slap, ink) are still wanted.
-- Tests: 694 Elixir (9 new), 88 JS (3 new).
-
-**Delivered 2026-10-26 (d), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-26d.md`): **swimming, camps
-across Crater Lake, and dismounting on hills**, from the owner's first walk on the terrain.
-
-- **Dismounting on a hill was refused** ("land first"): the server judged "in the air" by height above
-  0, the old flat ground. It now measures from what's underneath (the terrain or the water's surface,
-  `BaconWorld.Terrain.surface_units/3`), as the move checks and the creatures already did.
-- **Swimming.** Water deeper than wading (1.2 m) is open: you float at the surface (the swim clips are
-  authored with the body hanging from the waterline), slower (2.2 m/s, 3.4 sprinting), with no
-  jumping, crouching, fighting or fishing, and splashes instead of footsteps. Everyone else sees the
-  swim clips (motion flag 8). Only the map's margin stops you now (and the Millpond, a reedy pond).
-  Creatures don't swim: they stop at the water's edge and leave swimmers alone.
-- **Camps across the zone** (for the time being, until the owner places creatures in game): the three
-  by the village, plus the North Graves, the Shore Ruins, the East Barrow, the Hollow Graves, the
-  Plateau Ruins, the Crater Road Barrow, the High Ruins and the Western Barrow, harder the further out
-  (140 m to 1.3 km), each on a flat, dry spot picked from the heightfield. **Baconator's lair** is on the
-  high plateau north-east of the crater, about 2 km from town (nothing near the crater itself is flat
-  enough for it). Without the terrain the old four camps stay.
-- The owner saw creatures that hit him but were invisible, until a hard refresh: a tab running old
-  scripts against the new server (the harness draws them correctly on the terrain). Production reloads
-  such tabs itself (`Bacon8Web.StaticReload`).
-- Tests: 685 Elixir (3 new), 85 JS (1 new).
-
-**Delivered 2026-10-26 (c), committed** (`4089384`, `956fb33`; `handoff/CLAUDE_CODE_PROMPT_2026-10-26c.md`): **the starter zone
-is a real landscape: Crater Lake.** The owner made it in World Creator (4096 m square, heights
--306 to +689 m, sea at 0, exported as a 16-bit RAW) and asked for it in game with the village on the
-flat by the bay.
-
-- **The pipeline**: `library/pipeline/scripts/terrain_build.py <raw> <out>` turns the RAW into the game's
-  files (`World/Terrain/` on the models volume): heights on a 2 m grid for the server
-  (`crater_lake_h.bin`), the same packed small for the browser (`crater_lake_hd.bin`, 2-D differences,
-  3 MB gzipped, `.gz` beside it), and the water bodies on a 4 m grid (`crater_lake_w.bin`: the sea,
-  Crater Lake, two ponds). It moves the map so **the town's centre is the game's origin and its ground
-  is height 0** (the bay flat at map pixel 2456, 3824, 17 m above the sea), flattens the town's pad
-  (flat to 70 m, blending back to the land by 150 m) and carves the Millpond's bowl. So the village, the
-  camps, the merchants and the spawn keep their coordinates; only "how high is the ground" changed.
-  The sea is at -17 m in game; the bay starts 287 m west of the square.
-- **The server** (`BaconWorld.Terrain`) reads the heights and water grids (lazily, once, 7 ms) and
-  answers height, water and walkable questions. `BaconWorld.Water` follows it: the sea, Crater Lake,
-  the Upper Pond and the Little Pond are wherever the ground is below the sea's level (named in the
-  combat log when you cast); the walkable world is the map minus a 40 m margin, no deeper than wading
-  (1.2 m). Moves are checked against the ground under them (climbing is limited, falling never is, so a
-  fall from the crater's rim isn't snapped back), and creatures judge "flying" by height above the
-  ground. **Without the terrain files** (tests, an install that hasn't synced the models) everything
-  falls back to the flat round island.
-- **The browser** (`terrain.ts`, `terrain-world.ts`): the page carries the terrain's description
-  (`data-terrain`), the hook loads the heights before building the village, and every piece of the
-  village stands on the ground (houses as a whole, camp patches draped over it). The ground is drawn as
-  32 x 32 chunks of 128 m whose detail follows the camera (2 m between vertices close by, up to 32 m
-  far off, skirts hiding the seams) and painted by slope and height: grass, dirt on the steeper bits,
-  rock on cliffs, sand where the waves reach, snow above about 480 m, from the CC0 surface sets. One
-  water plane at the sea's level is the sea and every lake. Feet, the camera, creatures, merchants
-  and the target ring follow the ground; the camera sees 5.7 km, fog from 450 m to 2.6 km.
-- Checked in the harness: the village on its pad with the crater behind it, the bay, the ponds, an
-  aerial view. Tests: 682 Elixir (6 new), 84 JS (4 new). **Not checked in a real game** (walking,
-  creatures on slopes, fishing in Crater Lake, a mount over the crater).
-
-**Delivered 2026-10-26 (b), committed** (`67414f8`, `handoff/CLAUDE_CODE_PROMPT_2026-10-26b.md`): **guard poses for
-two-handers, the owner's bug list, and the sea, the Millpond and fishing.**
-
-- **Two-handers held like weapons, not hugged.** The 25c fix put the left hand back on the haft, but the
-  owner was right that the *poses* were wrong: the clips' idles hold the greatsword, maul and battle axe
-  inside the waist, bend the spear arm until the elbow breaks, and run the staff through his legs. Now,
-  while a two-hander is drawn and neither hand is swinging, `human-factory.ts` blends (over ~0.2 s) into
-  a guard pose from `TWO_HAND_GUARDS`: where the right hand goes and where the weapon points, in units of
-  the body's own pelvis-to-neck height (so it fits both bodies and every slider). Greatsword: forward
-  and up at chest height. Axe and maul: across the body, head high on the left. Spear and halberd:
-  levelled forward at the hip, elbows down. Staff: across the body at chest height, clear of the legs.
-  The arm is solved by two-bone IK (`ik2`) with the elbow pole down, out and back, then `twoHandGrip`
-  places the left hand as before. Swings still play the clips untouched. Checked in the harness on
-  both bodies from the front, the side and three-quarters: no clipping.
-- **Screenshots no longer open the Esc menu.** Taking a screenshot (PrintScreen, Snipping Tool, Game Bar)
-  takes the browser's focus, which drops the pointer lock, and the game read every lost lock as Esc. A
-  lost lock now waits 160 ms and opens the menu only if the window still has focus, wasn't hidden or
-  blurred around then, and PrintScreen wasn't pressed in the last 1.5 s (`lockLossWasEsc`, 4 tests).
-- **Esc clears the target first**, then (pressed again) opens the menu. A target that dies, despawns or
-  **respawns** is dropped, so a respawned creature is no longer quietly re-targeted.
-- **Skill points update on level-up** without a refresh (`refreshSkills`).
-- **The skill window drags smoothly**: it moves by its title bar only (a drag anywhere used to move the
-  window *and* pan the tree, which read as snapping to a grid), with compositing hints.
-- **Casting no longer freezes the game.** Every spell added a PointLight on impact and removed it after;
-  in three.js a change in the number of lights recompiles every lit material in the scene, which was
-  the 2-5 s stall (Recall too). Three pooled lights are now added once at intensity 0 and borrowed; the
-  spark and roots materials are shared and no longer disposed (disposing the last user of a shader
-  also forces a recompile next time).
-- **Looting the EverQuest way:** an empty corpse says "You find nothing on X's corpse." and opens no
-  window. **G takes everything** from the nearest corpse without a window; the window opens only for
-  what didn't fit (inventory full). Left-click still opens the window for a corpse with items.
-- **No more hard refreshes after a deploy.** No LiveView ever asked `static_changed?`, and the game's
-  unfingerprinted files (sounds, pictures, plugin scripts) were cached for a year. A hub `on_mount`
-  hook (`Bacon8Web.StaticReload`) reloads the page on the next navigation once the static files have
-  changed, and plain static files are kept an hour, then revalidated (digested `app.js`/`app.css` stay
-  immutable). BACON8.md has the hub side.
-- **The sea, the Millpond and fishing.**
-  - **The island ends at 150 m** (`BaconWorld.Water`, mirrored by `water.ts` with the same rules and
-    tests on both sides). A sand beach slopes from under the grass's edge into a sea that runs to the
-    horizon, with a bobbing swell and foam at the waterline; nobody walks past 151.5 m (client clamp;
-    the server refuses a move that ends further out than it started, so anyone already out there can
-    still walk home). The grass disc is now 141 m.
-  - **The Millpond**, a 24 x 16 m pond 50 m north-west of the square (-31, -40), with a mud bank,
-    reeds, lily pads and an angler's gap on its east bank. Its edge is a collider.
-  - **Old Bram, Angler** stands on that bank and sells the **fishing pole** (30 copper; two-handed,
-    a staff-set item with its own guard pose and a procedural model with a cork grip and reel).
-  - **Fishing**: with the pole in hand, face the water from the bank or the beach and press **R** to
-    cast; the bobber flies out up to 10 m. A bite (3.5-12 s later, timed by the server) pulls the
-    bobber under with a splash: press **R** within 1.8 s to reel in (80% chance to land it). Moving,
-    dying or putting the pole away ends it. The pond and the sea have their own catches: perch, brook
-    trout, mud carp, a rare **golden carp** and old boots; mackerel, striped bass, red snapper, a rare
-    **silver tuna** and kelp. Fish stack to 20 and sell to merchants (icons rendered in Blender by
-    `library/pipeline/scripts/fishing_icons.py`, shipped in `priv/static/icons/`).
-  - Sounds reuse the CC0 drip and loot recordings for now; real surf and splash recordings are a
-    follow-up (the CC0 sites are blocked from the build machines).
-- Tests: 676 Elixir (14 new for water and fishing), 80 JS (8 new).
-
-**Delivered 2026-10-25 (c), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-25c.md`): **two-handed grips,
-fourth time, found by measuring instead of tuning.** The owner: the male "STILL does not hold ANY 2 handed
-weapon correctly". Rendered in the harness and measured: **the male's clips already hold every two-hander
-with the left grip within 1 mm of the haft.** What broke it was `twoHandGrip` itself: after the posture
-and shoulder corrections moved the arms, it forced the left hand to the fixed `HOLD.off`, which on the
-axe, maul and greatsword is on the wrong side of the right hand (+0.32 m where the clip has -0.16 m: the
-arms crossed, the left reaching past the right) and on the spear and halberd beyond his reach (0.45 m
-asked, 0.37 m reached: the left arm locked straight across the chest). Now `readClipGrip` measures where
-the clip puts the left grip along the haft before any correction, and the IK puts it back there;
-`HOLD.off` is only the fallback for a clip whose left hand isn't on the haft (more than 8 cm off).
-Checked on both bodies, all six two-handers, idle and every swing: the left grip stays within about
-1 cm of the haft at the clip's spacing. 72 JS tests pass.
-**Lesson:** the earlier rounds checked "is the hand on the haft line" and passed; nobody checked *where*
-on the haft. Check spacing and both arms, from three sides, before calling a grip fixed.
-
-**Delivered 2026-10-25, uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-25a.md`): **the sound pass.**
-The owner: *"multiple ambient sound tracks ... a wide range of sound effects ... sound immersion
-needs to be world-class, but not overdone, loud or jarring."* Placed sound (pan, distance,
-low-pass, a voice cap, a master compressor), spell schools, dragon and mount voices timed to their
-animations, flight wind, hard landings, lair and high-altitude beds, rare ambient details, music
-by mood (menu, 7 day, 3 night, 3 lair, boss) with long rests between tracks, and soft UI
-roll-overs and clicks. All CC0 (OpenGameArt, Kenney), loudness-normalised per category by
-`library/pipeline/scripts/audio/build_audio_v2.py`. Code: `lobby-audio.ts` (rewritten, old API
-kept), `audio-mix.ts` (new, tested), hooks in `dragon-view.ts`, `mobs-view.ts`, `mounts.ts`,
-`game-world.ts`, `skills-world.ts`, `world-character-ui-scene.ts`. The same handoff gives
-RaysSpaceSim its whole soundscape (RAYSSPACESIM.md).
-
-**Delivered 2026-10-24 (sixth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24f.md`): the skill tree, the stable,
-the two-handed grips again and the dismount glitch, from the owner's testing of the fifth.
-
-- **Two-handed grips (the male).** The off hand's place on the haft now comes from the weapon
-  (`items.ts` `HOLD[...].off`, metres along the haft from the main hand: axe and maul 0.32,
-  spear 0.45, halberd 0.42, staff 0.5, greatsword -0.13), not from the clip. The clip-derived
-  side flipped on the muscular male, which put his left hand off the butt, at his hip.
-- **The stable**: Rowena Ashby, Stablemaster (`merchants.ex` kind `"stable"`), at a new paddock
-  next to the plaza (fences, hay, water). R opens the stable window (`stable-ui.ts`):
-  every mount, which you own, "Ride this one", and a Buy link to the store for the rest.
-  The choice is saved (`settings["mount"]`) and M summons it; before, the newest purchase won
-  (and the first, red, for admins).
-- **The dismount glitch.** Dismounting in the air left the player falling where the server's
-  movement checks rejected him and kept correcting him (the vibration). Now M refuses while
-  airborne (client, and the server above 2.5 m: reason `airborne`), and for 8 s after a
-  dismount the server still validates moves against the mount's limits.
-- **The skill tree** (K), Path of Exile style: one tree for everyone (`skill_tree.ex`), stored
-  in `bacon_world_skill_trees` (new migration) and edited at **/admin/bacon_world/skills**
-  (drag spells, skills and buffs from a palette onto nodes; add, move, join, delete nodes;
-  Save validates; "Reset" restores the shipped tree). The shipped tree: **Recall** at the
-  centre (learned by everyone at level 1) and six branches: Minor Healing, Fireball, Vigor
-  (+10 HP), Insight (+10 MP), Entangling Roots, Spin Attack. Each level from 2 gives one point;
-  a node can be learned when it touches one you have.
-- **Abilities** (`abilities.ex`, `skills.ex`, `skill_events.ex`): spells have mana, cast times
-  (moving interrupts), cooldowns and range; the server resolves them. Recall goes to the bind
-  point (`settings["bind"]`; nothing sets it yet, so the zone's spawn). Heal (self or the
-  targeted player), Fireball (a travelling bolt), Roots (6 s; a boss gets a third), Spin
-  Attack (every enemy within reach, 360 degrees). Buffs add to max HP/MP (and melee/spell %).
-- **Hotbars**: skills go on Q E F Z X (the special-attack slots); spells on a new **spell bar,
-  two rows of ten, bottom right** (1-0 and Shift+1-0), movable like the other windows. Drag
-  from the tree window onto a slot; learning a node puts it on a free slot. Saved per
-  character (`settings["hotbars"]`). Effects in `spell-fx.ts`; the icons are emoji for now.
-- **Its card on /games** (a hub feature, BACON8.md §9): a card with a front (Baconator's head)
-  and a back (his eye, the details, Play) that turns over on hover. The files are in
-  `priv/static/card/`; admins change it on the new **/admin/bacon_world** page.
-
-**Delivered 2026-10-24 (fifth), uncommitted** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24e.md`): the boss, the mounts and flight, from the owner's request for "more
-monsters", a dragon boss named Baconator, and dragons to ride and fly.
-
-- **The skeletons, the owner's question.** There is one human skeleton *definition*, the B8
-  skeleton (67 bones, `b8_skel.py` / `b8_skeleton.json`; same names and hierarchy for both). Each
-  body has its own *fit* of it (rest proportions and orientations, `mh_rig.py`), so the
-  animation packs are baked per body (`Humans/Anims/B8_Female_*`, `B8_Male_*`). The skeleton
-  creatures use the male's fit and packs. New human-shaped monsters can do the same. The dragon has
-  its own rig (below), and the boss and the mounts share it.
-- **The old rigs, removed** (moved to `tmp/_to_delete/2026-10-24_old_rigs/`, since deleting needs the
-  owner's OK): the four old skeleton packs (`priv/static/models/Mobs/Anims/*`, the folder is left
-  empty), `build_humans2.py`, `b8_head.py`, `b8_garments.py`, `mhm_facial.py`, and the v2 male
-  backup. `build_humans.py` stays, because it holds the shared helpers and the skeleton definition.
-  Some code still points at files that are now gone, and it is left as it was: `build_anims.py`
-  (`HUMANS`, the humans2 blend), `build_hair.py` and the `OLD` defaults in `mhf_finish.py` /
-  `mhf_transfer.py`.
-- **The dragon model** (original; the owner's reference art, which is Games Workshop's, set
-  only the mood: big, red, horned, winged, breathing fire). It is built from code in three scripts:
-  - `build_dragon.py` makes the rig, the clips, the assembly and the export.
-  - `dragon_shape.py` makes the sculpt. The torso, neck, tail and skull are lofts. Muscle masses
-    are laid over the bones: pectorals, flight muscles, deltoids, biceps and triceps, forearms,
-    haunches, thighs with quads and hamstrings, calves, and neck muscles. A voxel remesh
-    (2.5 cm) fuses them into one skin, a Taubin smooth blends the joins, and fields carve the eye
-    sockets, nostrils and ribs. The jaw is a second, finer sculpt with a hard jawline edge, so the
-    mouth opens. Parts are built at game resolution: ridged, twisted horns (a great pair, a
-    second pair, cheek fans, jaw frills, brow horns, a crest), teeth with fangs, a forked tongue,
-    hooked claws, dorsal blades, the wing bones with knuckles, membranes that sag between the
-    fingers, and almond eyes.
-  - `dragon_skin.py` makes the skin. The sculpt is decimated to the game mesh, which then takes
-    its weights from the primitives and is baked in Cycles. The bake covers the form (normals),
-    shingled Voronoi scales (finer on the head and toes), banded belly plates that run the length
-    of the spine, a mouth, horn and claw gradients, membrane leather (veins, creases, pores),
-    serpent eyes with glowing irises and a black slit, and roughness and AO.
-  - The export has three materials: `Dragon_Skin` (a 4K atlas), `Dragon_Membrane` (2K,
-    double-sided) and `Dragon_Eye` (emissive). Its WebP textures are put through meshopt.
-  - The numbers: 54k triangles, 7.6 MB (7.0 MB gzipped; 4K skin WebP, roughness resized to 2K) on the web, and it builds in about 25 (the first full build took 45, with 48 AO samples; it's 16 now) minutes
-    headless (`tmp/b8work/jobs/dragon_go.py`). It is 16.75 m long with a 21.4 m wingspan, and
-    Baconator is 0.8 of that.
-  - The rig (46 joints) and the 13 clips are the same as in the first cut: Idle, Walk, Run, Fly,
-    Hover, Glide, Bite, Claw, TailSwipe, Breath, Roar, Hit and Death.
-- **Baconator** (`spawns.ex`) is level 12, 1,400 HP plus 50 per level, and lives in his own camp,
-  Baconator's Lair (92, 42 m; `world-dressing.ts` `lair`). The lair is scorched ground ringed by
-  crags, with a hoard of coins, gems and a chest behind him, bones, dead trees, braziers and a
-  waystone.
-  - His moves are bite, claw and tail (the tail hits for ×0.8).
-  - He also breathes fire every 13 to 18 s: a 17 m cone (±32°) after a 1.05 s windup ("rears back
-    and draws a deep breath!"), so you can dodge it. It hits everyone in the cone.
-  - Reach and body radius are per kind, and he leashes at 55 m. He ignores and drops players who
-    fly over 6 m up.
-  - He respawns in 20 to 30 minutes.
-  - Loot: dragon scales, Baconator's fangs, and a chance at the Emberforged Longsword, the
-    Dragonbone Greataxe and the Scaleplate Shield. Their icons are `W_DragonScale` and
-    `W_DragonFang`, rendered with the dragon's own materials (`build_dragon_icons.py`).
-- **Mounts** (`BaconWorld.Mounts`, entitlement kind `bacon_world_mount`) are three drakes:
-  Ember, Verdant and Frost. They are the dragon at 0.38 scale and are hue-shifted in the client
-  (`hueShift` in `dragon-view.ts`, from the boss's colours to the mount's).
-  - Speeds: 10 m/s on the ground (Shift ×1.5) and 17 to 18 m/s in the air (Shift ×1.6).
-  - Store prices: $15, $15 and $18. The store items are created inactive by
-    `BaconWorld.Mounts.ensure_store_products/0` and stay hidden until the owner publishes them.
-    Admins ride all three for testing.
-  - Controls: **M** (or `/mount [id]`, `/dismount`) climbs on and off. You can't fight from the
-    saddle, and dying drops you off.
-  - Riders sit astride (the `Sitting_Idle_Loop` clip with the thighs turned out). They are
-    seated on the saddle bone each frame (`mounts.ts`). Everyone sees mounts through the zone
-    presence and `zone_mount`.
-- **Flight, like RaysSpaceSim**: on a mount that flies, **double-tap Space** to take off or land
-  (within 0.28 s, as `JumpDoubleTapSeconds` in `CosmicFlightComponent.h`).
-  - W and S follow the camera's pitch (look down and press W to dive), A and D strafe level,
-    Space climbs and C dives. There are no rolls.
-  - Altitude is capped at 120 m. The server allows a mounted speed of 45 units/s and heights up
-    to 160 units on a flier. Motion bit 4 tells others you fly, and the dragon plays Hover, Fly or
-    Glide.
-- **Two-handed grips (the owner, 2026-10-24: "every 2 handed weapon I picked up is wrong" on the
-  male).** The clips place both hands for the library's mannequin. On each body's own fit, and
-  with the male's longer clavicles and arms, his left hand ended up 15 cm off the haft (the
-  female was about 4 cm off). `human-factory.ts` `twoHandGrip` now runs a two-bone IK on the left
-  arm whenever a two-handed weapon is held, idle and swings alike. It puts the left grip
-  (`weapon_l`) on the haft line (`weapon_r`'s +Y), as far from the main hand as the clip had the
-  hands apart (at least a hand's width). It keeps the elbow in its plane, turns the hand along
-  the haft, and eases in and out (`CharacterAnimator.armSets()` now returns `two`). Checked in
-  the harness on both bodies with the spear, maul, quarterstaff and greatsword, idle and swings.
-- Tests: `mobs_test.exs` gained the boss's five tests (61 tests, all pass, warnings as errors),
-  and `flight.test.ts` was added (68 JS tests, all pass; the bundle and type-check are clean).
-
-**Delivered 2026-10-24 (fourth), committed** (`c8597cd`, `handoff/CLAUDE_CODE_PROMPT_2026-10-24d.md`, with the
-third, below), from the owner's look at the third:
-
-- **His upper body leaned back**: `spine_deg` is now [-24, -4, 0] (the chest's 14 degrees went;
-  the lumbar fix stays). His neck now sits ~5 cm ahead of the pelvis, as hers does.
-- **His hands** weren't relaxed: they rested on his thighs, bent forward at the wrist, fingers
-  splayed over the leg. Empty arms now hang 6 degrees out, the wrist is straightened
-  (`free_hand_deg` [-20, 8, -12]) and his fingers curl more than hers (`relaxed_hand`).
-- **Torch**: his elbow was tucked and the torch leaned in. The torch arm goes 12 degrees out at
-  the shoulder and 18 at the elbow, so it is held upright at his side like hers.
-- These are new `posture` fields in `human-factory.ts`: `arm_out` {what the arm does: [upper,
-  fore, keep hand?]} (what the arm does comes from the new `CharacterAnimator.armSets()`:
-  'free', the held item's set such as 'torch', 'two_hand', 'swing'; two-handers and swings get
-  nothing), `free_hand_deg` and `relaxed_hand`. The female has none of them, so she's unchanged.
-- **Shoulders narrower**: a new male morph, `Shoulders_Narrow` (MakeHuman shoulder distance
-  -1.0, v-shape -0.3 against his look's 0.3 / 0.5; the arms come in 44 mm by joint offsets),
-  and his Shoulders slider now runs -1..1 (Narrow..Broad; 0 is his approved look). The
-  female's stays 0..1 (`minFor` in `appearance.ts`, a clamp in `appearance.ex`). His whole body
-  was rebuilt for it (`mfull.cmd`); his hair and facial hair GLBs have no Narrow key yet, which
-  only shows on long styles at the narrow end.
-
-**Delivered 2026-10-24 (third), committed** (`c8597cd`, `handoff/CLAUDE_CODE_PROMPT_2026-10-24c.md`):
-
-- **The male's lower back and shoulders** (owner, 2026-10-24). Both came from the library
-  clips, not the mesh: the idles arch the lumbar (the "S" from pelvis to upper back, with the
-  crease above the pelvis) and draw both clavicles back about 30 degrees, which on his long
-  clavicles (17.5 cm to her 11.4) put his arms behind the torso and his shoulders up. His
-  manifest now has a posture like hers, `{"pelvis_tilt_deg": 30, "spine_deg": [-24, -6, 14],
-  "clavicle_deg": [18, 6]}` (her values left his lumbar arched; the spine became [-24, -4, 0] in
-  the fourth delivery). `clavicle_deg` is new in
-  `human-factory.ts` (shoulders forward, down; any body may use it; the female has none, so she
-  is unchanged). Written by `mhm_build.py`; `Male.json` and `out/mh/male/B8_Male.json` patched
-  in place (no rebuild needed: it is manifest data).
-- **Skeleton creatures on the new male**: `build_skeleton.py` now rigs on the MakeHuman male's
-  armature, moving its hand-placed pieces (skull, ribs, pelvis, vertebrae) by the old rig's
-  landmarks, so it fits his proportions. `mobs-view.ts` plays his packs
-  (`Humans/Anims/B8_Male_Anims_*`); `Mobs/Anims/` is no longer loaded (delete it once the owner
-  agrees). The model is meshopt now (72 KB, was 250).
-- **The hand axe's bit faced backward** (owner's screenshot). The one-handed swings lead with
-  the weapon bone's -Z and the weapons file puts the striking side on +Z, so every one-handed
-  weapon with one striking side needs `roll: 180` in `HOLD` (`items.ts`), as the scimitar and
-  cutlass already had: now the hand axe and war hammer too (and the hatchet, machete and
-  builder's hammer, in the weapons file but not yet items). **Rule for new weapons**: a new
-  single-sided one-hander goes in `HOLD` with roll 180; two-handers need none (their swings
-  were refitted to +Z).
-
-**Delivered 2026-10-24 (second), committed** (`3e8c225`, `handoff/CLAUDE_CODE_PROMPT_2026-10-24b.md`):
-
-- **Loot click bug**: left-clicking the corpse you were already looting opened the game menu.
-  The click grabbed the mouse and the loot window let it go at once; both pointer-lock events
-  then arrived reading "unlocked", and the second looked like the browser's Esc. The
-  controller now only acts on a real lock change, a left click on a corpse no longer grabs
-  the mouse (`lockOnClick`), and clicking the corpse you're looting does nothing.
-- **Player names**: Bacon8's blue (`#247DF1`), red (`#E62929`) with PvP on, black outline kept,
-  for you and for others (the PvP flag now rides in the zone presence). The target window
-  uses the same colour. The font is a plain bold Arial-style sans, like old EverQuest's.
-
-**Committed 2026-10-24** (`handoff/CLAUDE_CODE_PROMPT_2026-10-24a.md`): **the male
-rebuilt on MakeHuman**, like her (section 5): body and skin (the legs' red calmed), wardrobe
-shells and MakeHuman garments, the stage-G body sliders except the chest shaping, 18 MakeHuman
-hair styles (his old style ids alias to them), his six facial hair styles refit to the new
-head, and his animation packs rebuilt on his rig (no fanned fingers). The skeleton creatures
-keep the old male packs (`Mobs/Anims`), since they're built on the old skeleton. The site's
-Credits page names MakeHuman (a migration). Models are staged; they ship together with the
-code. The owner's check found the skeletons work as before.
-
-**Delivered 2026-10-23 (eighth), committed** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23h.md`):
-the sun and moon now sit in the sky (far along their direction from the camera, not 55 units
-from the plaza); the site's navbar/taskbar toggle works (state on `<html>`, which LiveView
-doesn't patch); moved windows come back where they were after logging in again (they were
-placed while the game's layer was still 0 x 0).
-
-The seventh (`handoff/CLAUDE_CODE_PROMPT_2026-10-23g.md`) moved the asset pipeline to
-`library/pipeline` and deleted the v1 humans (done).
-
-**Delivered 2026-10-23 (sixth)** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23f.md`):
-
-- **Respawn bugs**: the zone's presence now gets your spawn position the moment you respawn
-  (creatures kept attacking the spot where you died until you moved, and you kept dying), and
-  you respawn clear of other players. A move that takes you away from a player you overlap is
-  allowed (before, two players on one spot couldn't separate).
-- **No centre dot** with the mouse captured.
-- **Movable windows** (`window-drag.ts`): drag any window (player, target, hotbar, inventory,
-  loot, merchant, chat) by its title or an empty spot; positions are saved per browser; the Esc
-  menu's "Reset windows" puts them back.
-- **Left drag with the cursor free turns the camera** around the character (she keeps facing
-  her way), and letting go doesn't capture the mouse or pick a target.
-- **The male, started**: MakeHuman sources fetched into `library/makehuman` and a first male
-  look (`mh_female.LOOKS["m1"]`) rendered for the owner's review; see section 7.
-
-**Delivered 2026-10-23 (fifth)** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23e.md`), from the
-owner's play-testing:
-
-- **Melee arcs**: 90 degrees for one-handers, 110 for two-handers (was 150), and nothing behind
-  you is hit however close (anything within 35% of the reach used to count).
-- **Daggers stand in the one-handed sword's idle** (both arms breathe alike; the authored
-  dagger idle held the dagger arm still and the elbows out), and the stab and slash start
-  and end in it.
-- **Two-handers**: the battle axe and maul are held near the end of the haft (client `HOLD`,
-  the haft no longer hangs between her legs); the swings were refitted with the striking side
-  leading the cut (the axe hit with its flat); and grips now turn the shortest way between
-  keys (`b8_anim.lerp_grip`; the weapon twirled near the end of the heavy).
-- **The scimitar and cutlass** are turned 180 degrees about the handle (they cut with their
-  back).
-- **Merchant window**: right-click to buy, right-click a bag item to sell (the sell slot is
-  gone), and the list keeps its scroll position.
-
-**Delivered 2026-10-23 (fourth)** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23d.md`), from the
-owner's testing of the two-handed weapons:
-
-- **Weapon grips refitted on the female** (`b8_clips.py`, new `b8_gripfit.py`): the spear's left
-  hand no longer reaches behind her back (right hand rear at the hip, left hand forward, the
-  shaft sliding through it in thrusts); the **quarterstaff is held two-handed** across the body
-  in its idle (it used the one-handed magic-staff rest, the left hand held in the air, and
-  grabbed the staff mid-swing) with a new two-handed heavy, `QStaff_Sweep`; the two-handed sword
-  in a middle guard (her arms had been locked straight); **dual daggers ready at the sides** like
-  the one-handed sword. Wrists under 10 degrees in every guard. Her packs were rebuilt.
-- **Idle hands**: the relaxed curl roughly halved, the thumb opened.
-- **Posture**: pelvis tucked 24 degrees with spine_01 turned back by the same, `spine_deg`
-  [-24, -9, 9]: the lower back flattens without the S-curve and the crease above the pelvis
-  (the earlier [6, -11, -13] arched the lumbar again).
-- **Credits page**: a migration adds "Surface textures: ambientCG and Poly Haven, CC0 1.0" to
-  `/pages/credits` if it isn't there (owner's request).
-
-**Delivered 2026-10-23 (third)** (`handoff/CLAUDE_CODE_PROMPT_2026-10-23c.md`):
-
-- **Real surface textures on the untextured models.** None of the village props, building
-  kit, weapons or the skeleton has UVs; their materials are plain colours named for what they
-  are. `surface-textures.ts` maps each material name to a CC0 texture set (ambientCG and Poly
-  Haven, from the shared library) and projects it triplanar in the mesh's own space (metres),
-  with normal, roughness and ambient-occlusion maps, so no model was re-exported. Most
-  materials keep their colour and gain the texture's pattern around it ("detail"); the kit's
-  brick uses the texture's own colours. Stone walls, roof tiles, slate, thatch, planks, beams,
-  rock, bark, straw, rope, canvas, cloth, leather, metals and bone are covered; glass, gems,
-  potions, fire and paint stay plain.
-- **The ground**: grass, dirt paths, the plaza (fan-laid paving), the plaza rim, the camp
-  patches and the barrow mound use real textures, with large-scale variation to hide tiling.
-- **24 texture sets** in `models/World/Textures/` (1K/512 WebP, 9.4 MB; `CREDITS.md` beside them).
-- A **Textures** on/off button in the Esc menu (applies after a reload; off restores the old
-  look with canvas noise).
-
-The second 2026-10-23 delivery, committed, deployed and synced (`handoff/CLAUDE_CODE_PROMPT_2026-10-23b.md`):
-
-- **The female's body sliders, Black Desert style**: the chest gets size, height, spacing and
-  shape (round to perky); the glutes size and lift; new waist, arms, thighs and calves
-  (pipeline stage G, `mhf_morphs.py`; 15 new shape keys, every garment follows). "Bust" is
-  now "Chest" and "Seat" "Glutes". The creator's body tab is in sections: Body, Chest,
-  Glutes, Arms and legs.
-- **Posture**: she stands straight (pelvis tucked 20 degrees, the lumbar following, the
-  chest brought upright higher up), instead of the arched lower back and forward belly.
-- **Relaxed hands**: fingers drawn together and curled at the knuckles, thumb alongside.
-- **Daggers**: both hands up at elbow height, blades forward and up, wrists straight (the
-  right hand was at the thigh with the wrist bent 88 degrees). Her animation packs were
-  rebuilt, which also ships the forearm-twist fix in the data.
-- **PvP "instant heal"**: target bars read full again on every presence sync (health wasn't
-  in the presence); now it is, and regeneration runs on one timer per LiveView.
-- **R interacts** (the targeted or nearest person in reach: a merchant opens her wares).
-- **New characters wear their underwear** in the creator and on the select screen (the item
-  catalogue now loads before any character is dressed).
-- The blends open in the rest pose (every clip was an unmuted NLA track playing at once).
-
-The first 2026-10-23 delivery:
-
-
-- **The female, v3** (pipeline stage F, `mhf_v3.py`): relaxed fingers on empty hands; the
-  shoulder slider no longer changes the hands' size (joint offsets); a rounder bust; skin
-  seam streaks gone; she stands straighter (pelvis tilted back 7 degrees after the animation);
-  new tank, shorts and trousers made from her own body so they don't clip; the forearm
-  "wringing" with daggers fixed (a pipeline bug in every authored weapon clip, repaired on
-  load).
-- **Underwear and clothes as items.** No clothes in the creator. Underwear tops and bottoms
-  are separate, removable items in their own slots (`under_top`, `under_bottom`) under
-  `chest`, `legs` and `feet`; everyone starts in the cream linen set and with 1 gold. Six
-  underwear sets and eight pieces of cloth armour (the old clothes meshes).
-- **The first merchant**: Tilda Threadwell, Clothier, in the village. She sells all 20
-  wearables and buys anything for a quarter of its value. **Coins are EverQuest's**:
-  platinum, gold, silver, copper (10 to the next).
-- **Multiplayer fixes** from the owner's testing: others now see you swing, crouch and jump;
-  PvP melee works (both flagged) and is applied by the target's own LiveView; picking a
-  player no longer raycasts their skinned meshes (that froze the game on every swing at a
-  player); Ctrl toggles mouse-look both ways; Ctrl+A no longer selects the whole page; and
-  **Throw Stone is gone** (it was the old web-lobby test).
-
-**On the models volume (gitignored; synced only when the owner says):**
-
-- `Humans/` holds:
-  - `Male.glb` (MakeHuman, staged 2026-10-24) and `Female.glb` (MakeHuman v3, 2026-10-23), each with its `.json`;
-  - `Wardrobe/`: the female's 36 packed design textures (`.webp`), `Wardrobe/Male/` his 10, and
-    `icons/` for the 20 wearable items;
-  - `Anims/`: the four animation packs (core and combat for each body, 143 clips a body);
-  - `Hair/`: 18 male hair and 6 facial hair styles, 31 female hair styles, icons, `hair_manifest.json`;
-  - `README.txt` and `CREDITS.md`.
-- `Weapons/B8_Weapons.glb` (43 weapons, shields and tools).
-- `Mobs/B8_Skeleton.glb` (rigged on the MakeHuman male since 2026-10-24; plays his packs), and
-  `Mobs/Anims/` (the old male packs, no longer loaded).
-- `World/B8_Props.glb` (90 props) and `B8_BuildKit.glb` (36 building pieces); `World/Textures/`:
-  24 surface texture sets (`<set>_c/_n/_r.webp`) and `CREDITS.md`.
-- Every `.glb` has a `.glb.gz`. The local copies in `C:\Bacon8\priv\static\models` are current.
-  Production gets them only with `sync-models-to-k8s.sh`, run by the owner.
+The plugin's Elixir tests run with the hub's suite; the JavaScript tests run with
+`plugins/bacon_world/assets/js/__tests__/run.sh` (115 pass on 2026-10-29). Look-checks are done in the three.js
+harness (see §8).
 
 ## 3. The owner's decisions (settled; don't re-litigate)
 
@@ -837,7 +196,7 @@ The first 2026-10-23 delivery:
 - `Progression`.
 - `Mobs`: `Spawns`, the pure `Brain`, a cluster-wide `Zone` process under `:global`, and a
   `Keeper` on every node.
-- `Combat`: HP/MP, PvP flags, respawning (spells come later; Throw Stone is retired).
+- `Combat`: HP/MP, PvP flags, respawning (Throw Stone is retired).
 - `Merchants`: the NPC traders (Tilda the clothier), their stock, reach and prices.
 - `Models`: the model list, `human_assets/0` and the versioned URLs.
 - `BaconWorldWeb.PlayLive`: select, the creator, the world. `game_events.ex` holds its fighting,
@@ -982,214 +341,102 @@ the development PC it sits in `C:\Bacon8\tmp\b8work\harness`):
 
 ## 7. Known issues and next steps
 
-In rough priority order.
+Only what is still open. What was finished is in §2 and git. Items marked "(real game)" have only been checked in
+the harness and in tests, not by a person playing.
 
-**The Kraken (2026-10-27), to check in a real game:** its numbers (HP, damage, how often the specials
-come, the maelstrom's pull) are first guesses; tune them after a fight. It needs real CC0 water sounds (a
-big splash, a whirlpool's roar, a wet slap, an ink spurt). The model is ~98k triangles: fine for one boss,
-but with many riders on Kraken mounts at once a lighter level of detail for the mount is worth building.
-Being held and dragged are applied by the victim's client (as creature damage is), not enforced by the
-server's move checks.
+**To check in a real game**
 
-**Build mode, creatures and bows (2026-10-28), to check in a real game:**
+- Everything new since 2026-10-26: walking Crater Lake (the map's orientation: the RAW's first row is taken as
+  north, -z), swimming and diving, fishing in the sea, the lake and the Millpond, the Kraken fight, build mode as a
+  member, a GM and an admin (two players building at once), groups, bows, the fork, the hat on tall and long
+  hairstyles, the fork in dagger swings, and the arrow in flight and stuck in the ground.
+- The first start of each zone seeds its placements (a log line `bacon_world:building seeded`). Watch the zone's
+  start time and `fetch_mobs`: about 550-1,000 rows per zone. A zone seeded once never re-reads the seed files, so
+  later edits to `world-dressing.ts`' layout don't reach it (by design).
+- Production needs `World/Terrain/` synced (`sync-models-to-k8s.sh`; the owner's OK) or it stays on the flat island.
+- Mount store products: `BaconWorld.Mounts.ensure_store_products/0` creates them off; publish them in the store.
 
-- The owner to try build mode as a member, a GM and an admin: the window, placing, turning, the role dropdowns,
-  creature spawns and NPCs, undo. Two players building at once (each sees the other's changes).
-- ~~The village and the code camps aren't placements yet~~ (done 2026-10-28 b). Still from code: `Merchants`' fixed
-  merchants (Tilda, Old Bram...), the village's ground (plaza and paths are painted, not placed) and a camp's ground
-  patch. The seed files are the client's layout of 2026-10-28; a zone seeded once never re-reads them, so later changes
-  to `world-dressing.ts`' layout don't reach a seeded zone (by design).
-- Placed things block walking on the client only (like the village); the server doesn't check walls. Stacking (a second
-  storey) is by PgUp/PgDn: nothing snaps one piece onto another yet, and nobody can walk up stairs or onto floors.
-- ~~Binding stones~~ (done 2026-10-28 b: R binds, 100 m no-build for members).
+**World and building**
 
-**The village, binding stones and groups (2026-10-28 b), to check in a real game:**
+- Placed things block walking on the client only (like the village); the server checks speed, not walls. Stacking is
+  by PgUp/PgDn: nothing snaps one piece onto another and nobody can walk up stairs or onto floors.
+- Still from code, not placements: the fixed merchants (`Merchants`: Tilda, Old Bram, the stablemaster...), the
+  village's ground (the plaza and paths are painted) and a camp's ground patch.
+- Terrain painting is by rule (slope, height); World Creator's splat and scatter maps would do it properly. No
+  normal maps on the ground yet; distant chunks are plain. Zone lines (a ferry from the bay, a pass in the ridges)
+  are for when there is a second zone. Crater Lake could have its own fish.
+- Creatures follow the ground's height but ignore slopes, and stop dead at deep water. Creatures don't collide with
+  anything.
+- Swimming: no breath and no boats; weapons stay in hand. The lake's edge is a client-side collider.
 
-- The first start of each zone seeds it (a log line `bacon_world:building seeded`); check the village looks the same,
-  that the camps' creatures still spawn (now from their placements) and that a member can't build in town but can
-  outside it. The seeded rows are many (about 550-1,000 per zone): watch the zone's start time and `fetch_mobs`.
-- Groups across zones: invites by name reach anyone in the world; experience and coin splits only count members in the
-  killer's zone. Groups are in memory: a server restart ends them (as EverQuest's did on a zone crash).
-- Experience goes to the killer's (last hitter's) group, the corpse to the top damager's group, as before for solo
-  players. Nameplates don't yet colour groupmates.
-- Sounds: the bow uses the existing draw and swing whooshes; rats, goblins and orcs have no voices of their own. Real
-  CC0 recordings wanted (a bow's twang, an arrow's thud, squeaks, goblin chatter, orc grunts).
-- The goblins and orcs keep the male's posture-less clips (like the skeletons): no hunch for goblins yet. A goblin
-  shaman and orc caster need spells for creatures (none exist).
-- The plague rat is the rat tinted; its own model (patchy fur, sores) would be better. Rats walk through hills like all
-  creatures.
-- Bows: the limbs don't flex as the string is drawn; no aiming up or down (arrows fly level along the heading, to the
-  target's height when there is one). PvP arrows land like swings (the hit is decided at once).
+**Combat and creatures**
 
-**World building in game (the owner's plan, 2026-10-26; decisions log):**
+- Kraken: its numbers (HP, damage, special cadence, the maelstrom's pull) are first guesses; tune after a fight.
+  It is ~98k triangles: fine for one boss, but with many riders on Kraken mounts a lighter mount level of detail
+  is worth building. Being held and dragged are applied by the victim's client (as creature damage is), not
+  enforced by the server's move checks.
+- Baconator and the drakes: tune the sculpt in `dragon_shape.py` (muscle blobs, `SKULL`, `JAW`) and the skin in
+  `dragon_skin.py` from what the owner says. No aerial combat; Baconator ignores fliers over 6 m. The rider's seat
+  (`SEAT_DROP_M`) on very tall or short bodies, and a saddle prop, are open.
+- Goblins and orcs keep the male's posture-less clips (no hunch); a goblin shaman or orc caster needs spells for
+  creatures (none exist). The plague rat is the rat tinted; its own model would be better.
+- Bows: the limbs don't flex as the string is drawn; no aiming up or down (arrows fly level, to the target's height
+  when there is one); PvP arrows land like swings (decided at once).
+- Groups are in memory: a server restart ends them. Invites by name reach anyone in the world, but experience and
+  coin splits only count members in the killer's zone. Nameplates don't yet colour groupmates.
+- PvP reach is checked against Presence positions (up to 100 ms old) with 0.8 m slack. Creature and PvP hits write
+  the player's HP to the games DB on every hit; batch them if fights get big.
+- Spell targeting of other players for harm (a PvP fireball) isn't wired; heal works on players.
+- **Spell lights are pooled (three).** A fourth effect at once goes without a light. New effects must use
+  `takeLight`/`giveLight` and shared materials; never add or remove lights or dispose shared materials (either
+  recompiles every lit material and freezes the game for seconds).
 
-- **Placements are data.** A table (`bacon_world_placements`: zone, asset id, position, rotation, scale,
-  owner, placed at) holds everything put in the world; the server validates and stores each placement,
-  the zone's PubSub broadcasts it, and every client draws it (instanced by asset). The village that
-  `world-dressing.ts` builds in code today becomes the first rows (an import), so it can be edited the
-  same way. Colliders come with each asset.
-- **An asset catalogue** like the item catalogue: each placeable asset's model, footprint, collider,
-  category (ground, building piece, rock, tree, bush, prop, creature spawn, NPC, binding stone) and the
-  lowest role that may place it. **Admins set that per asset, in game** (a permissions view in build
-  mode, stored in a table, not in code); guests never place anything; boss creatures and binding
-  stones start admin-only. Placing and deleting check the role on the server, never only in the client.
-- **Placing in game**: a build mode (a window listing what you may place), a ghost of the piece on the
-  ground under the cursor (snapped to the terrain, and to the building kit's 3 m grid for building
-  pieces), rotate, place. **Delete: anyone allowed to place that asset may delete any copy of it**,
-  whoever placed it. No limits per player, no decay. Undo for a short while.
-- **Ground types** are painted, not placed: a coarse grid over the zone (per 2 m cell: grass, dirt,
-  stone, sand, farmland...) read by the terrain shader instead of its slope rule where painted.
-- **Creatures and NPCs** become placed spawn points (kind, count, radius, respawn), read by
-  `BaconWorld.Mobs.Spawns` from the table instead of its code; merchants the same.
-- **Binding stones**: an admin-only asset. Using one (R) sets `settings["bind"]` (Recall and respawn go
-  there); no placement by anyone else is allowed within its radius (100 m, the owner 2026-10-28; was 70 m).
-  The town's stone goes by the plaza.
-- Answered by the owner (2026-10-26, decisions log): admins set permissions per item in game, guests
-  get none, no limits, no decay, placing a kind means you may delete it.
+**Sound.** Real CC0 recordings are wanted for: surf, a cast, a splash, a reel, the Kraken's water (a big splash,
+a whirlpool, a wet slap, ink), a bow's twang, an arrow's thud, rat squeaks, goblin chatter and orc grunts. The
+placeholders reuse existing recordings (`sw_drip`, `loot`, the dragon's roars pitched down).
 
-**Terrain (2026-10-26, c):**
+**Skills and fishing.** New *kinds* of ability need code (an entry in `abilities.ex`, its effect in `skill_events.ex`
+and `spell-fx.ts`); placing existing ones on the tree is done in `/admin/bacon_world/skills`. A new spell school
+needs a `cast_loop_<school>.mp3` and a `CAST_SCHOOL` entry. Ability icons are emoji. Catching is flat (80% on a
+timely reel): no fishing skill, bait or rod tiers, and fish can't be cooked yet.
 
-- The owner to walk it in game, and to confirm the map's orientation (the RAW's first row is taken as
-  north, -z).
-- **Sync `World/Terrain/` to production** with the owner's OK (`sync-models-to-k8s.sh`); until then
-  production stays on the flat island (BaconWorld.Terrain finds no files and falls back).
-- Painting is by rule (slope, height); World Creator's splat and scatter maps (a newer World Creator)
-  would paint and plant it properly. No normal maps on the ground yet; distant chunks are plain.
-- The land outside the village is empty: the in-game placement above is the plan for filling it.
-- Creatures walk through hills (they follow the ground's height but ignore slopes) and stop dead at
-  deep water rather than going round it. Server-side walls still don't exist (the village's colliders
-  are client-side).
-- Swimming: no diving, no breath, no underwater view (the camera stays above the surface); weapons
-  stay in hand while swimming. A real CC0 stroke/splash recording would beat the drip.
-- Crater Lake and the ponds use the lake catch table; Crater Lake could get its own fish.
-- Zone lines (a ferry from the bay, a pass in the ridges) when there's a second zone.
+**Items and economy.** Armour beyond cloth; more merchants. Existing characters lose their old creator outfit and
+get the linen set and 1 gold at their next login. Throw Stone's spell rows stay in the games DB (retired in code);
+deleting them needs the owner's OK.
 
-**Water and fishing (2026-10-26, b):**
+**Characters (art)**
 
-- The owner to try the guard poses, the sea, the Millpond and fishing in game; tune the poses in
-  `TWO_HAND_GUARDS` (human-factory.ts) and the catches in `BaconWorld.Water` from what he says.
-- Real CC0 recordings for surf, a cast, a splash and a reel (they reuse `sw_drip` and `loot` now).
-- Catching is flat (80% on a timely reel): no fishing skill, bait or rod tiers yet. Cooking the fish.
-- The sea is a wall: no swimming or boats. The lake's edge is a client-side collider, like the village's.
-- Spell lights are pooled (three): a fourth effect at once just goes without a light. New effects should use
-  `takeLight`/`giveLight` and shared materials, never add or remove lights or dispose shared materials.
+- Tuning the male's posture: all of it is in `mhm_build.py`'s `POSTURE`; the harness's `?tilt=`, `?spine=a,b,c`,
+  `?clav=fwd,down`, `?arm=free:u,l;torch:u,l`, `?fh=x,y,z` and `?relax=index:a,b,c,s;...` override the manifest on
+  either body. Render side views (`view=side&yaw=18`, `focus=spine_02&dist=2.9&az=250&el=0`).
+- The female (the owner wants her stunning): some hairstyles (ponytail, long) still read as painted at the temple;
+  some hair shells are low-poly (long01) and LongWavy is 15.5k vertices (an LOD); the Mindfront lashes cost about
+  19.8k vertices per character (swap for cards at a distance); face polish (slightly larger eyes, eye-scale ~0.12 in
+  `LOOKS["v2"]`, skin sheen or subsurface, catchlights); more outfits (skirts and dresses are CC0 and fit her; a
+  dress needs a slot rule in `appearance.ts`/`.ex` and `human-factory.ts`).
+- The male's six facial hair styles are refits of the old procedural cards (MakeHuman has no CC0 beard set yet).
+  No A-pose fanned fingers: every clip must key the fingers. The skeleton creatures share the male's packs but not
+  his posture correction (it lives in `HumanInstance`). Old `Mobs/Anims/` awaits the owner's OK to delete.
+- Sources (CC0) are in `C:\Bacon8\library\makehuman` (gitignored): MPFB2's data, MakeHuman's system assets and the
+  community packs (hair01, shirts01, pants01, shoes01, underwear01, suits01, eyebrows01, eyelashes01, skins01-03).
+  The light Toigo skins are what's used.
 
-**The skill tree (2026-10-24, sixth):**
+**Surface textures.** The cloth armour and underwear have design textures; the leather and plate armour still to
+come should use the library's leathers and metals the same way. Move `pack.py` (library set to runtime WebP) into
+`library/pipeline/scripts/` and generate `SETS` from it. Triplanar costs about ten texture reads per pixel on
+textured surfaces; the Esc menu's Textures switch turns it off for low-end machines, and baking UVs and textures into
+the GLBs in Blender is the cheaper path. Trees' leaves, food, paint and gems are untextured on purpose.
 
-- The owner to try it in game and grow the tree at /admin/bacon_world/skills. New *kinds* of
-  ability (not just placing existing ones) need code: an entry in `abilities.ex` and its effect
-  in `skill_events.ex` (and `spell-fx.ts`).
-- A bind-point NPC or spot that sets `settings["bind"]` (Recall uses the zone spawn until then).
-- Painted ability icons instead of emoji. (Cast sounds: done 2026-10-25 for fire, holy, nature
-  and arcane; a new school needs a `cast_loop_<school>.mp3` and a `CAST_SCHOOL` entry.)
-- Spell targeting of other players for harm (PvP fireball) isn't wired; heal works on players.
+**Housekeeping**
 
-**Monsters and mounts (2026-10-24):**
-
-- The owner to look at Baconator and the drakes in game (BACON_WORLD §2, fifth delivery); tune
-  the sculpt in `dragon_shape.py` (muscle blobs, skull table `SKULL`, jaw `JAW`) and the skin in
-  `dragon_skin.py` from what he says. Renders: `jobs/render_go.py <glb> <out> [clip:t] [shots]`.
-- Mount store items: run `BaconWorld.Mounts.ensure_store_products/0` (owner's OK), then publish.
-- More monsters: human-shaped ones on the male's or female's fit (like the skeletons), more beasts on
-  the dragon rig (a wyvern or drake without wings is a material and a few shapes away).
-- The rider's seat (`SEAT_DROP_M`) on very tall or short bodies; a saddle prop.
-- Flying: no aerial combat yet; Baconator ignores fliers over 6 m.
-
-**The male's posture** (done 2026-10-24, section 2; all of it is in `mhm_build.py`'s `POSTURE`):
-tune it with the harness's `?tilt=`, `?spine=a,b,c`, `?clav=fwd,down`, `?arm=free:u,l;torch:u,l`,
-`?fh=x,y,z` and `?relax=index:a,b,c,s;...` (either body; they override the manifest). Render side
-views (`view=side&yaw=18` shows his idle in profile, `focus=spine_02&dist=2.9&az=250&el=0` the
-lower back) of idle, walk and the stances. The female could take a smaller `clavicle_deg` if
-her shoulders ever look set back; she hasn't had one.
-
-**The female (keep polishing; the owner wants her stunning):**
-
-- Hairlines are better with the scalp decals, but some styles (ponytail, long) still read as
-  painted at the temple.
-- Some hair shells are low-poly (long01). LongWavy is 15.5k vertices; consider an LOD.
-- The Mindfront lashes are about 19.8k vertices per character: hide or swap them for cards
-  beyond a few metres.
-- Face polish candidates:
-  - slightly larger eyes, eye-scale ~0.12 in `LOOKS["v2"]`;
-  - brow options (Mindfront brows look best but are ~10-20k vertices);
-  - skin sheen or subsurface in three.js;
-  - eye catchlights.
-- The tee's trim band is tiny (a low-poly garment). The camisole's trim is large (lace edges).
-- More outfits: skirts (Skirts 01) and dresses (Dress 01) are CC0 and fit her. Adding a dress
-  needs a slot rule (a dress replaces top and bottom) in `appearance.ts`/`.ex` and
-  `human-factory.ts`.
-
-**The male (rebuilt on MakeHuman 2026-10-24; the plan, all done):**
-
-1. **The look** (done): `mh_female.LOOKS["m2"]`, approved by the owner as is (1.78 m,
-   athletic, angular face).
-2. **Body** (done): `B8_BODY=Male mhf_core.py` builds his skin (Toigo's light
-   male skin, Skins 02 pack, greyed for tinting), eyes, brows (`eyebrow008`), Mindfront lashes
-   01, the B8 skeleton and weights, and the 13 morph keys (the chest keys are his pectorals).
-   Output `library/pipeline/out/mh/male_core.blend`. His skin paints red knees and shins:
-   `calm=0.7` takes most of the colour out of the legs' and seat's detail.
-3. **Wardrobe** (done, `mhm_build.py`): underwear bottoms (classic, boyshort), tank, shorts and
-   trousers as body-derived shells; the MakeHuman tee, sweater, shoes and boots. Then
-   `mhf_morphs.py` adds the waist, limb and glute-lift keys (body and garments).
-4. **Hair** (done): 18 MakeHuman styles with scalp decals (`B8_BODY=Male mhf_syshair.py`).
-   His old card styles alias to the closest (CrewCut to Short, Buzz to Crop, and so on). The
-   six facial hair styles are his old ones refit to the new head (`mhm_facial.py`).
-5. **Animation packs** (done, `B8_BODY=Male mhf_anims.py`): the same clips and grips as hers
-   (the grips are in the clip specs, so `b8_gripfit.py` didn't need a rerun; they look right).
-   **No A-pose fanned fingers** (the owner, 2026-10-23): every clip must key the fingers (the
-   library bakes do; authored clips set a finger preset), and the client's relaxed hand covers
-   empty hands.
-6. **Client** (done): `Male.json` in her shape, his sliders (`appearance.ts`/`.ex`: only the
-   chest shaping stays hers), the default male hair is `Short`, and existing male characters
-   carry over through the hair aliases (their shape values use the same keys).
-
-Sources (CC0) are in `C:\Bacon8\library\makehuman` (gitignored): the MPFB2 repository's data,
-MakeHuman's system assets (the Ubuntu `makehuman-data` package and the community
-`makehuman_system_assets` pack), and the community packs (hair01, shirts01, pants01, shoes01,
-underwear01, suits01, eyebrows01, eyelashes01, skins01-03). Not every skin in the skins packs is
-usable for us; the light Toigo skins are what's used.
-
-**Game (from BACON8.md's debt list, moved here):**
-
-- The skill tree itself (Q E F Z X), armour beyond cloth, more merchants, and groups with
-  shared loot.
-- **The skeleton creatures** share the male's packs (2026-10-24) but not his posture
-  correction (it lives in `HumanInstance`), so they keep the clips' arched back and drawn-back
-  shoulders; bones don't crease, so it reads fine. Old `Mobs/Anims/` awaits the owner's OK to
-  delete. The halberd's sweep wasn't checked for which way its blade leads.
-- The male's six facial hair styles are refits of the old procedural cards; MakeHuman has no
-  CC0 beard set yet.
-- The female's **hair** GLBs weren't re-fitted for the joint offsets (only `Shoulders_Broad`
-  moves joints, so hair is unaffected for now).
-- Existing characters lose their old creator outfit and get the linen set and 1 gold at their
-  next login.
-- Throw Stone's spell rows stay in the games DB (retired in code). A migration to delete them
-  needs the owner's OK.
-- PvP reach is checked against Presence positions (up to 100 ms old), with 0.8 m slack.
+- The village's colliders and the lake's edge are client-side only.
+- `/models` serves `.glb.gz` only when present and newer than the `.glb`: make them whenever models change
+  (`gzip -k -9`).
+- The client has a few pre-existing TypeScript errors under `npm run type-check` (implicit `any`s); it bundles fine.
 - Ctrl+W still closes the tab: browsers don't let pages intercept it.
-- The village's colliders are client-side only (the server checks speed, not walls).
-  Creatures don't collide with anything.
-- Creature and PvP hits write the player's HP to the games DB on every hit; batch them if
-  fights get big.
-- `/models` serves `.glb.gz` only when present and newer than the `.glb`: make them whenever
-  models change (`gzip -k -9`).
-- The client has a few pre-existing TypeScript errors under `npm run type-check` (implicit
-  `any`s); it bundles fine.
-
-**Surface textures (next):**
-
-- The cloth armour and the underwear have design textures already; the leather and plate
-  armour still to come should use the library's leathers and metals the same way.
-- Move `pack.py` (library set to runtime WebP, with the means `SETS` needs) into
-  `library/pipeline/scripts/` and generate `SETS` from it.
-- Triplanar costs about ten texture reads per pixel on textured surfaces. Fine on desktop;
-  if low-end machines struggle, the Esc menu's Textures switch turns it off. A cheaper path
-  is baking UVs and textures into the GLBs in Blender (the Substance bake can do the same).
-- Trees' leaves, food, paint and gems are untextured on purpose (they read as stylised).
 
 **Assets still wanted:** weapon animations per weapon type, finished and polished (see
-`library/pipeline/Characters/ANIMATION_ROADMAP.md`), and a building system for the 36
-kit pieces.
+`library/pipeline/Characters/ANIMATION_ROADMAP.md`).
 
 ## 8. Picking up the torch
 

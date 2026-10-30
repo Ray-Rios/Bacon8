@@ -68,9 +68,9 @@ plugins/*/k3s
 plugins/*/scripts
 plugins/*/*.sh
 
-# Never part of the hub image: a game repository checked out at the root,
-# and operator-only files (migration notes, local secrets).
-/RaysSpaceSim
+# Never part of the hub image: a game project nested in its plugin
+# (the Unreal project is tens of GB), and operator-only files (migration notes, local secrets).
+plugins/*/unreal
 .claude
 # Brand masters: the build uses the files generated from them, not the masters.
 /brand

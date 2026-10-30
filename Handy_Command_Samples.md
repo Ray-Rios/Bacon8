@@ -207,13 +207,13 @@ cd plugins/rays_space_sim
 ```
 
 The day-to-day loop doesn't use it: compile, run the editor as a dev shard and PIE
-(`RaysSpaceSim/RAYSSPACESIM.md` §2).
+(`plugins/rays_space_sim/unreal/RAYSSPACESIM.md` §2).
 
-Build the editor target directly (or `RaysSpaceSim/Scripts/compile_editor.sh`):
+Build the editor target directly (or `plugins/rays_space_sim/unreal/Scripts/compile_editor.sh`):
 
 ```bash
 "/c/UnrealEngine/Engine/Build/BatchFiles/Build.bat" RSSEditor Win64 Development \
-  -Project="C:/Bacon8/RaysSpaceSim/RaysSpaceSim.uproject" -WaitMutex
+  -Project="C:/Bacon8/plugins/rays_space_sim/unreal/RaysSpaceSim.uproject" -WaitMutex
 ```
 
 ⚠️ **Git Bash / MSYS gotcha:** never pass absolute POSIX paths as `docker`/`kubectl`

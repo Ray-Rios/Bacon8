@@ -6,19 +6,19 @@
     brand/og-image.png        1200x630 PNG, the card shown when a bacon8.net link is shared
     brand/brand.json          name, description and colours (web manifest, icon backgrounds)
 
-and, when the game repository is checked out beside this one (./RaysSpaceSim):
+and, when the game repository is checked out at plugins/rays_space_sim/unreal:
 
-    RaysSpaceSim/Brand/game-icon.png   1024x1024 PNG, the game's icon
-    RaysSpaceSim/Brand/splash.png      the startup splash, 720x370 recommended
+    unreal/Brand/game-icon.png   1024x1024 PNG, the game's icon
+    unreal/Brand/splash.png      the startup splash, 720x370 recommended
 
 Writes:
     priv/static/favicon.ico, priv/static/site.webmanifest,
     priv/static/images/{logo-mark.svg, apple-touch-icon.png, icon-192.png, icon-512.png,
                         icon-maskable-512.png, og-image.png}
-    RaysSpaceSim/Build/Windows/Application.ico   (game exe icon; picked up at build time)
-    RaysSpaceSim/Launcher/app.ico                (launcher exe and window icon)
-    RaysSpaceSim/Content/Splash/Splash.bmp       (packaged game's startup splash)
-    RaysSpaceSim/Content/Splash/EdSplash.bmp     (editor splash; the editor draws its own
+    unreal/Build/Windows/Application.ico   (game exe icon; picked up at build time)
+    unreal/Launcher/app.ico                (launcher exe and window icon)
+    unreal/Content/Splash/Splash.bmp       (packaged game's startup splash)
+    unreal/Content/Splash/EdSplash.bmp     (editor splash; the editor draws its own
                                                   text over the bottom ~70 px)
 
 Needs Pillow only. Nothing is built on the development PC, so run it in a
@@ -40,7 +40,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[2]
 BRAND = ROOT / "brand"
 STATIC = ROOT / "priv" / "static"
-GAME = ROOT / "RaysSpaceSim"
+GAME = ROOT / "plugins" / "rays_space_sim" / "unreal"
 
 WIN_ICON_SIZES = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256]
 
@@ -135,7 +135,7 @@ def build_hub():
 def build_game():
     src = GAME / "Brand"
     if not (src / "game-icon.png").exists():
-        print("no RaysSpaceSim/Brand/game-icon.png - skipping the game")
+        print("no unreal/Brand/game-icon.png - skipping the game")
         return
     icon = load_square(src / "game-icon.png", minimum=256)
     write_ico(icon, GAME / "Build" / "Windows" / "Application.ico", WIN_ICON_SIZES)

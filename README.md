@@ -1,7 +1,7 @@
 # Bacon8
 
 A batteries-included Phoenix 1.7 / LiveView 1.0 application: authentication and
-account security, a CMS, a storefront, a forum, real-time chat, a windowed
+account security, a CMS, a storefront, real-time chat, a windowed
 "desktop" UI, a job scheduler, and a multiplayer **games
 platform API** — deployed to Kubernetes with kustomize overlays.
 
@@ -48,7 +48,7 @@ practical: each subsystem says what it is and roughly what removing it costs.
 | **Notifications & email** | Swoosh + SMTP, HTML templates, delivery logging | `lib/bacon8/email`, `notifications` |
 | **Moderation & audit** | Audit log, moderation queue, admin LiveViews | `lib/bacon8/moderation`, `audit.ex` |
 | **Games platform** | Games, characters, the game-server registry, single-session claims, client releases and launcher downloads. Game-specific features come from plugins. **Its own database.** | `lib/bacon8/games` |
-| **Plugins** | WordPress-style: a game or feature is a folder under `plugins/`, compiled in and switched on or off from `/admin/plugins` without a redeploy. Two ship as examples: **Bacon World**, a 3D multiplayer RPG in the browser (three.js; formerly Web Lobby; its notebook is [`BACON_WORLD.md`](BACON_WORLD.md)), and **Bacon Store** | `lib/bacon8/plugin.ex`, `plugins/` |
+| **Plugins** | WordPress-style: a game or feature is a folder under `plugins/`, compiled in and switched on or off from `/admin/plugins` without a redeploy. Four ship with the hub: **Bacon World**, a 3D multiplayer RPG in the browser (three.js; its notebook is [`BACON_WORLD.md`](plugins/bacon_world/BACON_WORLD.md)), **Bacon Store** (the shop), **Chat Channels** and **Suggestions & Bugs**. A private plugin (RaysSpaceSim) can live in the same folder as its own git repository. | `lib/bacon8/plugin.ex`, `plugins/` |
 
 The **games platform** is the least generic and the most actively developed part.
 If you are here for a web app, it is the first thing to delete — it is cleanly
@@ -174,7 +174,7 @@ mix phx.gen.secret      # GUARDIAN_SECRET_KEY
 
 | Variable | Notes |
 |---|---|
-| `BACON8_ACTIVE_PLUGINS` | comma-separated plugin slugs active until an admin toggles them on /admin/plugins (default: `bacon_world`) |
+| `BACON8_ACTIVE_PLUGINS` | comma-separated plugin slugs active until an admin toggles them on /admin/plugins (default: `bacon_world`, `bacon_store`, `chat_channels`) |
 
 A plugin's own settings are documented in its README.
 
@@ -185,7 +185,7 @@ A plugin's own settings are documented in its README.
 ### Two databases, on purpose
 
 ```
-Bacon8.Repo          bacon8_dev           site: users, content, store, wallet, forum, …
+Bacon8.Repo          bacon8_dev           site: users, content, store, wallet, chat, …
                                           priv/repo/migrations
 Bacon8.GamesRepo     bacon8_games_dev     games: games, characters, servers, releases, plugins' tables
                                           priv/games_repo/migrations
@@ -416,10 +416,11 @@ page) lists the sources; the 3D models' credits sit beside them on the models vo
 - `README.md`: this front door.
 - [`BACON8.md`](BACON8.md): engineering context, decisions, invariants and workflow. Read it
   before changing the hub.
-- [`BACON_WORLD.md`](BACON_WORLD.md): the game's state, decisions and next steps.
+- [`BACON_WORLD.md`](plugins/bacon_world/BACON_WORLD.md): Bacon World's state, decisions and next steps.
 - `plugins/*/README.md`: each plugin's reference.
-- `docs/`: plans, for example [`chat-channels-plugin.md`](docs/chat-channels-plugin.md). The old
-  architecture decision record (`docs/adr/`) is in git history only.
+- [`docs/pages-blog-builder.md`](docs/pages-blog-builder.md): the page and blog builder.
+- [`Handy_Command_Samples.md`](Handy_Command_Samples.md): the maintainer's deploy and operations cheat sheet.
+  The old architecture decision record (`docs/adr/`) is in git history only.
 
 ---
 

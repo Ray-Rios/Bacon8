@@ -2,8 +2,8 @@
 
 Text, voice, video and stream channels; messages with replies, reactions, pins and
 attachments; per-channel membership and roles; invites; custom emojis. It was the hub's
-forum until 2026-10-25, when it became a plugin (`docs/chat-channels-plugin.md` has the
-plan, the reasons and what is still to do).
+forum until 2026-10-25, when it became a plugin (the move is finished; git history has the plan).
+`/forum` still answers 301 to `/chat`.
 
 It is a **site plugin**: it mounts at `/chat` (not under `/games`), and the hub reaches it
 only through plugin hooks. The navigation link says "Chat".
@@ -22,7 +22,7 @@ only through plugin hooks. The navigation link says "Chat".
 |---|---|
 | `lib/chat_channels.ex` | The context: channels, messages, reactions, threads, members, invites, streams, emojis, and the permission checks |
 | `lib/chat_channels/*.ex` | Schemas, `Plugin` (the hooks the hub calls), `Notices` (what chat tells the hub's notifications) |
-| `lib/chat_channels_web/live/chat_live.ex` | The /chat page (large; splitting it is the plan's phase 3) |
+| `lib/chat_channels_web/live/chat_live.ex` | The /chat page (the page's state and event handlers) |
 | `lib/chat_channels_web/live/admin/custom_emojis_live.ex` | /admin/chat_channels/custom-emojis |
 | `lib/chat_channels_web/routes.ex` | Routes, including the 301 from the old /forum address |
 | `assets/js/index.ts` | The page's hooks (message list scrolling, the input, the resizable sidebar, drag-sorting) |
@@ -56,11 +56,19 @@ A channel's icon lives in `uploads/<uploader>/channel_icons/<channel id>/`, and 
 folder, and changing the icon or deleting the channel deletes files only when `Channel.icon_path?/2`
 agrees (rows saved before 2026-10-25 may hold anything; until then the create form could set it).
 
+## Things that bite
+
+- **Production's plugin list must name `chat_channels`** (`BACON8_ACTIVE_PLUGINS` in `k3s/overlays/prod/configmap.yaml`),
+  and a plugin that is active by default but whose requirement is off is not active (`plugin_hooks_test.exs`):
+  without chat in the list, RaysSpaceSim's Holo-sims go inactive too.
+- The kick and ban hooks (`{:channel_member_removed, ...}`) are synchronous and a test pins them. Keep both.
+
 ## Known gaps
 
-- `ChatLive` (~2,050 lines) is now the page's state and event handlers; everything it draws (messages, emoji
+- `ChatLive` (~2,050 lines) is the page's state and event handlers; everything it draws (messages, emoji
   pickers, sidebar, header, pinned messages, edit/reply/composer forms, dialogs) is in `ChatComponents`.
-- Voice, video and stream channels exist but have no tests.
+  Splitting the handlers by feature is optional.
+- The store's own channel-pass tests need chat installed.
 
 ## Turning it off
 
