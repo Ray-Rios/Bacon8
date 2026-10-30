@@ -7,6 +7,6 @@
   "workMinutes": 90,
   "reviewMinutes": 20,
   "testCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File plugins\\feedback\\agent\\test.ps1",
-  "deployCommand": "\"C:\\Program Files\\Git\\bin\\bash.exe\" -lc ./deploy-prod.sh",
+  "deployCommand": "\"C:\\Program Files\\Git\\bin\\bash.exe\" -lc ./scripts/deploy-prod.sh",
   "deployMinutes": 45
 }

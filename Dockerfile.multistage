@@ -223,7 +223,7 @@ RUN addgroup -S -g 101 bacon8 && \
 COPY --from=app-builder --chown=bacon8:bacon8 /app/_build/prod/rel/bacon8 ./
 
 # Copy startup script
-COPY --chown=bacon8:bacon8 bacon8-start.sh /usr/local/bin/bacon8-start.sh
+COPY --chown=bacon8:bacon8 scripts/bacon8-start.sh /usr/local/bin/bacon8-start.sh
 RUN chmod +x /usr/local/bin/bacon8-start.sh
 
 # Switch to non-root user

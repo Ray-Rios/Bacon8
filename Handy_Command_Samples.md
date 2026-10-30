@@ -1,327 +1,229 @@
-# Bacon8 Handy Command Samples
+# Bacon8 command cheat sheet
 
-Cheat sheet for day-to-day work on this repo: Elixir/Phoenix, Docker, k3s/kubectl,
-Postgres/Redis ops, and the RaysSpaceSim game server pipeline. See [README.md](README.md)
+The maintainer's commands: starting from scratch, the day-to-day, and what to run when
+something is wrong in a running environment. Everything runs from Git Bash in `C:\Bacon8`
+(the scripts in `scripts/` move to the repository root themselves, so they work from any folder).
+[README.md](README.md) explains what Bacon8 is; [BACON8.md](BACON8.md) is the engineering reference.
 
-**Namespaces:** `bacon8-dev` (dev overlay, `deploy-dev.sh`) and `bacon8`
-(prod overlay, `deploy-prod.sh`). Deployment name is always `bacon8-web` in both.
----
+| | Prod | Dev |
+|---|---|---|
+| Namespace | `bacon8` | `bacon8-dev` |
+| Deploy | `scripts/deploy-prod.sh` | `scripts/deploy-dev.sh` |
+| Deployment / pod label | `bacon8-web` / `app=bacon8-web` | the same |
+| Databases | `bacon8_prod`, `bacon8_games_prod` | `bacon8_dev`, `bacon8_games_dev` |
 
-## 🔑 Prod secrets (first-time / rotation)
-
-Generate before deploying prod, or `bacon8-start.sh` fails fast on boot. Place the values in `k3s/overlays/prod/secrets.yaml` (copy `secrets.example.yaml`, then change the DB password too):
-
-```bash
-mix phx.gen.secret 64        # SECRET_KEY_BASE
-mix phx.gen.secret 32        # LIVE_VIEW_SIGNING_SALT
-mix guardian.gen.secret      # GUARDIAN_SECRET_KEY
-```
-## 🧪 Elixir / Phoenix (mix)
-```bash
-mix deps.get
-mix deps.clean --all
-mix clean
-mix compile
-mix format                   # or: mix format --check-formatted (what `mix lint` runs)
-mix ecto.create
-mix ecto.migrate
-mix ecto.drop
-mix ecto.reset               # alias: drop + create + migrate + seed
-mix setup                    # alias: deps.get + ecto.setup + assets.setup + assets.build
-mix test                     # creates/migrates test DB first
-mix lint                     # format check, eslint, tsc, credo --strict, sobelow, dialyzer
-mix phx.server
-pkill -f "mix phx.server"    # stop a stray local server
-```
-
-⚠️ **Games platform has its own Ecto repo** (`Bacon8.GamesRepo`, migrations
-under `priv/games_repo/migrations`). `mix ecto.migrate` only touches the main repo —
-games migrations need `mix ecto.migrate -r Bacon8.GamesRepo`.
-
-### Assets
-
-`mix assets.setup` / `assets.build` / `assets.deploy` and `mix lint`'s frontend
-steps all shell out to `scripts/dev-assets.sh` (see [README.md](README.md#assets)).
-**That script is currently missing from the working tree** — if the alias fails
-with "No such file or directory", either restore it or run the npm scripts
-directly from `assets/`:
-
-```bash
-cd assets
-npm ci                       # or npm install
-npm run build                # update-browserslist + build:css + build:js
-npm run build:css            # Tailwind/PostCSS only — use this when only .css didn't load
-npm run watch                # css + js watchers for local dev
-npm run type-check
-npm run lint                 # eslint + stylelint
-npm run test:e2e              # Playwright
-```
+Git Bash rewrites absolute POSIX paths in arguments (`/app/bin/bacon8` becomes a Windows path).
+Prefix those commands with `MSYS_NO_PATHCONV=1`.
 
 ---
 
-## 🐳 Docker
+## 1. Starting from scratch
 
-Prod/dev image build uses `Dockerfile.multistage` with `MIX_ENV` as a build arg
-(this is what `deploy-dev.sh` / `deploy-prod.sh` / `new-prod-migrations.sh` do):
-
-```bash
-docker build -t bacon8:dev  -f Dockerfile.multistage --build-arg MIX_ENV=dev  .
-docker build -t bacon8:prod -f Dockerfile.multistage --build-arg MIX_ENV=prod --progress=plain .
-docker build --no-cache -f Dockerfile.multistage -t bacon8:prod --build-arg MIX_ENV=prod .
-```
-
-Cleanup (there is no `cleanup-docker.sh` in this repo — do it by hand):
+**Needs:** Docker Desktop with Kubernetes (or k3s), `kubectl`, Git Bash. Nothing is built on the host:
+Elixir, Node and the assets are built inside the image.
 
 ```bash
-docker images --filter=reference="bacon8*" -q | xargs -r docker rmi -f   # Bacon8 images only
-docker container prune -f      # remove stopped containers
-docker image prune -f          # remove dangling images
-docker builder prune -f        # clean build cache
+# 1. Secrets (never committed). Copy the examples and fill them in; change the database password too.
+cp k3s/overlays/prod/secrets.example.yaml k3s/overlays/prod/secrets.yaml
+docker run --rm elixir:1.19 sh -c 'mix local.hex --force >/dev/null; mix phx.gen.secret 64; mix phx.gen.secret 32; mix phx.gen.secret'
+#    -> SECRET_KEY_BASE, LIVE_VIEW_SIGNING_SALT, GUARDIAN_SECRET_KEY. Also copy ingress.example.yaml and
+#       mailhog-auth-secret.example.yaml. The start script refuses to boot without the secrets.
 
-# ☢️ Nuclear (destroys ALL local images/containers/volumes, not just this project):
-docker system prune -a -f --volumes
+# 2. Deploy. On an empty cluster it restores the newest dumps in backups/ (see section 4).
+scripts/deploy-prod.sh
+
+# 3. Models and uploads are not in the image; push them (the models are 2.6 GB, 5-10 minutes).
+scripts/sync-models-to-k8s.sh
+scripts/sync-uploads-to-k8s.sh --replace-production-uploads     # only when you mean to replace prod's uploads
+
+# 4. Check it.
+kubectl get pods -n bacon8
+curl -s http://localhost:8080/health      # after: kubectl port-forward -n bacon8 deploy/bacon8-web 8080:4000
 ```
 
-Compact the Docker Desktop WSL virtual disk after a big cleanup (PowerShell, run as Admin):
+The game (RaysSpaceSim) has its own pipeline, section 6.
+
+---
+
+## 2. Day to day
+
+### Build and test (always in Docker; there is no local Elixir)
+
+```bash
+# Compile with warnings as errors
+docker run --rm -v "$PWD:/app" -v bacon8_deps:/app/deps -v bacon8_build:/app/_build -w /app -e MIX_ENV=dev elixir:1.19 \
+  sh -c 'mix local.hex --force && mix local.rebar --force && mix deps.get && mix compile --warnings-as-errors'
+
+# Tests need only Postgres (full recipe: BACON8.md section 14)
+docker network create bacon8chk
+docker run -d --rm --name bacon8chk-pg --network bacon8chk -e POSTGRES_PASSWORD=postgres postgres:16
+docker run --rm --network bacon8chk -v "$PWD:/app" -v bacon8_deps:/app/deps -v bacon8_build:/app/_build \
+  -w /app -e MIX_ENV=test -e DB_HOST=bacon8chk-pg elixir:1.19 \
+  sh -c 'mix local.hex --force && mix local.rebar --force && mix deps.get && mix test'
+docker stop bacon8chk-pg && docker network rm bacon8chk
+
+sh plugins/bacon_world/assets/js/__tests__/run.sh         # Bacon World's JS tests (its own container)
+```
+
+Games-platform migrations live in a second repo: `mix ecto.migrate -r Bacon8.GamesRepo`
+(production runs both through the release, section 3).
+
+### Deploy
+
+```bash
+git status                       # the deploy builds from the WORKING TREE: no one else's half-finished work
+scripts/deploy-prod.sh           # backs up both databases, redis and certificates, rebuilds, redeploys, runs migrations
+scripts/deploy-prod.sh --fresh   # DANGER: wipes the database volume and restores the newest backup
+scripts/deploy-dev.sh            # the dev namespace
+scripts/new-prod-migrations.sh   # rebuild and run only the migrations job, then restart web
+scripts/sync-models-to-k8s.sh    # after changing priv/static/models (only when told to)
+```
+
+`deploy-prod.sh` deletes the namespace before it builds the image (the volumes survive), so a failing
+build means downtime. Compile first, and check the Dockerfile's `COPY` lines if you removed or moved files.
+
+### Look at it
+
+```bash
+kubectl get pods -n bacon8
+kubectl logs -f deploy/bacon8-web -n bacon8 -c bacon8
+kubectl logs -n bacon8 -l app=bacon8-web --since=15m | grep -iE "error|exception|\[warning\]"
+kubectl top pod -n bacon8                                  # CPU and memory
+kubectl rollout restart deploy/bacon8-web -n bacon8        # restart without a rebuild
+kubectl rollout status  deploy/bacon8-web -n bacon8 --timeout=300s
+```
+
+---
+
+## 3. Something is wrong: investigate and fix
+
+### The site does not load or a pod will not start
+
+```bash
+kubectl get pods -n bacon8                                 # Pending / CrashLoopBackOff / Init:Error?
+kubectl describe pod <pod> -n bacon8                       # events at the bottom: image pull, volume, probe failures
+kubectl logs <pod> -n bacon8 -c bacon8 --previous          # why the last run died
+kubectl logs <pod> -n bacon8 -c wait-for-migrations        # stuck in Init: migrations pending or failing
+kubectl get events -n bacon8 --sort-by=.metadata.creationTimestamp | tail -20
+kubectl get ingress,svc,endpoints -n bacon8                # no endpoints = no ready pod
+kubectl get certificates -n bacon8                         # TLS
+```
+
+Common causes: a missing or placeholder secret (the start script exits at once); a pending migration;
+Postgres or Redis not ready yet; the image was not rebuilt after a change.
+
+### Run code inside the running app
+
+```bash
+MSYS_NO_PATHCONV=1 kubectl exec -it -n bacon8 deploy/bacon8-web -c bacon8 -- /app/bin/bacon8 remote   # IEx on the live node
+MSYS_NO_PATHCONV=1 kubectl exec -n bacon8 deploy/bacon8-web -c bacon8 -- /app/bin/bacon8 eval "Bacon8.Release.status()"
+MSYS_NO_PATHCONV=1 kubectl exec -n bacon8 deploy/bacon8-web -c bacon8 -- /app/bin/bacon8 eval "Bacon8.Release.migrate()"
+```
+
+### Database
+
+```bash
+scripts/postgres-ops.sh connect      # psql shell (bacon8_prod; set DB_NAME=bacon8_games_prod for the games database)
+scripts/postgres-ops.sh size         # database sizes
+scripts/postgres-ops.sh logs         # Postgres pod logs
+NAMESPACE=bacon8-dev scripts/postgres-ops.sh connect       # any of these against dev
+```
+
+A migration that fails halfway leaves the web pod in `Init`. Read its log (above), fix the migration,
+redeploy. To roll one back: `Bacon8.Release.rollback(Bacon8.Repo, <version>)` through `eval`.
+
+### Back out a bad deploy
+
+The image is built locally as `bacon8:prod`, so `kubectl rollout undo` brings back nothing different.
+Check out the last good commit and run `scripts/deploy-prod.sh` again. If the data is damaged, restore:
+`scripts/postgres-ops.sh restore` (pick a dump). Every deploy writes one to `backups/` first.
+
+### Redis, plugins, the game
+
+```bash
+scripts/redis-ops.sh keys "chat:*"           # also "player:*", "session:*"
+scripts/redis-ops.sh monitor                 # live command stream; Ctrl+C to stop
+scripts/redis-ops.sh backup | restore
+#   scripts/redis-ops.sh flush  deletes EVERYTHING and is not guarded.
+
+# A plugin missing from the site: it must be in BACON8_ACTIVE_PLUGINS (k3s/overlays/prod/configmap.yaml)
+# and switched on at /admin/plugins.
+kubectl get pods -n raysspacesim                                  # the game's world server and holo-sim instances
+kubectl logs -n raysspacesim deploy/rss-world-server --tail=100
+```
+
+### Files and uploads
+
+```bash
+scripts/sync-uploads-from-k8s.sh             # pull production's uploads down to ./uploads (does not touch prod)
+scripts/sync-uploads-to-k8s.sh --replace-production-uploads   # the opposite: replaces prod's. Pull first.
+```
+
+### Backups
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/backup.ps1 -Destination D:\Backups   # everything git does not hold
+scripts/postgres-ops.sh backup | list | clean        # dumps in ./backups (clean keeps the newest 10)
+```
+
+---
+
+## 4. Secrets, in short
+
+`k3s/overlays/*/secrets.yaml`, `ingress.yaml` and `mailhog-auth-secret.yaml` are gitignored: keep it so.
+Rotate `GAMES_SERVER_API_KEY` if an image leaks (it acts as any user through the games API). Never paste a
+secret into a chat, a commit or a log.
+
+---
+
+## 5. Docker housekeeping
+
+```bash
+docker images --filter=reference="bacon8*"
+docker image prune -f && docker builder prune -f           # dangling images, build cache
+docker system df                                           # what is using the disk
+```
+
+After a big cleanup, shrink Docker Desktop's WSL disk (PowerShell as Administrator; quit Docker Desktop first):
 
 ```powershell
-$script = @"
-select vdisk file="C:\Users\error\AppData\Local\Docker\wsl\disk\docker_data.vhdx"
-attach vdisk readonly
-compact vdisk
-detach vdisk
-exit
-"@
-$scriptPath = "$env:TEMP\compact_docker_vhdx.txt"
-$script | Out-File -FilePath $scriptPath -Encoding ascii
-diskpart /s $scriptPath
-
-# Re-run capturing output/exit code if it silently no-ops (needs admin):
-$p = Start-Process diskpart -ArgumentList "/s `"$scriptPath`"" -NoNewWindow -Wait -PassThru `
-  -RedirectStandardOutput "$env:TEMP\diskpart_out.txt" -RedirectStandardError "$env:TEMP\diskpart_err.txt"
-"ExitCode: $($p.ExitCode)"
-Get-Content "$env:TEMP\diskpart_out.txt", "$env:TEMP\diskpart_err.txt"
-([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+wsl --shutdown
+$f = "$env:TEMP\compact.txt"
+"select vdisk file=`"$env:LOCALAPPDATA\Docker\wsl\disk\docker_data.vhdx`"`nattach vdisk readonly`ncompact vdisk`ndetach vdisk`nexit" | Out-File $f -Encoding ascii
+diskpart /s $f
 ```
 
 ---
 
-## ☸️ Kubernetes / k3s
+## 6. RaysSpaceSim (the game)
 
-### Deploy scripts (prefer these over raw kubectl)
-
-```bash
-./deploy-dev.sh                     # rebuilds image, applies k3s/overlays/dev, waits, streams logs
-./deploy-prod.sh                    # backs up db/redis/certs, preserves PVCs, redeploys bacon8
-./deploy-prod.sh --fresh            # wipes db PVC and restores from most recent backup
-plugins/rays_space_sim/deploy-game.sh   # RaysSpaceSim: server image + client, rollout, launcher publish (see below)
-./new-prod-migrations.sh            # rebuild image (no-cache), run k3s/jobs/run-migrations.yaml, restart web
-
-kubectl apply -k k3s/overlays/dev
-kubectl apply -k k3s/overlays/prod
-```
-
-### Everyday inspection
-
-```bash
-kubectl get pods -n bacon8-dev
-kubectl get all -n bacon8
-kubectl get pvc -n bacon8-dev
-kubectl get events -n bacon8-dev --sort-by='.metadata.creationTimestamp' | tail -n 20
-kubectl get certificates -n bacon8
-kubectl get svc -n ingress-nginx -o wide
-kubectl get configmap bacon8-config -n bacon8-dev -o yaml
-kubectl get ingress -n bacon8-dev -o yaml
-kubectl get endpoints bacon8-web -n bacon8-dev
-
-kubectl describe deployment bacon8-web -n bacon8-dev
-kubectl describe ingress bacon8-ingress -n bacon8
-
-kubectl logs -f deployment/bacon8-web -n bacon8
-kubectl logs -n bacon8 -l app=bacon8-web -f
-kubectl logs -n bacon8 -l app=bacon8-web -f | grep -i "phx_join" --line-buffered   # LiveView join debugging
-```
-
-### Rollouts / scaling
-
-```bash
-kubectl rollout restart deployment/bacon8-web -n bacon8
-kubectl rollout status  deployment/bacon8-web -n bacon8 --timeout=300s
-
-kubectl scale deployment bacon8-web --replicas=0 -n bacon8 && sleep 5 && \
-  kubectl scale deployment bacon8-web --replicas=2 -n bacon8
-
-# Rebuild + rollout in one line (dev image name, not the tag deploy scripts use):
-docker build --no-cache -f Dockerfile.multistage -t bacon8:dev --build-arg MIX_ENV=dev . && \
-  kubectl rollout restart deployment/bacon8-web -n bacon8-dev
-```
-
-### Migrations (run through the release, not `mix`)
-
-```bash
-MSYS_NO_PATHCONV=1 kubectl exec -n bacon8 \
-  $(kubectl get pods -n bacon8 -l app=bacon8-web -o name | head -1) \
-  -- /app/bin/bacon8 eval "Bacon8.Release.migrate()"
-
-# Or as a one-shot job (what new-prod-migrations.sh does):
-kubectl apply -f k3s/jobs/run-migrations.yaml
-kubectl wait --for=condition=complete job/run-migrations -n bacon8 --timeout=300s
-kubectl logs job/run-migrations -n bacon8
-kubectl delete job run-migrations -n bacon8 --ignore-not-found=true
-```
-
-### Nuking / rebuilding an environment
-
-```bash
-kubectl delete namespace bacon8-dev --ignore-not-found=true    # deletes everything incl. PVCs
-./deploy-dev.sh
-
-# Prod — deploy-prod.sh already preserves PVCs by default; only do this manually
-# if you explicitly want a from-scratch prod namespace (⚠️ destroys the cluster's copy of the db):
-kubectl delete namespace bacon8 --ignore-not-found=true && ./deploy-prod.sh --fresh
-```
-
----
-
-## 🎮 RaysSpaceSim game server (`deploy-game.sh`)
-
-Separate pipeline from the Bacon8 app on purpose — see the big comment block at
-the top of `plugins/rays_space_sim/deploy-game.sh` (it moved into the game's private
-plugin on 2026-10-16). Tags are the game repo's git SHA (`-dirty-<UTC
-timestamp>` if uncommitted), never `latest`. Deployed via the `HOLOSIM_IMAGE`
-value in `k3s/overlays/prod/configmap.yaml`.
+Its own pipeline, in its private plugin. The day-to-day loop (compile, run the editor as a dev shard, PIE) is in
+`plugins/rays_space_sim/unreal/RAYSSPACESIM.md` section 2.
 
 ```bash
 cd plugins/rays_space_sim
+./deploy-game.sh --list          # built tags and which one is live
 ./deploy-game.sh                 # server + client for the current commit, roll out, publish to the launcher
-./deploy-game.sh --build-only    # build server + client and tag; publish nothing
-./deploy-game.sh --server-only   # build + smoke-test the server image; ship nothing
-./deploy-game.sh --finish <tag>  # finish a run whose server image built but whose client did not
-./deploy-game.sh --client-only   # build + publish a client for the LIVE server tag
-./deploy-game.sh --publish-only  # re-publish the last staged client (no cook)
-./deploy-game.sh --list          # show built tags and which one is live
-./deploy-game.sh --smoke [tag]   # boot the image locally and show its log
-./deploy-game.sh --set <tag>     # roll out a tag that is already built
-./deploy-game.sh --codemap       # regenerate the code map only (no cook)
-./deploy-game.sh --disable       # revert to the manual launch path
+./deploy-game.sh --build-only    # build and tag, publish nothing
+./deploy-game.sh --set <tag>     # roll out (or roll back to) a tag that is already built
+./deploy-game.sh --codemap       # regenerate the code map only; it reaches the site with the next deploy-prod.sh
+# the rest (--server-only, --client-only, --publish-only, --smoke, --finish, --disable): the header of deploy-game.sh
+
+plugins/rays_space_sim/unreal/Scripts/compile_editor.sh    # build the editor target
 ```
 
-The day-to-day loop doesn't use it: compile, run the editor as a dev shard and PIE
-(`plugins/rays_space_sim/unreal/RAYSSPACESIM.md` §2).
-
-Build the editor target directly (or `plugins/rays_space_sim/unreal/Scripts/compile_editor.sh`):
-
-```bash
-"/c/UnrealEngine/Engine/Build/BatchFiles/Build.bat" RSSEditor Win64 Development \
-  -Project="C:/Bacon8/plugins/rays_space_sim/unreal/RaysSpaceSim.uproject" -WaitMutex
-```
-
-⚠️ **Git Bash / MSYS gotcha:** never pass absolute POSIX paths as `docker`/`kubectl`
-arguments (e.g. `--entrypoint /bin/true`) — MSYS rewrites them into Windows paths
-and the container fails with a confusing "no such file" error. Drop the leading
-slash or prefix the command with `MSYS_NO_PATHCONV=1`.
+Close the editor before a cook, and stop the world server (`Scripts/stop_world_server.bat`) before a build.
 
 ---
 
-## 🐘 PostgreSQL (`postgres-ops.sh`)
-
-Defaults: namespace `bacon8`, db `bacon8_prod`, user `postgres`. Override
-with `NAMESPACE=bacon8-dev ./postgres-ops.sh ...` for dev.
-
-```bash
-./postgres-ops.sh backup                # dump to ./backups/db_backup_<timestamp>.sql
-./postgres-ops.sh restore               # pick from backup list and restore
-./postgres-ops.sh list                  # show all available backups
-./postgres-ops.sh clean                 # remove old backups (keep 10)
-./postgres-ops.sh connect               # psql shell
-./postgres-ops.sh size                  # database sizes
-./postgres-ops.sh logs                  # postgres pod logs
-```
-
----
-
-## 🔴 Redis (`redis-ops.sh`)
-
-Default namespace `bacon8`.
-
-```bash
-./redis-ops.sh backup                    # BGSAVE + copy dump.rdb to ./backups
-./redis-ops.sh restore                   # restore most recent backup
-./redis-ops.sh monitor                   # live MONITOR of all Redis commands
-./redis-ops.sh keys "chat:*"             # chat-related keys
-./redis-ops.sh keys "player:*"           # player-related keys
-./redis-ops.sh keys "session:*"          # session keys
-./redis-ops.sh flush                     # ☢️ DANGEROUS: deletes ALL data, not guarded
-```
-
----
-
-## 📁 Uploads & static models sync
-
-```bash
-./sync-uploads-to-k8s.sh          # push local ./uploads -> bacon8-web pod (bacon8 ns)
-./sync-uploads-from-k8s.sh        # pull uploads back down
-./sync-models-to-k8s.sh           # push ./priv/static/models -> pod (large, 2.6GB+, may take 5-10 min)
-```
-
----
-
-## 🌐 Quick test links (dev)
-
-| What | URL |
-|---|---|
-| App | http://localhost:4000 |
-| Health check | http://localhost:4000/health |
-| Services status | http://localhost:4000/admin/services |
-| GraphQL | http://localhost:4000/api/graphql |
-| GraphiQL (dev only) | http://localhost:4000/api/graphiql |
-| Mailhog | http://localhost:8025 |
-
-Auth smoke test:
-
-```bash
-curl -X POST http://localhost:4000/api/auth/register -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","name":"TestUser","password":"SecurePass123!"}'
-
-curl -X POST http://localhost:4000/api/auth/dev-verify -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com"}'          # dev only — must 404 in prod, see README security notes
-
-curl -X POST http://localhost:4000/api/auth/login -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"SecurePass123!"}'
-```
-
-JS bundle / caching check:
-
-```bash
-curl -Ik https://localhost/assets/app.js
-```
-
-LiveView/WebSocket debugging:
-
-1. Browser console should show `"✅ Phoenix LiveView connected"`.
-2. Network tab → WS → confirm the `Upgrade` handshake succeeded.
-3. Tail joins/channel activity: `kubectl logs -n bacon8 -l app=bacon8-web -f | grep -i "phx_join" --line-buffered`
-
----
-
-## 🪟 Windows helpers
+## 7. Odds and ends
 
 ```powershell
-# Find stray BEAM/Erlang/Node processes
-Get-Process | Where-Object {$_.ProcessName -like "*beam*" -or $_.ProcessName -like "*erl*" -or $_.ProcessName -like "*node*"}
+# Stray BEAM / Erlang / Node processes
+Get-Process | Where-Object { $_.ProcessName -match 'beam|erl|node' }
 ```
 
-## 🩹 Misc fixes
-
 ```bash
-# File corruption fix (recreate an empty tracked file)
-rm file_name.ts && touch file_name.ts
-
-# Fix a broken/detached github repo by re-pointing bookkeeping at a remote,
-# without touching your working tree:
-mv -v .git .git_old               # keep old git metadata around, just in case
-git init
-git remote add origin "${url}"
-git fetch
-git reset origin/master --mixed    # use origin/main if that's what the remote uses
+# Re-point a broken git checkout at its remote without touching the working tree
+mv .git .git_old && git init && git remote add origin "<url>" && git fetch && git reset origin/main --mixed
 ```

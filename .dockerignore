@@ -34,10 +34,7 @@ README.md
 current_routes.md
 Handy_Command_Samples.md
 
-# Scripts
-deploy-*.sh
-postgres-ops.sh
-redis-ops.sh
+# Scripts: the image takes only scripts/bacon8-start.sh (Dockerfile.multistage names it)
 
 # Logs
 *.log

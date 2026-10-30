@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+cd "$(dirname "${BASH_SOURCE[0]}")/.."  # run from the repository root, whatever the caller's directory
 
 # Usage help
 if [[ "$*" == *"--help"* ]] || [[ "$*" == *"-h"* ]]; then

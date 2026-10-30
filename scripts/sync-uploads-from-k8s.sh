@@ -1,9 +1,10 @@
 #!/bin/bash
 
+cd "$(dirname "${BASH_SOURCE[0]}")/.."  # run from the repository root, whatever the caller's directory
 # Sync uploads from Kubernetes to Windows host
 # This script extracts all uploads from the Docker VM to your Windows filesystem
 #
-# Usage: ./sync-uploads-from-k8s.sh
+# Usage: ./scripts/sync-uploads-from-k8s.sh
 
 set -e
 

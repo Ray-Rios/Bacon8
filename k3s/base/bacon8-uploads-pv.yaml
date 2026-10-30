@@ -13,6 +13,6 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   hostPath:
     # Use Docker VM internal storage (survives docker system prune)
-    # To sync to Windows, run: ./sync-uploads-from-k8s.sh
+    # To sync to Windows, run: ./scripts/sync-uploads-from-k8s.sh
     path: /var/lib/k8s-pvs/bacon8-uploads
     type: DirectoryOrCreate

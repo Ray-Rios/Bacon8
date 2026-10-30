@@ -352,8 +352,8 @@ of version control.
 ## Operations
 
 ```bash
-./postgres-ops.sh backup|restore|list|clean|connect|size|logs
-./redis-ops.sh    backup|restore|monitor|keys "chat:*"|flush
+./scripts/postgres-ops.sh backup|restore|list|clean|connect|size|logs
+./scripts/redis-ops.sh    backup|restore|monitor|keys "chat:*"|flush
 ./bacon8-start.sh
 ```
 

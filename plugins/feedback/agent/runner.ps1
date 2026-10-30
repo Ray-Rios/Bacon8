@@ -48,7 +48,7 @@ $Model      = [string](Setting "model" "")
 $WorkMin    = [int](Setting "workMinutes" 90)
 $ReviewMin  = [int](Setting "reviewMinutes" 20)
 $TestCmd    = [string](Setting "testCommand" "powershell -NoProfile -ExecutionPolicy Bypass -File plugins\feedback\agent\test.ps1")
-$DeployCmd  = [string](Setting "deployCommand" "`"C:\Program Files\Git\bin\bash.exe`" -lc ./deploy-prod.sh")
+$DeployCmd  = [string](Setting "deployCommand" "`"C:\Program Files\Git\bin\bash.exe`" -lc ./scripts/deploy-prod.sh")
 $DeployMin  = [int](Setting "deployMinutes" 45)
 
 if ($Site -eq "") { throw "Set `"site`" in $Config (the site's address, e.g. https://example.org)." }
@@ -185,8 +185,8 @@ $NeverAllowed = @(
   "WebFetch", "WebSearch",
   "Bash(git push:*)", "Bash(git remote:*)", "Bash(git config:*)",
   "Bash(kubectl:*)", "Bash(helm:*)", "Bash(k3s:*)",
-  "Bash(./deploy-prod.sh:*)", "Bash(bash deploy-prod.sh:*)", "Bash(sh deploy-prod.sh:*)", "Bash(./deploy-dev.sh:*)",
-  "Bash(./sync-models-to-k8s.sh:*)", "Bash(./sync-uploads-to-k8s.sh:*)", "Bash(./postgres-ops.sh:*)", "Bash(./redis-ops.sh:*)",
+  "Bash(./scripts/deploy-prod.sh:*)", "Bash(bash scripts/deploy-prod.sh:*)", "Bash(sh scripts/deploy-prod.sh:*)", "Bash(./scripts/deploy-dev.sh:*)",
+  "Bash(./scripts/sync-models-to-k8s.sh:*)", "Bash(./scripts/sync-uploads-to-k8s.sh:*)", "Bash(./scripts/postgres-ops.sh:*)", "Bash(./scripts/redis-ops.sh:*)",
   "Bash(curl:*)", "Bash(wget:*)", "Bash(ssh:*)", "Bash(scp:*)", "Bash(Invoke-WebRequest:*)", "Bash(Invoke-RestMethod:*)",
   "Read(./.env*)", "Read(./k3s/**/*secret*)", "Read(~/.bacon8/**)", "Read(~/.kube/**)", "Read(~/.ssh/**)",
   # git hooks run later, when the owner commits; Claude's own settings and the token folder are not its to edit
