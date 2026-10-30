@@ -8,15 +8,23 @@ defmodule ChatChannelsWeb.ChatLive do
   # audio, video, documents, text and data files, source code, archives. Never HTML, SVG, XML, JS or other
   # active content (`Bacon8.SafePath.active_content?/1`), and no programs or installers (.exe .msi .bat
   # .cmd .ps1 .sh .jar .apk .dmg). Served with nosniff, so a text file is shown or downloaded, never run.
+  #
+  # EVERY extension here must be one the MIME library knows (`MIME.type/1` is not "application/octet-stream"):
+  # LiveView raises in `allow_upload` otherwise, and the whole chat page fails to mount with a 500. The test
+  # in test/chat_channels_web/attachment_types_test.exs guards it. Rejected for that reason: .mkv .log .yaml
+  # .toml .ini .py .ex .cs and the like; ask people to rename a text file to .txt.
   @attachment_types ~w(
     .jpg .jpeg .png .gif .webp .avif .bmp .tif .tiff .heic
-    .mp4 .webm .mov .avi .mkv .ogv .m4v
-    .mp3 .wav .ogg .oga .opus .m4a .aac .flac
+    .mp4 .webm .mov .avi .ogv
+    .mp3 .wav .ogg .opus .m4a .aac .flac
     .pdf .rtf .doc .docx .xls .xlsx .ppt .pptx .odt .ods .odp .epub
-    .txt .md .markdown .log .csv .tsv .json .yaml .yml .toml .ini .cfg
-    .gd .cs .cpp .h .py .ex .exs .ts .lua .sql .diff .patch
-    .zip .tar .gz .tgz .7z .rar .bz2 .xz
+    .txt .md .markdown .csv .json
+    .ts
+    .zip .tar .gz .7z .rar .bz2
   )
+
+  @doc false
+  def attachment_types, do: @attachment_types
 
   @impl true
   def mount(_params, _session, socket) do
