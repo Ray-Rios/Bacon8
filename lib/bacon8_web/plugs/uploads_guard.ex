@@ -12,8 +12,8 @@ defmodule Bacon8Web.Plugs.UploadsGuard do
      session and sent with `Cache-Control: private`, or answered with 404:
 
        * `/uploads/users/<user_id>/...`     - desktop "My Files" drive
-       * `/uploads/<user_id>/files/...`     - `UserFile` (Arc) uploads; also served
-                                               to anyone when that file `is_public`
+       * `/uploads/<user_id>/files/...`     - older per-user uploads (the legacy `user_files`
+                                               table is gone; only the owner and staff read these)
 
   `/uploads/_drive/...` (the drive's blob store) is refused outright.
 
@@ -50,8 +50,8 @@ defmodule Bacon8Web.Plugs.UploadsGuard do
       :never ->
         conn |> send_resp(404, "Not found") |> halt()
 
-      {:private, owner_id, file_id} ->
-        serve_private(conn, opts, root, rest, owner_id, file_id)
+      {:private, owner_id} ->
+        serve_private(conn, opts, root, rest, owner_id)
     end
   end
 
@@ -62,27 +62,17 @@ defmodule Bacon8Web.Plugs.UploadsGuard do
   # Drive blob store (Bacon8.Storage.Local). Bodies are only ever served by
   # Bacon8Web.DriveController after an access check - never by path.
   defp classify(["_drive" | _]), do: :never
-  defp classify(["users", owner_id | _]), do: {:private, owner_id, nil}
-  defp classify([owner_id, "files", name | _]), do: {:private, owner_id, file_id_from(name)}
-  defp classify([_owner_id, "files"]), do: {:private, nil, nil}
+  defp classify(["users", owner_id | _]), do: {:private, owner_id}
+  defp classify([owner_id, "files", _name | _]), do: {:private, owner_id}
+  defp classify([_owner_id, "files"]), do: {:private, nil}
   defp classify(_), do: :public
 
-  # Arc names user files "<file uuid>_<name>_<version>.<ext>" (UserFileUpload.filename/2).
-  defp file_id_from(<<id::binary-size(36), "_", _::binary>>) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> uuid
-      :error -> nil
-    end
-  end
-
-  defp file_id_from(_), do: nil
-
-  defp serve_private(conn, opts, root, rest, owner_id, file_id) do
+  defp serve_private(conn, opts, root, rest, owner_id) do
     user = current_user(conn, opts)
 
     allowed =
       owner_id != nil and
-        (owner?(user, owner_id) or staff?(user) or public_user_file?(file_id, owner_id))
+        (owner?(user, owner_id) or staff?(user))
 
     with true <- allowed,
          {:ok, fs_path} <- SafePath.resolve(root, Path.join(rest)),
@@ -117,15 +107,6 @@ defmodule Bacon8Web.Plugs.UploadsGuard do
 
   defp staff?(%{role: role, status: "active"}) when role in ["admin", "gm"], do: true
   defp staff?(_), do: false
-
-  defp public_user_file?(nil, _owner_id), do: false
-
-  defp public_user_file?(file_id, owner_id) do
-    case Bacon8.Repo.get(Bacon8.Files.UserFile, file_id) do
-      %{is_public: true, user_id: uid} -> to_string(uid) == owner_id
-      _ -> false
-    end
-  end
 
   defp put_safety_headers(conn, name) do
     conn = put_resp_header(conn, "x-content-type-options", "nosniff")

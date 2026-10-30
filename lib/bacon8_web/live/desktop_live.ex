@@ -540,19 +540,6 @@ defmodule Bacon8Web.DesktopLive do
     end
   end
 
-  def handle_event("open_file", %{"url" => url}, socket) when not is_nil(url) and url != "" do
-    {:noreply, push_event(socket, "open_url", %{url: url})}
-  end
-
-  def handle_event("open_file", %{"path" => path}, socket) do
-    url = resolve_virtual_path_to_url(path, socket.assigns.current_user)
-    if url do
-      {:noreply, push_event(socket, "open_url", %{url: url})}
-    else
-      {:noreply, put_flash(socket, :error, "Cannot open file")}
-    end
-  end
-
   def handle_event("update_window_size", params, socket) do
     with id when not is_nil(id) <- get_window_id(params) do
       windows = 
@@ -1070,37 +1057,6 @@ defmodule Bacon8Web.DesktopLive do
 
   # ==================== PUBSUB HANDLERS ====================
 
-  def handle_info({:refresh_window, window_id}, socket) do
-    # Refresh the window content by re-fetching items
-    windows = 
-      Enum.map(socket.assigns.windows, fn window ->
-        if window.id == window_id && window.app == "file_manager" do
-          items = cond do
-            window.current_path == "/" ->
-              get_available_drives(socket.assigns.current_user)
-            
-            String.starts_with?(window.current_path, "public://") ->
-              get_public_drive_contents(window.current_path, socket.assigns.current_user)
-            
-            String.starts_with?(window.current_path, "user://") ->
-              get_user_drive_contents(window.current_path, socket.assigns.current_user)
-            
-            String.starts_with?(window.current_path, "root://") ->
-              get_root_drive_contents(window.current_path, socket.assigns.current_user)
-            
-            true ->
-              []
-          end
-          
-          %{window | current_items: items}
-        else
-          window
-        end
-      end)
-    
-    {:noreply, assign(socket, :windows, windows)}
-  end
-
   def handle_info({:new_notification, _notification}, socket) do
     # Update notification count when new mention arrives
     unread_notification_count = if socket.assigns.current_user do
@@ -1343,152 +1299,6 @@ defmodule Bacon8Web.DesktopLive do
     """
   end
 
-  defp get_available_drives(user) do
-    drives = [
-      %{
-        id: "public",
-        name: "Public Drive",
-        description: "Shared files for all users",
-        type: :drive,
-        icon: "🌐",
-        path: "public://",
-        size: "Shared",
-        modified: DateTime.utc_now()
-      }
-    ]
-    
-    if user do
-      drives = drives ++ [
-        %{
-          id: "user_#{user.id}",
-          name: "#{user.name || user.email}'s Drive",
-          description: "Personal storage space",
-          type: :drive,
-          icon: "💾",
-          path: "user://#{user.id}",
-          size: "Personal",
-          modified: DateTime.utc_now()
-        }
-      ]
-      
-      if user.role in ["admin", "gm"] do
-        drives ++ [
-          %{
-            id: "admin_root",
-            name: "System Root",
-            description: "Full system access",
-            type: :drive,
-            icon: "⚡",
-            path: "root://",
-            size: "System",
-            modified: DateTime.utc_now()
-          }
-        ]
-      else
-        drives
-      end
-    else
-      drives
-    end
-  end
-
-  defp get_public_drive_contents(path, user) do
-    real_path = get_real_path(path, user)
-    list_contents(real_path, path)
-  end
-
-  defp get_user_drive_contents(path, user) do
-    if path == "user://" do
-      Bacon8.Files.list_all_user_content(user)
-      |> Enum.map(fn file ->
-        %{
-          id: file.id,
-          name: file.filename,
-          type: :file,
-          icon: get_file_icon(file.filename, :file),
-          path: "user://#{file.filename}",
-          size: format_size(file.size),
-          modified: file.inserted_at,
-          url: file.url
-        }
-      end)
-    else
-      case get_real_path(path, user) do
-        nil ->
-          []
-
-        real_path ->
-          # Ensure directory exists
-          if !File.exists?(real_path), do: File.mkdir_p!(real_path)
-          list_contents(real_path, path)
-      end
-    end
-  end
-
-  defp get_root_drive_contents(path, user) do
-    if user.role in ["admin", "gm"] do
-      real_path = get_real_path(path, user)
-      list_contents(real_path, path)
-    else
-      []
-    end
-  end
-
-  defp resolve_virtual_path_to_url(path, user) do
-    cond do
-      String.starts_with?(path, "user://") ->
-        filename = String.replace_prefix(path, "user://", "")
-        "/uploads/users/#{user.id}/#{filename}"
-        
-      String.starts_with?(path, "public://") ->
-        filename = String.replace_prefix(path, "public://", "")
-        "/uploads/public/#{filename}"
-        
-      String.starts_with?(path, "root://") ->
-        filename = String.replace_prefix(path, "root://", "")
-        "/uploads/#{filename}"
-        
-      true -> nil
-    end
-  end
-
-  defp get_real_path(path, user) do
-    base_path = 
-      cond do
-        File.exists?("/app/uploads") -> "/app/uploads"
-        File.exists?("uploads") -> Path.expand("uploads")
-        true -> Application.app_dir(:bacon8, "priv/static/uploads")
-      end
-    
-    # `path` comes from the client (window.current_path is set by fm_navigate_to).
-    # Every branch goes through SafePath so `user://../<other id>` cannot escape
-    # the drive's root. Returns nil when it would.
-    cond do
-      !is_binary(path) ->
-        nil
-
-      String.starts_with?(path, "root://") && user && user.role in ["admin", "gm"] ->
-        Bacon8.SafePath.resolve!(base_path, String.replace_prefix(path, "root://", ""))
-
-      String.starts_with?(path, "public://") ->
-        Bacon8.SafePath.resolve!(
-          Path.join(base_path, "public"),
-          String.replace_prefix(path, "public://", "")
-        )
-
-      String.starts_with?(path, "user://") && user ->
-        Bacon8.SafePath.resolve!(
-          Path.join([base_path, "users", "#{user.id}"]),
-          String.replace_prefix(path, "user://", "")
-        )
-
-      true -> nil
-    end
-  end
-
-
-  # Destination for one uploaded entry, or nil if the name is unusable or the
-  # type is active content (HTML/SVG/JS...) that would run on our origin.
   defp upload_destination(dest_dir, client_name) do
     with name when is_binary(name) <- Bacon8.SafePath.filename(client_name),
          false <- Bacon8.SafePath.active_content?(name),
@@ -1509,59 +1319,6 @@ defmodule Bacon8Web.DesktopLive do
       dest ->
         File.cp!(temp_path, dest)
         {:ok, dest}
-    end
-  end
-
-  defp list_contents(real_path, virtual_root) do
-    if real_path && File.exists?(real_path) && File.dir?(real_path) do
-      case File.ls(real_path) do
-        {:ok, files} ->
-          files
-          |> Enum.map(fn file ->
-            full_path = Path.join(real_path, file)
-            stat = File.stat!(full_path)
-            type = if stat.type == :directory, do: :folder, else: :file
-            
-            # Virtual path for navigation
-            virtual_path = 
-              if String.ends_with?(virtual_root, "//") do
-                virtual_root <> file
-              else
-                virtual_root <> "/" <> file
-              end
-
-            %{
-              id: Base.encode64(virtual_path),
-              name: file,
-              type: type,
-              icon: get_file_icon(file, type),
-              path: virtual_path,
-              size: if(type == :folder, do: "-", else: format_size(stat.size)),
-              modified: stat.mtime |> NaiveDateTime.from_erl!()
-            }
-          end)
-          |> Enum.sort_by(&{&1.type != :folder, &1.name})
-        _ -> []
-      end
-    else
-      []
-    end
-  end
-
-  defp get_file_icon(_name, :folder), do: "📁"
-  defp get_file_icon(name, :file) do
-    ext = Path.extname(name) |> String.downcase()
-    case ext do
-      ".jpg" -> "🖼️"
-      ".png" -> "🖼️"
-      ".gif" -> "🖼️"
-      ".pdf" -> "📕"
-      ".txt" -> "📄"
-      ".mp3" -> "🎵"
-      ".wav" -> "🎵"
-      ".mp4" -> "🎬"
-      ".zip" -> "📦"
-      _ -> "📄"
     end
   end
 

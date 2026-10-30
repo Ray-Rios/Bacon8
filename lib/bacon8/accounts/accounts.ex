@@ -679,9 +679,6 @@ defmodule Bacon8.Accounts do
 
       # Game tables have been removed from the codebase
 
-      {files_deleted, _} = Repo.delete_all(from(f in Bacon8.Files.UserFile, where: f.user_id == ^user_id))
-      Logger.debug("delete_user: deleted #{files_deleted} user files")
-
       {posts_deleted, _} = Repo.delete_all(from(p in Bacon8.Content.Post, where: p.user_id == ^user_id))
       Logger.debug("delete_user: deleted #{posts_deleted} posts")
 

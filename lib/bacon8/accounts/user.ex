@@ -59,7 +59,6 @@ defmodule Bacon8.Accounts.User do
 
     has_many :posts, Bacon8.Content.Post, on_delete: :nilify_all
     has_many :comments, Bacon8.Content.Comment, on_delete: :nilify_all
-    has_many :files, Bacon8.Files.UserFile, on_delete: :delete_all
 
     timestamps(type: :utc_datetime)
   end

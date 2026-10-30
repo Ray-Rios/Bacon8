@@ -465,13 +465,12 @@ readable, and new uploads are refused until usage is back under the quota.
 Drives: **My Files** (the user's drive, navigated by folder names: `/my-files/Photos/2026`)
 and **Public** (still the legacy `uploads/public` directory, staff-writable, holding site
 assets). Each My Files row has a visibility selector and, when shared, a click-to-copy
-link. The old `user://` / `root://` code paths in `DesktopLive` are unreachable
-from the current UI and should be deleted in milestone 5.
+link. (The old `user://`, `root://` and `public://` code paths in `DesktopLive` were deleted on 2026-10-29.)
 
 ### The legacy import
 
 `Bacon8.Drive.Import` and `mix drive.import` (moving the old `user_files`/`user_folders` into the drive) were
-deleted on 2026-10-29; production had run it and the tables are empty. Another install that still has legacy
+deleted on 2026-10-29, with the tables themselves (migration `20261029130000` drops each only if it is empty). Another install that still has legacy
 rows should run the import from an older checkout (`git show 7ba5cb4:lib/bacon8/drive/import.ex`) first.
 
 ---
@@ -1079,12 +1078,6 @@ Ordered roughly by how much it hurts.
   invariant 4). An allowlist of types safe to show inline (pictures, video, audio, PDF), with
   everything else sent as a sandboxed download the way the drive's `Sniff` works, would not need
   updating when browsers or the MIME library learn a new type. Found in the 2026-10-25 review.
-- **The legacy `user_files` table and its leftovers.** The legacy upload system's code is gone (2026-10-29: the file
-  manager component, the file controller, the admin files page, the import, the folder and upload functions).
-  What remains reads the empty `user_files` table: `Bacon8.Files.UserFile`, `Bacon8.Files` (usage totals, the
-  storage limit, `list_all_user_content/1` for the desktop's unreachable `user://` paths), the lookup in
-  `UploadsGuard`, and `User`'s `has_many :files`. Delete the `user://` and `root://` paths in `DesktopLive`, then
-  those, then drop `user_files` and `user_folders` in a migration.
 - `User.registration_changeset/2` casts `:role` and `:is_admin`. `register_user/2`
   overwrites both, so it isn't exploitable today, but `Accounts.create_user/1` passes attrs
   straight through (its one caller left is the plugin's `mix rss.dev_users`). Drop the two
