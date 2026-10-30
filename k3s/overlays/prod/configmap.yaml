@@ -41,7 +41,7 @@ data:
   # Empty is a supported state: the launcher reports itself unavailable and
   # /launch falls back to recording intent and waiting for a hand-started
   # server. That is the development loop, not a broken deployment.
-  HOLOSIM_IMAGE: "raysspacesim-server:04e8e3a"
+  HOLOSIM_IMAGE: "raysspacesim-server:c1cd500"
 
   # The address a GAME CLIENT connects to. This is NOT proxied by the nginx
   # ingress - instances speak UDP directly on their assigned port via hostPort,
