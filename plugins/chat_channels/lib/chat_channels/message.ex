@@ -24,11 +24,22 @@ defmodule ChatChannels.Message do
     timestamps(type: :utc_datetime)
   end
 
-  def changeset(message, attrs) do
-    message
-    |> cast(attrs, [:content, :message_type, :is_pinned, :reply_to_id, :thread_id, :channel_id, :user_id])
-    |> validate_required([:content])
-    |> validate_length(:content, min: 1, max: 2000)
-    |> validate_inclusion(:message_type, ["text", "image", "file", "system"])
+  # `allow_empty: true` is for a message that is only attachments: the text may be blank (stored as "").
+  def changeset(message, attrs, opts \\ []) do
+    changeset =
+      message
+      |> cast(attrs, [:content, :message_type, :is_pinned, :reply_to_id, :thread_id, :channel_id, :user_id])
+
+    if Keyword.get(opts, :allow_empty, false) do
+      changeset
+      |> then(fn cs -> if is_nil(get_field(cs, :content)), do: put_change(cs, :content, ""), else: cs end)
+      |> validate_length(:content, max: 2000)
+      |> validate_inclusion(:message_type, ["text", "image", "file", "system"])
+    else
+      changeset
+      |> validate_required([:content])
+      |> validate_length(:content, min: 1, max: 2000)
+      |> validate_inclusion(:message_type, ["text", "image", "file", "system"])
+    end
   end
 end

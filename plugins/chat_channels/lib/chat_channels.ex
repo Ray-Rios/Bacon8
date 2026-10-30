@@ -521,7 +521,7 @@ defmodule ChatChannels do
     ])
   end
 
-  def create_message(user, channel_id, attrs \\ %{}) do
+  def create_message(user, channel_id, attrs \\ %{}, opts \\ []) do
     # Defensive check - disallow banned users from creating messages
     result = cond do
       user && Map.get(user, :role) == "banned" ->
@@ -546,12 +546,12 @@ defmodule ChatChannels do
       if is_nil(channel) do
         {:error, :not_found}
       else
-        create_message_in(user, channel, channel_id, attrs)
+        create_message_in(user, channel, channel_id, attrs, opts)
       end
     end
   end
 
-  defp create_message_in(user, channel, channel_id, attrs) do
+  defp create_message_in(user, channel, channel_id, attrs, opts) do
     if not can_post_in_channel?(user, channel) do
       {:error, :forbidden}
     else
@@ -565,7 +565,7 @@ defmodule ChatChannels do
 
       # After checks, proceed to create message
       %Message{}
-      |> Message.changeset(attrs)
+      |> Message.changeset(attrs, opts)
       |> Ecto.Changeset.put_assoc(:user, user)
       |> Ecto.Changeset.put_change(:channel_id, channel_id)
       |> Repo.insert()

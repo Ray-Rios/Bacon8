@@ -157,7 +157,9 @@ defmodule ChatChannelsWeb.ChatComponents do
           <%= if @editing_message_id == @message.id do %>
             <p class="text-gray-500 italic text-sm">(Editing in form below...)</p>
           <% else %>
-            <p class="text-gray-700 dark:text-gray-300 break-words [overflow-wrap:anywhere]"><%= @message.content %></p>
+            <%= if String.trim(@message.content || "") != "" do %>
+              <p class="text-gray-700 dark:text-gray-300 break-words [overflow-wrap:anywhere]"><%= @message.content %></p>
+            <% end %>
           <% end %>
 
           <%!-- Attachments --%>
@@ -1195,7 +1197,7 @@ defmodule ChatChannelsWeb.ChatComponents do
                 </div>
               </div>
               <div class="flex flex-col space-y-1">
-                <% is_uploading = Enum.any?(@uploads.forum_attachment.entries, fn entry -> entry.progress < 100 end) %>
+                <% is_uploading = Enum.any?(@uploads.forum_attachment.entries, fn entry -> entry.valid? and entry.progress < 100 end) %>
                 <button type="submit" disabled={is_uploading} class={"flex items-center justify-center h-[30px] w-[30px] rounded-md transition-colors border border-transparent " <> if(is_uploading, do: "bg-gray-400 cursor-not-allowed", else: "bg-blue-500 text-white hover:bg-blue-600")}>
                   <%= if is_uploading do %>
                     <svg class="animate-spin w-4 h-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

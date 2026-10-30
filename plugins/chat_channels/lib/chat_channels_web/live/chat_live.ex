@@ -296,106 +296,16 @@ defmodule ChatChannelsWeb.ChatLive do
     {:noreply, push_event(socket, "toggle_sidebar", %{})}
   end
 
+  # A message needs text or at least one attachment. With only attachments the text is stored blank.
   @impl true
-  def handle_event("send_message", %{"message" => content} = _params, socket) when content != "" do
-    require Logger
-    user = socket.assigns.current_user
-    channel = socket.assigns.current_channel
+  def handle_event("send_message", params, socket) do
+    content = Map.get(params, "message", "")
+    has_files = socket.assigns.uploads.forum_attachment.entries != []
 
-    # Re-fetch user from database to check for ban status (socket user might be stale)
-    fresh_user = Bacon8.Accounts.get_user(user.id)
-    
-    # Check if user has been banned or disabled since page load
-    if fresh_user == nil or fresh_user.status != "active" or fresh_user.role == "banned" do
-      Logger.info("Blocked message from banned/disabled user #{user.id}")
-      {:noreply, 
-       socket
-       |> put_flash(:error, "Your account has been suspended.")
-       |> redirect(to: "/auth/logout")}
-    else
-      # Debug logging
-      Logger.info("User attempting to send message - is_admin: #{inspect(Map.get(user, :is_admin))}, role: #{inspect(Map.get(user, :role))}, channel is_private: #{channel.is_private}")
-
-      # Check if user has access to post in this channel
-      if !can_access_channel?(channel, fresh_user) do
-        Logger.warning("User #{user.id} denied access to channel #{channel.id}")
-        {:noreply, put_flash(socket, :error, "You don't have permission to post in this channel.")}
-      else
-      # 1. Create the message record first so we have a message id to attach files under
-      case ChatChannels.create_message(user, channel.id, %{content: content}) do
-        {:ok, message} ->
-          # 2. Process uploaded files and attach them to the created message
-          # Note: consume_uploaded_entries requires {:ok, value} or {:postpone, value} return
-          # So we wrap errors in {:ok, {:error, reason}} and filter them later
-          results = consume_uploaded_entries(socket, :forum_attachment, fn %{path: path}, entry ->
-            case Bacon8.Files.check_storage_limit(user, entry.client_size) do
-              :ok ->
-                context = "forum/#{channel.id}/messages/#{message.id}"
-                case Bacon8.Uploads.upload_file(user, path, entry, context: context) do
-                  {:ok, url_path} ->
-                    # Create message attachment (channel_id is populated inside helper)
-                    case ChatChannels.create_message_attachment(message, %{
-                      "filename" => entry.client_name,
-                      "content_type" => entry.client_type,
-                      "file_size" => entry.client_size,
-                      "file" => url_path,
-                      "user_id" => user.id
-                    }) do
-                      {:ok, attachment} -> {:ok, {:success, attachment}}
-                      {:error, reason} -> {:ok, {:error, reason}}
-                    end
-
-                  {:error, reason} ->
-                    {:ok, {:error, reason}}
-                end
-              {:error, reason} ->
-                {:ok, {:error, reason}}
-            end
-          end)
-
-          # Check for errors (wrapped in {:error, reason} inside the result)
-          upload_errors = Enum.filter(results, fn
-            {:error, _} -> true
-            _ -> false
-          end)
-
-          socket = if Enum.empty?(upload_errors) do
-            socket
-            |> assign(current_message: "")
-            |> push_event("clear_input", %{id: "chat-input-textarea"})
-          else
-            # Extract first error message for display
-            error_msg = case List.first(upload_errors) do
-              {:error, reason} when is_binary(reason) -> reason
-              {:error, reason} -> inspect(reason)
-              _ -> "Unknown upload error"
-            end
-            put_flash(socket, :error, "Upload failed: #{error_msg}")
-            |> assign(current_message: "")
-            |> push_event("clear_input", %{id: "chat-input-textarea"})
-          end
-
-          {:noreply, socket}
-
-        {:error, :rate_limited} ->
-          {:noreply, put_flash(socket, :error, "You're sending messages too quickly — slow down a bit.")}
-
-        {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to send message")}
-      end
-      end
-    end
-  end
-
-  def handle_event("send_message", _params, socket) do
-    # Handle case where message is empty but files are attached
-    # If files are attached, we should allow sending even if text is empty
-    # But we need to create a message with empty content first
-    
-    if length(socket.assigns.uploads.forum_attachment.entries) > 0 do
-       handle_event("send_message", %{"message" => " "}, socket)
-    else
-       {:noreply, socket}
+    cond do
+      String.trim(content) != "" -> send_message(socket, content, false)
+      has_files -> send_message(socket, "", true)
+      true -> {:noreply, socket}
     end
   end
 
@@ -1480,6 +1390,10 @@ defmodule ChatChannelsWeb.ChatLive do
   end
 
   @impl true
+  def handle_info({:cancel_errored_upload, ref}, socket) do
+    {:noreply, cancel_upload(socket, :forum_attachment, ref)}
+  end
+
   def handle_info({:new_message, message}, socket) do
     if message.reply_to_id do
       # It's a reply, update the root parent message recursively
@@ -2076,4 +1990,105 @@ defmodule ChatChannelsWeb.ChatLive do
       user.role in ["admin", "gm", "editor"]
     end
   end
-end 
+
+  # Sending: see handle_event("send_message", ...)
+  defp send_message(socket, content, allow_empty?) do
+    require Logger
+    user = socket.assigns.current_user
+    channel = socket.assigns.current_channel
+
+    # Re-fetch user from database to check for ban status (socket user might be stale)
+    fresh_user = Bacon8.Accounts.get_user(user.id)
+    
+    # Check if user has been banned or disabled since page load
+    if fresh_user == nil or fresh_user.status != "active" or fresh_user.role == "banned" do
+      Logger.info("Blocked message from banned/disabled user #{user.id}")
+      {:noreply, 
+       socket
+       |> put_flash(:error, "Your account has been suspended.")
+       |> redirect(to: "/auth/logout")}
+    else
+      # Debug logging
+      Logger.info("User attempting to send message - is_admin: #{inspect(Map.get(user, :is_admin))}, role: #{inspect(Map.get(user, :role))}, channel is_private: #{channel.is_private}")
+
+      # Check if user has access to post in this channel
+      if !can_access_channel?(channel, fresh_user) do
+        Logger.warning("User #{user.id} denied access to channel #{channel.id}")
+        {:noreply, put_flash(socket, :error, "You don't have permission to post in this channel.")}
+      else
+      # 1. Create the message record first so we have a message id to attach files under
+      case ChatChannels.create_message(user, channel.id, %{content: content}, allow_empty: allow_empty?) do
+        {:ok, message} ->
+          # 2. Process uploaded files and attach them to the created message
+          # Note: consume_uploaded_entries requires {:ok, value} or {:postpone, value} return
+          # So we wrap errors in {:ok, {:error, reason}} and filter them later
+          results = consume_uploaded_entries(socket, :forum_attachment, fn %{path: path}, entry ->
+            case Bacon8.Files.check_storage_limit(user, entry.client_size) do
+              :ok ->
+                context = "forum/#{channel.id}/messages/#{message.id}"
+                case Bacon8.Uploads.upload_file(user, path, entry, context: context) do
+                  {:ok, url_path} ->
+                    # Create message attachment (channel_id is populated inside helper)
+                    case ChatChannels.create_message_attachment(message, %{
+                      "filename" => entry.client_name,
+                      "content_type" => entry.client_type,
+                      "file_size" => entry.client_size,
+                      "file" => url_path,
+                      "user_id" => user.id
+                    }) do
+                      {:ok, attachment} -> {:ok, {:success, attachment}}
+                      {:error, reason} -> {:ok, {:error, reason}}
+                    end
+
+                  {:error, reason} ->
+                    {:ok, {:error, reason}}
+                end
+              {:error, reason} ->
+                {:ok, {:error, reason}}
+            end
+          end)
+
+          # Check for errors (wrapped in {:error, reason} inside the result)
+          upload_errors = Enum.filter(results, fn
+            {:error, _} -> true
+            _ -> false
+          end)
+
+          # An attachment-only message whose every file failed would be an empty message: remove it.
+          if allow_empty? and upload_errors != [] and Enum.all?(results, &match?({:error, _}, &1)) do
+            ChatChannels.delete_message(message)
+          end
+
+          # Files that were refused stay in the composer with their error; clear them so they don't pile up.
+          for entry <- socket.assigns.uploads.forum_attachment.entries, not entry.valid? do
+            send(self(), {:cancel_errored_upload, entry.ref})
+          end
+
+          socket = if Enum.empty?(upload_errors) do
+            socket
+            |> assign(current_message: "")
+            |> push_event("clear_input", %{id: "chat-input-textarea"})
+          else
+            # Extract first error message for display
+            error_msg = case List.first(upload_errors) do
+              {:error, reason} when is_binary(reason) -> reason
+              {:error, reason} -> inspect(reason)
+              _ -> "Unknown upload error"
+            end
+            put_flash(socket, :error, "Upload failed: #{error_msg}")
+            |> assign(current_message: "")
+            |> push_event("clear_input", %{id: "chat-input-textarea"})
+          end
+
+          {:noreply, socket}
+
+        {:error, :rate_limited} ->
+          {:noreply, put_flash(socket, :error, "You're sending messages too quickly — slow down a bit.")}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to send message")}
+      end
+      end
+    end
+  end
+end

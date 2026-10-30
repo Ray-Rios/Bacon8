@@ -7,6 +7,7 @@ defmodule ChatChannelsWeb.ChatLiveTest do
   import ChatChannels.Fixtures
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
+  import Ecto.Query
 
   @endpoint Bacon8Web.Endpoint
 
@@ -45,6 +46,48 @@ defmodule ChatChannelsWeb.ChatLiveTest do
 
     # being in a channel is being on its presence list (the page tracks the open channel)
     assert Map.has_key?(Bacon8Web.Presence.list("presence:channel:#{target.id}"), to_string(me.id))
+  end
+
+  describe "sending a message" do
+    defp messages_in(channel), do: Bacon8.Repo.all(from m in ChatChannels.Message, where: m.channel_id == ^channel.id, preload: [:attachments])
+
+    test "with only an attachment and no text posts it, with a blank body" do
+      me = verified()
+      channel = channel_fixture(%{name: "files-#{System.unique_integer([:positive])}"})
+      {:ok, view, _html} = live(signed_in(me), "/chat/#{channel.id}")
+
+      file =
+        file_input(view, "form[phx-submit=send_message]", :forum_attachment, [
+          %{name: "notes.md", content: "# notes", type: "text/markdown"}
+        ])
+
+      render_upload(file, "notes.md")
+      view |> form("form[phx-submit=send_message]", %{message: ""}) |> render_submit()
+
+      assert [message] = messages_in(channel)
+      assert message.content == ""
+      assert [%{filename: "notes.md"}] = message.attachments
+    end
+
+    test "with no text and no attachment posts nothing" do
+      me = verified()
+      channel = channel_fixture(%{name: "empty-#{System.unique_integer([:positive])}"})
+      {:ok, view, _html} = live(signed_in(me), "/chat/#{channel.id}")
+
+      view |> form("form[phx-submit=send_message]", %{message: "   "}) |> render_submit()
+
+      assert messages_in(channel) == []
+    end
+
+    test "text alone still posts" do
+      me = verified()
+      channel = channel_fixture(%{name: "text-#{System.unique_integer([:positive])}"})
+      {:ok, view, _html} = live(signed_in(me), "/chat/#{channel.id}")
+
+      view |> form("form[phx-submit=send_message]", %{message: "hello"}) |> render_submit()
+
+      assert [%{content: "hello"}] = messages_in(channel)
+    end
   end
 
   test "someone else's private channel is not listed" do
