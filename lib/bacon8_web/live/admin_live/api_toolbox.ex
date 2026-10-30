@@ -5,7 +5,6 @@ defmodule Bacon8Web.AdminLive.ApiToolbox do
 
   alias Bacon8.Accounts
   alias Bacon8.Content
-  alias Bacon8.Files
   alias Bacon8Web.Components.AdminSidebar
 
   @impl true
@@ -243,16 +242,6 @@ defmodule Bacon8Web.AdminLive.ApiToolbox do
      }}
   end
 
-  defp execute_action("count_files", _params, _current_user) do
-    count = Files.count_files()
-
-    {:ok,
-     %{
-       message: "File count retrieved",
-       data: %{total_files: count}
-     }}
-  end
-
   defp execute_action(_unknown, _params, _current_user) do
     {:error, "Unsupported action", nil}
   end
@@ -325,17 +314,6 @@ defmodule Bacon8Web.AdminLive.ApiToolbox do
         method: "GET",
         path: "/api/admin/posts",
         description: "Retrieve up to 50 most recent blog posts with titles, slugs, and author info.",
-        fields: []
-      },
-
-      # Files
-      %{
-        id: "count_files",
-        name: "File Count",
-        category: "files",
-        method: "GET",
-        path: "/api/admin/files/count",
-        description: "Get the total number of uploaded files across all users.",
         fields: []
       }
     ]

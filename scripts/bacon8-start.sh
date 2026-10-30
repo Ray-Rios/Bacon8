@@ -131,15 +131,6 @@ if [ "$redis_up" -ne 1 ]; then
 fi
 
 # ----------------------------
-# Rebuild assets in development mode
-# ----------------------------
-if [ "$MIX_ENV" = "dev" ]; then
-  echo "Rebuilding assets for development (container or opt-in only)..."
-  cd assets && ../scripts/dev-assets.sh build
-  cd ..
-fi
-
-# ----------------------------
 # Start Phoenix server
 # ----------------------------
 echo "Starting Phoenix server..."

@@ -108,23 +108,4 @@ defmodule Bacon8.Content.Media do
     )
     |> Repo.one()
   end
-
-  @doc "Delete user media and optionally remove the file from filesystem"
-  def delete_user_media(%UserMedia{} = media, opts \\ []) do
-    delete_file = Keyword.get(opts, :delete_file, true)
-    
-    # Delete the record first
-    case Repo.delete(media) do
-      {:ok, deleted} ->
-        # Try to delete the physical file
-        if delete_file and media.file_path do
-          file_path = Path.join(Application.app_dir(:bacon8, "priv/static"), media.file_path)
-          File.rm(file_path)
-        end
-        {:ok, deleted}
-      
-      error ->
-        error
-    end
-  end
 end

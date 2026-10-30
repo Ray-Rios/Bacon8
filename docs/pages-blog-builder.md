@@ -97,7 +97,7 @@ straight onto the live page and the toolbar's Cancel said "Changes discarded" wh
 started draft nobody wrote in is deleted on Cancel. Changing the address reopens the page at the new one.
 
 Retired with the admin forms: the media-picker window and the featured-image upload field of the admin form (the
-settings panel has a file field and the image library instead). `MediaPickerComponent` is no longer used by blog
+settings panel has a file field and the image library instead). `MediaPickerComponent` (deleted 2026-10-29) was used by blog
 management.
 
 ## The image library (2026-10-26)

@@ -131,18 +131,14 @@ defmodule Bacon8.MixProject do
 
   defp aliases do
   [
-    setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+    setup: ["deps.get", "ecto.setup"],
     "ecto.setup": ["ecto.create", "bacon8.migrate", "run priv/repo/seeds.exs"],
     "bacon8.migrate": &migrate_all/1,
     "ecto.reset": ["ecto.drop", "ecto.setup"],
     test: ["ecto.create --quiet", "bacon8.migrate --quiet", "test"],
 
-    # Frontend asset tasks using npm instead of mix tailwind
-  "assets.setup": ["cmd --cd assets ../scripts/dev-assets.sh ci"],
-  "assets.build": ["cmd --cd assets ../scripts/dev-assets.sh build"],
-  "assets.deploy": ["cmd --cd assets ../scripts/dev-assets.sh run deploy", "phx.digest"],
-    # Lint alias for CI
-  lint: ["format --check-formatted", "cmd --cd assets ../scripts/dev-assets.sh run lint", "cmd --cd assets ../scripts/dev-assets.sh run type-check", "credo --strict", "sobelow --exit", "dialyzer"]
+    # Elixir lint (assets are built and checked inside the image: Dockerfile.multistage)
+  lint: ["format --check-formatted", "credo --strict", "sobelow --exit", "dialyzer"]
   ]
   end
 

@@ -440,7 +440,6 @@ and nothing else.
 | `Bacon8.Drive.Policy` | pure quota and permission rules |
 | `Bacon8.Drive.Sniff` | magic-byte type detection; only recognised types are ever served inline |
 | `Bacon8.Drive.Janitor` | hourly: purge expired 30-day holds, GC unreferenced blobs; one node at a time via a Postgres advisory lock |
-| `Bacon8.Drive.Import` | one-off legacy import, re-runnable (`mix drive.import`, or `bin/bacon8 rpc "Bacon8.Drive.Import.run()"`) |
 | `Bacon8.Storage` / `Storage.Local` | adapter behaviour; local blobs at `<root>/aa/bb/<sha>`; `DRIVE_STORAGE_ROOT` overrides the root |
 | `Bacon8Web.DriveController` | `GET /files/:id` and `GET /s/:token`; nosniff, sandbox CSP (except PDF), inline only for recognised media, single-range requests |
 | `Bacon8.Entitlements` | `grant/2` (refuses storage tiers for ineligible users), `active/2`, `revoke_all/3` |
@@ -469,17 +468,11 @@ assets). Each My Files row has a visibility selector and, when shared, a click-t
 link. The old `user://` / `root://` code paths in `DesktopLive` are unreachable
 from the current UI and should be deleted in milestone 5.
 
-### Running the import (for other installs)
+### The legacy import
 
-1. Deploy (the migration runs as usual).
-2. `bin/bacon8 rpc "Bacon8.Drive.Import.run(dry_run: true)"` and check the counts.
-3. `bin/bacon8 rpc "Bacon8.Drive.Import.run()"`. Users already Guest/Banned are
-   locked by the import, which starts their 30-day hold.
-4. Legacy files stay on disk and readable through `UploadsGuard` for one release, then
-   retire them.
-
-`rpc`, not `eval`: `rpc` runs inside the running node, where the repos are started;
-`eval` boots a separate VM without them.
+`Bacon8.Drive.Import` and `mix drive.import` (moving the old `user_files`/`user_folders` into the drive) were
+deleted on 2026-10-29; production had run it and the tables are empty. Another install that still has legacy
+rows should run the import from an older checkout (`git show 7ba5cb4:lib/bacon8/drive/import.ex`) first.
 
 ---
 
@@ -1078,11 +1071,6 @@ Ordered roughly by how much it hurts.
 - **Game releases are Development builds**: the console works for players and the window
   title carries debug info. Ship Shipping builds (`CLIENT_CONFIG=Shipping`).
 - A few core comments still mention RaysSpaceSim as history. Harmless; don't add new ones.
-- **The `assets.setup`, `assets.build`, `assets.deploy` and `lint` mix aliases (and so
-  `mix setup`) call `scripts/dev-assets.sh`, which no longer exists.** Assets are built
-  only inside the image (`Dockerfile.multistage`); nothing is built on the development PC
-  (decisions log). Point the aliases at a container build, or drop them.
-
 - **`Bacon8.LogBufferBackend` is a legacy `:gen_event` Logger backend**, deprecated since
   Elixir 1.15. It works (and now normalises the `:warn` level it is still handed), but should
   become an Erlang `:logger` handler.
@@ -1091,35 +1079,23 @@ Ordered roughly by how much it hurts.
   invariant 4). An allowlist of types safe to show inline (pictures, video, audio, PDF), with
   everything else sent as a sandboxed download the way the drive's `Sniff` works, would not need
   updating when browsers or the MIME library learn a new type. Found in the 2026-10-25 review.
-- `Content.MediaContext.delete_user_media/2` joins a stored `file_path` onto `priv/static` without
-  `SafePath` (and the paths it stores are absolute, so it never finds the file). It has no callers:
-  delete it rather than fix it.
-
-- **The legacy file system is dead code.** Production's `user_files` / `user_folders` are
-  empty (checked 2026-10-15), so `Bacon8.Files` (`UserFile`, `UserFolder`),
-  `FileController`, `file_manager_component.ex`, `Drive.Import` and `mix drive.import`
-  can be deleted and the two tables dropped. Do it with the explorer cleanup in
-  milestone 5; check other installs have run the import first.
+- **The legacy `user_files` table and its leftovers.** The legacy upload system's code is gone (2026-10-29: the file
+  manager component, the file controller, the admin files page, the import, the folder and upload functions).
+  What remains reads the empty `user_files` table: `Bacon8.Files.UserFile`, `Bacon8.Files` (usage totals, the
+  storage limit, `list_all_user_content/1` for the desktop's unreachable `user://` paths), the lookup in
+  `UploadsGuard`, and `User`'s `has_many :files`. Delete the `user://` and `root://` paths in `DesktopLive`, then
+  those, then drop `user_files` and `user_folders` in a migration.
 - `User.registration_changeset/2` casts `:role` and `:is_admin`. `register_user/2`
   overwrites both, so it isn't exploitable today, but `Accounts.create_user/1` passes attrs
   straight through (its one caller left is the plugin's `mix rss.dev_users`). Drop the two
   fields from the cast and set them explicitly.
-- `Accounts.authenticate_user/2` (no lockout, no rate limit) has no callers since the
-  GraphQL removal; delete it so nothing new picks it up (invariant 16).
 - `POST /api/webhooks/scheduler/:secret` carries its secret in the URL, so the request
   line in the app and ingress logs still shows it (parameter filtering only covers the
   parameters). Move it to a header.
 - Bacon World's own follow-ups (creature collisions, server-side walls, remote crouch, the
   skill tree, `.glb.gz` upkeep, TypeScript errors) are tracked in `BACON_WORLD.md` §7.
-- `Files` has a `:timer.sleep(10000)` in an upload path (goes with the legacy file system above).
-- The admin files page links to `/uploads/user_files/...`, which is not where files are
-  stored.
-- `Bacon8Web.RoomChannel` is referenced (commented out) but doesn't exist.
 - `desktop_live.ex` is ~2,000 lines; the explorer, uploads, calendar and audio
   should become separate app components (milestone 5).
-- Repo-root files that are operator-specific belong outside the repo:
-  `Handy_Command_Samples.md`, and any local secrets file (even when gitignored, keep
-  secrets outside the working tree).
 - Tracked dev secrets in `k3s/overlays/dev/secrets.yaml` should all be obvious
   placeholders.
 

@@ -7,7 +7,6 @@ defmodule Bacon8Web.UserSocket do
   # assign values that can be accessed by your channel topics.
 
   ## Channels
-  # channel "room:*", Bacon8Web.RoomChannel
   channel "collab:*", Bacon8Web.CollaborativeEditorChannel
 
   # Socket params are passed from the client and can

@@ -50,6 +50,8 @@ The game (RaysSpaceSim) has its own pipeline, section 6.
 ### Build and test (always in Docker; there is no local Elixir)
 
 ```bash
+export MSYS_NO_PATHCONV=1      # Git Bash: stops it rewriting -w /app into a Windows path
+
 # Compile with warnings as errors
 docker run --rm -v "$PWD:/app" -v bacon8_deps:/app/deps -v bacon8_build:/app/_build -w /app -e MIX_ENV=dev elixir:1.19 \
   sh -c 'mix local.hex --force && mix local.rebar --force && mix deps.get && mix compile --warnings-as-errors'
