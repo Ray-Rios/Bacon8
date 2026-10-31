@@ -509,6 +509,9 @@ export const WorldCharacterUIScene = {
     this.initGroupEvents();
     this.handleEvent('build_placed', (payload: any) => this.onBuildPlaced(payload));
     this.handleEvent('build_removed', (payload: any) => this.onBuildRemoved(payload));
+    this.handleEvent('build_damaged', (payload: any) => this.onBuildDamaged?.(payload));
+    this.handleEvent('build_repaired', (payload: any) => this.onBuildRepaired?.(payload));
+    this.handleEvent('build_hp_rule', (payload: any) => this.onBuildHpRule?.(payload));
     this.handleEvent('mob_events', (payload: any) => {
       for (const e of payload?.events || []) this.mobsView?.event(e);
     });
@@ -1184,13 +1187,15 @@ export const WorldCharacterUIScene = {
       // A grunt when jumping, a thud when landing (a short hop lands quietly).
       if (this.wasGrounded && !grounded) {
         this.airborneSince = now;
-        this.audio.say('jump', 0.55);
+        if (movementState.verticalSpeed > 1.0) {
+          this.audio.say('jump', 0.55);
+        }
       }
       if (!this.wasGrounded && grounded) {
         const air = now - (this.airborneSince || now);
         // a long fall (or coming down off a mount's flight) lands hard
         if (air > 1100) this.audio.play('land_hard', 1);
-        else this.audio.play('land', air > 450 ? 0.9 : 0.55);
+        else if (air > 200) this.audio.play('land', air > 450 ? 0.9 : 0.55);
       }
       this.wasGrounded = grounded;
       // Steps by pace: sprint 260 ms, jog 330 ms, crouch-walk 500 ms; the sound by what's underfoot.
@@ -2469,6 +2474,14 @@ export const WorldCharacterUIScene = {
       return;
     }
 
+    if (this.smashMode) {
+      const placedId = this.placedView?.pick(this.raycaster!);
+      if (placedId) {
+        this.setTarget(placedId);
+        return;
+      }
+    }
+
     // A click on nothing keeps the target: with mouse-look on, clicks are swings.
   },
 
@@ -2509,9 +2522,18 @@ export const WorldCharacterUIScene = {
       return;
     }
     const mobId = this.pickMob(this.raycaster);
-    if (!mobId) return;
-    if (this.mobsView?.get(mobId)?.view.state === 'dead') void this.openLoot(mobId);
-    this.setTarget(mobId);
+    if (mobId) {
+      if (this.mobsView?.get(mobId)?.view.state === 'dead') void this.openLoot(mobId);
+      this.setTarget(mobId);
+      return;
+    }
+    if (this.smashMode) {
+      const placedId = this.placedView?.pick(this.raycaster);
+      if (placedId) {
+        this.setTarget(placedId);
+        return;
+      }
+    }
   },
 
   _handleSelectionClick(this: any, event: MouseEvent) {

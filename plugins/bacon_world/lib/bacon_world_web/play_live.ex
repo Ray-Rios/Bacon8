@@ -40,7 +40,7 @@ defmodule BaconWorldWeb.PlayLive do
   # Fishing (BaconWorldWeb.FishingEvents, BaconWorld.Water).
   @fishing_events ~w(fish_cast fish_reel fish_stop)
   # Build mode (BaconWorldWeb.BuildEvents, BaconWorld.Building).
-  @build_events ~w(build_open build_place build_move build_delete build_rule bind_stone)
+  @build_events ~w(build_open build_place build_move build_delete build_rule build_hp bind_stone)
   # Groups (BaconWorldWeb.GroupEvents, BaconWorld.Groups).
   @group_events ~w(group_invite group_accept group_decline group_leave group_disband group_kick group_leader group_chat group_fetch)
 
@@ -613,6 +613,9 @@ defmodule BaconWorldWeb.PlayLive do
   def handle_info({:build_placed, view}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.placed(view, socket)}
   def handle_info({:build_removed, id, asset}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.removed(id, asset, socket)}
   def handle_info({:build_removed, id, asset, :smashed}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.smashed(id, asset, socket)}
+  def handle_info({:build_damaged, id, asset, hp, max_hp, amount}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.damaged(id, asset, hp, max_hp, amount, socket)}
+  def handle_info({:build_repaired, id, asset, hp, max_hp, amount}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.repaired(id, asset, hp, max_hp, amount, socket)}
+  def handle_info({:build_hp_rule, asset, hp}, socket), do: {:noreply, BaconWorldWeb.BuildEvents.hp_rule(asset, hp, socket)}
   def handle_info({:fish_bite, token}, socket), do: {:noreply, BaconWorldWeb.FishingEvents.bite(token, socket)}
   def handle_info({:fish_escape, token}, socket), do: {:noreply, BaconWorldWeb.FishingEvents.escape(token, socket)}
 
@@ -860,21 +863,27 @@ defmodule BaconWorldWeb.PlayLive do
     end
   end
 
-  # Height above the ground (scene units): walkers up to a jump's height, fliers to the mount's
-  # ceiling. Over water the ground is the water's surface. Without terrain the ground is 0.
-  # Only climbing is held to it: someone falling (off a cliff, out of the saddle) is lower than a
-  # moment ago and always allowed, or a fall from the crater's rim would snap back to the edge.
+  # Height above the ground (scene units): walkers up to a jump's height, fliers up to 100 m
+  # above the highest point in the zone (anywhere in the zone). Over water the ground is the
+  # water's surface. Without terrain the ground is 0.
   defp validate_ground_bounds(from, x, y, z, mount) do
     ground = ground_y(x, z)
-    top = if mount && mount.flies, do: @max_flying_y, else: 25.0
+    u = BaconWorld.Mobs.Brain.u()
     rising = y > (from.y || 0.0) + 0.01
 
     # under water, as deep as the bottom (swimmers dive, 2026-10-27)
-    floor = min(ground, BaconWorld.Terrain.bottom_units(x, z, BaconWorld.Mobs.Brain.u()))
+    floor = min(ground, BaconWorld.Terrain.bottom_units(x, z, u))
+
+    ceiling =
+      if mount && mount.flies do
+        max(ground + 100.0 * u, BaconWorld.Terrain.flight_ceiling_units(u))
+      else
+        ground + 25.0
+      end
 
     cond do
       y < floor - 2.5 -> {:error, :invalid_move}
-      y > ground + top and rising -> {:error, :invalid_move}
+      y > ceiling and rising -> {:error, :invalid_move}
       true -> :ok
     end
   end

@@ -505,7 +505,7 @@ export class FrontUI {
             ] as { id: ScarStyle; label: string }[]).map((opt) => h('button', {
               class: (a.scars || 'none') === opt.id ? 'on' : '',
               onclick: () => this.change((x) => { x.scars = opt.id; })
-            }, opt.label))),
+            }, opt.label)))),
       ];
     }
     if (this.tab === 'face') {

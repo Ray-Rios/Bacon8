@@ -18,7 +18,7 @@ Related documents:
   deployment.
 - Facts dated. The owner's decisions are recorded, not re-argued.
 
-Last update: **2026-10-30**.
+Last update: **2026-10-31**.
 
 ---
 
@@ -87,13 +87,16 @@ flat round island.
 - **Binding stones** (`P_Waystone`, admin-only; one by the village square): within 100 m only GMs and admins may
   build (`Building.protected?/4`). **R** beside one binds you there; Recall and respawn use the bind.
 - Placed creatures are spawn points (count 1-12, spread 0-40 m); placed merchants trade with their template's stock.
-- **Smashing** (2026-10-30, not yet deployed): **X** in build mode (or the window's 🔨 Smash button) turns clicks
-  into hits. The piece shakes and puffs dust. After `hitsFor` hits (1-6, by size) it shatters into bits made from
-  its own triangles (`smash-fx.ts`), which fly, bounce, settle and sink away after about five seconds. The server
-  sees one `build_delete` with `smash: true`, under the same permission as a right-click remove, and broadcasts
-  `{:build_removed, id, asset, :smashed}` so every client in the zone shatters it. Ctrl+Z puts it back. The hit
-  count is the client's own; only the delete is the server's. Creature spawns and NPCs have nothing to break and
-  simply go.
+- **Smashing & Object HP** (2026-10-31):
+  - Smash mode is moved out of build mode into an in-game combat toggle on the character's info bar (alongside PvP).
+  - When Smash is toggled ON, all players can target and destroy buildable placed objects with their weapons (melee & bows), spells, and skills. Placed objects show an HP bar in the target frame and trigger floating damage numbers on hit.
+  - Every placed asset has hit points (default: 10 HP). Live health is tracked in `:bacon_world_placement_hp` ETS. Surviving hits broadcast `{:build_damaged, id, asset, new_hp, max_hp, amount}` and trigger dust and mesh jiggle; reaching 0 HP shatters the object into debris (`{:build_removed, id, asset, :smashed}`) via `smash-fx.ts` and removes it from the database.
+  - Damaged placed objects naturally regenerate 10% of their max HP per tick (driven by `BaconWorld.BuildingRegen`, synchronized with `Tuning.get("regen_interval_ms")`). Surviving repairs broadcast `{:build_repaired, id, asset, new_hp, max_hp, healed_amt}` and smoothly update the target frame HP bar; reaching 100% cleans the entry from ETS.
+  - Admins can configure each asset's max HP in-game via the build catalogue window (`AssetRule.hp`, table `bacon_world_asset_rules`), broadcasting `{:build_hp_rule, asset, hp}`.
+  - In build mode, right-clicking an object now instantly shatters/destroys it (with debris FX) rather than silently vanishing it, but only if the player's account has permission to place/move that asset (`Building.delete/4` enforces `can_place?`).
+- **Stacking & Snapping** (2026-10-31):
+  - Objects stack on top of each other in build mode: pointing the cursor at an existing placed object raycasts its bounding box and sets the support height to the top surface (`box.max.y`), allowing floors, walls, crates, roofs, and props to stack vertically.
+  - Snapping aligns pieces both vertically (stacking to the object's center and orientation, or 1.5m / 3m surface grid) and horizontally (proximity snapping to adjacent pieces and foundations, leveling elevations flush with each other). Holding `Alt` enables freeform placement at arbitrary positions and rotations.
 - **Picking placed things** (2026-10-30 fix): an InstancedMesh measures its bounds on the first raycast and keeps
   them. A piece placed or moved outside those bounds could not be clicked, so it could not be picked up.
   `placed-view.ts` now forgets the bounds on every write (`stale()`).
@@ -103,6 +106,7 @@ flat round island.
 - Melee for both hands (arcs 90 degrees one-handed, 110 two-handed), looting EverQuest style (G takes everything),
   levels, coins, con colours, PvP with red names. Bows never run out of arrows (cone hit along the aim; arrows fly
   and stick for four seconds).
+- **PvP Spells & Skills** (2026-10-31): Spells and skills (projectiles, direct damage, AoE, cones, spins, and strikes) can now target and hit PvP-flagged opponents when both caster and target have PvP toggled ON. Projectiles calculate flight time to moving players. Spells and abilities also damage placed objects when Smash mode is ON.
 - **Spells and skills** (2026-10-30 expansion): **207 abilities** (`BaconWorld.Abilities`) — **Recall** + **100 spells** across ten schools of ten (*Fire, Frost, Storm, Arcane, Holy, Nature, Shadow, Blood, Earth, Water*, cast from the 2×10 spell bar, `1-0` and `Shift+1-0`) + **100 combat skills** across ten archetypes of ten (*Blade, Berserker, Blunt, Polearm, Rogue, Ranger, Guardian, Monk, Warlord, Survival*, on `Q E F Z X V`) + **6 passive stat buffs**.
   - **15 server-side effect types** (`BaconWorldWeb.SkillEvents`, `BaconWorld.Mobs.Brain`): `"recall"`, `"heal"` (direct + HoT ticks), `"damage"` (projectiles/beams + DoT, stun, root, slow, knockback, pull), `"drain"` (lifedrain / mana siphon), `"aoe"` (self- or target-centred circle AoE), `"cone"` (frontal breath / shockwave / barrage), `"chain"` (multi-target arc jumps), `"root"` (single-target or AoE hold), `"stun"` (single-target or AoE stun/incapacitate), `"shield"` (absorb barrier + temporary AC), `"buff_temp"` (combat stances, shouts, meditations), `"dash"` (forward leaps/charges/dives and backward disengage vaults, terrain-checked, with arrival slam), `"spin"` (360° whirlwinds), `"strike"` (cleaves, executes below 35% HP, bleeds, sunders, ranged shots), `"taunt"` (single or AoE challenge), and `"stat"` (passive buffs).
   - **Icons & palette** (`skill-tree-canvas.ts`, `skill-tree-editor.ts`): glossy school-coloured circular spell icons, rounded-square archetype skill icons, and golden buff icons with 65+ crisp SVG inner glyphs. The `/admin/bacon_world/skills` editor features a searchable **Grid / List** palette with **All / Spells / Skills / Buffs** filter tabs.
@@ -124,7 +128,9 @@ flat round island.
   see them coming). Camps are placements now.
 - **Mounts** (entitlement kind `bacon_world_mount`, sold in the Bacon Store; the stablemaster Rowena Ashby chooses
   one): three drakes that fly (double-tap Space, like RaysSpaceSim) and the Abyssal Kraken that swims. Riders fight
-  with the mount's moves (claw and fire breath; tentacle lash and maelstrom).
+  with the mount's moves (claw and fire breath; tentacle lash and maelstrom). Drake flight altitude ceiling is zone-wide
+  (100 m above the highest peak in the zone anywhere in the zone, e.g. 772 m on Crater Lake, enforced both on client and
+  server `validate_ground_bounds`), allowing unrestricted flight over valleys, lakes, and crater rims.
 
 ### Characters and items
 
@@ -256,6 +262,13 @@ harness (see §8).
 | 2026-10-28 | **Groups, EverQuest style, up to 20; no raids.** Experience is split by level weight with a small group bonus; grey-con, dead or far (100 m) members get none. Anyone in the group may loot during the lock minute, one at a time; coins split evenly among the members near. |
 | 2026-10-29 | **The site's grill fork is the starter one-handed piercing weapon; the Robin Hood hat is a wearable hat and a placeable object; the bow shoots the hat's arrow; the fishing bobber is bacon.** |
 | 2026-10-21 | Targets for the content push: **20+ hair styles per sex**, more weapons, buildable pieces, **50+ props**, finished weapon animations, body morphs. **Everything lands in Bacon World first**, character creation included. |
+| 2026-10-31 | **Smash toggle outside build mode**: Smash is an in-game combat toggle on the player info bar, not a build-mode tool. All players can destroy placed objects using weapons, spells, and skills when Smash is ON. |
+| 2026-10-31 | **Object HP and in-game Admin editing**: Placed objects have 10 HP by default. Admins can adjust asset HP in-game in the build catalogue. Right-click in build mode instantly shatters an object, strictly checked against placement permissions. |
+| 2026-10-31 | **PvP spells and skills enabled**: Spells and skills now affect PvP-flagged players and placed objects (when Smash is ON). |
+| 2026-10-31 | **Object HP regeneration**: Damaged placed objects naturally regenerate at 10% of their max HP per tick. |
+| 2026-10-31 | **Object stacking and snapping**: Objects stack on top of each other in build mode, and snap both vertically (stacking) and horizontally (side-by-side) to existing objects; Alt allows freeform placement. |
+| 2026-10-31 | **Slope step-down snapping and jump sound fix**: Characters moving downhill snap to terrain within a step-down threshold (0.6 m) so slopes don't flutter grounded state; jump grunts only trigger on active upward jumps (verticalSpeed > 1.0) and landing sounds require > 200 ms airtime. |
+| 2026-10-31 | **Zone-wide flight altitude ceiling**: Drake mount flight height is no longer restricted to local ground elevation directly underneath; players can fly anywhere in the zone up to 100 m above the highest point in that zone (`hi: 672.0 m` on Crater Lake, ceiling = 772 m), or 100 m above high structures. |
 
 ## 4. How it fits together
 

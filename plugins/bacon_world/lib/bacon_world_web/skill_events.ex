@@ -322,6 +322,9 @@ defmodule BaconWorldWeb.SkillEvents do
       effect: e
     }
 
+    pvp_aoe(socket, me, cx, cz, radius_m * Brain.u(), damage, crit, a.id)
+    smash_aoe(socket, cx, cz, radius_m * Brain.u(), damage)
+
     case Mobs.spell_aoe(zone(socket), attack) do
       {:ok, hits} ->
         {socket, progress} = GameEvents.award_kills(socket, hits)
@@ -371,6 +374,9 @@ defmodule BaconWorldWeb.SkillEvents do
       crit: crit,
       effect: e
     }
+
+    pvp_cone(socket, me, heading, arc, range_m * Brain.u(), damage, crit, a.id)
+    smash_cone(socket, me, heading, arc, range_m * Brain.u(), damage)
 
     case Mobs.spell_aoe(zone(socket), attack) do
       {:ok, hits} ->
@@ -683,6 +689,11 @@ defmodule BaconWorldWeb.SkillEvents do
 
     broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "spin", school: a.school})
 
+    spin_reach = (e[:reach_m] || 3.8) * Brain.u()
+    spin_dmg = max(1, round(Melee.base_damage(item, socket.assigns[:level] || 1) * (e[:mult] || 1.0)))
+    pvp_aoe(socket, me, me.position.x, me.position.z, spin_reach, spin_dmg, false, a.id)
+    smash_aoe(socket, me.position.x, me.position.z, spin_reach, spin_dmg)
+
     case Mobs.melee(zone(socket), attack) do
       {:ok, hits} ->
         {socket, progress} = GameEvents.award_kills(socket, hits)
@@ -721,23 +732,55 @@ defmodule BaconWorldWeb.SkillEvents do
 
     broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "strike", target: target, range_m: a.range_m, school: a.school})
 
-    case Mobs.melee(zone(socket), attack) do
-      {:ok, hits} ->
+    target_player = Enum.find(socket.assigns[:zone_online_characters] || [], &(&1.character_id == target))
+    topic = socket.assigns[:current_zone_topic]
+    mult_val = (1 + (Skills.bonus(c, "melee_pct") + buffs.dmg_pct) / 100) * (e[:mult] || 1.35)
+    crit_bonus = buffs.crit + (e[:crit_bonus] || 0.0)
+    {strike_dmg, strike_crit} = Melee.roll_damage(item, socket.assigns[:level] || 1, false, &:rand.uniform/0, mult: mult_val, crit_bonus: crit_bonus)
+
+    cond do
+      target_player && topic && Combat.pvp_flagged?(me.character_id) && Combat.pvp_flagged?(target_player.character_id) ->
+        pvp_mult = Tuning.get("pvp_damage_mult") || 1.0
+        final_damage = max(1, round(strike_dmg * pvp_mult))
+        h = %{
+          attacker_id: me.character_id,
+          attacker_name: me.name,
+          target_id: target_player.character_id,
+          target_name: target_player.character_name,
+          hit: true,
+          damage: final_damage,
+          crit: strike_crit,
+          ability: a.id
+        }
+        PubSub.broadcast(Bacon8.PubSub, topic, {:pvp_hit, h})
         drain = drain_fraction(e)
+        socket = if drain > 0, do: heal(socket, max(1, round(final_damage * drain)), nil), else: socket
+        result(socket, a, %{hits: [%{id: target_player.character_id, name: target_player.character_name, damage: final_damage, crit: strike_crit}]})
 
-        socket =
-          if drain > 0 do
-            dealt = Enum.reduce(hits, 0, fn h, acc -> acc + (h[:damage] || 0) end)
-            if dealt > 0, do: heal(socket, max(1, round(dealt * drain)), nil), else: socket
-          else
-            socket
-          end
+      is_binary(target) and BaconWorld.Building.placement?(zone(socket), target) ->
+        dmg = max(1, strike_dmg)
+        BaconWorld.Building.damage_placement(socket.assigns.current_user, zone(socket), target, dmg)
+        result(socket, a, %{hits: [%{id: target, damage: dmg, crit: strike_crit}]})
 
-        {socket, progress} = GameEvents.award_kills(socket, hits)
-        result(socket, a, %{hits: hits, progress: progress})
+      true ->
+        case Mobs.melee(zone(socket), attack) do
+          {:ok, hits} ->
+            drain = drain_fraction(e)
 
-      _ ->
-        result(socket, a, %{hits: []})
+            socket =
+              if drain > 0 do
+                dealt = Enum.reduce(hits, 0, fn h, acc -> acc + (h[:damage] || 0) end)
+                if dealt > 0, do: heal(socket, max(1, round(dealt * drain)), nil), else: socket
+              else
+                socket
+              end
+
+            {socket, progress} = GameEvents.award_kills(socket, hits)
+            result(socket, a, %{hits: hits, progress: progress})
+
+          _ ->
+            result(socket, a, %{hits: []})
+        end
     end
   end
 
@@ -815,8 +858,42 @@ defmodule BaconWorldWeb.SkillEvents do
           {socket, progress} = GameEvents.award_kills(socket, [hit])
           result(socket, a, %{hits: [hit], progress: progress})
 
-        {:error, reason} ->
-          push_event(socket, "cast_result", %{ability: id, ok: false, reason: to_string(reason)})
+        _ ->
+          target_player = Enum.find(socket.assigns[:zone_online_characters] || [], &(&1.character_id == target))
+          topic = socket.assigns[:current_zone_topic]
+
+          cond do
+            target_player && topic && Combat.pvp_flagged?(me.character_id) && Combat.pvp_flagged?(target_player.character_id) ->
+              pvp_mult = Tuning.get("pvp_damage_mult") || 1.0
+              final_damage = max(1, round(damage * pvp_mult))
+              h = %{
+                attacker_id: me.character_id,
+                attacker_name: me.name,
+                target_id: target_player.character_id,
+                target_name: target_player.character_name,
+                hit: true,
+                damage: final_damage,
+                crit: crit,
+                ability: a.id
+              }
+              PubSub.broadcast(Bacon8.PubSub, topic, {:pvp_hit, h})
+              broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", target: target, school: a.school})
+
+              drain = drain_fraction(a.effect)
+              socket = if drain > 0 and final_damage > 0, do: heal(socket, max(1, round(final_damage * drain)), nil), else: socket
+              socket = if (a.effect[:mp_restore] || 0) > 0, do: restore_mp(socket, me.character_id, a.effect.mp_restore), else: socket
+
+              result(socket, a, %{hits: [%{id: target_player.character_id, name: target_player.character_name, damage: final_damage, crit: crit}]})
+
+            is_binary(target) and BaconWorld.Building.placement?(zone(socket), target) ->
+              dmg = max(1, damage)
+              BaconWorld.Building.damage_placement(socket.assigns.current_user, zone(socket), target, dmg)
+              broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", target: target, school: a.school})
+              result(socket, a, %{hits: [%{id: target, damage: dmg, crit: crit}]})
+
+            true ->
+              push_event(socket, "cast_result", %{ability: id, ok: false, reason: "miss"})
+          end
       end
     else
       socket
@@ -1039,8 +1116,112 @@ defmodule BaconWorldWeb.SkillEvents do
       d = :math.sqrt(:math.pow((mob[:x] || 0.0) - me.position.x, 2) + :math.pow((mob[:z] || 0.0) - me.position.z, 2)) / Brain.u()
       round(min(d / max(speed_m, 1.0), 2.0) * 1000)
     else
-      _ -> 400
+      _ ->
+        case Enum.find(socket.assigns[:zone_online_characters] || [], &(&1.character_id == target)) do
+          %{x: px, z: pz} ->
+            d = :math.sqrt(:math.pow((px || 0.0) - me.position.x, 2) + :math.pow((pz || 0.0) - me.position.z, 2)) / Brain.u()
+            round(min(d / max(speed_m, 1.0), 2.0) * 1000)
+
+          _ ->
+            case BaconWorld.Building.get(zone(socket), target) do
+              %{x: px, z: pz} ->
+                u = Brain.u()
+                d = :math.sqrt(:math.pow(px * u - me.position.x, 2) + :math.pow(pz * u - me.position.z, 2)) / u
+                round(min(d / max(speed_m, 1.0), 2.0) * 1000)
+
+              _ ->
+                400
+            end
+        end
     end
+  end
+
+  defp pvp_aoe(socket, me, cx, cz, radius_scene, damage, crit, ability_id) do
+    topic = socket.assigns[:current_zone_topic]
+    if topic && Combat.pvp_flagged?(me.character_id) do
+      pvp_mult = Tuning.get("pvp_damage_mult") || 1.0
+      final_damage = max(1, round(damage * pvp_mult))
+
+      (socket.assigns[:zone_online_characters] || [])
+      |> Enum.filter(fn p ->
+        p.character_id != me.character_id and not p.dead and
+          Combat.pvp_flagged?(p.character_id) and
+          :math.sqrt(:math.pow((p.x || 0.0) - cx, 2) + :math.pow((p.z || 0.0) - cz, 2)) <= radius_scene
+      end)
+      |> Enum.map(fn p ->
+        h = %{
+          attacker_id: me.character_id,
+          attacker_name: me.name,
+          target_id: p.character_id,
+          target_name: p.character_name,
+          hit: true,
+          damage: final_damage,
+          crit: crit,
+          ability: ability_id
+        }
+        PubSub.broadcast(Bacon8.PubSub, topic, {:pvp_hit, h})
+        h
+      end)
+    else
+      []
+    end
+  end
+
+  defp pvp_cone(socket, me, heading, arc_deg, range_scene, damage, crit, ability_id) do
+    topic = socket.assigns[:current_zone_topic]
+    if topic && Combat.pvp_flagged?(me.character_id) do
+      pvp_mult = Tuning.get("pvp_damage_mult") || 1.0
+      final_damage = max(1, round(damage * pvp_mult))
+      arc_rad = arc_deg * :math.pi() / 180.0
+
+      (socket.assigns[:zone_online_characters] || [])
+      |> Enum.filter(fn p ->
+        p.character_id != me.character_id and not p.dead and
+          Combat.pvp_flagged?(p.character_id) and
+          Melee.in_arc?({me.position.x, me.position.z}, heading, {(p.x || 0.0) * 1.0, (p.z || 0.0) * 1.0}, range_scene, arc_rad)
+      end)
+      |> Enum.map(fn p ->
+        h = %{
+          attacker_id: me.character_id,
+          attacker_name: me.name,
+          target_id: p.character_id,
+          target_name: p.character_name,
+          hit: true,
+          damage: final_damage,
+          crit: crit,
+          ability: ability_id
+        }
+        PubSub.broadcast(Bacon8.PubSub, topic, {:pvp_hit, h})
+        h
+      end)
+    else
+      []
+    end
+  end
+
+  defp smash_aoe(socket, cx, cz, radius_scene, damage) do
+    zone = zone(socket)
+    u = Brain.u()
+    BaconWorld.Building.list(zone)
+    |> Enum.filter(fn p ->
+      :math.sqrt(:math.pow(p.x * u - cx, 2) + :math.pow(p.z * u - cz, 2)) <= radius_scene
+    end)
+    |> Enum.each(fn p ->
+      BaconWorld.Building.damage_placement(socket.assigns.current_user, zone, p.id, max(1, damage))
+    end)
+  end
+
+  defp smash_cone(socket, me, heading, arc_deg, range_scene, damage) do
+    zone = zone(socket)
+    u = Brain.u()
+    arc_rad = arc_deg * :math.pi() / 180.0
+    BaconWorld.Building.list(zone)
+    |> Enum.filter(fn p ->
+      Melee.in_arc?({me.position.x, me.position.z}, heading, {p.x * u, p.z * u}, range_scene, arc_rad)
+    end)
+    |> Enum.each(fn p ->
+      BaconWorld.Building.damage_placement(socket.assigns.current_user, zone, p.id, max(1, damage))
+    end)
   end
 
   defp ready?(socket, id, now), do: now >= Map.get(socket.assigns[:cooldowns] || %{}, id, now)

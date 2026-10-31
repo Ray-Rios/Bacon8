@@ -58,7 +58,7 @@ defmodule BaconWorld.Plugin do
   # The creatures: one zone process in the cluster (BaconWorld.Mobs.Zone), kept
   # alive by a keeper on every node.
   @impl true
-  def children, do: [BaconWorld.Groups | BaconWorld.Mobs.children()]
+  def children, do: [BaconWorld.BuildingRegen, BaconWorld.Groups | BaconWorld.Mobs.children()]
 
   # Its card on /games is in priv/static/card/ (Bacon8.GameCards), editable on /admin/bacon_world.
   @impl true

@@ -154,6 +154,26 @@ defmodule BaconWorld.Building do
       Map.new(catalogue(), &{&1.id, &1.default_role})
   end
 
+  @doc "`%{asset => hp}`: the admins' object HP rules over the default (10)."
+  def hps do
+    saved =
+      try do
+        GamesRepo.all(from(r in AssetRule, select: {r.asset, r.hp})) |> Map.new()
+      rescue
+        _ -> %{}
+      end
+
+    Map.new(catalogue(), fn a -> {a.id, Map.get(saved, a.id, 10) || 10} end)
+  rescue
+    _ ->
+      Map.new(catalogue(), &{&1.id, 10})
+  end
+
+  @doc "The max HP of an asset (default 10)."
+  def max_hp(asset_id, hps_map \\ nil) do
+    if asset(asset_id), do: Map.get(hps_map || hps(), asset_id, 10), else: 10
+  end
+
   @doc "The lowest role that may place `asset_id` (nil for an unknown asset)."
   def min_role(asset_id, rules \\ nil) do
     if asset(asset_id), do: Map.get(rules || rules(), asset_id), else: nil
@@ -167,14 +187,19 @@ defmodule BaconWorld.Building do
     end
   end
 
-  @doc "The catalogue as the build window shows it to `user`: each entry with its rule and whether they may use it."
+  @doc "The catalogue as the build window shows it to `user`: each entry with its rule, hp, and whether they may use it."
   def catalogue_for(user) do
     rules = rules()
+    hp_map = hps()
     role = role_of(user)
 
     for a <- catalogue() do
-      min = Map.fetch!(rules, a.id)
-      a |> Map.put(:min_role, min) |> Map.put(:allowed, at_least?(role, min))
+      min = Map.get(rules, a.id, a.default_role)
+      hp = Map.get(hp_map, a.id, 10)
+      a
+      |> Map.put(:min_role, min)
+      |> Map.put(:hp, hp)
+      |> Map.put(:allowed, at_least?(role, min))
     end
   end
 
@@ -186,13 +211,33 @@ defmodule BaconWorld.Building do
       role not in @roles -> {:error, "That isn't a role."}
       true ->
         now = DateTime.utc_now() |> DateTime.truncate(:second)
+        cur_hp = max_hp(asset_id)
 
-        GamesRepo.insert_all(AssetRule, [%{asset: asset_id, min_role: role, updated_by: user_id(user), inserted_at: now, updated_at: now}],
+        GamesRepo.insert_all(AssetRule, [%{asset: asset_id, min_role: role, hp: cur_hp, updated_by: user_id(user), inserted_at: now, updated_at: now}],
           on_conflict: {:replace, [:min_role, :updated_by, :updated_at]},
           conflict_target: [:asset]
         )
 
         {:ok, role}
+    end
+  end
+
+  @doc "Sets the object HP for an asset (admins only). `{:ok, hp}` or `{:error, message}`."
+  def set_hp(user, asset_id, hp) do
+    cond do
+      not admin?(user) -> {:error, "Only admins can change object health."}
+      is_nil(asset(asset_id)) -> {:error, "There is no such thing to configure."}
+      not is_integer(hp) or hp <= 0 -> {:error, "HP must be a positive integer."}
+      true ->
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        min_r = min_role(asset_id) || (asset(asset_id) && asset(asset_id).default_role) || "player"
+
+        GamesRepo.insert_all(AssetRule, [%{asset: asset_id, min_role: min_r, hp: hp, updated_by: user_id(user), inserted_at: now, updated_at: now}],
+          on_conflict: {:replace, [:hp, :updated_by, :updated_at]},
+          conflict_target: [:asset]
+        )
+
+        {:ok, hp}
     end
   end
 
@@ -264,6 +309,8 @@ defmodule BaconWorld.Building do
          true <- can_place?(user, p.asset) || {:error, "You aren't allowed to remove #{(asset(p.asset) || %{name: "that"}).name}."},
          :ok <- town_ok(user, zone, [{p.x, p.z}], p.id),
          {:ok, _} <- GamesRepo.delete(p) do
+      ensure_hp_table()
+      :ets.delete(:bacon_world_placement_hp, {zone, p.id})
       if String.starts_with?(p.asset, "mob:"), do: Mobs.put_points(zone, p.id, [])
       msg = if opts[:smash], do: {:build_removed, p.id, p.asset, :smashed}, else: {:build_removed, p.id, p.asset}
       Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), msg)
@@ -274,14 +321,119 @@ defmodule BaconWorld.Building do
     end
   end
 
-  defp get(zone, id) when is_binary(id) do
+  @doc "Fetches a placement by zone and ID."
+  def get(zone, id) when is_binary(id) do
     case Ecto.UUID.cast(id) do
       {:ok, uuid} -> GamesRepo.one(from(p in Placement, where: p.zone == ^zone and p.id == ^uuid))
       :error -> nil
     end
   end
 
-  defp get(_zone, _id), do: nil
+  def get(_zone, _id), do: nil
+
+  @doc "True if `id` is a placed object in `zone`."
+  def placement?(zone, id), do: !is_nil(get(zone, id))
+
+  defp ensure_hp_table do
+    if :ets.whereis(:bacon_world_placement_hp) == :undefined do
+      :ets.new(:bacon_world_placement_hp, [:named_table, :public, :set, read_concurrency: true, write_concurrency: true])
+    end
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  @doc "Gets current HP of a placed object in a zone."
+  def get_placement_hp(zone, id) do
+    ensure_hp_table()
+    case :ets.lookup(:bacon_world_placement_hp, {zone, id}) do
+      [{_, hp}] -> hp
+      [] ->
+        case get(zone, id) do
+          %Placement{} = p -> max_hp(p.asset)
+          _ -> nil
+        end
+    end
+  end
+
+  @doc """
+  Deals `amount` damage to a placed object.
+  All players with Smash toggle ON may damage and destroy buildable objects with weapons/skills.
+  When HP reaches 0, the object is shattered and deleted.
+  """
+  def damage_placement(_user, zone, id, amount) when is_integer(amount) and amount > 0 do
+    ensure_hp_table()
+    with %Placement{} = p <- get(zone, id) || {:error, "That isn't there any more."} do
+      m_hp = max_hp(p.asset)
+      cur_hp =
+        case :ets.lookup(:bacon_world_placement_hp, {zone, id}) do
+          [{_, h}] -> h
+          [] -> m_hp
+        end
+
+      new_hp = max(0, cur_hp - amount)
+
+      if new_hp <= 0 do
+        :ets.delete(:bacon_world_placement_hp, {zone, id})
+        case GamesRepo.delete(p) do
+          {:ok, _} ->
+            if String.starts_with?(p.asset, "mob:"), do: Mobs.put_points(zone, p.id, [])
+            Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_removed, p.id, p.asset, :smashed})
+            {:ok, :destroyed, view(p)}
+
+          {:error, _} ->
+            {:error, "That couldn't be destroyed."}
+        end
+      else
+        :ets.insert(:bacon_world_placement_hp, {{zone, id}, new_hp})
+        Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_damaged, p.id, p.asset, new_hp, m_hp, amount})
+        {:ok, :damaged, new_hp, m_hp, view(p)}
+      end
+    end
+  end
+
+  def damage_placement(_user, _zone, _id, _amount), do: {:error, "Invalid damage amount."}
+
+  @doc """
+  Regenerates 10% of max HP on all damaged placed objects across all zones.
+  When an object reaches full HP, its entry is cleaned up from the ETS table.
+  Broadcasts `{:build_repaired, id, asset, new_hp, max_hp, healed_amount}`.
+  """
+  def tick_regen do
+    ensure_hp_table()
+
+    try do
+      entries = :ets.tab2list(:bacon_world_placement_hp)
+
+      Enum.each(entries, fn {{zone, id}, cur_hp} ->
+        case get(zone, id) do
+          %Placement{} = p ->
+            m_hp = max_hp(p.asset)
+
+            if cur_hp < m_hp do
+              regen_amt = max(1, round(m_hp * 0.10))
+              new_hp = min(m_hp, cur_hp + regen_amt)
+
+              if new_hp >= m_hp do
+                :ets.delete(:bacon_world_placement_hp, {zone, id})
+              else
+                :ets.insert(:bacon_world_placement_hp, {{zone, id}, new_hp})
+              end
+
+              Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_repaired, p.id, p.asset, new_hp, m_hp, regen_amt})
+            else
+              :ets.delete(:bacon_world_placement_hp, {zone, id})
+            end
+
+          _ ->
+            # Placement no longer exists: clean up
+            :ets.delete(:bacon_world_placement_hp, {zone, id})
+        end
+      end)
+    rescue
+      _ -> :ok
+    end
+  end
 
   # After an insert or update: the creatures move with their spawn, everyone is told.
   defp after_change(p) do
@@ -339,7 +491,19 @@ defmodule BaconWorld.Building do
 
   @doc "A placement as clients get it (metres, radians)."
   def view(%Placement{} = p) do
-    base = %{id: p.id, asset: p.asset, x: r(p.x), y: r(p.y), z: r(p.z), rot: Float.round(p.rot * 1.0, 4), scale: Float.round(p.scale * 1.0, 3), data: p.data || %{}}
+    cur_hp = get_placement_hp(p.zone, p.id) || max_hp(p.asset)
+    base = %{
+      id: p.id,
+      asset: p.asset,
+      x: r(p.x),
+      y: r(p.y),
+      z: r(p.z),
+      rot: Float.round(p.rot * 1.0, 4),
+      scale: Float.round(p.scale * 1.0, 3),
+      data: p.data || %{},
+      hp: cur_hp,
+      max_hp: max_hp(p.asset)
+    }
 
     case p.asset do
       "npc:" <> _ -> Map.put(base, :npc, Merchants.npc_payload(npc(p)))

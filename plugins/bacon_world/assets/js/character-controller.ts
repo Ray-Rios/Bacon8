@@ -164,6 +164,7 @@ export class CharacterController {
   private flyVel = { x: 0, y: 0, z: 0 };
   private lastSpaceMs = -1e9;
   private footDistance: number | null = null;
+  private flightCeiling: number | null = null;
 
   // Camera: yaw psi = 0 looks along +Z; look pitch < 0 looks down. The mouse turns it
   // directly, with no easing.
@@ -726,6 +727,11 @@ export class CharacterController {
       pos.y = ground;
       this.verticalSpeed = 0;
       this.isGrounded = true;
+    } else if (this.isGrounded && this.verticalSpeed <= 0 && pos.y - ground <= 0.6 * UNITS_PER_METRE && !(inWater && this.dive > 0)) {
+      // Moving down a slope or small step: stay snapped to the terrain
+      pos.y = ground;
+      this.verticalSpeed = 0;
+      this.isGrounded = true;
     } else if (this.isGrounded && pos.y - ground > 0.05 && !(this.swimFn?.(pos.x, pos.z) && pos.y - ground < 1.6 * UNITS_PER_METRE)) {
       // Walked off a ledge.
       this.isGrounded = false;
@@ -771,7 +777,8 @@ export class CharacterController {
       pos.z = ok.z;
       if (dt > 0) this.velocity = { x: (pos.x - fromX) / UNITS_PER_METRE / dt, z: (pos.z - fromZ) / UNITS_PER_METRE / dt };
     }
-    const top = ground + FLIGHT.maxAltitude * UNITS_PER_METRE;
+    const localTop = ground + 100 * UNITS_PER_METRE;
+    const top = this.flightCeiling !== null ? Math.max(localTop, this.flightCeiling) : localTop;
     if (pos.y > top) {
       pos.y = top;
       this.flyVel.y = Math.min(0, this.flyVel.y);
@@ -892,6 +899,13 @@ export class CharacterController {
     this.surfaceFn = surface;
     this.swimFn = swim;
     this.bottomFn = bottom;
+  }
+
+  /**
+   * The maximum flight ceiling in scene units (100 m above the highest peak in the zone, or local ground + 100m).
+   */
+  setFlightCeiling(ceiling: number | null): void {
+    this.flightCeiling = ceiling;
   }
 
   /** How deep we've dived (metres under the surface; 0 at the top). */

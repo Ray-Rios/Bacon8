@@ -59,6 +59,8 @@ interface Held {
   ghost: THREE.Object3D;
   before: Placement | null;
   at: { x: number; y: number; z: number } | null;
+  stackId?: string | null;
+  supportY?: number;
 }
 
 type Undo = { t: number } & ({ kind: 'placed'; id: string } | { kind: 'moved'; before: Placement } | { kind: 'deleted'; p: Placement });
@@ -187,13 +189,13 @@ export const BuildWorld = {
       this.buildWindow = new BuildWindow(this.gameUI.root, {
         pick: (e: CatalogueEntry) => this.buildHoldNew(e),
         rule: (asset: string, role: string) => void this.buildSetRule(asset, role),
+        hp: (asset: string, hp: number) => void this.buildSetHp(asset, hp),
         data: (patch: Record<string, any>) => this.buildSetData(patch),
         snap: (on: boolean) => {
           this.buildSnap = on;
           this.buildRefreshHeld();
         },
         cancel: () => this.buildDropHeld(true),
-        smash: (on: boolean) => this.buildSetSmash(on),
         close: () => this.buildExit(),
       });
       this.buildSnap = true;
@@ -264,9 +266,13 @@ export const BuildWorld = {
     this.placedView.setHidden(id, true);
     if (kind === 'npc') this.npcsView?.setHidden(`p:${id}`, true);
     const ground = this.placedView.ground(p.x, p.z);
+    const support = this.placedView?.supportUnder?.(p.x, p.z, p.y, id);
+    const base = support !== null && support !== undefined ? support : ground;
+    const lift = Math.max(0, p.y - base);
     this.buildHeld = {
-      id, asset: p.asset, name: entry?.name || p.asset, kind, rot: p.rot, lift: p.y - ground, scale: p.scale, data: { ...p.data },
+      id, asset: p.asset, name: entry?.name || p.asset, kind, rot: p.rot, lift, scale: p.scale, data: { ...p.data },
       grab: at ? { x: p.x - at.x, z: p.z - at.z } : { x: 0, z: 0 }, ghost, before: { ...p }, at: { x: p.x, y: p.y, z: p.z },
+      supportY: base,
     } as Held;
     this.placedView.pose(ghost, { x: p.x, y: p.y, z: p.z, rot: p.rot, scale: p.scale });
     this.buildRefreshHeld();
@@ -308,8 +314,11 @@ export const BuildWorld = {
     const held: Held | null = this.buildHeld;
     if (!held || !held.at) return null;
     let x = held.at.x, z = held.at.z, rot = held.rot;
-    if (this.buildSnap && held.asset.startsWith('K_') && !alt) ({ x, z, rot } = snapPiece(x, z, rot));
-    const y = this.placedView.ground(x, z) + held.lift;
+    if (this.buildSnap && held.asset.startsWith('K_') && !alt && !held.stackId && held.supportY === undefined) {
+      ({ x, z, rot } = snapPiece(x, z, rot));
+    }
+    const baseY = held.supportY !== undefined ? held.supportY : this.placedView.ground(x, z);
+    const y = baseY + held.lift;
     return { x, y, z, rot, scale: held.scale };
   },
 
@@ -336,16 +345,95 @@ export const BuildWorld = {
 
   // ---------------------------------------------------------------- the mouse
 
-  /** The cursor moved (build mode only): the held thing follows it over the ground. */
+  /** The cursor moved (build mode only): the held thing follows it over the ground or stacks onto objects. */
   buildPointer(this: any, e: PointerEvent | MouseEvent | null) {
     if (!e) return;
     this.lastBuildPointer = e;
     this.buildAlt = e.altKey;
     const held: Held | null = this.buildHeld;
-    if (!held) return;
+    if (!held || !this.camera || !this.renderer) return;
+
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+
+    // 1. Raycast existing placed objects: stack on top of objects!
+    const objHit = this.placedView?.pickHit(ray, held.id);
+    if (objHit) {
+      held.stackId = objHit.id;
+      const topY = objHit.box ? objHit.box.max.y : objHit.placement.y;
+      held.supportY = topY;
+
+      if (this.buildSnap && !this.buildAlt) {
+        // Snapping on top of the object
+        const distToCenter = Math.hypot(objHit.point.x - objHit.placement.x, objHit.point.z - objHit.placement.z);
+        if (distToCenter < 0.8) {
+          // Align directly with the target piece center and orientation
+          held.at = { x: objHit.placement.x, y: topY, z: objHit.placement.z };
+          held.rot = objHit.placement.rot;
+        } else {
+          // Snap in local coordinates of the target object relative to its rotation
+          const dx = objHit.point.x - objHit.placement.x;
+          const dz = objHit.point.z - objHit.placement.z;
+          const cos = Math.cos(-objHit.placement.rot);
+          const sin = Math.sin(-objHit.placement.rot);
+          let lx = dx * cos - dz * sin;
+          let lz = dx * sin + dz * cos;
+          lx = Math.round(lx / GRID) * GRID;
+          lz = Math.round(lz / GRID) * GRID;
+          const cosR = Math.cos(objHit.placement.rot);
+          const sinR = Math.sin(objHit.placement.rot);
+          held.at = {
+            x: objHit.placement.x + (lx * cosR - lz * sinR),
+            y: topY,
+            z: objHit.placement.z + (lx * sinR + lz * cosR),
+          };
+          held.rot = objHit.placement.rot;
+        }
+      } else {
+        held.at = { x: objHit.point.x, y: topY, z: objHit.point.z };
+      }
+      this.buildPose();
+      return;
+    }
+
+    // 2. Not aiming directly at an object: raycast ground
+    held.stackId = null;
+    held.supportY = undefined;
     const g = this.buildGroundUnder(e);
     if (!g) return;
-    held.at = { x: g.x + held.grab.x, y: 0, z: g.z + held.grab.z };
+
+    if (this.buildSnap && !this.buildAlt) {
+      // Proximity snap to nearby placed objects
+      const nearby = this.placedView?.closest(g.x, g.z, 2.5, held.id);
+      if (nearby) {
+        const dx = g.x - nearby.x;
+        const dz = g.z - nearby.z;
+        const cos = Math.cos(-nearby.rot);
+        const sin = Math.sin(-nearby.rot);
+        let lx = dx * cos - dz * sin;
+        let lz = dx * sin + dz * cos;
+        lx = Math.round(lx / GRID) * GRID;
+        lz = Math.round(lz / GRID) * GRID;
+        const cosR = Math.cos(nearby.rot);
+        const sinR = Math.sin(nearby.rot);
+        const sx = nearby.x + (lx * cosR - lz * sinR);
+        const sz = nearby.z + (lx * sinR + lz * cosR);
+        held.at = { x: sx, y: 0, z: sz };
+        held.rot = nearby.rot;
+
+        const groundY = this.placedView.ground(sx, sz);
+        if (Math.abs(groundY - nearby.y) < 1.2) {
+          held.supportY = nearby.y;
+        }
+      } else {
+        held.at = { x: g.x + held.grab.x, y: 0, z: g.z + held.grab.z };
+      }
+    } else {
+      held.at = { x: g.x + held.grab.x, y: 0, z: g.z + held.grab.z };
+    }
+
     this.buildPose();
   },
 
@@ -396,12 +484,6 @@ export const BuildWorld = {
   /** A left click in build mode (not the end of a camera drag): true when it was ours. */
   buildLeftClick(this: any, e: MouseEvent): boolean {
     if (!this.buildMode) return false;
-    if (this.buildSmashing) {
-      const id = this.buildPickAt(e);
-      if (!id) return false;
-      void this.buildSmashHit(id);
-      return true;
-    }
     if (this.buildHeld) {
       void this.buildCommit(e.shiftKey);
       return true;
@@ -458,11 +540,6 @@ export const BuildWorld = {
     }
     if (e.code === 'KeyF' && e.ctrlKey) return false;
     if (e.code === 'Enter' && !held) return false;
-    if (!held && e.code === 'KeyX' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault();
-      this.buildSetSmash(!this.buildSmashing);
-      return true;
-    }
     if (!held) {
       if (e.code === 'KeyB' || (e.key === 'f' && e.shiftKey)) {
         this.buildWindow?.focusSearch();
@@ -607,20 +684,21 @@ export const BuildWorld = {
     const p: Placement | null = this.placedView?.get(id);
     const entry = p ? this.buildWindow?.entry(p.asset) : null;
     if (!this.buildMayRemove(id)) return;
-    const res = await reply(this, 'build_delete', { id });
+    const res = await reply(this, 'build_delete', { id, smash: true });
     if (!res.ok) {
-      this.combatLog(res.error || "That can't be removed.", '#FF9B7A');
+      this.combatLog(res.error || "That can't be destroyed.", '#FF9B7A');
       return;
     }
-    this.onBuildRemoved({ id, asset: res.placement.asset });
+    this.onBuildRemoved({ id, asset: res.placement.asset, smashed: true });
     this.buildRemember({ kind: 'deleted', p: res.placement });
-    this.combatLog(`Removed ${entry?.name?.toLowerCase() || 'it'}. Ctrl+Z puts it back.`, '#B8B8B8');
-    this.audio?.play('click', 0.4);
+    this.combatLog(`Destroyed ${entry?.name?.toLowerCase() || 'it'}. Ctrl+Z puts it back.`, '#FFB38A');
+    this.audio?.play('bone_collapse', 0.7);
   },
 
-  /** May we remove (or smash) this placement? Says why not in the log. */
+  /** May we remove or destroy this placement? Says why not in the log. */
   buildMayRemove(this: any, id: string): boolean {
     const p: Placement | null = this.placedView?.get(id);
+    if (!p) return false;
     const entry = p ? this.buildWindow?.entry(p.asset) : null;
     if (entry && !entry.allowed) {
       this.combatLog(`Only a ${entry.min_role} or higher may remove ${entry.name.toLowerCase()}.`, '#FF9B7A');
@@ -633,53 +711,6 @@ export const BuildWorld = {
     return true;
   },
 
-  buildSetSmash(this: any, on: boolean) {
-    on = !!on && !!this.buildMode;
-    if (on === !!this.buildSmashing) return;
-    this.buildSmashing = on;
-    if (on && this.buildHeld) this.buildDropHeld(true);
-    this.buildWindow?.setSmash(on);
-    const canvas: HTMLElement | undefined = this.renderer?.domElement;
-    if (canvas) canvas.style.cursor = on ? 'crosshair' : '';
-    if (this.buildMode) this.combatLog(on ? 'Smash: click something to hit it until it breaks. X to stop.' : 'Smashing off.', on ? '#FFB38A' : '#B8B8B8');
-  },
-
-  /** A smash-mode click: a hit; enough of them (hitsFor, by size) break it for good (undo still works). */
-  async buildSmashHit(this: any, id: string) {
-    if (this.smashBusy === id || !this.buildMayRemove(id)) return;
-    const parts = this.placedView?.pieces(id);
-    // creature spawns and NPCs have nothing to break: they just go, as a right click would
-    if (!parts) {
-      void this.buildDelete(id);
-      return;
-    }
-    this.smashHits = this.smashHits || new Map<string, number>();
-    const need = hitsFor(parts.box);
-    const n = (this.smashHits.get(id) || 0) + 1;
-    this.smashHits.set(id, n);
-    const size = parts.box.getSize(new THREE.Vector3());
-    const mid = parts.box.getCenter(new THREE.Vector3());
-    this.smashFx?.hit(mid.setY(parts.box.min.y + size.y * 0.45), Math.max(size.x, size.z));
-    if (this.smashShake && this.smashShake.id !== id) this.placedView?.jiggle(this.smashShake.id, 0, 0, 0);
-    this.smashShake = { id, t: 0, amp: Math.min(0.12, 0.03 + 0.02 * Math.max(size.x, size.z)) * (0.6 + 0.4 * (n / need)) };
-    if (n < need) {
-      this.audio?.play('bone_break', 0.45);
-      return;
-    }
-    this.smashBusy = id;
-    const res = await reply(this, 'build_delete', { id, smash: true });
-    this.smashBusy = null;
-    this.smashHits.delete(id);
-    if (!res.ok) {
-      this.combatLog(res.error || "That can't be smashed.", '#FF9B7A');
-      return;
-    }
-    const entry = this.buildWindow?.entry(res.placement.asset);
-    this.onBuildRemoved({ id, asset: res.placement.asset, smashed: true });
-    this.buildRemember({ kind: 'deleted', p: res.placement });
-    this.combatLog(`Smashed ${entry?.name?.toLowerCase() || 'it'}. Ctrl+Z puts it back.`, '#FFB38A');
-  },
-
   async buildSetRule(this: any, asset: string, role: string) {
     const res = await reply(this, 'build_rule', { asset, role });
     if (!res.ok) {
@@ -688,6 +719,16 @@ export const BuildWorld = {
     }
     this.buildWindow?.setRule(asset, res.role);
     this.combatLog(`${this.buildWindow?.entry(asset)?.name || asset}: ${res.role}s and above may place it now.`, '#9FE39F');
+  },
+
+  async buildSetHp(this: any, asset: string, hp: number) {
+    const res = await reply(this, 'build_hp', { asset, hp });
+    if (!res.ok) {
+      this.combatLog(res.error || "That health can't be set.", '#FF9B7A');
+      return;
+    }
+    this.buildWindow?.setHp(asset, res.hp);
+    this.combatLog(`${this.buildWindow?.entry(asset)?.name || asset}: health set to ${res.hp} HP.`, '#9FE39F');
   },
 
   buildRemember(this: any, u: Omit<Undo, 't'>) {

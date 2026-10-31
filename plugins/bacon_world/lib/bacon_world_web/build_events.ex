@@ -76,6 +76,21 @@ defmodule BaconWorldWeb.BuildEvents do
     end
   end
 
+  def handle_event("build_hp", %{"asset" => asset, "hp" => hp}, socket) when is_integer(hp) and hp > 0 do
+    case Building.set_hp(socket.assigns.current_user, asset, hp) do
+      {:ok, hp} ->
+        zone = socket.assigns[:mobs_zone] || "lobby"
+        Phoenix.PubSub.broadcast(Bacon8.PubSub, Building.topic(zone), {:build_hp_rule, asset, hp})
+        {:reply, %{ok: true, asset: asset, hp: hp}, socket}
+      {:error, msg} ->
+        {:reply, %{ok: false, error: msg}, socket}
+    end
+  end
+
+  def handle_event("build_hp", _params, socket) do
+    {:reply, %{ok: false, error: "HP must be a positive integer."}, socket}
+  end
+
   def handle_event("bind_stone", _params, socket) do
     me = socket.assigns[:current_character_runtime] || socket.assigns[:current_character_payload]
 
@@ -99,6 +114,21 @@ defmodule BaconWorldWeb.BuildEvents do
 
   @doc "A placement was smashed: removed, and shattered on every client."
   def smashed(id, asset, socket), do: push_event(socket, "build_removed", %{id: id, asset: asset, smashed: true})
+
+  @doc "A placement took damage in the zone."
+  def damaged(id, asset, hp, max_hp, amount, socket) do
+    push_event(socket, "build_damaged", %{id: id, asset: asset, hp: hp, max_hp: max_hp, amount: amount})
+  end
+
+  @doc "A placement naturally regenerated HP."
+  def repaired(id, asset, hp, max_hp, amount, socket) do
+    push_event(socket, "build_repaired", %{id: id, asset: asset, hp: hp, max_hp: max_hp, amount: amount})
+  end
+
+  @doc "An admin changed an asset's max HP."
+  def hp_rule(asset, hp, socket) do
+    push_event(socket, "build_hp_rule", %{asset: asset, hp: hp})
+  end
 
   # In the world, alive, not over the burst limit: run `fun` and reply with its placement.
   defp act(socket, fun) do

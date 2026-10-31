@@ -28,6 +28,13 @@ export interface Placement {
   npc?: any;
 }
 
+export interface PickHit {
+  id: string;
+  placement: Placement;
+  point: { x: number; y: number; z: number };
+  box?: THREE.Box3;
+}
+
 /** Where a template comes from: the village's loaded pieces (world-dressing.ts). */
 export interface TemplateSource {
   template(name: string): THREE.Object3D | null;
@@ -268,6 +275,63 @@ export class PlacedView {
       if (id) return id;
     }
     return null;
+  }
+
+  /** Detailed placement hit under a ray in local metres, ignoring `excludeId`. */
+  pickHit(raycaster: THREE.Raycaster, excludeId?: string | null): PickHit | null {
+    const targets: THREE.Object3D[] = [];
+    for (const b of this.buckets.values()) if (b.ids.length) targets.push(...b.meshes);
+    for (const e of this.entries.values()) if (e.marker && e.marker.visible) targets.push(e.marker);
+    const hits = raycaster.intersectObjects(targets, true);
+    for (const hit of hits) {
+      let id: string | null = null;
+      const b = hit.object.userData.bucket as Bucket | undefined;
+      if (b && hit.instanceId !== undefined) {
+        id = b.ids[hit.instanceId] || null;
+      } else {
+        id = (hit.object.userData.placementId as string) || null;
+      }
+      if (!id || id === excludeId) continue;
+      const entry = this.entries.get(id);
+      if (!entry || entry.hidden) continue;
+      const pt = this.group.worldToLocal(hit.point.clone());
+      const pInfo = this.pieces(id);
+      return {
+        id,
+        placement: entry.p,
+        point: { x: pt.x, y: pt.y, z: pt.z },
+        box: pInfo?.box,
+      };
+    }
+    return null;
+  }
+
+  /** Finds the closest placement within `maxDist` metres, ignoring `excludeId`. */
+  closest(x: number, z: number, maxDist: number, excludeId?: string | null): Placement | null {
+    let bestDist = maxDist;
+    let best: Placement | null = null;
+    for (const e of this.entries.values()) {
+      if (e.hidden || e.p.id === excludeId) continue;
+      const d = Math.hypot(e.p.x - x, e.p.z - z);
+      if (d < bestDist) {
+        bestDist = d;
+        best = e.p;
+      }
+    }
+    return best;
+  }
+
+  /** Checks if there is a placement supporting position (x, z) at height y. Returns highest top below y. */
+  supportUnder(x: number, z: number, y: number, excludeId?: string | null): number | null {
+    let bestTop: number | null = null;
+    for (const e of this.entries.values()) {
+      if (e.hidden || e.p.id === excludeId) continue;
+      const box = this.pieces(e.p.id)?.box;
+      if (box && x >= box.min.x - 0.2 && x <= box.max.x + 0.2 && z >= box.min.z - 0.2 && z <= box.max.z + 0.2 && box.max.y <= y + 0.1) {
+        if (bestTop === null || box.max.y > bestTop) bestTop = box.max.y;
+      }
+    }
+    return bestTop;
   }
 
   /**

@@ -62,6 +62,8 @@ export const TerrainWorld = {
       // the bottom, for diving (2026-10-27)
       hf ? (x: number, z: number) => hf.height(x, z) : null
     );
+    const ceiling = hf ? (hf.info.flight_ceiling ?? hf.flightCeiling) : (120 * U);
+    this.controller?.setFlightCeiling?.(ceiling);
     if (this.mobsView) this.mobsView.ground = hf ? (x: number, z: number) => hf.surface(x, z) : null;
     if (this.npcsView) this.npcsView.ground = hf ? (x: number, z: number) => hf.height(x, z) : null;
     if (this.water) this.water.terrain = hf;

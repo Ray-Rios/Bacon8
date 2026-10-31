@@ -12,7 +12,7 @@ import { keepWindowsOnScreen, makeMovable } from './window-drag';
 export interface InvItem { slot: string; item_id: string; quantity: number }
 export interface Inventory { items: InvItem[]; coins: number; bag_slots: number }
 export interface LootItem { index: number; item_id: string; quantity: number }
-export interface PlayerInfo { name: string; level: number; hp: number; maxHp: number; mp: number; maxMp: number; xp: number; xpNext: number; pvp: boolean; sound: boolean }
+export interface PlayerInfo { name: string; level: number; hp: number; maxHp: number; mp: number; maxMp: number; xp: number; xpNext: number; pvp: boolean; sound: boolean; smash?: boolean }
 export interface TargetInfo { name: string; color: string; level?: number; hpPct: number; corpse?: boolean; kind: 'mob' | 'player' | 'npc'; sub?: string }
 export interface MerchantInfo { id: string; name: string; title?: string }
 export interface StockItem { item_id: string; price: number }
@@ -59,6 +59,7 @@ export interface GameUICallbacks {
   merchantClose(): void;
   cast(slug: string): void;
   pvp(): void;
+  smash(): void;
   sound(): void;
   /** A window opened or closed (the scene frees the mouse for it). */
   windows(open: boolean): void;
@@ -235,6 +236,7 @@ export class GameUI {
         h('div', { class: 'bar xp', title: 'Experience to the next level' }, h('i', { style: { width: pct(p.xp, p.xpNext) } }), h('span', {}, p.xpNext > 0 ? `${Math.floor((p.xp / p.xpNext) * 100)}%` : 'max')),
         h('div', { class: 'row' },
           h('button', { class: 'btn' + (p.pvp ? ' on' : ''), title: 'Player versus player: both players must be flagged', onclick: () => this.cb.pvp() }, p.pvp ? 'PvP on' : 'PvP off'),
+          h('button', { class: 'btn' + (p.smash ? ' on' : ''), title: 'Smash mode: destroy world objects with weapons and skills', onclick: () => this.cb.smash() }, p.smash ? 'Smash on' : 'Smash off'),
           h('button', { class: 'btn', onclick: () => this.cb.sound() }, p.sound ? 'Sound on' : 'Sound off'),
           h('button', { class: 'btn', title: 'Inventory & Character Stats (I)', onclick: () => this.toggleInventory() }, 'Inventory'))));
     if (this.inv.style.display === 'block') this.renderInventory();

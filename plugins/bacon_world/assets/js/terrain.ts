@@ -29,6 +29,8 @@ export interface TerrainInfo {
   z0: number;
   lo: number;
   step: number;
+  highest_point?: number;
+  flight_ceiling?: number;
   sea: number;
   margin: number;
   wade: number;
@@ -68,6 +70,10 @@ export class Heightfield {
   constructor(readonly info: TerrainInfo, readonly k: Uint16Array, readonly labels: Uint8Array | null) {
     this.cell = info.size / (info.samples - 1);
     this.wcell = info.size / (info.water_samples - 1);
+  }
+
+  get flightCeiling(): number {
+    return this.info.flight_ceiling ?? (this.info.lo + 65535 * this.info.step + 100 * (2.2 / 1.8));
   }
 
   /** The height of sample (i, j) (column i from the west, row j from the north), scene units. */

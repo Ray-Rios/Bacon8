@@ -112,6 +112,11 @@ export const GameWorld = {
       merchantClose: () => this.endTrade(),
       cast: (slug: string) => this.castSpell(slug),
       pvp: () => (this.pushEvent('toggle_pvp', {}) as any)?.catch?.(() => {}),
+      smash: () => {
+        this.smashMode = !this.smashMode;
+        this.updateHUD();
+        this.combatLog(this.smashMode ? 'Smash mode: ON - you can attack world objects.' : 'Smash mode: OFF.', this.smashMode ? '#FFB38A' : '#B8B8B8');
+      },
       sound: () => {
         this.audio?.toggle();
         this.updateHUD();
@@ -523,7 +528,7 @@ export const GameWorld = {
     // PvP numbers (broadcast to the zone, ours included) show at the impact too.
     this.pvpShowAt = now + hitIn - 40;
 
-    const target = this.targetId && (this.mobsView?.get(this.targetId) || this.isOtherPlayer(this.targetId)) ? this.targetId : null;
+    const target = this.targetId && (this.mobsView?.get(this.targetId) || this.isOtherPlayer(this.targetId) || (this.smashMode && this.placedView?.get(this.targetId))) ? this.targetId : null;
     const yaw = this.controller.getYaw();
     // a bow (2026-10-28): the arrow leaves at the end of the draw and the numbers show as it lands
     const ranged = !!h.def?.ranged;
@@ -531,7 +536,7 @@ export const GameWorld = {
       setTimeout(() => this.audio?.play('draw', 0.45), 60);
       this.pvpShowAt = now + hitIn + 400;
     }
-    void reply(this, 'melee_attack', { hand, heading: yaw, heavy, target_id: target }).then((res: any) => {
+    void reply(this, 'melee_attack', { hand, heading: yaw, heavy, target_id: target, smash: !!this.smashMode }).then((res: any) => {
       if (!res?.ok) return;
       if (ranged) {
         const firstHit = (res.hits || [])[0];
@@ -689,6 +694,37 @@ export const GameWorld = {
     }
     if (p.character_id === this.targetId) this.refreshTarget();
     if (this.inMyGroup?.(p.character_id)) this.groupWindow?.refresh();
+  },
+
+  onBuildDamaged(this: any, payload: any) {
+    if (!payload?.id) return;
+    this.objectHp = this.objectHp || new Map<string, number>();
+    this.objectHp.set(payload.id, payload.hp);
+    if (this.targetId === payload.id) this.refreshTarget();
+
+    const parts = this.placedView?.pieces(payload.id);
+    if (parts) {
+      const size = parts.box.getSize(new THREE.Vector3());
+      const mid = parts.box.getCenter(new THREE.Vector3());
+      this.smashFx?.hit(mid.setY(parts.box.min.y + size.y * 0.45), Math.max(size.x, size.z));
+      this.placedView?.jiggle(payload.id, (Math.random() - 0.5) * 0.08, (Math.random() - 0.5) * 0.08, (Math.random() - 0.5) * 0.04);
+      setTimeout(() => this.placedView?.jiggle(payload.id, 0, 0, 0), 200);
+      this.audio?.play('bone_break', 0.45);
+      const worldPos = mid.clone().multiplyScalar(UNITS_PER_METRE);
+      this.showFloatingDamage?.(worldPos, String(payload.amount), '#FFFFFF', 1.0);
+    }
+  },
+
+  onBuildRepaired(this: any, payload: any) {
+    if (!payload?.id) return;
+    this.objectHp = this.objectHp || new Map<string, number>();
+    this.objectHp.set(payload.id, payload.hp);
+    if (this.targetId === payload.id) this.refreshTarget();
+  },
+
+  onBuildHpRule(this: any, payload: any) {
+    if (!payload?.asset) return;
+    this.buildWindow?.setHp(payload.asset, payload.hp);
   },
 
   // Our swing landed: numbers over the creatures, sounds, the combat log.
@@ -912,6 +948,21 @@ export const GameWorld = {
     }
     const p = this.state?.onlineCharacters?.find((c: any) => c.character_id === id);
     if (!p) {
+      const placed = this.placedView?.get(id);
+      if (placed) {
+        const curHp = this.objectHp?.get(id) ?? placed.hp ?? 10;
+        const maxHp = placed.max_hp ?? 10;
+        const entry = this.buildWindow?.entry(placed.asset);
+        const name = entry?.name || placed.asset.replace(/^[PKX]_/, '');
+        this.gameUI.setTarget({
+          kind: 'mob',
+          name: `${name} (Destructible)`,
+          color: '#FFB38A',
+          level: undefined,
+          hpPct: maxHp > 0 ? (curHp / maxHp) * 100 : 0
+        });
+        return;
+      }
       this.gameUI.setTarget(null);
       return;
     }
@@ -1209,6 +1260,7 @@ export const GameWorld = {
       xp: p.xp ?? 0,
       xpNext: p.xp_next ?? 0,
       pvp: !!cp.pvp_flagged,
+      smash: !!this.smashMode,
       sound: !!this.audio?.enabled,
     });
   },

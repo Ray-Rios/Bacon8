@@ -32,6 +32,7 @@ defmodule BaconWorld.Terrain do
       x0: -2456.0,
       z0: -3824.0,
       lo: -323.0,
+      hi: 672.0,
       step: 0.05,
       sea: -16.967,
       # how close to the map's edge anyone may go (the edges are ridges or open sea)
@@ -225,6 +226,19 @@ defmodule BaconWorld.Terrain do
     x >= t.x0 + t.margin and z >= t.z0 + t.margin and x <= t.x0 + t.size_m - t.margin and z <= t.z0 + t.size_m - t.margin
   end
 
+  @doc "The highest terrain height (m) in the loaded zone; 0 without terrain."
+  def max_height do
+    case loaded() do
+      nil -> 0.0
+      t -> Map.get(t, :hi, 672.0)
+    end
+  end
+
+  @doc "The zone's flight ceiling in scene units (100 m above the highest point in the zone)."
+  def flight_ceiling_units(u) do
+    (max_height() + 100.0) * u
+  end
+
   @doc "What the client needs, scene units (`u` per metre) except the file names. Nil without terrain."
   def payload(u) do
     case loaded() do
@@ -232,6 +246,7 @@ defmodule BaconWorld.Terrain do
         nil
 
       t ->
+        hi = Map.get(t, :hi, 672.0)
         %{
           zone: t.id,
           name: t.name,
@@ -244,6 +259,8 @@ defmodule BaconWorld.Terrain do
           z0: t.z0 * u,
           lo: t.lo * u,
           step: t.step * u,
+          highest_point: hi * u,
+          flight_ceiling: (hi + 100.0) * u,
           sea: t.sea * u,
           margin: t.margin * u,
           wade: @wade * u,

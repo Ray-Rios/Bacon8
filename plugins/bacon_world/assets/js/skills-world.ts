@@ -175,17 +175,29 @@ export const SkillsWorld = {
     let target: string | null = null;
     if (a.target === 'enemy') {
       const m = this.targetId && this.mobsView?.get(this.targetId);
-      if (!m || m.view.state === 'dead') {
-        this.combatLog('You need a target (Tab, or click a creature).', '#B8B8B8');
+      const isPlayer = this.targetId && this.isOtherPlayer(this.targetId);
+      const isPlaced = this.smashMode && this.targetId && this.placedView?.get(this.targetId);
+
+      if (m) {
+        if (m.view.state === 'dead') {
+          this.combatLog('You need a living target (Tab, or click a creature).', '#B8B8B8');
+          return;
+        }
+        target = this.targetId;
+      } else if (isPlayer) {
+        target = this.targetId;
+      } else if (isPlaced) {
+        target = this.targetId;
+      } else {
+        this.combatLog('You need a target (Tab, or click a creature, player or object).', '#B8B8B8');
         return;
       }
-      target = this.targetId;
     } else if (a.target === 'friendly') {
       target = this.targetId && this.isOtherPlayer(this.targetId) ? this.targetId : myId;
     }
     if (target && a.target === 'enemy') this.controller?.faceCamera?.(1200);
     const me = this.localCharacter();
-    void reply(this, 'cast', { ability: id, target_id: target, heading: this.controller?.getYaw?.() ?? 0 }).then((res: any) => {
+    void reply(this, 'cast', { ability: id, target_id: target, heading: this.controller?.getYaw?.() ?? 0, smash: !!this.smashMode }).then((res: any) => {
       if (!res.ok) {
         this.combatLog(res.error || "You can't do that right now.", '#B8B8B8');
         return;

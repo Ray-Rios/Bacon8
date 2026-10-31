@@ -156,14 +156,15 @@ defmodule BaconWorldWeb.GameEvents do
         }
 
         pvp = pvp_swing(socket, me, attack)
+        smash = smash_melee(socket, me, attack, params)
 
         case Mobs.melee(socket.assigns[:mobs_zone] || "lobby", attack) do
           {:ok, hits} ->
             {socket, progress} = award_kills(socket, hits)
-            {:reply, %{ok: true, hits: hits, pvp: pvp, delay_ms: delay, progress: progress}, socket}
+            {:reply, %{ok: true, hits: hits, pvp: pvp, smash: smash, delay_ms: delay, progress: progress}, socket}
 
           {:error, _} ->
-            {:reply, %{ok: true, hits: [], pvp: pvp, delay_ms: delay, progress: nil}, socket}
+            {:reply, %{ok: true, hits: [], pvp: pvp, smash: smash, delay_ms: delay, progress: nil}, socket}
         end
       end
     else
@@ -476,6 +477,49 @@ defmodule BaconWorldWeb.GameEvents do
   end
 
   # ---------------------------------------------------------------------------
+
+  defp smash_melee(socket, _me, attack, params) do
+    zone = socket.assigns[:mobs_zone] || "lobby"
+
+    if params["smash"] == true do
+      target_id = params["target_id"]
+      u = Brain.u()
+      reach = Melee.pvp_reach(attack.item) * u
+      {_max_targets, arc} = Melee.sweep(attack.item)
+
+      placement_id =
+        if is_binary(target_id) and BaconWorld.Building.placement?(zone, target_id) do
+          target_id
+        else
+          BaconWorld.Building.list(zone)
+          |> Enum.filter(fn p ->
+            px = p.x * u
+            pz = p.z * u
+            Melee.in_arc?({attack.x, attack.z}, attack.heading, {px, pz}, reach, arc)
+          end)
+          |> Enum.min_by(fn p -> :math.pow(p.x * u - attack.x, 2) + :math.pow(p.z * u - attack.z, 2) end, fn -> nil end)
+          |> case do
+            %{id: pid} -> pid
+            _ -> nil
+          end
+        end
+
+      if placement_id do
+        mult = 1 + (attack[:pct] || 0) / 100
+        crit_bonus = attack[:crit_bonus] || 0.0
+        {damage, crit} = Melee.roll_damage(attack.item, attack.level, attack.heavy, &:rand.uniform/0, mult: mult, crit_bonus: crit_bonus)
+        dmg = max(1, damage)
+
+        case BaconWorld.Building.damage_placement(socket.assigns.current_user, zone, placement_id, dmg) do
+          {:ok, outcome, placement} ->
+            %{id: placement_id, asset: placement.asset, damage: dmg, crit: crit, outcome: outcome, x: placement.x, y: placement.y, z: placement.z}
+
+          _ ->
+            nil
+        end
+      end
+    end
+  end
 
   defp take_hit(socket, raw_damage) do
     me = current(socket)
