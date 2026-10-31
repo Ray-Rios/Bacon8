@@ -1,7 +1,9 @@
 // What spells and skills look like (skills-world.ts plays them): a glow while casting,
-// a fireball's flight and burst, healing sparkles, roots around a creature's feet, the
-// swirl of Recall, the ring of a spin attack. Additive particles and a light or two;
-// everything cleans itself up. Positions are world (scene) units.
+// school-coloured projectiles, AoE novas and storms, frontal cones, chain lightning arcs,
+// protective barriers, combat buffs, dashes/leaps/blinks, weapon slashes, taunts, healing
+// sparkles, roots around a creature's feet, the swirl of Recall, and the ring of a spin
+// attack. Additive particles and pooled lights; everything cleans itself up. Positions
+// are world (scene) units.
 import * as THREE from '../../../../assets/js/vendor/three';
 import { LightPool } from './light-pool';
 import { UNITS_PER_METRE } from './controls-math';
@@ -9,6 +11,33 @@ import { UNITS_PER_METRE } from './controls-math';
 const U = UNITS_PER_METRE;
 
 type Fx = { update(dt: number): boolean; dispose(): void };
+
+export const FX_SCHOOL_COLOR: Record<string, string> = {
+  fire: '#ff7a1a',
+  frost: '#5cd6ff',
+  storm: '#a478ff',
+  arcane: '#d06bff',
+  holy: '#ffd95e',
+  nature: '#62e66c',
+  shadow: '#9448eb',
+  blood: '#ff3344',
+  earth: '#c99359',
+  water: '#38b6ff',
+  blade: '#d4dde8',
+  berserk: '#ff4d2e',
+  blunt: '#d9a76a',
+  polearm: '#60b5ff',
+  rogue: '#9d75e6',
+  archery: '#82d959',
+  shield: '#f0c44d',
+  monk: '#f5ad52',
+  warlord: '#f0483a',
+  survival: '#75b85a',
+};
+
+export function schoolColor(school?: string, fallback = '#ff8a2a'): string {
+  return (school && FX_SCHOOL_COLOR[school]) || fallback;
+}
 
 let dotTexture: THREE.Texture | null = null;
 function dot(): THREE.Texture {
@@ -182,10 +211,11 @@ export class SpellFx {
     return { stop: () => (on = false) };
   }
 
-  /** A fireball from `from` to wherever `to` is (it follows a moving target), `ms` long. */
+  /** A projectile from `from` to wherever `to` is (it follows a moving target), `ms` long. */
   projectile(from: THREE.Vector3, to: () => THREE.Vector3 | null, ms: number, color = '#ff7a1a', onArrive?: (at: THREE.Vector3) => void) {
     const c = new THREE.Color(color);
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.16 * U, 14, 10), new THREE.MeshBasicMaterial({ color: '#ffe2a0' }));
+    const bright = c.clone().lerp(new THREE.Color('#ffffff'), 0.55);
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.16 * U, 14, 10), new THREE.MeshBasicMaterial({ color: bright }));
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: dot(), color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     halo.scale.setScalar(0.9 * U);
     core.add(halo);
@@ -207,7 +237,7 @@ export class SpellFx {
           core.position.lerpVectors(from, dest, k);
           core.position.y += Math.sin(k * Math.PI) * 0.5 * U;
           light?.position.copy(core.position);
-          for (let i = 0; i < 4; i++) trail.emit(core.position.clone().add(new THREE.Vector3(rnd(0.06 * U), rnd(0.06 * U), rnd(0.06 * U))), new THREE.Vector3(rnd(0.3 * U), rnd(0.3 * U) + 0.2 * U, rnd(0.3 * U)), 0.35 + Math.random() * 0.2, i % 2 ? c : new THREE.Color('#ffd27a'));
+          for (let i = 0; i < 4; i++) trail.emit(core.position.clone().add(new THREE.Vector3(rnd(0.06 * U), rnd(0.06 * U), rnd(0.06 * U))), new THREE.Vector3(rnd(0.3 * U), rnd(0.3 * U) + 0.2 * U, rnd(0.3 * U)), 0.35 + Math.random() * 0.2, i % 2 ? c : bright);
           if (k >= 1) {
             arrived = true;
             core.visible = false;
@@ -232,9 +262,10 @@ export class SpellFx {
   burst(at: THREE.Vector3, color: string, n = 50, speed = 2.5) {
     const sp = new Sparks(n, 0.26, 0.9, 1.5);
     const c = new THREE.Color(color);
+    const accent = c.clone().lerp(new THREE.Color('#ffffff'), 0.6);
     for (let i = 0; i < n; i++) {
       const v = new THREE.Vector3(rnd(1), rnd(1), rnd(1)).normalize().multiplyScalar(speed * U * (0.4 + Math.random() * 0.6));
-      sp.emit(at, v, 0.45 + Math.random() * 0.35, i % 3 ? c : new THREE.Color('#fff2c0'));
+      sp.emit(at, v, 0.45 + Math.random() * 0.35, i % 3 ? c : accent);
     }
     const light = this.takeLight(c, 10, 9 * U);
     light?.position.copy(at);
@@ -254,10 +285,11 @@ export class SpellFx {
     });
   }
 
-  /** Healing: green sparkles rising around a body, a soft glow. */
-  heal(target: THREE.Object3D, height = 1.8) {
+  /** Healing: sparkles rising around a body, a soft glow. */
+  heal(target: THREE.Object3D, height = 1.8, color = '#7dff8f') {
     const sp = new Sparks(120, 0.16, 0.97);
-    const c = new THREE.Color('#7dff8f');
+    const c = new THREE.Color(color);
+    const accent = c.clone().lerp(new THREE.Color('#ffffff'), 0.6);
     this.scene.add(sp.points);
     let t = 0;
     this.live.push({
@@ -267,7 +299,7 @@ export class SpellFx {
           target.getWorldPosition(tmp);
           for (let i = 0; i < 4; i++) {
             const a = Math.random() * Math.PI * 2, r = (0.3 + Math.random() * 0.25) * U;
-            sp.emit(new THREE.Vector3(tmp.x + Math.cos(a) * r, tmp.y + Math.random() * height * 0.6 * U, tmp.z + Math.sin(a) * r), new THREE.Vector3(0, (0.8 + Math.random() * 0.8) * U, 0), 0.9, i % 2 ? c : new THREE.Color('#e9ffd0'));
+            sp.emit(new THREE.Vector3(tmp.x + Math.cos(a) * r, tmp.y + Math.random() * height * 0.6 * U, tmp.z + Math.sin(a) * r), new THREE.Vector3(0, (0.8 + Math.random() * 0.8) * U, 0), 0.9, i % 2 ? c : accent);
           }
         }
         return sp.update(dt) || t < 0.9;
@@ -323,9 +355,10 @@ export class SpellFx {
   }
 
   /** Recall: a column of blue light swirling up, at the start and at the end. */
-  recall(at: THREE.Vector3) {
+  recall(at: THREE.Vector3, color = '#7ab8ff') {
     const sp = new Sparks(220, 0.18, 0.96);
-    const c = new THREE.Color('#7ab8ff');
+    const c = new THREE.Color(color);
+    const accent = c.clone().lerp(new THREE.Color('#ffffff'), 0.65);
     const light = this.takeLight(c, 8, 10 * U);
     light?.position.copy(at).add(new THREE.Vector3(0, 1.2 * U, 0));
     this.scene.add(sp.points);
@@ -336,7 +369,7 @@ export class SpellFx {
         if (t < 1.1) {
           for (let i = 0; i < 6; i++) {
             const a = t * 9 + i * 1.05, r = (0.55 - t * 0.25) * U;
-            sp.emit(new THREE.Vector3(at.x + Math.cos(a) * r, at.y + Math.random() * 0.3 * U, at.z + Math.sin(a) * r), new THREE.Vector3(-Math.sin(a) * 0.6 * U, (1.6 + Math.random()) * U, Math.cos(a) * 0.6 * U), 1.0, i % 2 ? c : new THREE.Color('#e8f4ff'));
+            sp.emit(new THREE.Vector3(at.x + Math.cos(a) * r, at.y + Math.random() * 0.3 * U, at.z + Math.sin(a) * r), new THREE.Vector3(-Math.sin(a) * 0.6 * U, (1.6 + Math.random()) * U, Math.cos(a) * 0.6 * U), 1.0, i % 2 ? c : accent);
           }
         }
         if (light) light.intensity = Math.max(0, 8 * (1 - t / 1.6));
@@ -350,27 +383,225 @@ export class SpellFx {
     });
   }
 
-  /** A spin attack: a pale ring sweeping round the fighter. */
-  spin(caster: THREE.Object3D, reach = 1.9) {
-    const geo = new THREE.RingGeometry(reach * 0.55 * U, reach * U, 48, 1, 0, Math.PI * 1.6);
-    const mat = new THREE.MeshBasicMaterial({ color: '#ffe8b0', transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+  /** A spin attack: a glowing ring and sparks sweeping round the fighter. */
+  spin(caster: THREE.Object3D, reach = 1.9, color = '#ffe8b0') {
+    const geo = new THREE.RingGeometry(reach * 0.5 * U, reach * U, 48, 1, 0, Math.PI * 1.65);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.65, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
     const ring = new THREE.Mesh(geo, mat);
     ring.rotation.x = -Math.PI / 2;
-    this.scene.add(ring);
+    const sp = new Sparks(90, 0.2, 0.9);
+    const c = new THREE.Color(color);
+    this.scene.add(ring, sp.points);
     let t = 0;
     this.live.push({
       update: (dt) => {
         t += dt;
         caster.getWorldPosition(tmp);
         ring.position.set(tmp.x, tmp.y + 1.0 * U, tmp.z);
-        ring.rotation.z = -t * 14;
-        mat.opacity = 0.55 * Math.max(0, 1 - t / 0.55);
-        return t < 0.55;
+        ring.rotation.z = -t * 15;
+        mat.opacity = 0.65 * Math.max(0, 1 - t / 0.55);
+        if (t < 0.35) {
+          for (let i = 0; i < 4; i++) {
+            const a = -t * 15 + i * 1.5;
+            const p = new THREE.Vector3(tmp.x + Math.cos(a) * reach * 0.85 * U, tmp.y + 1.0 * U, tmp.z + Math.sin(a) * reach * 0.85 * U);
+            sp.emit(p, new THREE.Vector3(-Math.sin(a) * 2 * U, rnd(0.5) * U, Math.cos(a) * 2 * U), 0.35, c);
+          }
+        }
+        return sp.update(dt) || t < 0.55;
       },
       dispose: () => {
-        this.scene.remove(ring);
+        this.scene.remove(ring, sp.points);
         geo.dispose();
-        // (the material is left to the garbage collector, its shader kept: see sparkMaterial)
+        sp.dispose();
+      },
+    });
+  }
+
+  /** Area-of-Effect nova / storm / eruption / consecration at `at` with radius `radiusM` metres. */
+  aoe(at: THREE.Vector3, radiusM = 5.5, color = '#ff7a1a') {
+    const c = new THREE.Color(color);
+    const accent = c.clone().lerp(new THREE.Color('#ffffff'), 0.55);
+    const rMax = Math.max(2.0, Math.min(12.0, radiusM)) * U;
+    const geo = new THREE.RingGeometry(0.72, 1.0, 48);
+    const mat = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+    const ring = new THREE.Mesh(geo, mat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(at.x, at.y + 0.08 * U, at.z);
+    const sp = new Sparks(180, 0.24, 0.91, -0.3);
+    for (let i = 0; i < 120; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const dist = Math.sqrt(Math.random()) * rMax;
+      const p = new THREE.Vector3(at.x + Math.cos(a) * dist, at.y + (0.1 + Math.random() * 0.6) * U, at.z + Math.sin(a) * dist);
+      const v = new THREE.Vector3(Math.cos(a) * 1.8 * U, (1.4 + Math.random() * 2.4) * U, Math.sin(a) * 1.8 * U);
+      sp.emit(p, v, 0.55 + Math.random() * 0.45, i % 3 ? c : accent);
+    }
+    const light = this.takeLight(c, 11, rMax * 1.6);
+    light?.position.set(at.x, at.y + 1.2 * U, at.z);
+    this.scene.add(ring, sp.points);
+    let t = 0;
+    this.live.push({
+      update: (dt) => {
+        t += dt;
+        const k = Math.min(1, t / 0.55);
+        const curR = Math.max(0.1, k * rMax);
+        ring.scale.set(curR, curR, 1);
+        mat.opacity = 0.7 * (1 - k);
+        if (light) light.intensity = Math.max(0, 11 * (1 - t / 0.65));
+        return sp.update(dt) || t < 0.65;
+      },
+      dispose: () => {
+        this.giveLight(light);
+        this.scene.remove(ring, sp.points);
+        geo.dispose();
+        sp.dispose();
+      },
+    });
+  }
+
+  /** Frontal cone breath / wave / shockwave along `heading`. */
+  cone(caster: THREE.Object3D, heading: number, rangeM = 8.0, arcDeg = 100, color = '#ff7a1a') {
+    const c = new THREE.Color(color);
+    const accent = c.clone().lerp(new THREE.Color('#ffffff'), 0.55);
+    const sp = new Sparks(160, 0.25, 0.92);
+    caster.getWorldPosition(tmp);
+    const origin = new THREE.Vector3(tmp.x, tmp.y + 1.2 * U, tmp.z);
+    const halfArc = ((arcDeg || 100) * Math.PI) / 360;
+    const speed = Math.max(5.0, Math.min(14.0, rangeM * 1.25)) * U;
+    for (let i = 0; i < 150; i++) {
+      const ang = heading + rnd(halfArc);
+      const spd = speed * (0.45 + Math.random() * 0.65);
+      const v = new THREE.Vector3(Math.sin(ang) * spd, rnd(0.7) * U, Math.cos(ang) * spd);
+      sp.emit(origin, v, 0.45 + Math.random() * 0.35, i % 3 ? c : accent);
+    }
+    const light = this.takeLight(c, 9, rangeM * U);
+    light?.position.copy(origin);
+    this.scene.add(sp.points);
+    let t = 0;
+    this.live.push({
+      update: (dt) => {
+        t += dt;
+        if (light) light.intensity = Math.max(0, 9 * (1 - t / 0.5));
+        return sp.update(dt);
+      },
+      dispose: () => {
+        this.giveLight(light);
+        this.scene.remove(sp.points);
+        sp.dispose();
+      },
+    });
+  }
+
+  /** Chain lightning / bouncing arc through a list of world positions. */
+  chain(points: THREE.Vector3[], color = '#a478ff') {
+    if (points.length < 2) return;
+    const c = new THREE.Color(color);
+    const accent = c.clone().lerp(new THREE.Color('#ffffff'), 0.65);
+    const sp = new Sparks(180, 0.22, 0.88);
+    for (let s = 0; s < points.length - 1; s++) {
+      const a = points[s], b = points[s + 1];
+      const steps = 22;
+      for (let i = 0; i <= steps; i++) {
+        const k = i / steps;
+        const p = new THREE.Vector3().lerpVectors(a, b, k);
+        p.x += rnd(0.18 * U);
+        p.y += rnd(0.18 * U);
+        p.z += rnd(0.18 * U);
+        sp.emit(p, new THREE.Vector3(rnd(0.6 * U), rnd(0.6 * U), rnd(0.6 * U)), 0.35 + Math.random() * 0.2, i % 2 ? accent : c);
+      }
+      this.burst(b, color, 32, 2.0);
+    }
+    this.scene.add(sp.points);
+    this.live.push({
+      update: (dt) => sp.update(dt),
+      dispose: () => {
+        this.scene.remove(sp.points);
+        sp.dispose();
+      },
+    });
+  }
+
+  /** Protective barrier / ward sphere around `caster` for `ms`. */
+  shield(caster: THREE.Object3D, ms = 8000, color = '#5cd6ff') {
+    const c = new THREE.Color(color);
+    const geo = new THREE.SphereGeometry(1.05 * U, 18, 14);
+    const mat = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.24, wireframe: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Mesh(geo, mat);
+    const sp = new Sparks(90, 0.15, 0.94);
+    this.scene.add(mesh, sp.points);
+    let t = 0;
+    const dur = Math.min(ms / 1000, 6.0);
+    this.live.push({
+      update: (dt) => {
+        t += dt;
+        caster.getWorldPosition(tmp);
+        mesh.position.set(tmp.x, tmp.y + 1.0 * U, tmp.z);
+        mesh.rotation.y = t * 1.8;
+        const fade = Math.min(1, t / 0.25) * Math.min(1, Math.max(0, (dur - t) / 0.5));
+        mat.opacity = 0.24 * fade;
+        if (t < dur - 0.3 && Math.random() < 0.6) {
+          const a = Math.random() * Math.PI * 2;
+          const p = new THREE.Vector3(tmp.x + Math.cos(a) * 0.95 * U, tmp.y + (0.3 + Math.random() * 1.4) * U, tmp.z + Math.sin(a) * 0.95 * U);
+          sp.emit(p, new THREE.Vector3(0, 0.4 * U, 0), 0.5, c);
+        }
+        return sp.update(dt) || t < dur;
+      },
+      dispose: () => {
+        this.scene.remove(mesh, sp.points);
+        geo.dispose();
+        sp.dispose();
+      },
+    });
+  }
+
+  /** Temporary combat buff / stance / shout aura rising around `caster`. */
+  buff(caster: THREE.Object3D, color = '#ffd95e') {
+    const c = new THREE.Color(color);
+    const accent = c.clone().lerp(new THREE.Color('#ffffff'), 0.6);
+    const sp = new Sparks(110, 0.2, 0.95);
+    this.scene.add(sp.points);
+    let t = 0;
+    this.live.push({
+      update: (dt) => {
+        t += dt;
+        if (t < 0.75) {
+          caster.getWorldPosition(tmp);
+          for (let i = 0; i < 5; i++) {
+            const a = t * 12 + i * 1.25;
+            const r = 0.55 * U;
+            const p = new THREE.Vector3(tmp.x + Math.cos(a) * r, tmp.y + (t * 1.8 + Math.random() * 0.3) * U, tmp.z + Math.sin(a) * r);
+            sp.emit(p, new THREE.Vector3(Math.cos(a) * 0.4 * U, 1.4 * U, Math.sin(a) * 0.4 * U), 0.65, i % 2 ? c : accent);
+          }
+        }
+        return sp.update(dt) || t < 0.75;
+      },
+      dispose: () => {
+        this.scene.remove(sp.points);
+        sp.dispose();
+      },
+    });
+  }
+
+  /** Dash / Leap / Blink / Charge trail from `from` to `to`. */
+  dash(from: THREE.Vector3, to: THREE.Vector3, color = '#60b5ff') {
+    const c = new THREE.Color(color);
+    const accent = c.clone().lerp(new THREE.Color('#ffffff'), 0.6);
+    const sp = new Sparks(140, 0.22, 0.9);
+    const steps = 28;
+    for (let i = 0; i <= steps; i++) {
+      const k = i / steps;
+      const p = new THREE.Vector3().lerpVectors(from, to, k);
+      p.y += (0.8 + Math.sin(k * Math.PI) * 0.6) * U;
+      for (let j = 0; j < 3; j++) {
+        sp.emit(p.clone().add(new THREE.Vector3(rnd(0.2 * U), rnd(0.2 * U), rnd(0.2 * U))), new THREE.Vector3(rnd(0.8 * U), (0.4 + Math.random() * 0.8) * U, rnd(0.8 * U)), 0.45 + Math.random() * 0.25, j % 2 ? c : accent);
+      }
+    }
+    this.burst(to.clone().add(new THREE.Vector3(0, 0.9 * U, 0)), color, 45, 2.4);
+    this.scene.add(sp.points);
+    this.live.push({
+      update: (dt) => sp.update(dt),
+      dispose: () => {
+        this.scene.remove(sp.points);
+        sp.dispose();
       },
     });
   }

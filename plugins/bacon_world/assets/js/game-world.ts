@@ -130,6 +130,7 @@ export const GameWorld = {
     this.progress = cp.progress || { level: cp.level || 1, xp: 0, xp_next: 100 };
     this.inventory = cp.inventory || { items: [], coins: 0, bag_slots: 24 };
     this.gameUI?.setInventory(this.inventory);
+    if (this.state?.currentPlayer?.stats_sheet) this.gameUI?.setStatsSheet(this.state.currentPlayer.stats_sheet);
     this.applyLocalGear(cp.gear || {});
     this.nextSwing = { left: 0, right: 0, both: 0 };
     this.lootingId = null;
@@ -1030,6 +1031,7 @@ export const GameWorld = {
     if (res.inventory) {
       this.inventory = res.inventory;
       this.gameUI?.setInventory(this.inventory);
+    if (this.state?.currentPlayer?.stats_sheet) this.gameUI?.setStatsSheet(this.state.currentPlayer.stats_sheet);
     }
     if (!res.ok) {
       this.combatLog(res.error || "You can't buy that.", '#FF9B7A');
@@ -1046,6 +1048,7 @@ export const GameWorld = {
     if (res.inventory) {
       this.inventory = res.inventory;
       this.gameUI?.setInventory(this.inventory);
+    if (this.state?.currentPlayer?.stats_sheet) this.gameUI?.setStatsSheet(this.state.currentPlayer.stats_sheet);
     }
     if (!res.ok) {
       this.combatLog(res.error || "You can't sell that.", '#FF9B7A');
@@ -1089,6 +1092,7 @@ export const GameWorld = {
       if (this.inventory) {
         this.inventory = { ...this.inventory, coins: res.total_coins };
         this.gameUI?.setInventory(this.inventory);
+    if (this.state?.currentPlayer?.stats_sheet) this.gameUI?.setStatsSheet(this.state.currentPlayer.stats_sheet);
       }
     }
     if (!items.length) {
@@ -1131,6 +1135,7 @@ export const GameWorld = {
     if (res.inventory) {
       this.inventory = res.inventory;
       this.gameUI?.setInventory(this.inventory);
+    if (this.state?.currentPlayer?.stats_sheet) this.gameUI?.setStatsSheet(this.state.currentPlayer.stats_sheet);
     }
     if (res.items) {
       if (res.items.length === 0 && !res.error) this.closeLoot();
@@ -1159,6 +1164,7 @@ export const GameWorld = {
     if (res.inventory) {
       this.inventory = res.inventory;
       this.gameUI?.setInventory(this.inventory);
+    if (this.state?.currentPlayer?.stats_sheet) this.gameUI?.setStatsSheet(this.state.currentPlayer.stats_sheet);
     }
     if (!res.ok && res.error) this.combatLog(res.error, '#FF9B7A');
     if (res.ok && res.gear) {

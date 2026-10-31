@@ -1,11 +1,11 @@
 // Bacon World's in-game windows, EverQuest style: the player window (name, HP, mana,
 // experience), the target window (con colour), the hotbar (left and right hand on
 // the mouse buttons, Q E F Z X for the special attacks the skill tree will give),
-// the inventory (I: two hands, what is worn and 24 bag slots; click
-// an item to pick it up on the cursor, click a slot to put it down or swap; right-click
-// to equip or unequip), the loot window and the merchant window (right-click a row to
-// buy it; with the merchant open, right-click an item in your bags to sell it). Plain DOM with its
-// own scoped CSS (.bwg).
+// the inventory & character stats sheet (I: two hands, what is worn, combat readout
+// and 24 bag slots; click an item to pick it up on the cursor, click a slot to put it
+// down or swap; right-click to equip or unequip), the loot window and the merchant window
+// (right-click a row to buy it; with the merchant open, right-click an item in your bags
+// to sell it). Plain DOM with its own scoped CSS (.bwg).
 import { describe, iconUrl, item, money } from './items';
 import { keepWindowsOnScreen, makeMovable } from './window-drag';
 
@@ -16,6 +16,35 @@ export interface PlayerInfo { name: string; level: number; hp: number; maxHp: nu
 export interface TargetInfo { name: string; color: string; level?: number; hpPct: number; corpse?: boolean; kind: 'mob' | 'player' | 'npc'; sub?: string }
 export interface MerchantInfo { id: string; name: string; title?: string }
 export interface StockItem { item_id: string; price: number }
+
+export interface StatsSheet {
+  ac: number;
+  ac_bonus?: number;
+  total_ac: number;
+  ac_mitigation_pct: number;
+  shield?: number;
+  main_name: string;
+  main_dmg: number;
+  main_dly: number;
+  main_min: number;
+  main_max: number;
+  main_dps: number;
+  off_name?: string | null;
+  off_dmg?: number;
+  off_dly?: number;
+  off_min?: number;
+  off_max?: number;
+  level_dmg_bonus: number;
+  melee_pct: number;
+  spell_pct: number;
+  melee_crit_pct: number;
+  melee_crit_mult: number;
+  spell_crit_pct: number;
+  spell_crit_mult: number;
+  heavy_mult: number;
+  hp_bonus?: number;
+  mp_bonus?: number;
+}
 
 export interface GameUICallbacks {
   move(from: string, to: string): void;
@@ -67,12 +96,14 @@ const CSS = `
 .bwg .s.hov:hover,.bwg .s.drop:hover{box-shadow:inset 0 0 0 1px #c9a65e;cursor:pointer}
 .bwg .s .lb{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:8px;color:#7d6c4f;text-transform:uppercase;letter-spacing:.06em;pointer-events:none}
 .bwg .s.off{opacity:.45}
-.bwg .inv{right:16px;top:70px;width:662px;max-width:calc(100% - 24px);display:none}
+.bwg .inv{right:16px;top:70px;width:728px;max-width:calc(100% - 24px);display:none}
 .bwg .inv .body{display:flex;gap:12px;padding:10px}
 .bwg .eq{display:grid;grid-template-columns:repeat(3,52px);gap:6px;align-content:start}
 .bwg .eq .s{width:52px;height:52px}
-.bwg .stats{flex:1;min-width:120px;font-size:11px;color:#cdbf9f}
-.bwg .stats div{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(109,91,60,.25)}
+.bwg .stats{flex:1;min-width:176px;font-size:11px;color:#cdbf9f}
+.bwg .stats div{display:flex;justify-content:space-between;gap:6px;padding:2px 0;border-bottom:1px solid rgba(109,91,60,.25)}
+.bwg .stats .shd{color:#7cd8ff}
+.bwg .stats .hi{color:#e9cf8f}
 .bwg .stats .coins{color:#f0d77a}
 .bwg .bags{display:grid;grid-template-columns:repeat(6,44px);gap:4px}
 .bwg .foot{display:flex;justify-content:space-between;gap:6px;padding:0 10px 10px}
@@ -144,6 +175,7 @@ export class GameUI {
   private lootItems: LootItem[] = [];
   private held: InvItem | null = null; // the item on the cursor
   private info: PlayerInfo | null = null;
+  private sheet: StatsSheet | null = null;
   private hands: { left: string | null; right: string | null } = { left: null, right: null };
   // the Q..X slots, drawn by the skill bars (skills-ui.ts) once the skill tree is up
   private skillSlots: ((key: string) => HTMLElement) | null = null;
@@ -204,7 +236,13 @@ export class GameUI {
         h('div', { class: 'row' },
           h('button', { class: 'btn' + (p.pvp ? ' on' : ''), title: 'Player versus player: both players must be flagged', onclick: () => this.cb.pvp() }, p.pvp ? 'PvP on' : 'PvP off'),
           h('button', { class: 'btn', onclick: () => this.cb.sound() }, p.sound ? 'Sound on' : 'Sound off'),
-          h('button', { class: 'btn', title: 'Inventory (I)', onclick: () => this.toggleInventory() }, 'Inventory'))));
+          h('button', { class: 'btn', title: 'Inventory & Character Stats (I)', onclick: () => this.toggleInventory() }, 'Inventory'))));
+    if (this.inv.style.display === 'block') this.renderInventory();
+  }
+
+  /** Updates the detailed combat stats readout shown in the Inventory/Character window. */
+  setStatsSheet(s: StatsSheet) {
+    this.sheet = s;
     if (this.inv.style.display === 'block') this.renderInventory();
   }
 
@@ -351,19 +389,51 @@ export class GameUI {
       ...WORN_SLOTS.map(([s, label]) => slotEl(s, label)),
       ...FUTURE_SLOTS.slice(1).map((label) => this.futureSlot(label)));
     const bags = h('div', { class: 'bags' }, ...Array.from({ length: this.inventory.bag_slots || 24 }, (_, i) => slotEl(`bag${i}`)));
-    let ac = 0;
-    for (const sl of EQUIP_SLOTS) ac += item(slots.get(sl)?.item_id)?.ac || 0;
+    let gearAc = 0;
+    for (const sl of EQUIP_SLOTS) gearAc += item(slots.get(sl)?.item_id)?.ac || 0;
     const p = this.info;
+    const sh = this.sheet;
+    const totalAc = sh ? sh.total_ac : gearAc;
+    const mitPct = sh ? sh.ac_mitigation_pct : Math.round((totalAc / (totalAc + 50)) * 1000) / 10;
+
+    const acRow = h('div', {}, h('span', {}, 'Armour (AC)'), h('span', { class: 'hi' }, `${totalAc} (-${mitPct}%)`));
+    this.tipFor(acRow, () => [
+      'Armour Class & Mitigation',
+      `Gear AC: ${sh?.ac ?? gearAc}${sh?.ac_bonus ? ` + ${sh.ac_bonus} buff` : ''}`,
+      `Reduces incoming hits by ${mitPct}%`,
+      'Formula: AC / (AC + 50), capped at 75%',
+    ]);
+
+    const mainRow = h('div', {}, h('span', {}, 'Main Hand'), h('span', {}, sh ? `${sh.main_min}–${sh.main_max} (${sh.main_dps}/s)` : '2–4'));
+    if (sh) {
+      this.tipFor(mainRow, () => [
+        sh.main_name,
+        `Base DMG: ${sh.main_dmg} + ${sh.level_dmg_bonus} (Level ÷ 3)`,
+        `Swing DLY: ${(sh.main_dly / 10).toFixed(1)} s · Heavy: ×${sh.heavy_mult}`,
+        `Normal hit range: ${sh.main_min}–${sh.main_max}`,
+      ]);
+    }
+
+    const offRow = sh?.off_name
+      ? h('div', {}, h('span', {}, 'Off Hand'), h('span', {}, `${sh.off_min}–${sh.off_max}`))
+      : null;
+
     const stats = h('div', { class: 'stats' },
       h('div', {}, h('span', {}, 'Level'), h('span', {}, String(p?.level ?? 1))),
       h('div', {}, h('span', {}, 'HP'), h('span', {}, `${p?.hp ?? 0} / ${p?.maxHp ?? 0}`)),
       h('div', {}, h('span', {}, 'Mana'), h('span', {}, `${p?.mp ?? 0} / ${p?.maxMp ?? 0}`)),
-      h('div', {}, h('span', {}, 'AC'), h('span', {}, String(ac))),
+      acRow,
+      sh?.shield ? h('div', { class: 'shd' }, h('span', {}, 'Shield'), h('span', {}, `${sh.shield} absorb`)) : null,
+      mainRow,
+      offRow,
+      h('div', {}, h('span', {}, 'Attack Bonus'), h('span', {}, `+${sh?.level_dmg_bonus ?? Math.floor((p?.level ?? 1) / 3)} lvl · +${sh?.melee_pct ?? 0}%`)),
+      h('div', {}, h('span', {}, 'Spell Bonus'), h('span', {}, `+${sh?.spell_pct ?? 0}%`)),
+      h('div', {}, h('span', {}, 'Crit Chance'), h('span', {}, `${sh?.melee_crit_pct ?? 6}% (×${sh?.melee_crit_mult ?? 1.75})`)),
       h('div', {}, h('span', {}, 'Exp'), h('span', {}, p && p.xpNext ? `${p.xp} / ${p.xpNext}` : '-')),
       h('div', { class: 'coins' }, h('span', {}, 'Coin'), h('span', {}, money(this.inventory.coins))));
     const destroy = h('button', { class: 'btn', disabled: !this.held, title: 'Destroy the item on your cursor', onclick: () => this.destroyHeld() }, 'Destroy') as HTMLButtonElement;
     this.inv.replaceChildren(
-      h('div', { class: 't' }, h('b', {}, 'Inventory'), h('span', { class: 'x', onclick: () => this.toggleInventory(false) }, '✕')),
+      h('div', { class: 't' }, h('b', {}, 'Inventory & Character Stats'), h('span', { class: 'x', onclick: () => this.toggleInventory(false) }, '✕')),
       h('div', { class: 'body' }, eq, stats, bags),
       h('div', { class: 'foot' }, destroy, h('span', { style: { fontSize: '10px', color: '#8d7d5e', alignSelf: 'center' } }, 'Click to pick up · right-click to equip'), h('button', { class: 'btn', onclick: () => this.toggleInventory(false) }, 'Done')));
   }

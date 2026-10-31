@@ -48,14 +48,30 @@ defmodule BaconWorldWeb.Admin.SkillTreeLive do
     ~H"""
     <AdminSidebar.admin_layout current_path="/admin/bacon_world/skills">
       <div class="max-w-7xl mx-auto space-y-4">
-        <div class="dark-glass p-6 rounded-xl">
-          <h1 class="text-2xl font-bold text-white">Bacon World: skill tree</h1>
-          <p class="mt-1 text-sm text-gray-400">
-            Everyone starts in the middle with the start node and spends a point a level on a node joined to one they have.
-            Drag an ability from the palette onto a node. Double-click empty space to add a node joined to the selected one;
-            Shift-click two nodes to join or unjoin them; drag a node to move it (it snaps to the grid); Delete removes the selected node.
-            Save when done.
-          </p>
+        <div class="dark-glass p-6 rounded-xl flex flex-wrap items-center justify-between gap-4">
+          <div class="max-w-3xl">
+            <h1 class="text-2xl font-bold text-white">Bacon World: skill tree</h1>
+            <p class="mt-1 text-sm text-gray-400">
+              Everyone starts in the middle with the start node and spends a point a level on a node joined to one they have.
+              Drag an ability from the palette onto a node. Double-click empty space to add a node joined to the selected one;
+              Shift-click two nodes to join or unjoin them; drag a node to move it (it snaps to the grid); Delete removes the selected node.
+              Save when done.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <.link
+              navigate="/admin/bacon_world"
+              class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+            >
+              ← Card &amp; Home
+            </.link>
+            <.link
+              navigate="/admin/bacon_world/tuning"
+              class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+            >
+              ⚖️ World tuning
+            </.link>
+          </div>
         </div>
         <div
           id="bw-skill-editor"

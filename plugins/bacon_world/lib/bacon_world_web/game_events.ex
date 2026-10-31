@@ -30,8 +30,9 @@ defmodule BaconWorldWeb.GameEvents do
   Pushed to the client: `"mob_events"`, `"mob_motion"` (from the zone),
   `"character_stats_update"` when a creature or a player hits you,
   `"character_died"`, `"character_progress"`, `"zone_gear"` (someone's weapons
-  changed), `"zone_swing"` (someone else swung), `"pvp_hit"` and `"zone_hp"`
-  (someone's health changed, they died or came back).
+  changed), `"zone_swing"` (someone else swung), `"pvp_hit"`, `"zone_hp"`
+  (someone's health changed, they died or came back) and `"stats_sheet"` (the
+  live character stats readout).
 
   The character's own HP lives here: creatures broadcast their attacks and only
   the target's LiveView applies them, so the zone never writes characters.
@@ -41,8 +42,9 @@ defmodule BaconWorldWeb.GameEvents do
   import Phoenix.Component, only: [assign: 2]
   require Logger
 
-  alias BaconWorld.{Combat, Inventory, Items, Melee, Merchants, Mobs, Progression}
+  alias BaconWorld.{Combat, Inventory, Items, Melee, Merchants, Mobs, Progression, Skills, Tuning, World}
   alias BaconWorld.Mobs.{Brain, Spawns}
+  alias BaconWorldWeb.SkillEvents
   alias Bacon8Web.Presence
   alias Phoenix.PubSub
 
@@ -132,6 +134,14 @@ defmodule BaconWorldWeb.GameEvents do
           PubSub.broadcast(Bacon8.PubSub, topic, {:zone_swing, %{character_id: me.character_id, hand: hand, heavy: heavy, delay_ms: delay}})
         end
 
+        buffs = SkillEvents.active_buffs(socket)
+
+        skill_pct =
+          case World.fetch_character(me.character_id) do
+            {:ok, c} -> Skills.bonus(c, "melee_pct")
+            _ -> 0
+          end
+
         attack = %{
           id: me.character_id,
           level: socket.assigns[:level] || 1,
@@ -140,7 +150,9 @@ defmodule BaconWorldWeb.GameEvents do
           heading: heading * 1.0,
           item: item,
           heavy: heavy,
-          target: params["target_id"]
+          target: params["target_id"],
+          pct: skill_pct + buffs.dmg_pct,
+          crit_bonus: buffs.crit
         }
 
         pvp = pvp_swing(socket, me, attack)
@@ -271,7 +283,7 @@ defmodule BaconWorldWeb.GameEvents do
   def handle_event("inventory_fetch", _params, socket) do
     case character_id(socket) do
       nil -> {:reply, %{ok: false}, socket}
-      id -> {:reply, %{ok: true, inventory: Inventory.payload(id)}, socket}
+      id -> {:reply, %{ok: true, inventory: Inventory.payload(id)}, SkillEvents.push_stats_sheet(socket)}
     end
   end
 
@@ -431,11 +443,14 @@ defmodule BaconWorldWeb.GameEvents do
       |> Enum.take(max_targets)
 
     if topic && victims != [] && Combat.pvp_flagged?(me.character_id) do
+      mult = 1 + (attack[:pct] || 0) / 100
+      crit_bonus = attack[:crit_bonus] || 0.0
+
       victims
       |> Enum.filter(&Combat.pvp_flagged?(&1.character_id))
       |> Enum.map(fn p ->
         hit = :rand.uniform() < Melee.hit_chance(attack.level, p.level || 1)
-        {damage, crit} = if hit, do: Melee.roll_damage(attack.item, attack.level, attack.heavy), else: {0, false}
+        {damage, crit} = if hit, do: Melee.roll_damage(attack.item, attack.level, attack.heavy, &:rand.uniform/0, mult: mult, crit_bonus: crit_bonus), else: {0, false}
 
         h = %{
           attacker_id: me.character_id,
@@ -462,27 +477,38 @@ defmodule BaconWorldWeb.GameEvents do
 
   # ---------------------------------------------------------------------------
 
-  defp take_hit(socket, damage) do
+  defp take_hit(socket, raw_damage) do
     me = current(socket)
 
     if socket.assigns[:is_dead?] || is_nil(me) do
       socket
     else
-      case Combat.get_character_stats(me.character_id) do
-        {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}} ->
-          new_hp = max(0, hp - damage)
-          {:ok, _} = Combat.update_character_hp_mp(me.character_id, new_hp, mp)
+      # Apply Armour Class (AC) mitigation + temporary AC buffs, then absorb shields
+      eq = socket.assigns[:equipment] || %{}
+      buffs = SkillEvents.active_buffs(socket)
+      total_ac = Melee.total_ac(eq) + buffs.ac
+      mitigated = Tuning.mitigate_ac(raw_damage, total_ac)
+      {damage, socket} = SkillEvents.absorb_shield(socket, mitigated)
 
-          socket =
+      if damage <= 0 do
+        socket
+      else
+        case Combat.get_character_stats(me.character_id) do
+          {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}} ->
+            new_hp = max(0, hp - damage)
+            {:ok, _} = Combat.update_character_hp_mp(me.character_id, new_hp, mp)
+
+            socket =
+              socket
+              |> update_runtime(%{hp: new_hp})
+              |> push_event("character_stats_update", %{hp: new_hp, max_hp: max_hp, mp: mp, max_mp: max_mp})
+              |> broadcast_hp(me.character_id, new_hp, max_hp, if(new_hp == 0, do: "dead", else: "hurt"))
+
+            if new_hp == 0, do: die(socket, me), else: socket
+
+          _ ->
             socket
-            |> update_runtime(%{hp: new_hp})
-            |> push_event("character_stats_update", %{hp: new_hp, max_hp: max_hp, mp: mp, max_mp: max_mp})
-            |> broadcast_hp(me.character_id, new_hp, max_hp, if(new_hp == 0, do: "dead", else: "hurt"))
-
-          if new_hp == 0, do: die(socket, me), else: socket
-
-        _ ->
-          socket
+        end
       end
     end
   end
@@ -496,7 +522,7 @@ defmodule BaconWorldWeb.GameEvents do
     socket
     |> BaconWorldWeb.MountEvents.dismount()
     |> BaconWorldWeb.SkillEvents.cancel("dead")
-    |> assign(pending_respawn_timer: timer, pending_spawn_coords: coords, is_dead?: true, looting: nil)
+    |> assign(pending_respawn_timer: timer, pending_spawn_coords: coords, is_dead?: true, looting: nil, combat_buffs: %{})
     |> set_dead(true)
     |> push_event("character_died", %{
       spawn_coords: coords,
@@ -552,6 +578,7 @@ defmodule BaconWorldWeb.GameEvents do
             |> assign(level: progress.level)
             |> update_presence(%{level: progress.level})
             |> update_runtime(%{max_hp: progress.max_hp, max_mp: progress.max_mp, level: progress.level})
+            |> SkillEvents.push_stats_sheet()
           else
             socket
           end
@@ -653,7 +680,7 @@ defmodule BaconWorldWeb.GameEvents do
       id ->
         case fun.(id) do
           {:ok, _} ->
-            socket = refresh_gear(socket, id)
+            socket = socket |> refresh_gear(id) |> SkillEvents.push_stats_sheet()
             {:reply, %{ok: true, inventory: Inventory.payload(id), gear: Inventory.gear_ids(socket.assigns.equipment)}, socket}
 
           {:error, reason} ->

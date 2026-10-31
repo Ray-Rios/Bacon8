@@ -7,12 +7,23 @@
 // how it went, "zone_cast" shows everyone's casts (ours too).
 import * as THREE from '../../../../assets/js/vendor/three';
 import { UNITS_PER_METRE } from './controls-math';
-import { SpellFx } from './spell-fx';
+import { SpellFx, schoolColor } from './spell-fx';
 import { SKILL_KEYS, SkillsUI, type SkillsData } from './skills-ui';
 import type { MobEntry, MobEvent } from './mobs-view';
 
-// The charge you hear while casting (lobby-audio.ts cast_loop_<school>).
-const CAST_SCHOOL: Record<string, string> = { fireball: 'fire', heal: 'holy', root: 'nature', recall: 'arcane' };
+// Map spell schools to the 4 synth cast loops in lobby-audio.ts (fire, holy, nature, arcane).
+const AUDIO_SCHOOL: Record<string, string> = {
+  fire: 'fire',
+  blood: 'fire',
+  earth: 'fire',
+  holy: 'holy',
+  water: 'holy',
+  frost: 'arcane',
+  storm: 'arcane',
+  arcane: 'arcane',
+  shadow: 'arcane',
+  nature: 'nature',
+};
 
 const U = UNITS_PER_METRE;
 
@@ -40,8 +51,6 @@ const FAIL: Record<string, string> = {
   dead: 'You die before the spell is done.',
   mobs_unavailable: 'Nothing happens.',
 };
-
-const CAST_COLOR: Record<string, string> = { recall: '#7ab8ff', heal: '#7dff8f', fireball: '#ff8a2a', root: '#7be05a' };
 
 export const SkillsWorld = {
   /** After the game windows: the skill tree, the spell bar, the skill slots. */
@@ -222,19 +231,26 @@ export const SkillsWorld = {
     this.skillsUI?.castStop();
     this.skillsUI?.cooldown(p.ability, p.cooldown_ms || 0);
     if (p.hits) {
-      if (p.ability === 'spin_attack' && p.hits.length === 0) this.combatLog('Your spin attack hits nothing.', '#A0A0A0');
+      if ((a?.effect?.type === 'spin' || p.ability === '200') && p.hits.length === 0) this.combatLog(`Your ${name} hits nothing.`, '#A0A0A0');
       this.showHits(p.hits);
     }
     if (p.progress) this.applyProgress(p.progress);
     const myId = this.state?.currentPlayer?.character_id;
-    if (a?.effect?.type === 'heal') {
+    const tType = a?.effect?.type;
+    if (tType === 'heal') {
       const who = p.target && p.target !== myId ? this.state?.onlineCharacters?.find((c: any) => c.character_id === p.target)?.character_name || 'them' : 'yourself';
       this.combatLog(`You heal ${who} for ${p.amount} hit points.`, '#7DFF8F');
-    }
-    if (a?.effect?.type === 'recall') this.combatLog('You recall to your bind point.', '#9FD8FF');
-    if (a?.effect?.type === 'root') {
+    } else if (tType === 'recall') {
+      this.combatLog('You recall to your bind point.', '#9FD8FF');
+    } else if (tType === 'root' && p.target) {
       const m = this.mobsView?.get(p.target);
-      if (m) this.combatLog(`${m.view.name}'s feet are bound by roots.`, '#7BE05A');
+      if (m) this.combatLog(`${m.view.name}'s feet are bound by ${name}.`, '#7BE05A');
+    } else if (tType === 'shield') {
+      this.combatLog(`${name} surrounds you (${p.shield} absorb).`, '#8FD8FF');
+    } else if (tType === 'buff_temp') {
+      this.combatLog(`You activate ${name}!`, '#FFD87A');
+    } else if (tType === 'taunt' && p.taunted?.length) {
+      this.combatLog(`${name} draws the attention of ${p.taunted.length} creature(s)!`, '#FFB86A');
     }
   },
 
@@ -242,6 +258,10 @@ export const SkillsWorld = {
   onZoneCast(this: any, p: any) {
     const ch = this.characterManager?.getAllCharacters().get(p.character_id);
     const anim = this.characterManager?.getAnimator(p.character_id);
+    const a = this.skillsData?.catalog?.[p.ability];
+    const school = p.school || a?.school || 'fire';
+    const col = schoolColor(school);
+
     const stopGlow = () => {
       this.castGlows?.get(p.character_id)?.stop();
       this.castGlows?.delete(p.character_id);
@@ -250,9 +270,9 @@ export const SkillsWorld = {
       case 'begin':
         if (ch) {
           stopGlow();
-          const glow = this.spellFx.casting(ch.mesh, CAST_COLOR[p.ability] || '#ffd27a');
-          const school = CAST_SCHOOL[p.ability];
-          const hum = school ? this.audio?.loop(`cast_loop_${school}`, 0.9, ch.mesh.position) : null;
+          const glow = this.spellFx.casting(ch.mesh, col);
+          const loopKey = AUDIO_SCHOOL[school] || 'arcane';
+          const hum = this.audio?.loop(`cast_loop_${loopKey}`, 0.9, ch.mesh.position);
           this.castGlows.set(p.character_id, {
             stop: () => {
               glow.stop();
@@ -280,9 +300,8 @@ export const SkillsWorld = {
           return m.root.position.clone().add(new THREE.Vector3(0, hgt * U, 0));
         };
         const ms = p.travel_ms || 400;
-        this.spellFx.projectile(from, target, ms);
+        this.spellFx.projectile(from, target, ms, col);
         this.audio?.playAt('fireball_cast', from, 1);
-        // the fireball's roar travels with it
         const fly = this.audio?.loop('fireball_fly', 0.85, from);
         {
           const t0 = performance.now();
@@ -303,32 +322,112 @@ export const SkillsWorld = {
       }
       case 'land':
         stopGlow();
-        if (p.ability === 'recall') {
-          if (p.from) {
-            const at = new THREE.Vector3(p.from[0], p.from[1], p.from[2]);
-            this.spellFx.recall(at);
-            this.audio?.playAt('recall', at, 1);
-          }
-          if (p.to) setTimeout(() => this.spellFx?.recall(new THREE.Vector3(p.to[0], p.to[1], p.to[2])), 150);
-        } else if (p.ability === 'heal') {
+        if (p.from && p.to) {
+          const at = new THREE.Vector3(p.from[0], p.from[1], p.from[2]);
+          this.spellFx.recall(at, col);
+          this.audio?.playAt('recall', at, 1);
+          setTimeout(() => this.spellFx?.recall(new THREE.Vector3(p.to[0], p.to[1], p.to[2]), col), 150);
+        } else if (p.amount) {
           anim?.oneShot('Spell_Simple_Shoot', { upperOnly: true });
           const t = this.characterManager?.getAllCharacters().get(p.target);
           if (t) {
-            this.spellFx.heal(t.mesh);
+            this.spellFx.heal(t.mesh, 1.8, col);
             this.audio?.playAt('heal', t.mesh.position, 1);
           }
         } else if (ch) {
           anim?.oneShot('Spell_Simple_Shoot', { upperOnly: true });
-          if (p.ability === 'root') this.audio?.playAt('root_cast', ch.mesh.position, 0.9);
+          const m: MobEntry | undefined = p.target && this.mobsView?.get(p.target);
+          if (m) this.spellFx.burst(m.root.position.clone().add(new THREE.Vector3(0, 1.0 * U, 0)), col, 45, 2.2);
+          this.audio?.playAt('root_cast', ch.mesh.position, 0.9);
+        }
+        break;
+      case 'aoe': {
+        stopGlow();
+        if (ch) anim?.oneShot('Spell_Simple_Shoot', { upperOnly: true });
+        const m: MobEntry | undefined = p.target && this.mobsView?.get(p.target);
+        const at = m
+          ? m.root.position.clone()
+          : p.x != null && p.z != null
+            ? new THREE.Vector3(p.x, ch?.mesh.position.y ?? 0, p.z)
+            : ch
+              ? ch.mesh.position.clone()
+              : null;
+        if (at) {
+          this.spellFx.aoe(at, p.radius_m || 5.5, col);
+          this.audio?.playAt('fireball_hit', at, 0.95);
+        }
+        break;
+      }
+      case 'cone':
+        stopGlow();
+        if (ch) {
+          anim?.oneShot('Spell_Simple_Shoot', { upperOnly: true });
+          this.spellFx.cone(ch.mesh, p.heading ?? ch.mesh.rotation.y, p.range_m || 8.0, p.arc || 100, col);
+          this.audio?.playAt('fireball_cast', ch.mesh.position, 0.95);
+        }
+        break;
+      case 'chain': {
+        stopGlow();
+        if (!ch) break;
+        anim?.oneShot('Spell_Simple_Shoot', { upperOnly: true });
+        const pts: THREE.Vector3[] = [ch.mesh.position.clone().add(new THREE.Vector3(0, 1.3 * U, 0))];
+        for (const tid of p.targets || [p.target]) {
+          const m: MobEntry | undefined = tid && this.mobsView?.get(tid);
+          if (m) pts.push(m.root.position.clone().add(new THREE.Vector3(0, 1.1 * U, 0)));
+        }
+        this.spellFx.chain(pts, col);
+        this.audio?.playAt('fireball_hit', ch.mesh.position, 0.95);
+        break;
+      }
+      case 'shield':
+        stopGlow();
+        if (ch) {
+          anim?.oneShot('Spell_Simple_Shoot', { upperOnly: true });
+          this.spellFx.shield(ch.mesh, p.ms || 8000, col);
+          this.audio?.playAt('heal', ch.mesh.position, 0.9);
+        }
+        break;
+      case 'buff':
+      case 'taunt':
+        stopGlow();
+        if (ch) {
+          anim?.oneShot('Spell_Simple_Shoot', { upperOnly: true });
+          this.spellFx.buff(ch.mesh, col);
+          this.audio?.playAt('heal', ch.mesh.position, 0.85);
+        }
+        break;
+      case 'dash':
+        stopGlow();
+        if (p.from && p.to) {
+          const f = new THREE.Vector3(p.from[0], p.from[1], p.from[2]);
+          const t = new THREE.Vector3(p.to[0], p.to[1], p.to[2]);
+          this.spellFx.dash(f, t, col);
+          this.audio?.playAt('spin', t, 0.95);
         }
         break;
       case 'spin':
+        stopGlow();
         if (ch) {
-          this.spellFx.spin(ch.mesh);
+          this.spellFx.spin(ch.mesh, 2.1, col);
           anim?.oneShot('Sword_Regular_C', { upperOnly: true, rate: 1.3 });
           const human = this.characterManager?.getHuman(p.character_id);
           if (human?.model) this.spins.push({ model: human.model, t: 0 });
           this.audio?.playAt('spin', ch.mesh.position, 1);
+        }
+        break;
+      case 'strike':
+        stopGlow();
+        if (ch) {
+          anim?.oneShot('Sword_Regular_B', { upperOnly: true, rate: 1.25 });
+          const m: MobEntry | undefined = p.target && this.mobsView?.get(p.target);
+          if (m && (p.range_m || 0) > 5.0) {
+            const from = ch.mesh.position.clone().add(new THREE.Vector3(0, 1.3 * U, 0));
+            this.spellFx.projectile(from, () => m.root.position.clone().add(new THREE.Vector3(0, 1.1 * U, 0)), 220, col);
+          } else {
+            this.spellFx.spin(ch.mesh, 1.6, col);
+            if (m) this.spellFx.burst(m.root.position.clone().add(new THREE.Vector3(0, 1.1 * U, 0)), col, 35, 2.2);
+          }
+          this.audio?.playAt('spin', ch.mesh.position, 0.95);
         }
         break;
     }

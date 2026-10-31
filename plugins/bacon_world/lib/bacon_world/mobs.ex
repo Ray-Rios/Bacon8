@@ -28,6 +28,12 @@ defmodule BaconWorld.Mobs do
   @doc "A spell landing on a creature (`Brain.spell_hit/3`): a hit map or `{:error, reason}`."
   def spell_hit(slug, attack), do: call(slug, {:spell_hit, attack}, {:error, :mobs_unavailable})
 
+  @doc "An area, cone or chain spell/skill (`Brain.spell_aoe/3`): `{:ok, hits}` or `{:error, reason}`."
+  def spell_aoe(slug, attack), do: call(slug, {:spell_aoe, attack}, {:error, :mobs_unavailable})
+
+  @doc "Taunts nearby creatures (`Brain.taunt/3`): `{:ok, count}`."
+  def taunt(slug, attack), do: call(slug, {:taunt, attack}, {:error, :mobs_unavailable})
+
   @doc "Roots a creature (`Brain.root/3`): `:ok` or `{:error, reason}`."
   def root(slug, attack), do: call(slug, {:root, attack}, {:error, :mobs_unavailable})
 

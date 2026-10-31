@@ -1,10 +1,10 @@
 defmodule BaconWorld.SkillsTest do
   # The skill tree (BaconWorld.SkillTree, BaconWorld.Skills), casting checks
   # (BaconWorldWeb.SkillEvents) and what spells do to creatures (Brain.root/3,
-  # Brain.spell_hit/3, the spin attack through Brain.melee/4).
+  # Brain.spell_hit/3, Brain.spell_aoe/3, Brain.taunt/3, Brain.melee/4).
   use Bacon8.DataCase, async: false
 
-  alias BaconWorld.{Abilities, Items, Models, SkillTree, Skills, World}
+  alias BaconWorld.{Abilities, Items, Melee, Models, SkillTree, Skills, Tuning, World}
   alias BaconWorld.Mobs.Brain
   alias BaconWorldWeb.SkillEvents
 
@@ -201,6 +201,70 @@ defmodule BaconWorld.SkillsTest do
       attack = %{id: "p1", level: 10, x: 0.0, z: 0.0, heading: 0.0, item: Items.fist(), heavy: false, target: nil, sweep: {8, 360}, mult: 0.9, extra_reach: 0.6}
       {_, hits, _} = Brain.melee(mobs, attack, 0, fn -> 0.0 end)
       assert hits |> Enum.map(& &1.id) |> Enum.sort() == ["a", "b", "c"]
+    end
+
+    test "circle AoE, frontal cone, chain jump, taunt, stun, and DoT ticks" do
+      near = fn id, x, z -> mob(%{id: id, x: x * @u, z: z * @u, hp: 50, max_hp: 50}) end
+      mobs = %{"m1" => near.("m1", 0.0, 3.0), "m2" => near.("m2", 2.0, 3.0), "m3" => near.("m3", 0.0, -12.0)}
+
+      # Circle AoE around origin
+      {mobs2, hits_circle, _} = Brain.spell_aoe(mobs, %{id: "p1", shape: :circle, x: 0.0, z: 0.0, radius_m: 6.0, damage: 10, crit: false, effect: %{stun_ms: 3000, dot_ticks: 2, dot_ratio: 0.5}}, 0)
+      assert Enum.map(hits_circle, & &1.id) |> Enum.sort() == ["m1", "m2"]
+      assert mobs2["m1"].stunned_until == 3000
+      assert [%{dmg: 5, left: 2}] = mobs2["m1"].dots
+
+      # DoT tick after 2000ms
+      players = %{"p1" => %{x: 0.0, z: 0.0, y: 0.0, dead: false, level: 1}}
+      {m1_after_dot, dot_evs} = Brain.tick(mobs2["m1"], players, 2000, 0.1, nil)
+      assert m1_after_dot.hp == 35
+      assert [%{left: 1}] = m1_after_dot.dots
+      assert Enum.any?(dot_evs, &match?({:damaged, "m1", "p1", 5, false, 35, 50}, &1))
+
+      # Frontal cone facing +Z (heading = 0)
+      {_, hits_cone, _} = Brain.spell_aoe(mobs, %{id: "p1", shape: :cone, x: 0.0, z: 0.0, heading: 0.0, range_m: 8.0, arc_deg: 90, damage: 14, crit: false, effect: %{}}, 0)
+      assert Enum.map(hits_cone, & &1.id) |> Enum.sort() == ["m1", "m2"]
+
+      # Chain jumping from m1 to m2
+      {_, hits_chain, _} = Brain.spell_aoe(mobs, %{id: "p1", shape: :chain, target: "m1", x: 0.0, z: 0.0, range_m: 20.0, jumps: 2, jump_m: 6.0, damage: 11, crit: true, effect: %{}}, 0)
+      assert Enum.map(hits_chain, & &1.id) == ["m1", "m2"]
+
+      # Taunt pulls nearby idle mobs into chasing p1
+      {mobs_taunted, count, taunt_evs} = Brain.taunt(mobs, %{id: "p1", x: 0.0, z: 0.0, radius_m: 6.0}, 0)
+      assert count == 2
+      assert mobs_taunted["m1"].state == :chase and mobs_taunted["m1"].target == "p1"
+      assert {:aggro, "m1", "p1"} in taunt_evs
+    end
+  end
+
+  describe "207 abilities, tuning & character stats sheet" do
+    test "catalogue has 101 spells, 100 combat skills, and 6 passive buffs in order" do
+      all = Abilities.all()
+      assert length(all) == 207
+      assert Enum.count(all, &Abilities.spell?/1) == 101
+      assert Enum.count(all, &Abilities.skill?/1) == 100
+      assert Enum.count(all, &(&1.kind == "buff")) == 6
+
+      payload = Abilities.payload()
+      assert map_size(payload) == 207
+      assert payload["recall"].order == 1
+      assert payload["fireball"].order == 2
+      assert payload["spin_attack"].order == 102
+      assert payload["arcana_5"].order == 207
+    end
+
+    test "armour AC mitigation and stats_sheet readout" do
+      Tuning.reset()
+      assert Tuning.ac_reduction(0) == 0.0
+      assert_in_delta Tuning.ac_reduction(50), 0.5, 0.001
+      assert Tuning.mitigate_ac(20, 50) == 10
+
+      eq = %{"main" => Items.get("worn_short_sword"), "off" => Items.get("worn_round_shield")}
+      sheet = Melee.stats_sheet(eq, 6, %{"hp" => 10, "mp" => 10, "melee_pct" => 5, "spell_pct" => 5}, %{ac: 4, shield: 15, dmg_pct: 10, crit: 0.04})
+      assert sheet.ac == Items.get("worn_round_shield").ac + 4
+      assert sheet.shield == 15
+      assert sheet.max_dmg >= sheet.min_dmg
+      assert sheet.dps > 0
+      assert sheet.crit_pct == 10.0
     end
   end
 end

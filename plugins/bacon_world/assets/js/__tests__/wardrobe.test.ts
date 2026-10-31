@@ -10,6 +10,7 @@ const CATALOG: Record<string, any> = {
   cloth_trousers: { slots: ['legs'], wear: { female: { garment: 'Bottom_Pants', design: 'pants' }, male: { garment: 'Bottom_Pants' } }, colors: { main: '#4A4F57' } },
   cloth_shorts: { slots: ['legs'], wear: { female: { garment: 'Bottom_Shorts', design: 'shorts' }, male: { garment: 'Bottom_Shorts' } }, colors: { main: '#1E2E5C' } },
   cloth_tunic: { slots: ['chest'], wear: { female: { garment: 'Top_Tee' }, male: { garment: 'Top_Tee' } }, colors: { main: '#8A6A4A', trim: '#5C4630' } },
+  linen_arm_wraps: { slots: ['wrist'], wear: { female: { garment: 'Wrist_Wraps', design: 'wrist_linen' }, male: { garment: 'Wrist_Wraps', design: 'wrist_linen' } }, colors: { main: '#D5C7A9' } },
   rusty_dagger: { slots: ['main', 'off'] },
 };
 const item = (id: string) => CATALOG[id] || null;
@@ -74,4 +75,12 @@ test('a body may bring its own relaxed hand table', () => {
   assert.equal(relaxedSpread('index_01_l', t), -5);
   // fingers the table leaves out keep the default
   assert.equal(relaxedCurl('pinky_01_r', t), relaxedCurl('pinky_01_r'));
+});
+
+
+test('wrist slot equips arm wraps for both genders', () => {
+  const f = wornGarments('female', { ...STARTER_GEAR, wrist: 'linen_arm_wraps' }, item);
+  assert.ok(f.some((g) => g.slot === 'wrist' && g.garment === 'Wrist_Wraps' && g.design === 'wrist_linen'));
+  const m = wornGarments('male', { ...STARTER_GEAR, wrist: 'linen_arm_wraps' }, item);
+  assert.ok(m.some((g) => g.slot === 'wrist' && g.garment === 'Wrist_Wraps' && g.design === 'wrist_linen'));
 });

@@ -2,7 +2,7 @@
 // HTML layer over the 3D stage (character-stage.ts). Plain DOM with its own scoped CSS,
 // so it doesn't depend on the site's Tailwind build.
 import {
-  Appearance, Body, EYE_COLORS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SKIN_TONES, type ShapeGroup,
+  Appearance, Body, EYE_COLORS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SKIN_TONES, type ShapeGroup, type ScarStyle,
   defaultAppearance, normalizeAppearance, randomAppearance, shade,
   shapeMin,
 } from './appearance';
@@ -495,6 +495,17 @@ export class FrontUI {
           .filter((g) => this.shapesIn(g).length)
           .map((g) => this.section(g, ...this.shapeSliders(g))),
         this.section('Skin', this.swatches(SKIN_TONES, a.skin, (c) => this.change((x) => { x.skin = c; }))),
+        this.section('Body Blemishes & Scars',
+          h('div', { class: 'bwf-seg' },
+            ...([
+              { id: 'none', label: 'None' },
+              { id: 'cheek', label: 'Cheek Slash' },
+              { id: 'body', label: 'Torso/Legs' },
+              { id: 'battle', label: 'Battle Worn' }
+            ] as { id: ScarStyle; label: string }[]).map((opt) => h('button', {
+              class: (a.scars || 'none') === opt.id ? 'on' : '',
+              onclick: () => this.change((x) => { x.scars = opt.id; })
+            }, opt.label))),
       ];
     }
     if (this.tab === 'face') {

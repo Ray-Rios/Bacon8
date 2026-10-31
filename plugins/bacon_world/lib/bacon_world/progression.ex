@@ -10,7 +10,7 @@ defmodule BaconWorld.Progression do
   nothing (grey), one at your level the full amount, tougher ones a little more.
   """
 
-  alias BaconWorld.World
+  alias BaconWorld.{Tuning, World}
 
   @max_level 50
 
@@ -64,7 +64,7 @@ defmodule BaconWorld.Progression do
         :red -> 1.3
       end
 
-    round(base * scale)
+    round(base * scale * Tuning.get("xp_mult"))
   end
 
   @doc """

@@ -136,7 +136,7 @@ defmodule BaconWorld.Items do
   # bottoms are his own Under_Bottom shell in briefs or boxer briefs (@male_bottom).
   @under [
     {"linen_bikini", "Linen Bikini", {"classic", "classic"}, {"#EAE0C8", "#D2C3A3", "#D2C3A3"}, 20, {"Top", "Bottom"}},
-    {"athletic", "Athletic", {"sport", "boyshort"}, {"#2E3138", "#1F8A8A", "#E7F1FD"}, 60, {"Top", "Shorts"}},
+    {"athletic", "Athletic", {"sport", "boyshort"}, {"#262224", "#8E6F5E", "#6E1D2A"}, 60, {"Top", "Shorts"}},
     {"rose_lace", "Rose Lace", {"lace", "lace"}, {"#E2AFA6", "#B9776E", "#F7DDD7"}, 90, {"Bralette", "Briefs"}},
     {"coral", "Coral", {"bandeau", "highcut"}, {"#E0644E", "#FFFFFF", "#B8402F"}, 70, {"Bandeau", "High-Cut Bottom"}},
     {"polka_dot", "Polka Dot", {"halter", "string"}, {"#1E2E5C", "#F4F4F4", "#F4F4F4"}, 80, {"Halter Top", "Tie-Side Bottom"}},
@@ -168,7 +168,8 @@ defmodule BaconWorld.Items do
     %{id: "cloth_trousers", name: "Cloth Trousers", slots: ["legs"], ac: 2, value: 50, garment: "Bottom_Pants", design: "pants", colors: %{"main" => "#4A4F57", "trim" => "#2B2F36", "accent" => "#2B2F36"}},
     %{id: "cloth_shorts", name: "Cloth Shorts", slots: ["legs"], ac: 1, value: 30, garment: "Bottom_Shorts", design: "shorts", colors: %{"main" => "#1E2E5C", "trim" => "#14203F", "accent" => "#14203F"}},
     %{id: "cloth_shoes", name: "Cloth Shoes", slots: ["feet"], ac: 1, value: 25, garment: "Shoes_Sneakers", colors: %{"upper" => "#3A3F47", "sole" => "#F4F4F4", "laces" => "#E8E8E8"}},
-    %{id: "leather_boots", name: "Tall Leather Boots", slots: ["feet"], ac: 3, value: 150, garment: "Shoes_Boots", colors: %{"upper" => "#6B4A2F", "sole" => "#2A2522", "laces" => "#3D2B1F"}}
+    %{id: "leather_boots", name: "Tall Leather Boots", slots: ["feet"], ac: 3, value: 150, garment: "Shoes_Boots", colors: %{"upper" => "#6B4A2F", "sole" => "#2A2522", "laces" => "#3D2B1F"}},
+    %{id: "linen_arm_wraps", name: "Linen Arm Wraps", slots: ["wrist"], ac: 1, value: 25, garment: "Wrist_Wraps", design: "wrist_linen", colors: %{"main" => "#D2C3A3", "trim" => "#B8A785"}}
   ]
 
   @wearables @underwear ++
@@ -180,7 +181,7 @@ defmodule BaconWorld.Items do
                  |> Map.merge(%{kind: "armor", wear: %{"female" => female, "male" => female}})
                end)
 
-  @wear_slots ~w(head under_top under_bottom chest legs feet)
+  @wear_slots ~w(head under_top under_bottom chest legs feet wrist)
 
   @armor_defaults %{hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, ac: 0, stack: 1, model: nil, icon: nil, icon_url: nil}
 

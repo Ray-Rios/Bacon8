@@ -10,5 +10,6 @@ defmodule BaconWorldWeb.Routes do
   admin do
     live "/", Admin.HomeLive, :index
     live "/skills", Admin.SkillTreeLive, :index
+    live "/tuning", Admin.TuningLive, :index
   end
 end

@@ -310,12 +310,38 @@ export class HumanFactory {
 
 // Garments a body file may hold (the manifest's "garments" lists its own).
 const GARMENTS = ['Top_Tee', 'Top_Tank', 'Top_LongSleeve', 'Bottom_Shorts', 'Bottom_Pants', 'Shoes_Sneakers', 'Shoes_Boots',
-  'Under_Top_Contour', 'Under_Top_Band', 'Under_Bottom'];
+  'Under_Top_Contour', 'Under_Top_Band', 'Under_Bottom', 'Wrist_Wraps'];
 // Polygon offsets (factor, units) so layers that touch draw in order: underwear over skin,
-// trousers over underwear, tops over the trousers' waistband.
-const LAYER_OFFSET: Array<[string, number, number]> = [['Under_', -1, -1], ['Bottom_', -1, -2], ['Top_', -1.5, -3]];
+// trousers over underwear, tops over the trousers' waistband, wrist wraps over arm skin.
+const LAYER_OFFSET: Array<[string, number, number]> = [['Under_', -1, -1], ['Bottom_', -1, -2], ['Top_', -1.5, -3], ['Wrist_', -1.2, -2]];
 
 const PATCHED = 'b8wardrobe1';
+const PATCHED_SKIN = 'b8skin1';
+
+function skinMaterial(m: THREE.MeshStandardMaterial) {
+  if ((m.userData as any).b8skin) return (m.userData as any).b8skin;
+  const u = {
+    b8ScarsMap: { value: null as THREE.Texture | null },
+    b8ScarsMix: { value: 0.0 },
+  };
+  (m.userData as any).b8skin = u;
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D b8ScarsMap;\nuniform float b8ScarsMix;')
+      .replace('#include <map_fragment>', `#ifdef USE_MAP
+  vec4 b8_texelColor = texture2D( map, vMapUv );
+  diffuseColor *= b8_texelColor;
+  if ( b8ScarsMix > 0.001 ) {
+    vec4 b8_sc = texture2D( b8ScarsMap, vMapUv );
+    vec3 b8_scarColor = diffuseColor.rgb * vec3(0.55, 0.32, 0.30);
+    diffuseColor.rgb = mix( diffuseColor.rgb, b8_scarColor, b8_sc.a * b8ScarsMix );
+  }
+#endif`);
+  };
+  m.customProgramCacheKey = () => PATCHED_SKIN;
+  return u;
+}
 
 /** Makes a wardrobe material draw a packed design texture in the item's colours. */
 function wardrobeMaterial(m: THREE.MeshStandardMaterial) {
@@ -768,6 +794,24 @@ export class HumanInstance {
     this.tint('Skin', a.skin);
     this.tint('Iris', a.eyes);
     this.tint('Brows', browColor(a));
+
+    // blemish & scar overlay (optional character creation choice)
+    const skinMats = this.materials.get('Skin') || [];
+    if (skinMats.length) {
+      const scarStyle = a.scars && a.scars !== 'none' ? a.scars : null;
+      let scarTex: THREE.Texture | null = null;
+      if (scarStyle) {
+        scarTex = (await this.factory.texture(`Scars/scars_${scarStyle}.webp`)) ||
+                  (await this.factory.texture(`Scars/scars_${scarStyle}.png`));
+      }
+      if (!this.disposed) {
+        for (const m of skinMats) {
+          const su = skinMaterial(m);
+          su.b8ScarsMap.value = scarTex;
+          su.b8ScarsMix.value = scarTex ? 1.0 : 0.0;
+        }
+      }
+    }
 
     // hair and facial hair (swap only when the style changes)
     const styles = this.factory.styles(this.body);

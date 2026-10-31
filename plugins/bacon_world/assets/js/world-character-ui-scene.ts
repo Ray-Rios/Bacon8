@@ -297,6 +297,7 @@ export const WorldCharacterUIScene = {
 
     // Casting (BaconWorldWeb.SkillEvents): how ours went, everyone's for the look, heals.
     this.handleEvent('cast_result', (payload: any) => this.onCastResult(payload));
+    this.handleEvent('stats_sheet', (payload: any) => this.gameUI?.setStatsSheet(payload));
     this.handleEvent('zone_cast', (payload: any) => this.onZoneCast(payload));
     // fishing (fishing-world.ts): the server says when a fish bites, and when it gets away
     this.handleEvent('fish_bite', () => this.onFishBite());

@@ -99,6 +99,23 @@ defmodule BaconWorld.Mobs.Zone do
     {:reply, result, %{state | mobs: mobs}}
   end
 
+  def handle_call({:spell_aoe, attack}, _from, state) do
+    case Brain.spell_aoe(state.mobs, attack, now()) do
+      {_mobs, {:error, _} = err, _events} ->
+        {:reply, err, state}
+
+      {mobs, hits, events} ->
+        broadcast_events(state.topic, events)
+        {:reply, {:ok, hits}, %{state | mobs: mobs}}
+    end
+  end
+
+  def handle_call({:taunt, attack}, _from, state) do
+    {mobs, count, events} = Brain.taunt(state.mobs, attack, now())
+    broadcast_events(state.topic, events)
+    {:reply, {:ok, count}, %{state | mobs: mobs}}
+  end
+
   def handle_call({:root, attack}, _from, state) do
     {mobs, result, events} = Brain.root(state.mobs, attack, now())
     broadcast_events(state.topic, events)

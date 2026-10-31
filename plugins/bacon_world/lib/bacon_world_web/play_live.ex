@@ -13,7 +13,7 @@ defmodule BaconWorldWeb.PlayLive do
   """
   use Bacon8Web, :live_view
   require Logger
-  alias BaconWorld.{Combat, Items, Models, World}
+  alias BaconWorld.{Combat, Items, Models, Tuning, World}
   alias BaconWorldWeb.GameEvents
   alias Phoenix.PubSub
   alias Bacon8Web.Presence
@@ -122,24 +122,24 @@ defmodule BaconWorldWeb.PlayLive do
        characters: characters,
        selected_character_id: nil,
        current_character_payload: nil,
-      current_character_runtime: nil,
+       current_character_runtime: nil,
        world_mode?: false,
        has_characters?: characters != [],
        scene_characters: to_scene_characters(characters),
        current_zone_topic: nil,
-      current_presence_key: nil,
-      account_presence_tracked?: false,
-      account_presence_ref: nil,
+       current_presence_key: nil,
+       account_presence_tracked?: false,
+       account_presence_ref: nil,
        zone_online_characters: [],
        last_world_update_ms: nil,
-      last_position_persist_ms: nil,
-      last_presence_update_ms: nil,
-      last_remote_broadcast_ms: nil,
-      pending_respawn_timer: nil,
-      pending_spawn_coords: nil,
-      is_dead?: false,
+       last_position_persist_ms: nil,
+       last_presence_update_ms: nil,
+       last_remote_broadcast_ms: nil,
+       pending_respawn_timer: nil,
+       pending_spawn_coords: nil,
+       is_dead?: false,
        scene_model_paths: Enum.map(available_models, & &1.model_path),
-        available_models: available_models,
+       available_models: available_models,
        create_form: to_form(%{"name" => "", "character_type" => "", "model_path" => ""}, as: "character")
      )}
   end
@@ -549,6 +549,10 @@ defmodule BaconWorldWeb.PlayLive do
   # One regeneration timer per LiveView: a tick from an older chain (an earlier login) is dropped.
   def handle_info({:regen_tick, character_id, token}, socket) do
     if token == socket.assigns[:regen_token], do: regen(socket, character_id), else: {:noreply, socket}
+  end
+
+  def handle_info({:hot_tick, target_id, amount, left}, socket) do
+    {:noreply, BaconWorldWeb.SkillEvents.hot_tick(target_id, amount, left, socket)}
   end
 
   def handle_info(%{event: "presence_diff"}, socket) do
@@ -1044,9 +1048,9 @@ defmodule BaconWorldWeb.PlayLive do
       case Combat.get_character_stats(character_id) do
         {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}}
             when hp < max_hp or mp < max_mp ->
-          # About a twelfth of the pool every 4 s (EverQuest-slow, but not 10 HP slow).
-          new_hp = min(hp + max(1, div(max_hp, 12)), max_hp)
-          new_mp = min(mp + max(1, div(max_mp, 12)), max_mp)
+          pool_div = max(1, round(Tuning.get("regen_pool_div")))
+          new_hp = min(hp + max(1, div(max_hp, pool_div)), max_hp)
+          new_mp = min(mp + max(1, div(max_mp, pool_div)), max_mp)
           {:ok, _} = Combat.update_character_hp_mp(character_id, new_hp, new_mp)
           socket =
             socket
@@ -1066,10 +1070,11 @@ defmodule BaconWorldWeb.PlayLive do
     end
   end
 
-  # (Re)starts the 4 s regeneration tick; a new token orphans any older chain.
+  # (Re)starts the regeneration tick; a new token orphans any older chain.
   defp schedule_regen(socket, character_id) do
     token = make_ref()
-    Process.send_after(self(), {:regen_tick, character_id, token}, 4_000)
+    interval = max(500, round(Tuning.get("regen_interval_ms")))
+    Process.send_after(self(), {:regen_tick, character_id, token}, interval)
     assign(socket, regen_token: token)
   end
 
@@ -1078,7 +1083,7 @@ defmodule BaconWorldWeb.PlayLive do
   defp motion_flags(params) do
     case params["m"] || params[:m] do
       # 1 crouching, 2 airborne, 4 flying, 8 swimming
-    m when is_integer(m) and m >= 0 and m <= 15 -> m
+      m when is_integer(m) and m >= 0 and m <= 15 -> m
       _ -> 0
     end
   end

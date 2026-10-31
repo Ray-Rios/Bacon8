@@ -25,12 +25,12 @@ defmodule BaconWorld.Mobs.Brain do
       `%{pull: [x, z], pull_m}` (the client applies them: you are held, blinded, dragged)
     * `{:cast, id, move}` - a creature starts something everyone should see coming (the
       dragon rearing back to breathe fire, the Kraken's specials)
-    * `{:damaged, id, character_id, damage, crit?, hp, max_hp}` (from `melee/4`)
+    * `{:damaged, id, character_id, damage, crit?, hp, max_hp}` (from `melee/4` and spells)
     * `{:died, id, killer_id}`
     * `{:corpse_gone, id}`
   """
 
-  alias BaconWorld.{Items, Melee, Progression}
+  alias BaconWorld.{Items, Melee, Progression, Tuning}
   alias BaconWorld.Mobs.Spawns
 
   @u 2.2 / 1.8
@@ -54,7 +54,8 @@ defmodule BaconWorld.Mobs.Brain do
     kind = Spawns.kind(point.kind)
     level = Enum.random(kind.levels)
     {base, per} = kind.hp
-    max_hp = base + per * level
+    hp_mult = Tuning.get("mob_hp_mult")
+    max_hp = max(1, round((base + per * level) * hp_mult))
     weapon = Spawns.weighted(kind.weapons)
     offhand = if Items.two_handed?(Items.get(weapon)), do: nil, else: Spawns.weighted(kind.offhand)
     x = point.x * @u
@@ -98,8 +99,11 @@ defmodule BaconWorld.Mobs.Brain do
       special: nil,
       next_special: now + 8_000,
       squeeze: nil,
-      # rooted (a player's Entangling Roots): no moving before then, swinging still
-      rooted_until: now
+      # crowd control & DoTs from player spells and skills
+      rooted_until: now,
+      stunned_until: now,
+      slowed_until: now,
+      dots: []
     }
   end
 
@@ -133,17 +137,54 @@ defmodule BaconWorld.Mobs.Brain do
   end
 
   def tick(m, players, now, dt, _point) do
-    kind = Spawns.kind(m.kind)
-    {m, e1} = check_target(m, players, kind)
-    {m, e2} = maybe_aggro(m, players, kind)
-    {m, e0} = breathe(m, players, kind, now)
-    {m, e4} = unleash(m, players, kind, now)
-    {m, e5} = squeeze(m, players, kind, now)
-    e0 = e0 ++ e4 ++ e5
-    {m2, e3} = if now < m.busy_until, do: {%{m | vx: 0.0, vz: 0.0}, []}, else: act(m, players, kind, now, dt)
-    # rooted: it turns and swings, but stays where it is
-    m2 = if now < Map.get(m, :rooted_until, now), do: %{m2 | x: m.x, z: m.z, vx: 0.0, vz: 0.0}, else: m2
-    {m2, e1 ++ e2 ++ e0 ++ e3}
+    {m, dot_evs} = tick_dots(m, now)
+
+    if not alive?(m) do
+      {m, dot_evs}
+    else
+      kind = Spawns.kind(m.kind)
+      {m, e1} = check_target(m, players, kind)
+      {m, e2} = maybe_aggro(m, players, kind)
+      stunned? = now < Map.get(m, :stunned_until, now)
+      {m, e0} = if stunned?, do: {m, []}, else: breathe(m, players, kind, now)
+      {m, e4} = if stunned?, do: {m, []}, else: unleash(m, players, kind, now)
+      {m, e5} = if stunned?, do: {m, []}, else: squeeze(m, players, kind, now)
+      e0 = e0 ++ e4 ++ e5
+
+      {m2, e3} =
+        if stunned? or now < m.busy_until do
+          {%{m | vx: 0.0, vz: 0.0}, []}
+        else
+          act(m, players, kind, now, dt)
+        end
+
+      # rooted: it turns and swings, but stays where it is
+      m2 = if now < Map.get(m, :rooted_until, now) or stunned?, do: %{m2 | x: m.x, z: m.z, vx: 0.0, vz: 0.0}, else: m2
+      {m2, dot_evs ++ e1 ++ e2 ++ e0 ++ e3}
+    end
+  end
+
+  defp tick_dots(m, now) do
+    case Map.get(m, :dots, []) do
+      [] ->
+        {m, []}
+
+      dots ->
+        Enum.reduce(dots, {%{m | dots: []}, []}, fn d, {mob, evs} ->
+          cond do
+            not alive?(mob) ->
+              {mob, evs}
+
+            now >= d.next_ms ->
+              {mob2, hit_evs} = take_damage(mob, d.by, max(1, d.dmg), false, now)
+              kept = if d.left > 1 and alive?(mob2), do: [%{d | next_ms: now + 2_000, left: d.left - 1}], else: []
+              {%{mob2 | dots: Map.get(mob2, :dots, []) ++ kept}, evs ++ hit_evs}
+
+            true ->
+              {%{mob | dots: Map.get(mob, :dots, []) ++ [d]}, evs}
+          end
+        end)
+    end
   end
 
   @doc "True for a player too high up for the creatures (a flying mount)."
@@ -236,7 +277,9 @@ defmodule BaconWorld.Mobs.Brain do
   defp act(%{state: :chase, target: t} = m, players, kind, now, dt) do
     p = Map.fetch!(players, t)
     reach = (kind.reach + @player_radius) * @u
-    m = move(m, {p.x, p.z}, kind.run * @u, dt, reach * 0.8)
+    slowed? = now < Map.get(m, :slowed_until, now)
+    run_speed = kind.run * @u * if(slowed?, do: 0.55, else: 1.0)
+    m = move(m, {p.x, p.z}, run_speed, dt, reach * 0.8)
     m = %{m | h: Melee.heading_to({m.x, m.z}, {p.x, p.z})}
     d = dist({m.x, m.z}, {p.x, p.z})
     breath = kind[:breath]
@@ -271,15 +314,18 @@ defmodule BaconWorld.Mobs.Brain do
     m = move(m, m.home, kind.run * @u, dt, 0.0)
 
     if dist({m.x, m.z}, m.home) < 0.3 * @u,
-      do: {%{m | state: :idle, goal: nil, hp: m.max_hp, damage_by: %{}, vx: 0.0, vz: 0.0, next_think: now + Enum.random(2_000..6_000)}, []},
+      do: {%{m | state: :idle, goal: nil, hp: m.max_hp, damage_by: %{}, dots: [], vx: 0.0, vz: 0.0, next_think: now + Enum.random(2_000..6_000)}, []},
       else: {m, []}
   end
 
   defp swing(m, t, p, kind, now) do
     hit = :rand.uniform() < Melee.hit_chance(m.level, p.level || 1)
     {lo, hi} = kind.dmg
-    damage = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
-    m = %{m | next_attack: now + kind.dly_ms + Enum.random(0..300)}
+    dmg_mult = Tuning.get("mob_damage_mult")
+    raw = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
+    damage = if hit, do: max(1, round(raw * dmg_mult)), else: 0
+    slow_mult = if now < Map.get(m, :slowed_until, now), do: 1.3, else: 1.0
+    m = %{m | next_attack: now + round(kind.dly_ms * slow_mult) + Enum.random(0..300)}
 
     case kind[:moves] do
       nil ->
@@ -297,6 +343,7 @@ defmodule BaconWorld.Mobs.Brain do
     b = kind.breath
     range = b.range * @u
     {lo, hi} = b.dmg
+    dmg_mult = Tuning.get("mob_damage_mult")
 
     events =
       for {id, p} <- players,
@@ -305,7 +352,8 @@ defmodule BaconWorld.Mobs.Brain do
           not out_of_reach?(p, kind),
           Melee.in_arc?({m.x, m.z}, m.h, {p.x, p.z}, range, b.half_arc_deg * 2) do
         hit = :rand.uniform() < Melee.hit_chance(m.level, p.level || 1)
-        damage = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
+        raw = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
+        damage = if hit, do: max(1, round(raw * dmg_mult)), else: 0
         {:attack, m.id, id, hit, damage, "breath"}
       end
 
@@ -327,6 +375,7 @@ defmodule BaconWorld.Mobs.Brain do
     s = Enum.find(kind.specials, &(&1.move == sp.move))
     range = s.range * @u
     {lo, hi} = s.dmg
+    dmg_mult = Tuning.get("mob_damage_mult")
 
     events =
       for {id, p} <- players,
@@ -335,7 +384,8 @@ defmodule BaconWorld.Mobs.Brain do
           not out_of_reach?(p, kind),
           special_reaches?(m, s, sp, id, p, range) do
         hit = :rand.uniform() < Melee.hit_chance(m.level, p.level || 1)
-        damage = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
+        raw = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
+        damage = if hit, do: max(1, round(raw * dmg_mult)), else: 0
         {:attack, m.id, id, hit, damage, s.move, special_fx(s, m, hit)}
       end
 
@@ -369,7 +419,9 @@ defmodule BaconWorld.Mobs.Brain do
       {%{m | squeeze: nil}, []}
     else
       {lo, hi} = q.dmg
-      damage = Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1)))
+      dmg_mult = Tuning.get("mob_damage_mult")
+      raw = Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1)))
+      damage = max(1, round(raw * dmg_mult))
       {%{m | squeeze: %{q | next: now + 1_000, left: q.left - 1}}, [{:attack, m.id, q.target, true, damage, "squeeze"}]}
     end
   end
@@ -427,8 +479,9 @@ defmodule BaconWorld.Mobs.Brain do
   # ---------------------------------------------------------------------------
 
   @doc """
-  A player's swing. `attack` is `%{id, level, x, z, heading, item, heavy, target}`
-  (`item` a catalogue map, `target` the creature the player has selected, if any).
+  A player's swing or martial weapon skill. `attack` is
+  `%{id, level, x, z, heading, item, heavy, target}` (`item` a catalogue map,
+  `target` the creature the player has selected, if any).
   Returns `{mobs, hits, events}`; `hits` are `%{id, hit, damage, crit, killed,
   level, hp, max_hp}`.
   """
@@ -436,7 +489,9 @@ defmodule BaconWorld.Mobs.Brain do
     # a skill may sweep wider (the spin attack: everything around), reach further and
     # hit harder or softer (`sweep`, `extra_reach` metres, `mult`); buffs add `pct`
     {max_targets, arc} = attack[:sweep] || Melee.sweep(attack.item)
-    mult = (attack[:mult] || 1.0) * (1 + (attack[:pct] || 0) / 100)
+    base_mult = (attack[:mult] || 1.0) * (1 + (attack[:pct] || 0) / 100)
+    exec_mult = attack[:execute_mult] || 1.0
+    crit_bonus = attack[:crit_bonus] || 0.0
     extra = attack[:extra_reach] || 0.0
     # A big creature (the dragon) is hit at its hide, not its middle.
     reach = fn mob -> (attack.item.reach + extra + mob_radius(mob) + @player_radius + @swing_slack) * @u end
@@ -457,11 +512,14 @@ defmodule BaconWorld.Mobs.Brain do
 
     Enum.reduce(victims, {mobs, [], []}, fn mob, {acc, hits, events} ->
       if rand.() < Melee.hit_chance(attack.level, mob.level) do
-        {damage, crit} = Melee.roll_damage(attack.item, attack.level, attack.heavy, rand)
+        {damage, crit} = Melee.roll_damage(attack.item, attack.level, attack.heavy, rand, crit_bonus)
+        low_hp? = exec_mult > 1.0 and mob.max_hp > 0 and mob.hp / mob.max_hp <= 0.35
+        mult = if low_hp?, do: max(base_mult, exec_mult * (1 + (attack[:pct] || 0) / 100)), else: base_mult
         damage = if mult == 1.0, do: damage, else: max(1, round(damage * mult))
         {mob2, evs} = take_damage(mob, attack.id, damage, crit, now)
-        hit = %{id: mob.id, hit: true, damage: damage, crit: crit, killed: not alive?(mob2), level: mob.level, hp: max(mob2.hp, 0), max_hp: mob.max_hp}
-        {Map.put(acc, mob.id, mob2), hits ++ [hit], events ++ evs}
+        {mob3, cc_evs} = apply_cc(mob2, attack, damage, now)
+        hit = %{id: mob.id, hit: true, damage: damage, crit: crit, killed: not alive?(mob3), level: mob.level, hp: max(mob3.hp, 0), max_hp: mob.max_hp}
+        {Map.put(acc, mob.id, mob3), hits ++ [hit], events ++ evs ++ cc_evs}
       else
         # A miss still makes it angry.
         {mob2, evs} = provoke(mob, attack.id)
@@ -481,12 +539,118 @@ defmodule BaconWorld.Mobs.Brain do
     with %{} = mob <- mobs[attack.target] || {:error, :no_target},
          true <- alive?(mob) || {:error, :no_target},
          true <- in_spell_range?(mob, attack) || {:error, :out_of_range} do
-      {mob2, evs} = take_damage(mob, attack.id, attack.damage, attack[:crit] || false, now)
-      hit = %{id: mob.id, hit: true, damage: attack.damage, crit: attack[:crit] || false, killed: not alive?(mob2), level: mob.level, hp: max(mob2.hp, 0), max_hp: mob.max_hp}
-      {Map.put(mobs, mob.id, mob2), hit, evs}
+      dmg = max(0, attack.damage || 0)
+      {mob2, evs} = if dmg > 0, do: take_damage(mob, attack.id, dmg, attack[:crit] || false, now), else: provoke(mob, attack.id)
+      {mob3, cc_evs} = apply_cc(mob2, attack, dmg, now)
+      hit = %{id: mob.id, hit: true, damage: dmg, crit: attack[:crit] || false, killed: not alive?(mob3), level: mob.level, hp: max(mob3.hp, 0), max_hp: mob.max_hp}
+      {Map.put(mobs, mob.id, mob3), hit, evs ++ cc_evs}
     else
       err -> {mobs, err, []}
     end
+  end
+
+  @doc """
+  Area, cone or chain spell/skill against creatures (`BaconWorldWeb.SkillEvents`).
+  `attack` may specify:
+    * `:shape` - `:circle` (around `{cx, cz}` within `radius` scene units), `:cone` (from `{x, z}`
+      along `heading` within `range` and `arc` degrees), or `:chain` (starts at `target` and jumps
+      to up to `jumps` nearby creatures within `radius`).
+  Returns `{mobs, hits, events}` or `{mobs, {:error, reason}, []}`.
+  """
+  def spell_aoe(mobs, attack, now) do
+    case select_aoe_victims(mobs, attack) do
+      {:error, _} = err ->
+        {mobs, err, []}
+
+      victims ->
+        dmg = max(0, attack[:damage] || 0)
+        crit = attack[:crit] || false
+
+        Enum.reduce(victims, {mobs, [], []}, fn mob, {acc, hits, events} ->
+          {mob2, evs} = if dmg > 0, do: take_damage(mob, attack.id, dmg, crit, now), else: provoke(mob, attack.id)
+          {mob3, cc_evs} = apply_cc(mob2, attack, dmg, now)
+          hit = %{id: mob.id, hit: true, damage: dmg, crit: crit, killed: not alive?(mob3), level: mob.level, hp: max(mob3.hp, 0), max_hp: mob.max_hp}
+          {Map.put(acc, mob.id, mob3), hits ++ [hit], events ++ evs ++ cc_evs}
+        end)
+    end
+  end
+
+  defp select_aoe_victims(mobs, %{shape: :chain, target: target_id} = attack) do
+    with %{} = primary <- mobs[target_id] || {:error, :no_target},
+         true <- alive?(primary) || {:error, :no_target},
+         true <- in_spell_range?(primary, attack) || {:error, :out_of_range} do
+      jump_r = attack[:radius] || (attack[:jump_m] || attack[:radius_m] || 9.0) * @u
+      jumps = max(0, attack[:jumps] || 3)
+
+      others =
+        mobs
+        |> Map.values()
+        |> Enum.filter(&(&1.id != primary.id and alive?(&1) and dist({primary.x, primary.z}, {&1.x, &1.z}) <= jump_r + mob_radius(&1) * @u))
+        |> Enum.sort_by(&dist({primary.x, primary.z}, {&1.x, &1.z}))
+        |> Enum.take(jumps)
+
+      [primary | others]
+    end
+  end
+
+  defp select_aoe_victims(mobs, %{shape: :cone} = attack) do
+    range = attack[:range] || (attack[:range_m] || 10.0) * @u
+    arc = attack[:arc] || attack[:arc_deg] || 90
+
+    mobs
+    |> Map.values()
+    |> Enum.filter(fn mob ->
+      alive?(mob) and Melee.in_arc?({attack.x, attack.z}, attack.heading || 0.0, {mob.x, mob.z}, range + mob_radius(mob) * @u, arc)
+    end)
+    |> Enum.sort_by(&dist({attack.x, attack.z}, {&1.x, &1.z}))
+    |> Enum.take(attack[:max_targets] || 8)
+  end
+
+  defp select_aoe_victims(mobs, attack) do
+    # :circle around target (if target given) or around {cx, cz} / {x, z}
+    center =
+      cond do
+        is_binary(attack[:target]) and ((attack[:range] && attack[:range] > 0) or (attack[:range_m] && attack[:range_m] > 0)) ->
+          case mobs[attack[:target]] do
+            %{} = m ->
+              if alive?(m) and in_spell_range?(m, attack), do: {:ok, {m.x, m.z}}, else: {:error, if(alive?(m), do: :out_of_range, else: :no_target)}
+            nil ->
+              {:error, :no_target}
+          end
+
+        true ->
+          {:ok, {attack[:cx] || attack.x, attack[:cz] || attack.z}}
+      end
+
+    case center do
+      {:error, _} = err ->
+        err
+
+      {:ok, {cx, cz}} ->
+        r = attack[:radius] || (attack[:radius_m] || 6.5) * @u
+
+        mobs
+        |> Map.values()
+        |> Enum.filter(&(alive?(&1) and dist({cx, cz}, {&1.x, &1.z}) <= r + mob_radius(&1) * @u))
+        |> Enum.sort_by(&dist({cx, cz}, {&1.x, &1.z}))
+        |> Enum.take(attack[:max_targets] || 8)
+    end
+  end
+
+  @doc """
+  Taunts creatures within `attack.radius` (scene units) around `{attack.x, attack.z}`
+  to chase `attack.id`. Returns `{mobs, count, events}`.
+  """
+  def taunt(mobs, attack, _now) do
+    r = attack[:radius] || (attack[:radius_m] || 14.0) * @u
+
+    mobs
+    |> Map.values()
+    |> Enum.filter(&(alive?(&1) and dist({attack.x, attack.z}, {&1.x, &1.z}) <= r + mob_radius(&1) * @u))
+    |> Enum.reduce({mobs, 0, []}, fn mob, {acc, n, evs} ->
+      mob2 = %{chase_from_here(mob) | state: :chase, target: attack.id, goal: nil}
+      {Map.put(acc, mob.id, mob2), n + 1, evs ++ [{:aggro, mob.id, attack.id}]}
+    end)
   end
 
   @doc """
@@ -497,15 +661,99 @@ defmodule BaconWorld.Mobs.Brain do
     with %{} = mob <- mobs[attack.target] || {:error, :no_target},
          true <- alive?(mob) || {:error, :no_target},
          true <- in_spell_range?(mob, attack) || {:error, :out_of_range} do
-      ms = if Spawns.boss?(mob.kind), do: div(attack.ms, 3), else: attack.ms
-      {mob2, evs} = provoke(%{mob | rooted_until: now + ms}, attack.id)
-      {Map.put(mobs, mob.id, mob2), :ok, [{:rooted, mob.id, ms} | evs]}
+      raw_ms = attack[:ms] || attack[:root_ms] || attack[:duration_ms] || 4_000
+      ms = if Spawns.boss?(mob.kind), do: div(raw_ms, 3), else: raw_ms
+      {mob2, evs} = provoke(%{mob | rooted_until: max(Map.get(mob, :rooted_until, now), now + ms)}, attack.id)
+      {mob3, dmg_evs} =
+        if (attack[:damage] || 0) > 0 do
+          take_damage(mob2, attack.id, attack.damage, false, now)
+        else
+          {mob2, []}
+        end
+
+      {Map.put(mobs, mob.id, mob3), :ok, [{:rooted, mob.id, ms} | evs ++ dmg_evs]}
     else
       err -> {mobs, err, []}
     end
   end
 
-  defp in_spell_range?(mob, attack), do: dist({attack.x, attack.z}, {mob.x, mob.z}) <= attack.range + (mob_radius(mob) + @player_radius) * @u
+  # Applies secondary crowd-control (root, stun, slow, knockback, pull) and DoTs to a living mob.
+  defp apply_cc(mob, attack, base_dmg, now) do
+    if not alive?(mob) do
+      {mob, []}
+    else
+      eff = Map.merge(attack[:effect] || %{}, attack)
+      boss? = Spawns.boss?(mob.kind)
+      scale_cc = fn ms -> if boss?, do: div(ms, 3), else: ms end
+
+      root_ms = scale_cc.(eff[:root_ms] || 0)
+      stun_ms = scale_cc.(eff[:stun_ms] || 0)
+      slow_ms = scale_cc.(eff[:slow_ms] || 0)
+
+      mob =
+        mob
+        |> then(&if(root_ms > 0, do: %{&1 | rooted_until: max(Map.get(&1, :rooted_until, now), now + root_ms)}, else: &1))
+        |> then(&if(stun_ms > 0, do: %{&1 | stunned_until: max(Map.get(&1, :stunned_until, now), now + stun_ms), vx: 0.0, vz: 0.0}, else: &1))
+        |> then(&if(slow_ms > 0, do: %{&1 | slowed_until: max(Map.get(&1, :slowed_until, now), now + slow_ms)}, else: &1))
+
+      # Knockback or pull (bosses resist displacement)
+      mob =
+        cond do
+          boss? ->
+            mob
+
+          (eff[:knockback_m] || 0) > 0 ->
+            displace_mob(mob, {attack[:x] || mob.x, attack[:z] || mob.z}, eff.knockback_m * @u)
+
+          (eff[:pull_m] || 0) > 0 ->
+            displace_mob(mob, {attack[:cx] || attack[:x] || mob.x, attack[:cz] || attack[:z] || mob.z}, -eff.pull_m * @u)
+
+          true ->
+            mob
+        end
+
+      # DoT application
+      mob =
+        cond do
+          (eff[:dot_ticks] || 0) > 0 and (eff[:dot_dmg] || 0) > 0 ->
+            dot = %{by: attack.id, dmg: max(1, eff.dot_dmg), next_ms: now + 2_000, left: eff.dot_ticks}
+            existing = Enum.reject(Map.get(mob, :dots, []), &(&1.by == attack.id))
+            %{mob | dots: existing ++ [dot]}
+
+          (eff[:dot_ticks] || 0) > 0 and (eff[:dot_ratio] || 0.0) > 0 ->
+            tick_dmg = max(1, round(max(base_dmg, 4) * eff.dot_ratio))
+            dot = %{by: attack.id, dmg: tick_dmg, next_ms: now + 2_000, left: eff.dot_ticks}
+            existing = Enum.reject(Map.get(mob, :dots, []), &(&1.by == attack.id))
+            %{mob | dots: existing ++ [dot]}
+
+          true ->
+            mob
+        end
+
+      cc_events = if root_ms > 0 or stun_ms > 0, do: [{:rooted, mob.id, max(root_ms, stun_ms)}], else: []
+      {mob, cc_events}
+    end
+  end
+
+  defp displace_mob(mob, {ox, oz}, delta_u) do
+    dx = mob.x - ox
+    dz = mob.z - oz
+    d = :math.sqrt(dx * dx + dz * dz)
+
+    if d < 1.0e-3 do
+      mob
+    else
+      step = if delta_u < 0, do: -min(abs(delta_u), max(0.0, d - 1.5 * @u)), else: delta_u
+      {nx, nz} = keep_out_of_town(mob.x + dx / d * step, mob.z + dz / d * step)
+      deep = BaconWorld.Terrain.deep?(nx / @u, nz / @u)
+      if deep != Spawns.aquatic?(mob.kind), do: mob, else: %{mob | x: nx, z: nz}
+    end
+  end
+
+  defp in_spell_range?(mob, attack) do
+    range = attack[:range] || (attack[:range_m] || 22.0) * @u
+    dist({attack.x, attack.z}, {mob.x, mob.z}) <= range + (mob_radius(mob) + @player_radius) * @u
+  end
 
   defp mob_radius(%{kind: kind}), do: if(Map.has_key?(Spawns.kinds(), kind), do: Spawns.radius(kind), else: @mob_radius)
 
@@ -548,7 +796,7 @@ defmodule BaconWorld.Mobs.Brain do
       looter_since: now
     }
 
-    mob = mob |> Map.put(:special, nil) |> Map.put(:squeeze, nil)
+    mob = mob |> Map.put(:special, nil) |> Map.put(:squeeze, nil) |> Map.put(:dots, [])
     {%{mob | state: :dead, hp: 0, target: nil, goal: nil, vx: 0.0, vz: 0.0, corpse: corpse}, [{:died, mob.id, killer}]}
   end
 

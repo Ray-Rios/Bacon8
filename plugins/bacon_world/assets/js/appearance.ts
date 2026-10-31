@@ -7,6 +7,7 @@
 // sliders drive a pair: weight -1..1 -> Weight_Thin / Weight_Heavy.
 
 export type Body = 'male' | 'female';
+export type ScarStyle = 'none' | 'cheek' | 'body' | 'battle';
 
 export interface Appearance {
   v: 1;
@@ -18,6 +19,7 @@ export interface Appearance {
   brows: string | null; // null: follows the hair colour
   hair: { style: string; color: string };
   facial: { style: string; color: string }; // male only ("none" for female)
+  scars?: ScarStyle;
 }
 
 export type ShapeKey =
@@ -112,6 +114,7 @@ export function defaultAppearance(body: Body = 'male'): Appearance {
     brows: null,
     hair: { style: body === 'male' ? 'Short' : 'Lob', color: '#2B1E14' },
     facial: { style: 'none', color: '#2B1E14' },
+    scars: 'none',
   };
 }
 
@@ -145,6 +148,7 @@ export function normalizeAppearance(raw: unknown, fallbackBody: Body = 'male'): 
     brows: r.brows == null ? null : color(r.brows, d.hair.color),
     hair: { style: style(r.hair?.style, d.hair.style), color: color(r.hair?.color, d.hair.color) },
     facial: body === 'female' ? { style: 'none', color: color(r.facial?.color, d.facial.color) } : { style: style(r.facial?.style, 'none'), color: color(r.facial?.color, d.facial.color) },
+    scars: (r.scars && ['none', 'cheek', 'body', 'battle'].includes(r.scars)) ? r.scars : 'none',
   };
 }
 

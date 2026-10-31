@@ -17,8 +17,10 @@ defmodule BaconWorldWeb.SkillEvents do
 
   Pushed: `"cast_result"` `%{ability, ok, reason?, hits?, progress?, cooldown_ms}`,
   `"zone_cast"` (someone's cast, for its look: `phase` "begin", "cancel", "launch"
-  (a projectile, with `travel_ms`), "land"; `"spin"`), `"healed"` (someone healed
-  you), and `"world_position_corrected"` for Recall.
+  (a projectile, with `travel_ms`), "land", "aoe", "cone", "chain", "shield",
+  "buff", "dash", "spin", "strike", "taunt"), `"healed"` (someone healed you),
+  `"stats_sheet"` (updated character combat readout), and
+  `"world_position_corrected"` for Recall and dashes/leaps/blinks.
 
   Spell damage lands after the projectile's flight (`{:spell_land, ...}`); a heal on
   another player is applied by that player's LiveView (`{:player_heal, ...}` on the
@@ -28,7 +30,7 @@ defmodule BaconWorldWeb.SkillEvents do
   import Phoenix.LiveView, only: [push_event: 3]
   import Phoenix.Component, only: [assign: 2]
 
-  alias BaconWorld.{Abilities, Combat, Items, Mobs, Skills, World}
+  alias BaconWorld.{Abilities, Combat, Items, Melee, Mobs, Skills, Terrain, Tuning, Water, World}
   alias BaconWorld.Mobs.Brain
   alias BaconWorldWeb.GameEvents
   alias Phoenix.PubSub
@@ -37,12 +39,71 @@ defmodule BaconWorldWeb.SkillEvents do
   @interrupt_m 0.6
 
   # ---------------------------------------------------------------------------
+  # Active combat buffs & stats sheet helper
+  # ---------------------------------------------------------------------------
+
+  @doc "Returns active temporary combat buffs on the socket, expiring old ones."
+  def active_buffs(socket) do
+    now = System.monotonic_time(:millisecond)
+    raw = socket.assigns[:combat_buffs] || %{}
+
+    %{
+      shield: if((raw[:shield_until] || 0) > now, do: max(0, raw[:shield] || 0), else: 0),
+      ac: if((raw[:ac_until] || 0) > now, do: raw[:ac] || 0, else: 0),
+      dmg_pct: if((raw[:dmg_until] || 0) > now, do: raw[:dmg_pct] || 0, else: 0),
+      crit: if((raw[:crit_until] || 0) > now, do: raw[:crit] || 0.0, else: 0.0)
+    }
+  end
+
+  @doc "Absorbs incoming damage with an active shield buff. Returns `{remaining_damage, socket}`."
+  def absorb_shield(socket, damage) when is_integer(damage) and damage > 0 do
+    now = System.monotonic_time(:millisecond)
+    raw = socket.assigns[:combat_buffs] || %{}
+    shield = if (raw[:shield_until] || 0) > now, do: max(0, raw[:shield] || 0), else: 0
+
+    if shield <= 0 do
+      {damage, socket}
+    else
+      used = min(shield, damage)
+      left = shield - used
+      new_raw = Map.put(raw, :shield, left)
+      socket = assign(socket, combat_buffs: new_raw) |> push_stats_sheet()
+      {damage - used, socket}
+    end
+  end
+
+  def absorb_shield(socket, damage), do: {damage, socket}
+
+  @doc "Computes and pushes the live character stats sheet to the client."
+  def push_stats_sheet(socket) do
+    case character(socket) do
+      {:ok, c} ->
+        eq = socket.assigns[:equipment] || %{}
+        level = socket.assigns[:level] || World.stat(c, "level")
+        buffs = active_buffs(socket)
+
+        skill_bonuses = %{
+          "hp" => Skills.bonus(c, "hp"),
+          "mp" => Skills.bonus(c, "mp"),
+          "melee_pct" => Skills.bonus(c, "melee_pct"),
+          "spell_pct" => Skills.bonus(c, "spell_pct")
+        }
+
+        sheet = Melee.stats_sheet(eq, level, skill_bonuses, buffs)
+        push_event(socket, "stats_sheet", sheet)
+
+      _ ->
+        socket
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # The tree and the hotbars
   # ---------------------------------------------------------------------------
 
   def handle_event("skills_fetch", _params, socket) do
     case character(socket) do
-      {:ok, c} -> {:reply, Map.put(Skills.payload(c), :ok, true), socket}
+      {:ok, c} -> {:reply, Map.put(Skills.payload(c), :ok, true), push_stats_sheet(socket)}
       _ -> {:reply, %{ok: false}, socket}
     end
   end
@@ -51,7 +112,7 @@ defmodule BaconWorldWeb.SkillEvents do
     with {:ok, c} <- character(socket),
          {:ok, payload} <- Skills.learn(c.id, node) do
       {:ok, c} = World.fetch_character(c.id)
-      socket = refresh_pools(socket, c)
+      socket = socket |> refresh_pools(c) |> push_stats_sheet()
       {:reply, Map.put(payload, :ok, true), socket}
     else
       {:error, msg} when is_binary(msg) -> {:reply, %{ok: false, error: msg}, socket}
@@ -92,7 +153,7 @@ defmodule BaconWorldWeb.SkillEvents do
         token = make_ref()
         Process.send_after(self(), {:cast_complete, token}, a.cast_ms)
         cast = %{ability: id, token: token, from: {me.position.x, me.position.z}, target: target, heading: heading}
-        broadcast(socket, %{character_id: me.character_id, ability: id, phase: "begin", target: target, cast_ms: a.cast_ms})
+        broadcast(socket, %{character_id: me.character_id, ability: id, phase: "begin", target: target, cast_ms: a.cast_ms, school: a.school})
         {:reply, %{ok: true, cast_ms: a.cast_ms}, assign(socket, casting: cast)}
       else
         socket = complete(socket, a, target, heading)
@@ -164,10 +225,11 @@ defmodule BaconWorldWeb.SkillEvents do
     end
   end
 
+  # 1. Recall
   defp effect(socket, c, me, %{effect: %{type: "recall"}} = a, _target, _heading) do
     socket = BaconWorldWeb.MountEvents.dismount(socket)
     dest = bind_point(c)
-    broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", from: [me.position.x, me.position.y, me.position.z], to: [dest.x, dest.y, dest.z]})
+    broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", from: [me.position.x, me.position.y, me.position.z], to: [dest.x, dest.y, dest.z], school: a.school})
     World.save_position(c.user_id, c.id, (me[:zone] && me.zone.slug) || "lobby", dest)
 
     socket
@@ -179,49 +241,428 @@ defmodule BaconWorldWeb.SkillEvents do
     |> result(a, %{})
   end
 
-  defp effect(socket, c, me, %{effect: %{type: "heal"}} = a, target, _heading) do
-    amount = round(Abilities.amount(a, World.stat(c, "level")) * (1 + Skills.bonus(c, "spell_pct") / 100))
+  # 2. Direct Heal & Heal-over-Time
+  defp effect(socket, c, me, %{effect: %{type: "heal"} = e} = a, target, _heading) do
+    buffs = active_buffs(socket)
+    pct = Skills.bonus(c, "spell_pct") + buffs.dmg_pct
+    amount = max(1, round(Abilities.amount(a, World.stat(c, "level")) * (1 + pct / 100)))
+    hot_ticks = e[:hot_ticks] || 0
+    socket = apply_self_buffs(socket, c, e)
+
+    socket =
+      if hot_ticks > 0 do
+        ratio = if (e[:hot_ratio] || 0.0) > 0, do: e.hot_ratio, else: 0.3
+        tick_amt = max(1, round(amount * ratio))
+        Process.send_after(self(), {:hot_tick, target || me.character_id, tick_amt, hot_ticks}, 2_000)
+        socket
+      else
+        socket
+      end
 
     if target in [nil, me.character_id] do
-      broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", target: me.character_id, amount: amount})
+      broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", target: me.character_id, amount: amount, school: a.school})
       socket |> heal(amount, nil) |> result(a, %{amount: amount, target: me.character_id})
     else
       if topic = socket.assigns[:current_zone_topic] do
         PubSub.broadcast(Bacon8.PubSub, topic, {:player_heal, %{target_id: target, amount: amount, from_id: me.character_id, from_name: me.name}})
       end
 
-      broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", target: target, amount: amount})
+      broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", target: target, amount: amount, school: a.school})
       result(socket, a, %{amount: amount, target: target})
     end
   end
 
-  defp effect(socket, c, me, %{effect: %{type: "damage"} = e} = a, target, _heading) do
-    pct = Skills.bonus(c, "spell_pct")
-    base = Abilities.amount(a, World.stat(c, "level")) * (1 + pct / 100)
-    crit = :rand.uniform() < 0.06
-    damage = max(1, round(base * (1 - e.spread + :rand.uniform() * 2 * e.spread) * if(crit, do: 1.5, else: 1.0)))
-    travel_ms = travel_ms(socket, me, target, e.speed_m)
-    broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "launch", target: target, travel_ms: travel_ms})
+  # 3. Single-target Spell Damage (projectiles & beams) & Drain
+  defp effect(socket, c, me, %{effect: %{type: type} = e} = a, target, _heading) when type in ["damage", "drain"] do
+    socket = apply_self_buffs(socket, c, e)
+    {damage, crit} = roll_spell_damage(socket, c, a, e)
+    speed = e[:speed_m] || 22.0
+    travel_ms = if speed > 0, do: travel_ms(socket, me, target, speed), else: 80
+    broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "launch", target: target, travel_ms: travel_ms, school: a.school})
     Process.send_after(self(), {:spell_land, %{ability: a.id, target: target, damage: damage, crit: crit}}, travel_ms)
     socket
   end
 
-  defp effect(socket, _c, me, %{effect: %{type: "root"} = e} = a, target, _heading) do
-    attack = %{id: me.character_id, target: target, ms: e.ms, x: me.position.x, z: me.position.z, range: a.range_m * 1.15 * Brain.u()}
+  # 4. Area of Effect (self-centered nova or target-centered storm/meteor/eruption)
+  defp effect(socket, c, me, %{effect: %{type: "aoe"} = e} = a, target, _heading) do
+    socket = apply_self_buffs(socket, c, e)
+    {cx, cz} = aoe_center(socket, me, target)
+    {damage, crit} = roll_spell_damage(socket, c, a, e)
+    radius_m = e[:radius_m] || 5.5
 
-    case Mobs.root(zone(socket), attack) do
-      :ok ->
-        broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", target: target})
-        result(socket, a, %{target: target})
+    broadcast(socket, %{
+      character_id: me.character_id,
+      ability: a.id,
+      phase: "aoe",
+      target: target,
+      x: cx,
+      z: cz,
+      radius_m: radius_m,
+      school: a.school
+    })
 
-      {:error, reason} ->
-        push_event(socket, "cast_result", %{ability: a.id, ok: false, reason: to_string(reason)})
+    drain = drain_fraction(e)
+
+    socket =
+      if drain > 0 and damage > 0 do
+        heal(socket, max(1, round(damage * drain)), nil)
+      else
+        socket
+      end
+
+    attack = %{
+      id: me.character_id,
+      shape: :circle,
+      x: cx,
+      z: cz,
+      radius_m: radius_m,
+      max_targets: e[:max] || 6,
+      damage: damage,
+      crit: crit,
+      effect: e
+    }
+
+    case Mobs.spell_aoe(zone(socket), attack) do
+      {:ok, hits} ->
+        {socket, progress} = GameEvents.award_kills(socket, hits)
+        result(socket, a, %{hits: hits, progress: progress})
+
+      _ ->
+        result(socket, a, %{hits: []})
     end
   end
 
+  # 5. Frontal Cone (Dragon's Breath, Cone of Cold, Gust, Crimson Tide, Tidal Wave, Chi Burst, etc.)
+  defp effect(socket, c, me, %{effect: %{type: "cone"} = e} = a, _target, heading) do
+    socket = apply_self_buffs(socket, c, e)
+    {damage, crit} = roll_spell_damage(socket, c, a, e)
+    arc = e[:arc] || 100
+    range_m = max(a.range_m, 4.0)
+
+    broadcast(socket, %{
+      character_id: me.character_id,
+      ability: a.id,
+      phase: "cone",
+      heading: heading,
+      range_m: range_m,
+      arc: arc,
+      school: a.school
+    })
+
+    drain = drain_fraction(e)
+
+    socket =
+      if drain > 0 and damage > 0 do
+        heal(socket, max(1, round(damage * drain)), nil)
+      else
+        socket
+      end
+
+    attack = %{
+      id: me.character_id,
+      shape: :cone,
+      x: me.position.x,
+      z: me.position.z,
+      heading: heading,
+      range_m: range_m,
+      arc_deg: arc,
+      max_targets: e[:max] || 5,
+      damage: damage,
+      crit: crit,
+      effect: e
+    }
+
+    case Mobs.spell_aoe(zone(socket), attack) do
+      {:ok, hits} ->
+        {socket, progress} = GameEvents.award_kills(socket, hits)
+        result(socket, a, %{hits: hits, progress: progress})
+
+      _ ->
+        result(socket, a, %{hits: []})
+    end
+  end
+
+  # 6. Chain (Chain Lightning, Chain Heal, Thorn Volley, Multi-Shot, Spiked Shield)
+  defp effect(socket, c, me, %{effect: %{type: "chain"} = e} = a, target, _heading) do
+    {damage, crit} = roll_spell_damage(socket, c, a, e)
+
+    socket =
+      if heal_pct = e[:heal_pct] do
+        heal(socket, max(1, round(damage * heal_pct)), nil)
+      else
+        socket
+      end
+
+    attack = %{
+      id: me.character_id,
+      shape: :chain,
+      target: target,
+      x: me.position.x,
+      z: me.position.z,
+      range_m: max(a.range_m, 6.0),
+      jumps: e[:jumps] || 3,
+      jump_m: e[:jump_m] || 8.0,
+      damage: damage,
+      crit: crit,
+      effect: e
+    }
+
+    case Mobs.spell_aoe(zone(socket), attack) do
+      {:ok, hits} when hits != [] ->
+        broadcast(socket, %{
+          character_id: me.character_id,
+          ability: a.id,
+          phase: "chain",
+          target: target,
+          targets: Enum.map(hits, & &1.id),
+          school: a.school
+        })
+
+        {socket, progress} = GameEvents.award_kills(socket, hits)
+        result(socket, a, %{hits: hits, progress: progress})
+
+      {:error, reason} ->
+        push_event(socket, "cast_result", %{ability: a.id, ok: false, reason: to_string(reason)})
+
+      _ ->
+        push_event(socket, "cast_result", %{ability: a.id, ok: false, reason: "out_of_range"})
+    end
+  end
+
+  # 7. Root (single-target Entangling Roots / Throw Net, or AoE Frost Nova / Quicksand / Traps)
+  defp effect(socket, c, me, %{effect: %{type: "root"} = e} = a, target, _heading) do
+    if a.target == "self" or is_nil(target) do
+      {damage, crit} = roll_spell_damage(socket, c, a, e)
+      radius_m = e[:radius_m] || 5.5
+
+      broadcast(socket, %{
+        character_id: me.character_id,
+        ability: a.id,
+        phase: "aoe",
+        x: me.position.x,
+        z: me.position.z,
+        radius_m: radius_m,
+        school: a.school
+      })
+
+      attack = %{
+        id: me.character_id,
+        shape: :circle,
+        x: me.position.x,
+        z: me.position.z,
+        radius_m: radius_m,
+        max_targets: e[:max] || 6,
+        damage: damage,
+        crit: crit,
+        effect: Map.put(e, :root_ms, e[:ms] || 4_000)
+      }
+
+      case Mobs.spell_aoe(zone(socket), attack) do
+        {:ok, hits} ->
+          {socket, progress} = GameEvents.award_kills(socket, hits)
+          result(socket, a, %{hits: hits, progress: progress})
+
+        _ ->
+          result(socket, a, %{hits: []})
+      end
+    else
+      attack = %{id: me.character_id, target: target, ms: e.ms, x: me.position.x, z: me.position.z, range: a.range_m * 1.15 * Brain.u()}
+
+      case Mobs.root(zone(socket), attack) do
+        :ok ->
+          broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", target: target, school: a.school})
+          result(socket, a, %{target: target})
+
+        {:error, reason} ->
+          push_event(socket, "cast_result", %{ability: a.id, ok: false, reason: to_string(reason)})
+      end
+    end
+  end
+
+  # 8. Stun (single-target Deep Freeze / Hex of Slumber / Fear, or AoE Shadowfury / Intimidating Shout)
+  defp effect(socket, c, me, %{effect: %{type: "stun"} = e} = a, target, _heading) do
+    {damage, crit} = roll_spell_damage(socket, c, a, e)
+    eff = Map.put(e, :stun_ms, e[:ms] || 3_000)
+
+    if a.target == "self" or is_nil(target) do
+      radius_m = e[:radius_m] || 6.0
+
+      broadcast(socket, %{
+        character_id: me.character_id,
+        ability: a.id,
+        phase: "aoe",
+        x: me.position.x,
+        z: me.position.z,
+        radius_m: radius_m,
+        school: a.school
+      })
+
+      attack = %{
+        id: me.character_id,
+        shape: :circle,
+        x: me.position.x,
+        z: me.position.z,
+        radius_m: radius_m,
+        max_targets: e[:max] || 5,
+        damage: damage,
+        crit: crit,
+        effect: eff
+      }
+
+      case Mobs.spell_aoe(zone(socket), attack) do
+        {:ok, hits} ->
+          {socket, progress} = GameEvents.award_kills(socket, hits)
+          result(socket, a, %{hits: hits, progress: progress})
+
+        _ ->
+          result(socket, a, %{hits: []})
+      end
+    else
+      attack = %{
+        id: me.character_id,
+        target: target,
+        damage: damage,
+        crit: crit,
+        x: me.position.x,
+        z: me.position.z,
+        range: a.range_m * 1.2 * Brain.u(),
+        effect: eff
+      }
+
+      case Mobs.spell_hit(zone(socket), attack) do
+        %{} = hit ->
+          broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", target: target, school: a.school})
+          {socket, progress} = GameEvents.award_kills(socket, [hit])
+          result(socket, a, %{hits: [hit], progress: progress, target: target})
+
+        {:error, reason} ->
+          push_event(socket, "cast_result", %{ability: a.id, ok: false, reason: to_string(reason)})
+      end
+    end
+  end
+
+  # 9. Protective Shield / Ward (Ice Barrier, Mana Shield, Divine Shield, Barkskin, Stoneskin, Shield Wall, etc.)
+  defp effect(socket, c, me, %{effect: %{type: "shield"} = e} = a, _target, _heading) do
+    ms = non_zero(e[:duration_ms], e[:ms], 10_000)
+    pct = Skills.bonus(c, "spell_pct")
+    shield_amt = max(5, round(Abilities.amount(a, World.stat(c, "level")) * (1 + pct / 100)))
+    e_with_shield = Map.put(e, :shield_hp, shield_amt) |> Map.put(:duration_ms, ms)
+
+    broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "shield", ms: ms, school: a.school})
+
+    socket
+    |> apply_self_buffs(c, e_with_shield)
+    |> push_stats_sheet()
+    |> result(a, %{shield: shield_amt, ms: ms})
+  end
+
+  # 10. Temporary Combat Buff / Stance / Shout / Meditation
+  defp effect(socket, c, me, %{effect: %{type: "buff_temp"} = e} = a, _target, _heading) do
+    ms = non_zero(e[:duration_ms], e[:ms], 10_000)
+    socket = apply_self_buffs(socket, c, Map.put(e, :duration_ms, ms))
+
+    heal_amt = Abilities.amount(a, World.stat(c, "level"))
+
+    socket =
+      cond do
+        heal_amt > 0 ->
+          heal(socket, heal_amt, nil)
+
+        (e[:hp_pct] || 0) > 0 ->
+          max_hp = World.stat(c, "max_hp")
+          heal(socket, max(1, round(max_hp * e.hp_pct / 100)), nil)
+
+        true ->
+          socket
+      end
+
+    hot_ticks = e[:hot_ticks] || 0
+
+    if hot_ticks > 0 do
+      base_h = if heal_amt > 0, do: heal_amt, else: 20
+      ratio = if (e[:hot_ratio] || 0.0) > 0, do: e.hot_ratio, else: 0.35
+      Process.send_after(self(), {:hot_tick, me.character_id, max(1, round(base_h * ratio)), hot_ticks}, 2_000)
+    end
+
+    broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "buff", ms: ms, school: a.school})
+
+    socket
+    |> push_stats_sheet()
+    |> result(a, %{ms: ms})
+  end
+
+  # 11. Dash / Leap / Blink / Charge / Disengage / Dragoon Dive
+  defp effect(socket, c, me, %{effect: %{type: "dash"} = e} = a, target, heading) do
+    socket = apply_self_buffs(socket, c, e)
+    u = Brain.u()
+    dash_m = e[:dash_m] || 8.0
+    dir = if dash_m >= 0, do: 1.0, else: -1.0
+    dist_m = abs(dash_m)
+    sin = :math.sin(heading) * dir
+    cos = :math.cos(heading) * dir
+
+    {tx, ty, tz} = dash_destination(me.position, sin, cos, dist_m, u)
+    dest = %{x: tx, y: ty, z: tz, heading: heading}
+
+    broadcast(socket, %{
+      character_id: me.character_id,
+      ability: a.id,
+      phase: "dash",
+      from: [me.position.x, me.position.y, me.position.z],
+      to: [tx, ty, tz],
+      school: a.school
+    })
+
+    socket =
+      socket
+      |> assign(
+        current_character_runtime: Map.put(me, :position, dest),
+        last_world_update_ms: System.monotonic_time(:millisecond)
+      )
+      |> push_event("world_position_corrected", dest)
+
+    # If the dash also strikes on arrival (Lunge, Leap Slam, Dragoon Dive, Shield Charge, Flying Kick, Charge)
+    if (e[:mult] && e.mult > 1.0) or (e[:base] && e.base > 0) or (e[:stun_ms] && e.stun_ms > 0) or (e[:slow_ms] && e.slow_ms > 0) do
+      eq = socket.assigns[:equipment] || %{}
+      item = eq["main"] || Items.fist()
+      buffs = active_buffs(socket)
+
+      attack = %{
+        id: me.character_id,
+        level: socket.assigns[:level] || 1,
+        x: tx,
+        z: tz,
+        heading: heading,
+        item: item,
+        heavy: false,
+        target: target,
+        sweep: {e[:max] || 3, e[:arc] || 180},
+        mult: e[:mult] || 1.25,
+        extra_reach: e[:reach_m] || e[:radius_m] || 2.2,
+        pct: Skills.bonus(c, "melee_pct") + buffs.dmg_pct,
+        crit_bonus: buffs.crit,
+        effect: e
+      }
+
+      case Mobs.melee(zone(socket), attack) do
+        {:ok, hits} ->
+          {socket, progress} = GameEvents.award_kills(socket, hits)
+          result(socket, a, %{hits: hits, progress: progress})
+
+        _ ->
+          result(socket, a, %{hits: []})
+      end
+    else
+      result(socket, a, %{})
+    end
+  end
+
+  # 12. 360-degree or Wide Spin Attack
   defp effect(socket, c, me, %{effect: %{type: "spin"} = e} = a, _target, heading) do
+    socket = apply_self_buffs(socket, c, e)
     eq = socket.assigns[:equipment] || %{}
     item = eq["main"] || Items.fist()
+    buffs = active_buffs(socket)
 
     attack = %{
       id: me.character_id,
@@ -235,10 +676,12 @@ defmodule BaconWorldWeb.SkillEvents do
       sweep: {e.max, 360},
       mult: e.mult,
       extra_reach: e.reach_m,
-      pct: Skills.bonus(c, "melee_pct")
+      pct: Skills.bonus(c, "melee_pct") + buffs.dmg_pct,
+      crit_bonus: buffs.crit,
+      effect: e
     }
 
-    broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "spin"})
+    broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "spin", school: a.school})
 
     case Mobs.melee(zone(socket), attack) do
       {:ok, hits} ->
@@ -250,19 +693,125 @@ defmodule BaconWorldWeb.SkillEvents do
     end
   end
 
+  # 13. Martial / Weapon Strike & Ranged Shot
+  defp effect(socket, c, me, %{effect: %{type: "strike"} = e} = a, target, heading) do
+    socket = apply_self_buffs(socket, c, e)
+    eq = socket.assigns[:equipment] || %{}
+    item = eq["main"] || Items.fist()
+    buffs = active_buffs(socket)
+    extra_reach = max(e[:reach_m] || 1.2, a.range_m - 2.0)
+
+    attack = %{
+      id: me.character_id,
+      level: socket.assigns[:level] || 1,
+      x: me.position.x,
+      z: me.position.z,
+      heading: heading,
+      item: item,
+      heavy: false,
+      target: target,
+      sweep: {e[:max] || 1, e[:arc] || 105},
+      mult: e[:mult] || 1.35,
+      extra_reach: extra_reach,
+      execute_mult: e[:execute_mult],
+      pct: Skills.bonus(c, "melee_pct") + buffs.dmg_pct,
+      crit_bonus: buffs.crit,
+      effect: e
+    }
+
+    broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "strike", target: target, range_m: a.range_m, school: a.school})
+
+    case Mobs.melee(zone(socket), attack) do
+      {:ok, hits} ->
+        drain = drain_fraction(e)
+
+        socket =
+          if drain > 0 do
+            dealt = Enum.reduce(hits, 0, fn h, acc -> acc + (h[:damage] || 0) end)
+            if dealt > 0, do: heal(socket, max(1, round(dealt * drain)), nil), else: socket
+          else
+            socket
+          end
+
+        {socket, progress} = GameEvents.award_kills(socket, hits)
+        result(socket, a, %{hits: hits, progress: progress})
+
+      _ ->
+        result(socket, a, %{hits: []})
+    end
+  end
+
+  # 14. Taunt / Challenge
+  defp effect(socket, c, me, %{effect: %{type: "taunt"} = e} = a, target, _heading) do
+    socket = apply_self_buffs(socket, c, e)
+
+    attack = %{
+      id: me.character_id,
+      target: target,
+      x: me.position.x,
+      z: me.position.z,
+      radius_m: e[:radius_m] || max(a.range_m, 8.0),
+      max: e[:max] || 1,
+      effect: e
+    }
+
+    broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "taunt", target: target, school: a.school})
+
+    case Mobs.taunt(zone(socket), attack) do
+      {:ok, ids} ->
+        result(socket, a, %{taunted: ids})
+
+      _ ->
+        result(socket, a, %{taunted: []})
+    end
+  end
+
   defp effect(socket, _c, _me, a, _target, _heading), do: result(socket, a, %{})
 
-  @doc "A fireball's flight is over: it hits (or the creature got away)."
+  @doc "A projectile's flight is over: it hits (or the creature got away)."
   def spell_land(%{ability: id, target: target, damage: damage, crit: crit}, socket) do
     a = Abilities.get(id)
     me = runtime(socket)
 
-    if me do
+    if me && a do
       # the creature may have moved during the flight: some slack on the range
-      attack = %{id: me.character_id, target: target, damage: damage, crit: crit, x: me.position.x, z: me.position.z, range: a.range_m * 1.3 * Brain.u()}
+      attack = %{
+        id: me.character_id,
+        target: target,
+        damage: damage,
+        crit: crit,
+        x: me.position.x,
+        z: me.position.z,
+        range: max(a.range_m, 5.0) * 1.3 * Brain.u(),
+        effect: a.effect
+      }
 
       case Mobs.spell_hit(zone(socket), attack) do
         %{} = hit ->
+          drain = drain_fraction(a.effect)
+
+          socket =
+            if drain > 0 and damage > 0 do
+              heal(socket, max(1, round(damage * drain)), nil)
+            else
+              socket
+            end
+
+          socket =
+            if (a.effect[:hot_ticks] || 0) > 0 and damage > 0 do
+              Process.send_after(self(), {:hot_tick, me.character_id, max(1, round(damage * 0.25)), a.effect.hot_ticks}, 2_000)
+              socket
+            else
+              socket
+            end
+
+          socket =
+            if (a.effect[:mp_restore] || 0) > 0 do
+              restore_mp(socket, me.character_id, a.effect.mp_restore)
+            else
+              socket
+            end
+
           {socket, progress} = GameEvents.award_kills(socket, [hit])
           result(socket, a, %{hits: [hit], progress: progress})
 
@@ -272,6 +821,32 @@ defmodule BaconWorldWeb.SkillEvents do
     else
       socket
     end
+  end
+
+  @doc "A periodic heal-over-time tick."
+  def hot_tick(target_id, amount, left, socket) do
+    me = runtime(socket)
+
+    socket =
+      if me && !socket.assigns[:is_dead?] do
+        if target_id in [nil, me.character_id] do
+          heal(socket, amount, nil)
+        else
+          if topic = socket.assigns[:current_zone_topic] do
+            PubSub.broadcast(Bacon8.PubSub, topic, {:player_heal, %{target_id: target_id, amount: amount, from_id: me.character_id, from_name: me.name}})
+          end
+
+          socket
+        end
+      else
+        socket
+      end
+
+    if left > 1 && me && !socket.assigns[:is_dead?] do
+      Process.send_after(self(), {:hot_tick, target_id, amount, left - 1}, 2_000)
+    end
+
+    socket
   end
 
   @doc "Someone healed a player: the target's LiveView applies it."
@@ -289,6 +864,111 @@ defmodule BaconWorldWeb.SkillEvents do
   def zone_cast(payload, socket), do: push_event(socket, "zone_cast", payload)
 
   # ---------------------------------------------------------------------------
+
+  defp non_zero(a, b, fallback) do
+    cond do
+      is_number(a) and a > 0 -> a
+      is_number(b) and b > 0 -> b
+      true -> fallback
+    end
+  end
+
+  defp drain_fraction(e) do
+    raw = e[:drain_pct] || e[:self_heal_pct] || e[:heal_pct] || 0
+
+    cond do
+      raw <= 0 -> 0.0
+      raw > 1.0 -> raw / 100.0
+      true -> raw * 1.0
+    end
+  end
+
+  defp apply_self_buffs(socket, _c, e) do
+    now = System.monotonic_time(:millisecond)
+    ms = non_zero(e[:duration_ms], e[:ms], 10_000)
+    raw = socket.assigns[:combat_buffs] || %{}
+
+    shield_hp = non_zero(e[:shield_hp], 0, 0)
+    ac_bonus = if (e[:temp_ac] || 0) != 0, do: e[:temp_ac], else: e[:ac] || e[:ac_bonus] || 0
+    dmg_pct = if (e[:temp_dmg_pct] || 0) != 0, do: e[:temp_dmg_pct], else: e[:dmg_pct] || 0
+    crit_bonus = if (e[:temp_crit] || 0.0) > 0, do: e[:temp_crit], else: e[:crit_bonus] || 0.0
+
+    new_buffs =
+      raw
+      |> then(&if(shield_hp > 0, do: Map.merge(&1, %{shield: shield_hp, shield_until: now + ms}), else: &1))
+      |> then(&if(ac_bonus != 0, do: Map.merge(&1, %{ac: ac_bonus, ac_until: now + ms}), else: &1))
+      |> then(&if(dmg_pct != 0, do: Map.merge(&1, %{dmg_pct: dmg_pct, dmg_until: now + ms}), else: &1))
+      |> then(&if(crit_bonus > 0, do: Map.merge(&1, %{crit: crit_bonus, crit_until: now + ms}), else: &1))
+
+    socket = if new_buffs != raw, do: assign(socket, combat_buffs: new_buffs), else: socket
+
+    if (e[:mp_restore] || 0) > 0 and runtime(socket) do
+      restore_mp(socket, runtime(socket).character_id, e.mp_restore)
+    else
+      socket
+    end
+  end
+
+  defp roll_spell_damage(socket, c, a, e) do
+    buffs = active_buffs(socket)
+    pct = Skills.bonus(c, "spell_pct") + buffs.dmg_pct
+    base = Abilities.amount(a, World.stat(c, "level")) * (1 + pct / 100)
+
+    if base <= 0 do
+      {0, false}
+    else
+      spread = e[:spread] || 0.15
+      crit_chance = Tuning.get("spell_crit_chance") + buffs.crit
+      crit_mult = Tuning.get("spell_crit_mult")
+      crit = :rand.uniform() < crit_chance
+      damage = max(1, round(base * (1 - spread + :rand.uniform() * 2 * spread) * if(crit, do: crit_mult, else: 1.0)))
+      {damage, crit}
+    end
+  end
+
+  defp aoe_center(socket, me, target) do
+    if is_binary(target) and target != "" do
+      case Enum.find(Mobs.snapshot(zone(socket)) |> List.wrap(), &(&1[:id] == target)) do
+        %{x: mx, z: mz} -> {mx * 1.0, mz * 1.0}
+        _ -> {me.position.x, me.position.z}
+      end
+    else
+      {me.position.x, me.position.z}
+    end
+  end
+
+  defp dash_destination(pos, sin, cos, dist_m, u) do
+    # Step along the ray in 1m increments so we stop before unwalkable water/cliffs
+    steps = max(1, round(dist_m))
+    step_m = dist_m / steps
+
+    {fx, fz} =
+      Enum.reduce_while(1..steps, {pos.x, pos.z}, fn i, {last_x, last_z} ->
+        nx = pos.x + sin * (i * step_m) * u
+        nz = pos.z + cos * (i * step_m) * u
+
+        if Water.walkable?(nx / u, nz / u) do
+          {:cont, {nx, nz}}
+        else
+          {:halt, {last_x, last_z}}
+        end
+      end)
+
+    fy = Terrain.surface_units(fx, fz, u)
+    {fx, fy, fz}
+  end
+
+  defp restore_mp(socket, character_id, amount) do
+    case Combat.get_character_stats(character_id) do
+      {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}} ->
+        new_mp = min(max_mp, mp + amount)
+        {:ok, _} = Combat.update_character_hp_mp(character_id, hp, new_mp)
+        push_event(socket, "character_stats_update", %{hp: hp, max_hp: max_hp, mp: new_mp, max_mp: max_mp})
+
+      _ ->
+        socket
+    end
+  end
 
   defp heal(socket, amount, from) do
     me = runtime(socket)
@@ -357,7 +1037,7 @@ defmodule BaconWorldWeb.SkillEvents do
     # where the creature is now (the zone's last snapshot is enough for a flight time)
     with %{} = mob <- Enum.find(Mobs.snapshot(zone(socket)) |> List.wrap(), &(&1[:id] == target)) do
       d = :math.sqrt(:math.pow((mob[:x] || 0.0) - me.position.x, 2) + :math.pow((mob[:z] || 0.0) - me.position.z, 2)) / Brain.u()
-      round(min(d / speed_m, 2.0) * 1000)
+      round(min(d / max(speed_m, 1.0), 2.0) * 1000)
     else
       _ -> 400
     end

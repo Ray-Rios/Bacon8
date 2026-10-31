@@ -26,7 +26,7 @@ defmodule BaconWorld.World do
 
   alias Bacon8.{Games, GamesRepo}
   alias Bacon8.Games.GameCharacter
-  alias BaconWorld.{Appearance, Combat, Inventory, Models, Progression, Zone}
+  alias BaconWorld.{Appearance, Combat, Inventory, Melee, Models, Progression, Skills, Zone}
 
   @plugin_slug "bacon_world"
   @max_characters_per_user 16
@@ -246,13 +246,20 @@ defmodule BaconWorld.World do
         # Older characters: bring HP/MP up to their level, and hand out the starter kit once.
         {:ok, _} = Progression.normalize_stats(character.id)
         # the skill tree's buffs (a tree the owner changed may have moved them)
-        {:ok, _} = BaconWorld.Skills.sync_stats(character.id)
+        {:ok, _} = Skills.sync_stats(character.id)
         Inventory.grant_starter_kit(character.id)
         Inventory.grant_starter_wear(character.id)
         character = GamesRepo.one(by_id_query(character.id)) || character
         c = view(character)
         zone = zone_for(c.zone_slug)
         equipment = Inventory.equipment(c.id)
+
+        skill_bonuses = %{
+          "hp" => Skills.bonus(character, "hp"),
+          "mp" => Skills.bonus(character, "mp"),
+          "melee_pct" => Skills.bonus(character, "melee_pct"),
+          "spell_pct" => Skills.bonus(character, "spell_pct")
+        }
 
         {:ok,
          %{
@@ -271,8 +278,9 @@ defmodule BaconWorld.World do
            progress: Progression.progress(character.stats),
            gear: Inventory.gear_ids(equipment),
            inventory: Inventory.payload(c.id),
+           stats_sheet: Melee.stats_sheet(equipment, c.level, skill_bonuses, %{}),
            spells: Enum.map(Combat.list_character_spells(c.id), &Combat.spell_payload/1),
-           skills: BaconWorld.Skills.payload(character),
+           skills: Skills.payload(character),
            mount: (character.settings || %{})["mount"],
            zone: %{id: zone && zone.id, name: zone && zone.name, slug: zone && zone.slug},
            position: c.position

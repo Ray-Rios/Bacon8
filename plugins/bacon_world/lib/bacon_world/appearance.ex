@@ -20,7 +20,8 @@ defmodule BaconWorld.Appearance do
         "shape" => %{"weight" => -1..1, "muscle" => 0..1, ...},
         "skin" => "#C68E6E", "eyes" => "#5A3D26", "brows" => nil | "#RRGGBB",
         "hair" => %{"style" => "Short" | "none", "color" => "#2B1E14"},
-        "facial" => %{"style" => "none", "color" => "#2B1E14"}
+        "facial" => %{"style" => "none", "color" => "#2B1E14"},
+      "scars" => "none"
       }
   """
 
@@ -76,7 +77,8 @@ defmodule BaconWorld.Appearance do
       "eyes" => "#5A3D26",
       "brows" => nil,
       "hair" => %{"style" => if(body == "male", do: "Short", else: "Lob"), "color" => "#2B1E14"},
-      "facial" => %{"style" => "none", "color" => "#2B1E14"}
+      "facial" => %{"style" => "none", "color" => "#2B1E14"},
+      "scars" => "none"
     }
   end
 
@@ -145,7 +147,8 @@ defmodule BaconWorld.Appearance do
       "facial" => %{
         "style" => if(body == "male", do: style(facial["style"], "none", styles, body, "facial"), else: "none"),
         "color" => color(facial["color"], d["facial"]["color"])
-      }
+      },
+      "scars" => (if raw["scars"] in ~w(none cheek body battle), do: raw["scars"], else: "none")
     }
     |> fix_body()
   end

@@ -32,17 +32,19 @@ renamed its tables, its game row and its `plugin_states` row.
 | `lib/bacon_world/groups.ex`, `lib/bacon_world_web/group_events.ex` | Groups (2026-10-28): EverQuest-style, up to 20, in memory (a GenServer and an ETS table); the experience split by level and group loot |
 | `lib/bacon_world_web/build_events.ex` | PlayLive's build events (`build_open`, `build_place`, `build_move`, `build_delete`, `build_rule`) and the zone's `build_placed` / `build_removed` |
 | `lib/bacon_world/progression.ex` | Levels, experience, con colours, skill points banked for the tree |
-| `lib/bacon_world/melee.ex` | Swing numbers: reach and arc, hit chance, damage, delay |
-| `lib/bacon_world/mobs.ex`, `mobs/` | Creatures: spawns and kinds, the rules (`Brain`, pure), the zone process, its keeper |
-| `lib/bacon_world_web/game_events.ex` | PlayLive's fighting, looting and inventory events |
+| `lib/bacon_world/tuning.ex` | Live-tunable combat, AC mitigation (`AC / (AC + K)`), creature and progression parameters (`bacon_world_skill_trees` key `"tuning"`, cached in `:persistent_term`) |
+| `lib/bacon_world/melee.ex` | Swing numbers: reach and arc, hit chance, damage, delay, total AC (`total_ac/1`) and the character stats readout (`stats_sheet/4`) |
+| `lib/bacon_world/mobs.ex`, `mobs/` | Creatures: spawns and kinds, the rules (`Brain`, pure: melee, single-target spells, circle/cone/chain AoE, taunt, root, stun, slow, knockback/pull, DoTs), the zone process, its keeper |
+| `lib/bacon_world_web/game_events.ex` | PlayLive's fighting, looting and inventory events; applies AC mitigation and absorb shields in `take_hit/2` |
 | `lib/bacon_world/mounts.ex` | Mounts: the dragon drakes and the Abyssal Kraken (it swims), who owns which (entitlement kind `bacon_world_mount`; admins ride all), their store items (`ensure_store_products/0`), and each mount's two moves (`attacks`, resolved by `"mount_attack"` in `GameEvents`) |
 | `lib/bacon_world_web/mount_events.ex` | PlayLive's mount events (`mounts_fetch`, `mount_summon`, `mount_dismount`, `stable_open`, `stable_choose`), the presence's `mount`, `zone_mount` |
-| `lib/bacon_world/abilities.ex` | Every spell, skill and buff the tree can hold: costs, cast times, cooldowns, ranges, amounts |
+| `lib/bacon_world/abilities.ex` | All 207 abilities (Recall + 100 spells across 10 schools + 100 combat skills across 10 archetypes + 6 passive buffs): costs, cast times, cooldowns, ranges, amounts, effect maps |
 | `lib/bacon_world/skill_tree.ex`, `skill_tree_record.ex` | The tree (nodes, edges, start): the shipped default, the saved one (`bacon_world_skill_trees`), validation, reachability |
-| `lib/bacon_world/skills.ex` | A character's learned nodes and points, their bonuses (max HP/MP), learning, the Q-X and spell-bar hotbars |
-| `lib/bacon_world_web/skill_events.ex` | PlayLive's skill events: `skills_fetch`, `skill_learn`, `hotbar_set`, `cast` (cast time, interruption), `cast_cancel`, and the effects (Recall, heal, fireball, roots, spin) |
-| `lib/bacon_world_web/admin/skill_tree_live.ex` | The admin skill tree editor, /admin/bacon_world/skills |
-| `lib/bacon_world_web/admin/home_live.ex` | /admin/bacon_world: the game's card on /games (the hub's `GameCardAdmin` section) and links |
+| `lib/bacon_world/skills.ex` | A character's learned nodes and points, their bonuses (max HP/MP, melee %, spell %), learning, the Q-V and 2x10 spell-bar hotbars |
+| `lib/bacon_world_web/skill_events.ex` | PlayLive's skill events: `skills_fetch`, `skill_learn`, `hotbar_set`, `cast` (cast time, interruption), `cast_cancel`, active combat buffs & shields, `stats_sheet` push, and all 15 ability effect types |
+| `lib/bacon_world_web/admin/skill_tree_live.ex` | The admin skill tree editor, `/admin/bacon_world/skills` |
+| `lib/bacon_world_web/admin/tuning_live.ex` | The world-tuning & combat formulas admin tab, `/admin/bacon_world/tuning` |
+| `lib/bacon_world_web/admin/home_live.ex` | `/admin/bacon_world`: the game's card on `/games` (the hub's `GameCardAdmin` section) and links to the skill tree editor and world-tuning tab |
 | `priv/static/card/` | The card on /games: `front-1.webp` (Baconator), `back.webp` (his eye), `card.json` (texts) |
 | `lib/bacon_world/models.ex` | Which character models players can pick; the humans' slider and hair manifests (`human_assets/0`) |
 | `lib/bacon_world/appearance.ex` | `BaconWorld.Appearance`: normalises a look (never trusts the client) |

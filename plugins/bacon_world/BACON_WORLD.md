@@ -103,8 +103,19 @@ flat round island.
 - Melee for both hands (arcs 90 degrees one-handed, 110 two-handed), looting EverQuest style (G takes everything),
   levels, coins, con colours, PvP with red names. Bows never run out of arrows (cone hit along the aim; arrows fly
   and stick for four seconds).
-- **Spells and skills**: mana, cast times, a spell bar (2x10) and skills on Q E F Z X; the **skill tree** (K, Path of
-  Exile style, one tree for everyone; the editor is `/admin/bacon_world/skills`).
+- **Spells and skills** (2026-10-30 expansion): **207 abilities** (`BaconWorld.Abilities`) — **Recall** + **100 spells** across ten schools of ten (*Fire, Frost, Storm, Arcane, Holy, Nature, Shadow, Blood, Earth, Water*, cast from the 2×10 spell bar, `1-0` and `Shift+1-0`) + **100 combat skills** across ten archetypes of ten (*Blade, Berserker, Blunt, Polearm, Rogue, Ranger, Guardian, Monk, Warlord, Survival*, on `Q E F Z X V`) + **6 passive stat buffs**.
+  - **15 server-side effect types** (`BaconWorldWeb.SkillEvents`, `BaconWorld.Mobs.Brain`): `"recall"`, `"heal"` (direct + HoT ticks), `"damage"` (projectiles/beams + DoT, stun, root, slow, knockback, pull), `"drain"` (lifedrain / mana siphon), `"aoe"` (self- or target-centred circle AoE), `"cone"` (frontal breath / shockwave / barrage), `"chain"` (multi-target arc jumps), `"root"` (single-target or AoE hold), `"stun"` (single-target or AoE stun/incapacitate), `"shield"` (absorb barrier + temporary AC), `"buff_temp"` (combat stances, shouts, meditations), `"dash"` (forward leaps/charges/dives and backward disengage vaults, terrain-checked, with arrival slam), `"spin"` (360° whirlwinds), `"strike"` (cleaves, executes below 35% HP, bleeds, sunders, ranged shots), `"taunt"` (single or AoE challenge), and `"stat"` (passive buffs).
+  - **Icons & palette** (`skill-tree-canvas.ts`, `skill-tree-editor.ts`): glossy school-coloured circular spell icons, rounded-square archetype skill icons, and golden buff icons with 65+ crisp SVG inner glyphs. The `/admin/bacon_world/skills` editor features a searchable **Grid / List** palette with **All / Spells / Skills / Buffs** filter tabs.
+  - **3D visual effects** (`spell-fx.ts`): school-tinted cast auras, projectiles, beams, meteors, pillars, shockwave novas, frontal cones, jagged lightning/heal chains, protective ward spheres, dash/leap trails, 360° whirlwinds, weapon slashes, and taunt rings — all using shared materials and `LightPool` (`takeLight`/`giveLight`) so zero shaders compile during play.
+- **Damage calculation & Armour AC mitigation** (`BaconWorld.Tuning`, `BaconWorld.Melee`, `BaconWorldWeb.GameEvents`):
+  - **Hit Chance**: `clamp(0.84 + (AttackerLevel - DefenderLevel) × 0.04, 0.30, 0.96)`.
+  - **Base Melee Roll**: `Weapon.dmg × U(0.75, 1.25) + floor(Level / 3)` (rounded, minimum `1`).
+  - **Heavy Swing**: Two-handed right-click multiplies damage by `×1.50` (`heavy_mult`) and swing delay by `×1.35` (`heavy_delay_mult`).
+  - **Critical Hits**: Melee `6%` (`melee_crit_chance`) for `×1.75` (`melee_crit_mult`); Spells `6%` (`spell_crit_chance`) for `×1.60` (`spell_crit_mult`), plus any active stance/buff crit bonus.
+  - **Skill & Buff Multipliers**: Passive skill-tree nodes (`Might +5%`, `Arcana +5%`) and temporary combat buffs add `1 + pct / 100`.
+  - **Armour Class (AC) Mitigation**: Sum of equipped items' `ac` across all worn & hand slots (`main`, `off`, `head`, `chest`, `legs`, `feet`, `under_top`, `under_bottom`) plus temporary AC buffs. Incoming creature and PvP hits are reduced by the hyperbolic curve `Reduction = AC / (AC + K)` where `K = 35` (`ac_half_point`, capped at `ac_max_reduction = 75%`), then absorbed by any active **Shield** barrier (`SkillEvents.absorb_shield/2`) before subtracting HP (minimum `1` damage when unshielded).
+- **Character Stats Readout** (`Melee.stats_sheet/4`, `game-ui.ts`): the Inventory & Equipment (`I`) window includes a live **Character Stats** readout displaying Level, Armour Class (AC), Damage Reduction %, Active Absorb Shield, Main-Hand Weapon Damage Range (`min–max`), Heavy Swing Range, Delay & estimated DPS, Melee Hit % (even con), Melee Bonus %, Melee Crit % & multiplier, and Spell Bonus % & Spell Crit %.
+- **World-Tuning Admin Tab** (`/admin/bacon_world/tuning`, `BaconWorldWeb.Admin.TuningLive`): live admin interface (also linked from `/admin/bacon_world` and `/admin/bacon_world/skills`) exposing all 18 combat, AC mitigation, creature scaling, and progression parameters (stored in `bacon_world_skill_trees` key `"tuning"` and cached in `:persistent_term`), complete with an interactive AC Mitigation Curve preview and full combat formula documentation.
 - **Groups** (`BaconWorld.Groups`): up to 20, `/invite`, `/accept`, `/disband`, `/makeleader`, `/g`; experience is
   split by level (`Groups.shares/2`), loot by anyone in the killer's group, coins split among those near.
 - **Creatures**: skeletons, giant and plague rats, goblins and goblin archers, orcs and orc warlords, and two
@@ -152,6 +163,36 @@ flat round island.
 - **Nameplates**: a name never gets smaller than 15 px on screen (it used to shrink into a few pixels). The texture is
   mipmapped, so far names don't shimmer, and they show to 90 m. Overlapping names are culled each frame: the nearer
   one wins, and the target always shows.
+
+### Human Characters, Wardrobe & Sliders Overhaul (2026-10-31, completed)
+
+- **Unbaked Scars & Blemishes**: Body blemishes and battle scars are completely removed from the baked base character
+  meshes and base skin textures (`b8_anatomy.py`). The base human models (`Female.glb`, `Male.glb`) are pristine athletic
+  anatomy without baked scars or ridges. Scars/blemishes are optional selections in character creation (`appearance.ts`,
+  `front-ui.ts`, `human-factory.ts`) with segmented options: `None`, `Cheek`, `Body`, `Battle`. They are rendered dynamically
+  via custom Three.js shader injection (`b8skin1` with `b8ScarsMap` and `b8ScarsMix` uniforms) using unbaked overlay textures
+  staged in `priv/static/models/Humans/Scars/` (`scars_cheek.webp`, `scars_body.webp`, `scars_battle.webp`).
+- **Arm-Wraps as Purchasable Wrist Items**: The forearm, wrist, and bicep wraps are completely removed from base body meshes
+  and skin albedo textures. A dedicated `"wrist"` gear slot is added across client and server (`items.ex`, `merchants.ex`,
+  `wardrobe.ts`, `human-factory.ts`, `b8_shell.py`, `mhf_wardrobe.py`, `mhm_build.py`). `linen_arm_wraps` is available for purchase
+  in-game from Tilda Threadwell the Clothier for 25 coins (+1 AC). The 3D geometry is cleanly segmented as `Wrist_Wraps` with
+  authentic heavy canvas weave textures (`Wrist_Wraps__wrist_linen.webp` and `_n.webp`).
+- **High-Realism Underwear & Clothing Revamp**: Completely overhauled all in-game underwear and clothing assets with authentic
+  physically based fabric weaves and tactile normal relief (`b8_wardrobe_tex.py`, `b8_designs.py`). Added combined micro-ribbed
+  knit and twill yarn weaves, double-needle flatlock topstitching with recessed tension troughs, elastic edge piping with gathering
+  ripples, and crisp seam ambient occlusion. Rebaked all 16 female wardrobe designs and male wardrobe designs, staged into
+  `priv/static/models/Humans/Wardrobe/`.
+- **Compelling High-Detail Hair Assets Revamp**: Completely overhauled all 49 hairstyle assets (31 female, 18 male) in
+  `mhf_syshair.py`. Added dynamic tangent-space strand normal map synthesis derived from directional opacity and luminance gradients,
+  yielding round, 3D cylindrical hair fiber illumination instead of flat alpha ribbons. Calibrated material roughness (0.42)
+  and specular IOR level (0.65) for natural, silky sheen. Rebuilt all GLBs, meshopt compressed, generated updated preview icons,
+  and staged into `priv/static/models/Humans/Hair/` alongside `hair_manifest.json`.
+- **Amplified Body Sliders**: Drastically increased the physical range of influence for all body and shape sliders. In
+  `mhf_morphs.py`, displacement fields were doubled and amplified (~2.2x) across all key zones: `Chest_High`/`Chest_Low` (0.055m),
+  `Chest_Wide`/`Chest_Close` (0.050m), `Waist_Narrow` (58.9mm), `Waist_Wide` (65.2mm), `Arms_Slim` (36.8mm), `Arms_Thick` (69.6mm),
+  `Thighs_Slim` (43.9mm), `Thighs_Thick` (68.6mm), `Calves_Slim` (53.9mm), `Calves_Thick` (80.9mm), and `Glutes_Lift` (22.3mm).
+  These amplified shape keys are baked directly into `Female.glb` and `Male.glb`, providing dramatic silhouette variation from
+  svelte/runner frames to powerhouse/heavyweight builds while maintaining standard [0..1] normalized client weights.
 
 ### Tests
 
