@@ -21,6 +21,7 @@ import { NpcsView, NPC_COLOR } from './npcs-view';
 import { gearKey, type Gear } from './wardrobe';
 import { WorldDressing } from './world-dressing';
 import { Arrows } from './arrows';
+import { lakeDistance, waterYAt } from './water';
 
 const U = UNITS_PER_METRE;
 const LOOT_RANGE = 4.2 * U; // a little inside the server's 4.5 m
@@ -308,11 +309,8 @@ export const GameWorld = {
     if (this.refreshTargetSoon <= 0) {
       this.refreshTargetSoon = 0.25;
       this.refreshTarget();
-      // Nature: campfire nearby, day or night.
+      // Nature: daylight intensity
       if (this.audio && this.ambientLight) {
-        const p = me.mesh.position;
-        const fire = Math.hypot(p.x - 22 * U, p.z + 2 * U);
-        this.audio.setCampfire(1 - Math.min(1, fire / (14 * U)));
         this.audio.setDaylight((this.ambientLight.intensity - 0.04) / 0.81);
       }
     }
@@ -347,6 +345,161 @@ export const GameWorld = {
     const alt = p.y / U;
     const high = flying ? Math.min(1, Math.max(0, (alt - 8) / 30)) : 0;
     a.setPlace(lair, high);
+
+    // Water proximity & immersion (Phase 2)
+    let lakeNearness = 0;
+    let oceanNearness = 0;
+    let submerged = 0;
+
+    const moveState = this.controller?.getMovementState?.();
+    if (moveState?.isSwimming) {
+      const dive = moveState.dive ?? 0;
+      submerged = Math.min(1, dive / 1.5);
+    }
+    if (this.camera && this.waterLayout) {
+      const cy = this.camera.position.y;
+      const wy = waterYAt(this.waterLayout, this.camera.position.x, this.camera.position.z);
+      if (cy < wy) {
+        submerged = Math.max(submerged, Math.min(1, (wy - cy) / (1.5 * U)));
+      }
+    }
+
+    if (this.waterLayout) {
+      for (const l of this.waterLayout.lakes || []) {
+        const dist = lakeDistance(l, p.x, p.z);
+        if (dist <= 45 * U) {
+          lakeNearness = Math.max(lakeNearness, 1 - dist / (45 * U));
+        }
+      }
+      if (this.heightfield) {
+        const sea = this.heightfield.info.sea;
+        const gh = this.heightfield.height(p.x, p.z);
+        const water = this.heightfield.water(p.x, p.z);
+        if (water?.kind === 'ocean') {
+          oceanNearness = 1.0;
+        } else if (gh < sea + 35 * U) {
+          oceanNearness = Math.max(0, 1 - (gh - sea) / (35 * U));
+        }
+      } else if (this.waterLayout.shore) {
+        const r = Math.hypot(p.x, p.z);
+        const shoreDist = Math.abs(r - this.waterLayout.shore);
+        if (shoreDist < 40 * U) {
+          oceanNearness = 1 - shoreDist / (40 * U);
+        } else if (r > this.waterLayout.shore) {
+          oceanNearness = 1.0;
+        }
+      }
+    }
+
+    a.setWater?.(lakeNearness, oceanNearness, submerged);
+
+    // ---------------------------------------------------------------- fire (Phase 3)
+    let minFireDist = Math.hypot(p.x - 22 * U, p.z + 2 * U); // village campfire
+    let minBonfireDist = 1e9;
+
+    for (const c of this.camps || []) {
+      const d = Math.hypot(p.x - c.x, p.z - c.z);
+      if (c.theme === 'goblin') {
+        minFireDist = Math.min(minFireDist, d);
+      } else if (c.theme === 'orc') {
+        minBonfireDist = Math.min(minBonfireDist, d);
+      }
+    }
+
+    if (this.placedView?.entries) {
+      for (const entry of this.placedView.entries.values()) {
+        const asset = entry.p?.asset;
+        if (asset === 'Campfire' || asset === 'Brazier') {
+          const d = Math.hypot(p.x - entry.p.x * U, p.z - entry.p.z * U);
+          minFireDist = Math.min(minFireDist, d);
+        }
+      }
+    }
+
+    const campfireNearness = 1 - Math.min(1, minFireDist / (16 * U));
+    const bonfireNearness = 1 - Math.min(1, minBonfireDist / (24 * U));
+    a.setFire?.(campfireNearness, bonfireNearness);
+
+    // ---------------------------------------------------------------- biomes & diurnal wildlife (Phase 4)
+    let forestNearness = 0;
+    let canyonNearness = 0;
+    const rTown = Math.hypot(p.x, p.z);
+    if (rTown > 45 * U && rTown < 600 * U) {
+      forestNearness = Math.min(1, (rTown - 45 * U) / (50 * U)) * (1 - lair) * (1 - high);
+    }
+    for (const c of this.camps || []) {
+      if (c.theme === 'barrow' || c.theme === 'ruins' || c.theme === 'graveyard') {
+        const d = Math.hypot(p.x - c.x, p.z - c.z);
+        const r = c.radius || 20 * U;
+        if (d < r * 1.5) {
+          canyonNearness = Math.max(canyonNearness, 1 - d / (r * 1.5));
+        }
+      }
+    }
+    a.setEnvironment?.(forestNearness, canyonNearness);
+
+    // Synchronize sky system diurnal clock
+    const skyTime = (Date.now() % (60 * 60 * 1000)) / (60 * 60 * 1000);
+    a.setTimeOfDay?.(skyTime);
+
+    // ---------------------------------------------------------------- dynamic weather & storms (Phase 5)
+    const WEATHER_CYCLE_MS = 30 * 60 * 1000;
+    const wt = (Date.now() % WEATHER_CYCLE_MS) / WEATHER_CYCLE_MS;
+    let rainIntensity = this.weatherOverride ?? 0;
+    if (this.weatherOverride === undefined) {
+      if (wt >= 0.60 && wt < 0.68) {
+        rainIntensity = 0.35 * ((wt - 0.60) / 0.08); // drizzle
+      } else if (wt >= 0.68 && wt < 0.82) {
+        rainIntensity = 0.35 + 0.35 * ((wt - 0.68) / 0.14); // steady rain
+      } else if (wt >= 0.82 && wt < 0.93) {
+        rainIntensity = 0.70 + 0.30 * Math.sin(((wt - 0.82) / 0.11) * Math.PI); // thunderstorm
+      } else if (wt >= 0.93 && wt < 0.98) {
+        rainIntensity = 0.3 * (1 - (wt - 0.93) / 0.05); // clearing
+      } else {
+        rainIntensity = 0; // clear
+      }
+    }
+
+    let shelterType: 'open' | 'tree' | 'tent' | 'cabin' = 'open';
+    if (rTown < 35 * U && Math.abs(p.x) > 6 * U && Math.abs(p.z) > 6 * U) {
+      shelterType = 'cabin';
+    } else {
+      for (const c of this.camps || []) {
+        if (c.theme === 'goblin' || c.theme === 'orc') {
+          const d = Math.hypot(p.x - c.x, p.z - c.z);
+          if (d < 12 * U) shelterType = 'tent';
+        }
+      }
+      if (shelterType === 'open' && forestNearness > 0.4) {
+        shelterType = 'tree';
+      }
+    }
+
+    this.currentRainIntensity = rainIntensity;
+    this.currentShelterType = shelterType;
+    a.setWeather?.(rainIntensity, shelterType);
+
+    // Thunderstorm lightning strikes & visual flashes
+    if (rainIntensity >= 0.75) {
+      this.nextThunderTime = (this.nextThunderTime || 0) - dt;
+      if (this.nextThunderTime <= 0) {
+        this.nextThunderTime = 14 + Math.random() * 16;
+        const close = Math.random() < 0.4;
+        if (this.camera) this.weatherSystem?.triggerSkyLightning(this.camera.position);
+        if (close) {
+          if (this.ambientLight) {
+            const origIntensity = this.ambientLight.intensity;
+            this.ambientLight.intensity = Math.min(2.0, origIntensity + 1.2);
+            setTimeout(() => {
+              if (this.ambientLight) this.ambientLight.intensity = origIntensity;
+            }, 90);
+          }
+          a.play('thunder_strike', 0.9);
+        } else {
+          a.play('thunder_distant', 0.75);
+        }
+      }
+    }
     // The boss's music while Baconator is after us (or we're at him), until he's down.
     const myId = this.state?.currentPlayer?.character_id;
     let boss = false;
@@ -606,8 +759,8 @@ export const GameWorld = {
     this.gameUI?.cooldown(hand, dly);
     this.controller.faceCamera(1400);
     const hitIn = (this.mounts.playMove(myId, move.move) ?? 0.5) * 1000;
-    const target = this.targetId && this.mobsView?.get(this.targetId) ? this.targetId : null;
-    void reply(this, 'mount_attack', { hand, heading: this.controller.getYaw(), target_id: target }).then((res: any) => {
+    const target = this.targetId && (this.mobsView?.get(this.targetId) || this.isOtherPlayer(this.targetId) || (this.smashMode && this.placedView?.get(this.targetId))) ? this.targetId : null;
+    void reply(this, 'mount_attack', { hand, heading: this.controller.getYaw(), target_id: target, smash: !!this.smashMode }).then((res: any) => {
       if (!res?.ok) return;
       setTimeout(() => this.showHits(res.hits || []), Math.max(0, hitIn - 40));
       if (res.progress) this.applyProgress(res.progress);
@@ -678,9 +831,20 @@ export const GameWorld = {
     const myId = this.state?.currentPlayer?.character_id;
     const list = this.state?.onlineCharacters;
     const i = list ? list.findIndex((c: any) => c.character_id === p.character_id) : -1;
-    if (i >= 0) list[i] = { ...list[i], hp: p.hp, max_hp: p.max_hp, dead: p.state === 'dead' };
+    if (i >= 0) list[i] = { ...list[i], hp: p.hp, max_hp: p.max_hp, dead: p.state === 'dead' || p.state === 'shattered' };
     if (p.character_id !== myId) {
-      if (p.state === 'dead') {
+      if (p.state === 'shattered') {
+        const ch = this.characterManager?.getAllCharacters().get(p.character_id);
+        if (ch?.mesh && this.smashFx) {
+          this.smashFx.shatterCharacter(p.character_id, ch.mesh, 2.6);
+          ch.mesh.visible = false;
+        }
+        this.audio?.play('thunder_strike', 0.65);
+        if (p.character_id === this.targetId) {
+          const name = list?.[i]?.character_name || 'Your target';
+          this.combatLog(`${name} has been shattered into pieces!`, '#FF5A4A');
+        }
+      } else if (p.state === 'dead') {
         this.characterManager?.playCharacterAnimation(p.character_id, 'death', false);
         const body = (this.appearanceCache?.get(p.character_id) as any)?.body;
         this.audio?.say('death', 0.7, this.distanceToCharacter(p.character_id), body === 'female' ? 'f' : 'm');
@@ -688,7 +852,9 @@ export const GameWorld = {
           const name = list?.[i]?.character_name || 'Your target';
           this.combatLog(`${name} has been slain!`, '#FFE58A');
         }
-      } else if (p.state === 'alive') {
+      } else if (p.state === 'alive' || p.hp > 0) {
+        const ch = this.characterManager?.getAllCharacters().get(p.character_id);
+        if (ch?.mesh) ch.mesh.visible = true;
         this.characterManager?.playCharacterAnimation(p.character_id, 'idle');
       }
     }

@@ -24,6 +24,7 @@ function writeSetting(key: string, value: string): void {
   }
 }
 import { SkySystem } from './sky-system';
+import { WeatherSystem } from './weather-system';
 import { LobbyAudio } from './lobby-audio';
 import { HumanFactory, HumanAssets } from './human-factory';
 import { CharacterStage } from './character-stage';
@@ -34,10 +35,11 @@ import { makeMovable, resetWindows } from './window-drag';
 import { BODY_MODEL, isHumanModel, randomAppearance } from './appearance';
 import { Nameplates, playerColor, plateHeight } from './nameplates';
 import { setAssetVersions } from './asset-url';
+import { initGameServiceWorker } from './service-worker';
 import { GameWorld } from './game-world';
 import { SkillsWorld } from './skills-world';
 import { FishingWorld } from './fishing-world';
-import { keepOnLand } from './water';
+import { keepOnLand, nearWater } from './water';
 import { TerrainWorld } from './terrain-world';
 import { BuildWorld } from './build-world';
 import { GroupWorld } from './group-world';
@@ -147,6 +149,9 @@ export const WorldCharacterUIScene = {
   creatorOverlay: null as HTMLDivElement | null,
   // sky & combat state
   skySystem: null as SkySystem | null,
+  weatherSystem: null as WeatherSystem | null,
+  currentRainIntensity: 0,
+  currentShelterType: 'open' as 'open' | 'tree' | 'tent' | 'cabin',
   ambientLight: null as THREE.AmbientLight | null,
   targetId: null as string | null,
   targetRingMesh: null as THREE.Mesh | null,
@@ -195,6 +200,8 @@ export const WorldCharacterUIScene = {
 
   mounted(this: any) {
     if (!this.el) return;
+
+    initGameServiceWorker();
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x000000);
@@ -435,8 +442,20 @@ export const WorldCharacterUIScene = {
       }
       this.audio?.say('death', 1);
       if (this.lootingId) this.closeLoot();
-      this.combatLog('You have been slain!', '#FF5A4A');
-      this.enterDeathState(payload.respawn_in_ms ?? 30000);
+      const deathMsg = payload.reason === 'abyss'
+        ? 'You fell into the abyss!'
+        : (payload.shatter ? 'You were obliterated and shattered!' : 'You have been slain!');
+      this.combatLog(deathMsg, '#FF5A4A');
+
+      const myId = this.state?.currentPlayer?.character_id;
+      const me = myId ? this.characterManager?.getAllCharacters().get(myId) : null;
+      if (payload.shatter && me?.mesh && this.smashFx) {
+        this.smashFx.shatterCharacter(myId, me.mesh, 2.8);
+        me.mesh.visible = false;
+        this.audio?.play('thunder_strike', 1.0);
+      }
+
+      this.enterDeathState(payload.respawn_in_ms ?? 30000, !!payload.shatter);
     });
 
     this.handleEvent('character_respawned', (payload: any) => {
@@ -475,6 +494,47 @@ export const WorldCharacterUIScene = {
       this.deathSpawnCoords = null;
       if (myId) this.characterManager?.playCharacterAnimation(myId, 'idle', true);
       this.audio?.play('respawn', 0.9);
+    });
+
+    this.handleEvent('character_teleported', (payload: any) => {
+      if (!payload) return;
+      const x = payload.x ?? 0;
+      const y = payload.y ?? 0;
+      const z = payload.z ?? 0;
+      const heading = payload.heading ?? 0;
+
+      if (this.controller) {
+        this.controller.teleportTo(x, y, z, heading);
+      }
+      const myId = this.state?.currentPlayer?.character_id;
+      if (myId && this.characterManager) {
+        this.characterManager.updateCharacterPosition(
+          myId,
+          { x, y, z },
+          { x: 0, y: heading, z: 0 }
+        );
+      }
+      if (this.state?.currentPlayer?.position) {
+        this.state.currentPlayer.position = { x, y, z, heading };
+      }
+    });
+
+    this.handleEvent('system_message', (payload: any) => {
+      if (!payload || !payload.message) return;
+      this.appendChatMessage(payload.sender || 'System', payload.message);
+      if (payload.combat_log) {
+        this.combatLog(payload.message, payload.color || '#FFE58A');
+      }
+    });
+
+    this.handleEvent('weather_changed', (payload: any) => {
+      if (!payload || !payload.weather) return;
+      const w = String(payload.weather).toLowerCase();
+      if (w === 'clear') this.currentRainIntensity = 0.0;
+      else if (w === 'drizzle') this.currentRainIntensity = 0.25;
+      else if (w === 'rain') this.currentRainIntensity = 0.55;
+      else if (w === 'storm' || w === 'thunder') this.currentRainIntensity = 0.90;
+      this.combatLog(`Weather is now ${w}.`, '#9FD8FF');
     });
 
     this.handleEvent('spell_error', (payload: any) => {
@@ -835,7 +895,12 @@ export const WorldCharacterUIScene = {
   async initializeWorldMode(this: any) {
     if (!this.scene || !this.camera || !this.state?.currentPlayer || !this.characterManager || !this.worldGroup) return;
 
-    if (this.worldGroup.children.length === 0) {
+    let hasTerrain = false;
+    try {
+      hasTerrain = !!JSON.parse(this.el?.dataset?.terrain || 'null')?.heights;
+    } catch {}
+
+    if (this.worldGroup.children.length === 0 && !hasTerrain) {
       const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(180, 180),
         new THREE.MeshStandardMaterial({ color: 0x101820, roughness: 0.9, metalness: 0.08 })
@@ -860,7 +925,7 @@ export const WorldCharacterUIScene = {
     // (terrain-world.ts) its heights come first, so every piece stands on the ground.
     const terrainReady = this.initTerrain();
     if (!this.dressing && this.scene && this.renderer) {
-      this.dressing = new WorldDressing(this.scene, this.renderer);
+      this.dressing = new WorldDressing(this.scene, this.renderer, hasTerrain);
       // the village as placements (build mode, BaconWorld.Building): its pieces come from there
       try {
         this.dressing.villageOff = JSON.parse(this.el.dataset.seeded || '{}').village === true;
@@ -870,12 +935,18 @@ export const WorldCharacterUIScene = {
       const plain = [...this.worldGroup.children];
       void terrainReady.then((hf: any) => {
         if (!this.dressing) return;
-        if (hf) this.dressing.setGround((x: number, z: number) => hf.height(x * UNITS_PER_METRE, z * UNITS_PER_METRE) / UNITS_PER_METRE);
+        if (hf) {
+          this.dressing.setGround((x: number, z: number) => hf.height(x * UNITS_PER_METRE, z * UNITS_PER_METRE) / UNITS_PER_METRE);
+        } else {
+          this.dressing.hasTerrain = false;
+          this.dressing.setGround(null);
+        }
+        plain.forEach((o: THREE.Object3D) => (o.visible = false));
         return this.dressing.build(this.worldGroup);
       }).then(() => {
         if (!this.dressing) return;
         this.worldColliders = this.dressing.colliders();
-        if (this.worldColliders.length || this.dressing.villageOff) plain.forEach((o: THREE.Object3D) => (o.visible = false));
+        if (this.worldColliders.length || this.dressing.villageOff || hasTerrain) plain.forEach((o: THREE.Object3D) => (o.visible = false));
       });
     }
 
@@ -945,9 +1016,17 @@ export const WorldCharacterUIScene = {
     this.initMounts();
     this.initSkills();
 
-    // Start day/night sky system
+    // Start day/night sky system & weather system
     if (!this.skySystem && this.ambientLight) {
       this.skySystem = new SkySystem(this.scene, this.ambientLight);
+    }
+    if (!this.weatherSystem) {
+      this.weatherSystem = new WeatherSystem(
+        this.scene,
+        (x, z) => this.groundAt(x, z),
+        (targetPos) => this.onLightningKill(targetPos),
+        this.audio
+      );
     }
 
     // Every effect's shader built now, with the world's final lights, rather than on the frame it
@@ -1184,33 +1263,54 @@ export const WorldCharacterUIScene = {
     if (movementState && this.audio && !this.isDead) {
       const grounded = !!movementState.isGrounded;
       const now = performance.now();
-      // A grunt when jumping, a thud when landing (a short hop lands quietly).
+      // Grunts and thuds on land; splashes in water (Phase 2).
       if (this.wasGrounded && !grounded) {
         this.airborneSince = now;
         if (movementState.verticalSpeed > 1.0) {
-          this.audio.say('jump', 0.55);
+          const me = this.localCharacter();
+          const inWater = me && this.waterLayout && nearWater(this.waterLayout, me.mesh.position.x, me.mesh.position.z, 0.5);
+          if (inWater || movementState.isSwimming) {
+            this.audio.play('water_splash_medium', 0.65);
+          } else {
+            this.audio.say('jump', 0.55);
+          }
         }
       }
       if (!this.wasGrounded && grounded) {
         const air = now - (this.airborneSince || now);
-        // a long fall (or coming down off a mount's flight) lands hard
-        if (air > 1100) this.audio.play('land_hard', 1);
-        else if (air > 200) this.audio.play('land', air > 450 ? 0.9 : 0.55);
+        const me = this.localCharacter();
+        const inWater = me && this.waterLayout && nearWater(this.waterLayout, me.mesh.position.x, me.mesh.position.z, 0.5);
+        if (inWater || movementState.isSwimming) {
+          if (air > 650) this.audio.play('water_splash_plunge', 0.85);
+          else this.audio.play('water_splash_medium', 0.65);
+        } else {
+          // a long fall (or coming down off a mount's flight) lands hard
+          if (air > 1100) this.audio.play('land_hard', 1);
+          else if (air > 200) this.audio.play('land', air > 450 ? 0.9 : 0.55);
+        }
       }
       this.wasGrounded = grounded;
       // Steps by pace: sprint 260 ms, jog 330 ms, crouch-walk 500 ms; the sound by what's underfoot.
       const interval = movementState.isCrouching ? 500 : movementState.isSprinting ? 260 : 330;
       // swimming: a stroke's splash now and then instead of steps
       if (movementState.isSwimming) {
-        if (movementState.isMoving && now - this.lastStepMs > 900) {
+        if (movementState.isMoving && now - this.lastStepMs > 850) {
           this.lastStepMs = now;
-          this.audio.play('sw_drip', 0.5);
+          this.audio.play('water_splash_medium', 0.35, 0, 1.25);
         }
       } else if (grounded && movementState.isMoving && now - this.lastStepMs > interval) {
         this.lastStepMs = now;
         const me = this.localCharacter();
-        const surface = me ? this.surfaceAt(me.mesh.position.x, me.mesh.position.z) : 'grass';
-        this.audio.footstep(!movementState.isCrouching, surface);
+        const inWater = me && this.waterLayout && nearWater(this.waterLayout, me.mesh.position.x, me.mesh.position.z, 0.4);
+        if (inWater) {
+          this.audio.play('water_wading', movementState.isCrouching ? 0.35 : 0.55);
+        } else {
+          const surface = me ? this.surfaceAt(me.mesh.position.x, me.mesh.position.z) : 'grass';
+          this.audio.footstep(!movementState.isCrouching, surface);
+          if (surface === 'grass' && Math.random() < 0.22) {
+            this.audio.play('foliage_grass_step', 0.4);
+          }
+        }
       }
     }
   },
@@ -1262,6 +1362,11 @@ export const WorldCharacterUIScene = {
     if (this.skySystem) {
       this.skySystem.dispose();
       this.skySystem = null;
+    }
+
+    if (this.weatherSystem) {
+      this.weatherSystem.dispose();
+      this.weatherSystem = null;
     }
 
     if (this.dressing) {
@@ -1388,7 +1493,9 @@ export const WorldCharacterUIScene = {
         return;
       }
       (this.pushEvent('world_chat_message', { message }) as any)?.catch?.(() => {});
-      this.appendChatMessage('You', message);
+      if (!message.startsWith('/')) {
+        this.appendChatMessage('You', message);
+      }
       input.value = '';
     });
 
@@ -1740,14 +1847,14 @@ export const WorldCharacterUIScene = {
 
   // ── Death / Respawn ────────────────────────────────────────────────────────
 
-  enterDeathState(this: any, respawnInMs: number) {
+  enterDeathState(this: any, respawnInMs: number, shattered = false) {
     this.isDead = true;
     this.closeGameMenu();
     this.controller?.releasePointerLock();
 
-    // Play death animation on local character
+    // Play death animation on local character only if not shattered
     const myId = this.state?.currentPlayer?.character_id;
-    if (myId) this.characterManager?.playCharacterAnimation(myId, 'death', false);
+    if (!shattered && myId) this.characterManager?.playCharacterAnimation(myId, 'death', false);
 
     // Build overlay
     const overlay = document.createElement('div');
@@ -1820,6 +1927,11 @@ export const WorldCharacterUIScene = {
   exitDeathState(this: any) {
     this.isDead = false;
 
+    // Restore local character mesh visibility on respawn
+    const myId = this.state?.currentPlayer?.character_id;
+    const me = myId ? this.characterManager?.getAllCharacters().get(myId) : null;
+    if (me?.mesh) me.mesh.visible = true;
+
     if (this.deathCountdownInterval) {
       clearInterval(this.deathCountdownInterval);
       this.deathCountdownInterval = null;
@@ -1833,6 +1945,18 @@ export const WorldCharacterUIScene = {
       setTimeout(() => el.parentElement?.removeChild(el), 850);
       this.deathOverlayEl = null;
     }
+  },
+
+  onLightningKill(this: any, targetPos: THREE.Vector3) {
+    const myId = this.state?.currentPlayer?.character_id;
+    const me = myId ? this.characterManager?.getAllCharacters().get(myId) : null;
+    if (me?.mesh && this.smashFx) {
+      this.smashFx.shatterCharacter(myId, me.mesh, 3.2);
+      me.mesh.visible = false;
+      this.audio?.play('thunder_strike', 1.0);
+    }
+    this.combatLog('⚡ You were struck by a lethal bolt of lightning!', '#00E5FF');
+    this.pushEvent('lightning_struck', { x: targetPos.x, y: targetPos.y, z: targetPos.z });
   },
 
   appendChatMessage(this: any, sender: string, message: string) {
@@ -2377,6 +2501,21 @@ export const WorldCharacterUIScene = {
       if (this.dressing && this.ambientLight) this.dressing.tick((this.ambientLight.intensity - 0.04) / 0.81);
     }
 
+    // Weather simulation tick: clouds, rain particles, sky lightning, lethal ground strikes
+    if (this.worldInitialized && this.weatherSystem && this.camera) {
+      const currentId = this.state?.currentPlayer?.character_id;
+      const me = currentId ? this.characterManager?.getAllCharacters().get(currentId) : null;
+      const playerPos = me?.mesh?.position || this.camera.position;
+      this.weatherSystem.update(
+        deltaSeconds,
+        this.camera,
+        playerPos,
+        this.currentRainIntensity ?? 0,
+        this.currentShelterType ?? 'open',
+        this.isDead
+      );
+    }
+
     if (this.state?.uiState === 'world') {
       // Freeze controller while dead — character cannot move
       if (!this.isDead) {
@@ -2391,10 +2530,15 @@ export const WorldCharacterUIScene = {
         this._noCharFrames = (this._noCharFrames || 0) + 1;
       } else {
         this._noCharFrames = 0;
+        const meshPos = localCharacter.mesh.position;
+        // Void check: falling below the world into nothingness
+        if (!this.isDead && meshPos.y < -120.0) {
+          (this.pushEvent('world_void_fall', { x: meshPos.x, y: meshPos.y, z: meshPos.z }) as any)?.catch?.(() => {});
+        }
         this.sendLocalPosition(
-          localCharacter.mesh.position.x,
-          localCharacter.mesh.position.y,
-          localCharacter.mesh.position.z,
+          meshPos.x,
+          meshPos.y,
+          meshPos.z,
           localCharacter.mesh.rotation.y
         );
       }

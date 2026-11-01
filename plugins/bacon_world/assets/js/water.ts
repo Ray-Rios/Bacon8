@@ -283,15 +283,17 @@ export class WaterView {
 
   private addLake(l: Lake) {
     const r = rng(l.id.length * 977 + 13);
-    // the muddy bank
-    const mud = new THREE.MeshStandardMaterial({ color: '#6B5A3E', roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    if (surfacesEnabled()) void applySurface(mud, { set: 'earth', scale: 2.5 * U, antiTile: true });
-    // (the ellipse is built at size, not scaled: surfaces tile in the mesh's own space)
-    const bank = new THREE.Mesh(new THREE.CircleGeometry(1, 72).scale(l.rx + 1.8 * U, l.rz + 1.8 * U, 1), mud);
-    bank.rotation.x = -Math.PI / 2;
-    bank.position.set(l.x, 0.008 * U, l.z);
-    bank.receiveShadow = true;
-    this.group.add(bank);
+    // the muddy bank (only drawn on flat island; terrain has its own banks)
+    if (this.layout.sea == null) {
+      const mud = new THREE.MeshStandardMaterial({ color: '#6B5A3E', roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      if (surfacesEnabled()) void applySurface(mud, { set: 'earth', scale: 2.5 * U, antiTile: true });
+      // (the ellipse is built at size, not scaled: surfaces tile in the mesh's own space)
+      const bank = new THREE.Mesh(new THREE.CircleGeometry(1, 72).scale(l.rx + 1.8 * U, l.rz + 1.8 * U, 1), mud);
+      bank.rotation.x = -Math.PI / 2;
+      bank.position.set(l.x, 0.008 * U, l.z);
+      bank.receiveShadow = true;
+      this.group.add(bank);
+    }
     // the water, darker and stiller than the sea
     const normals = rippleNormals(31);
     normals.repeat.set(Math.round((l.rx / U) / 2), Math.round((l.rz / U) / 2));

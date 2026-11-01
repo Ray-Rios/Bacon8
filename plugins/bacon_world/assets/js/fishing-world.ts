@@ -126,7 +126,10 @@ export const FishingWorld = {
     setTimeout(() => {
       if (!this.fishing) return;
       const tip = this.rodTip();
-      if (tip && this.water) this.fishingView?.cast(tip, spot.x, spot.z, waterYAt(this.water, spot.x, spot.z));
+      if (tip && this.water) {
+        this.fishingView?.cast(tip, spot.x, spot.z, waterYAt(this.water, spot.x, spot.z));
+        setTimeout(() => this.audio?.play('water_splash_stone', 0.8), 340);
+      }
     }, rodMove ? rodMove * 500 : 320);
   },
 
@@ -135,7 +138,7 @@ export const FishingWorld = {
     if (!this.fishing) return;
     this.fishing.bite = true;
     this.fishingView?.bite();
-    this.audio?.play('sw_drip', 1, 0, 0.7);
+    this.audio?.play('water_splash_stone', 0.9, 0, 1.15);
     this.combatLog('Something tugs at your line! Press R to reel it in.', '#FFE58A');
     this.gameUI?.announce?.('Something is biting! (R)');
   },

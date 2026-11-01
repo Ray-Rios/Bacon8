@@ -61,6 +61,8 @@ interface Held {
   at: { x: number; y: number; z: number } | null;
   stackId?: string | null;
   supportY?: number;
+  count?: number;
+  extraGhosts?: THREE.Object3D[];
 }
 
 type Undo = { t: number } & ({ kind: 'placed'; id: string } | { kind: 'moved'; before: Placement } | { kind: 'deleted'; p: Placement });
@@ -69,6 +71,36 @@ type Undo = { t: number } & ({ kind: 'placed'; id: string } | { kind: 'moved'; b
 export function snapPiece(x: number, z: number, rot: number): { x: number; z: number; rot: number } {
   const q = Math.PI / 2;
   return { x: Math.round(x / GRID) * GRID, z: Math.round(z / GRID) * GRID, rot: (((Math.round(rot / q) * q) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) };
+}
+
+/** Computes the side-by-side spacing for an asset in metres. */
+export function computeSpacing(asset: string, extentSize?: { x: number; z: number } | null, scale = 1): number {
+  let w = 1.5;
+  if (extentSize) {
+    w = extentSize.x >= 0.2 ? extentSize.x : (extentSize.z >= 0.2 ? extentSize.z : 1.5);
+  }
+  w *= scale;
+  if (asset.startsWith('K_')) {
+    return Math.max(GRID, Math.round(w / GRID) * GRID);
+  }
+  return Math.max(0.4, Math.round(w * 10) / 10);
+}
+
+/** Computes the world position and orientation of the i-th piece placed side-by-side. */
+export function spotForIndex(
+  baseSpot: { x: number; y: number; z: number; rot: number; scale: number },
+  index: number,
+  spacing: number,
+  groundY?: number
+): { x: number; y: number; z: number; rot: number; scale: number } {
+  if (index === 0) return baseSpot;
+  const lx = index * spacing;
+  const cs = Math.cos(baseSpot.rot);
+  const sn = Math.sin(baseSpot.rot);
+  const x = baseSpot.x + lx * cs;
+  const z = baseSpot.z - lx * sn;
+  const y = groundY !== undefined ? groundY : baseSpot.y;
+  return { x, y, z, rot: baseSpot.rot, scale: baseSpot.scale };
 }
 
 /**
@@ -220,7 +252,6 @@ export const BuildWorld = {
   buildExit(this: any) {
     if (!this.buildMode) return;
     this.buildDropHeld(true);
-    this.buildSetSmash(false);
     this.buildMode = false;
     this.buildWindow?.close();
     this.placedView?.setMarkers(false);
@@ -240,7 +271,7 @@ export const BuildWorld = {
     this.placedView.group.add(ghost);
     this.buildHeld = {
       id: null, asset: e.id, name: e.name, kind: e.kind, rot: me ? me.mesh.rotation.y + Math.PI : 0, lift: 0, scale: 1, data,
-      grab: { x: 0, z: 0 }, ghost, before: null, at: null,
+      grab: { x: 0, z: 0 }, ghost, before: null, at: null, count: 1, extraGhosts: [],
     } as Held;
     this.buildRefreshHeld();
     this.buildPointer(this.lastBuildPointer);
@@ -272,10 +303,91 @@ export const BuildWorld = {
     this.buildHeld = {
       id, asset: p.asset, name: entry?.name || p.asset, kind, rot: p.rot, lift, scale: p.scale, data: { ...p.data },
       grab: at ? { x: p.x - at.x, z: p.z - at.z } : { x: 0, z: 0 }, ghost, before: { ...p }, at: { x: p.x, y: p.y, z: p.z },
-      supportY: base,
+      supportY: base, count: 1, extraGhosts: [],
     } as Held;
     this.placedView.pose(ghost, { x: p.x, y: p.y, z: p.z, rot: p.rot, scale: p.scale });
     this.buildRefreshHeld();
+  },
+
+  /** Grabs a copy of a placed object (Shift+Left-Click) so players can place duplicates nearby. */
+  buildDuplicate(this: any, id: string, at: { x: number; z: number } | null) {
+    const p: Placement | null = this.placedView?.get(id);
+    if (!p) return;
+    const entry = this.buildWindow?.entry(p.asset);
+    if (entry && !entry.allowed) {
+      this.combatLog(`Only a ${entry.min_role} or higher may duplicate ${entry.name.toLowerCase()}.`, '#FF9B7A');
+      return;
+    }
+    if (!this.buildMayTown() && this.buildInTown(p.x, p.z)) {
+      this.combatLog(`Only GMs and admins may build within ${BINDING_RADIUS_M} m of a binding stone.`, '#FF9B7A');
+      return;
+    }
+    this.buildDropHeld(true);
+    const kind = isModel(p.asset) ? 'model' : p.asset.startsWith('mob:') ? 'mob' : 'npc';
+    const ghost = this.placedView.ghost(p.asset, p.data);
+    this.placedView.group.add(ghost);
+    // Crucially: Original object stays in the world (do not call setHidden)
+    const ground = this.placedView.ground(p.x, p.z);
+    const support = this.placedView?.supportUnder?.(p.x, p.z, p.y, null);
+    const base = support !== null && support !== undefined ? support : ground;
+    const lift = Math.max(0, p.y - base);
+    this.buildHeld = {
+      id: null, // null marks this as a new placement (not moving the original)
+      asset: p.asset,
+      name: entry?.name || p.asset,
+      kind,
+      rot: p.rot,
+      lift,
+      scale: p.scale,
+      data: { ...p.data },
+      grab: at ? { x: p.x - at.x, z: p.z - at.z } : { x: 0, z: 0 },
+      ghost,
+      before: null,
+      at: { x: p.x, y: p.y, z: p.z },
+      supportY: base,
+      count: 1,
+      extraGhosts: [],
+    } as Held;
+    this.placedView.pose(ghost, { x: p.x, y: p.y, z: p.z, rot: p.rot, scale: p.scale });
+    this.buildRefreshHeld();
+    this.audio?.play('click', 0.6);
+    this.combatLog(`Grabbed copy of ${entry?.name || p.asset}. Click to place duplicate nearby.`, '#9FE39F');
+  },
+
+  /** Side-by-side spacing in metres for the held asset. */
+  buildSpacing(this: any, held: Held): number {
+    const box = this.placedView?.extent?.(held.asset);
+    const s = box?.getSize?.(new THREE.Vector3());
+    return computeSpacing(held.asset, s ? { x: s.x, z: s.z } : null, held.scale);
+  },
+
+  /** World spot for the i-th side-by-side duplicate. */
+  buildSpotForIndex(this: any, spot: { x: number; y: number; z: number; rot: number; scale: number }, index: number, held: Held) {
+    if (index === 0) return spot;
+    const spacing = this.buildSpacing(held);
+    const groundY = held.supportY !== undefined ? spot.y : undefined;
+    const computed = spotForIndex(spot, index, spacing, groundY);
+    if (groundY === undefined) {
+      computed.y = this.placedView.ground(computed.x, computed.z) + held.lift;
+    }
+    return computed;
+  },
+
+  /** Keeps extra side-by-side ghost meshes matching held.count. */
+  buildUpdateMultiGhosts(this: any) {
+    const held: Held | null = this.buildHeld;
+    if (!held) return;
+    held.extraGhosts = held.extraGhosts || [];
+    const needed = (held.count || 1) - 1;
+    while (held.extraGhosts.length < needed) {
+      const g = this.placedView.ghost(held.asset, held.data);
+      this.placedView.group.add(g);
+      held.extraGhosts.push(g);
+    }
+    while (held.extraGhosts.length > needed) {
+      const g = held.extraGhosts.pop()!;
+      g.parent?.remove(g);
+    }
   },
 
   /** Lets go of what the cursor holds; `putBack`: a picked-up placement goes back where it was. */
@@ -283,6 +395,10 @@ export const BuildWorld = {
     const held: Held | null = this.buildHeld;
     if (!held) return;
     held.ghost.parent?.remove(held.ghost);
+    if (held.extraGhosts) {
+      for (const g of held.extraGhosts) g.parent?.remove(g);
+      held.extraGhosts = [];
+    }
     if (held.id) {
       this.placedView?.setHidden(held.id, false);
       if (held.kind === 'npc') this.npcsView?.setHidden(`p:${held.id}`, false);
@@ -297,8 +413,17 @@ export const BuildWorld = {
   buildRefreshHeld(this: any) {
     const held: Held | null = this.buildHeld;
     if (!held) return this.buildWindow?.setHeld(null);
-    this.buildWindow?.setHeld({ name: held.name, kind: held.kind, isNew: !held.id, data: held.data, snap: !!this.buildSnap, canSnap: held.asset.startsWith('K_') });
+    this.buildWindow?.setHeld({
+      name: held.name,
+      kind: held.kind,
+      isNew: !held.id,
+      data: held.data,
+      snap: !!this.buildSnap,
+      canSnap: held.asset.startsWith('K_'),
+      count: held.count || 1,
+    });
     if (held.kind === 'mob') this.placedView?.poseMarker(held.ghost, { id: 'ghost', asset: held.asset, x: 0, y: 0, z: 0, rot: 0, scale: 1, data: held.data });
+    this.buildUpdateMultiGhosts();
     this.buildPose();
   },
 
@@ -331,6 +456,17 @@ export const BuildWorld = {
     const entry = this.buildWindow?.entry(held.asset);
     const ok = (!entry || entry.allowed) && (this.buildMayTown() || !this.buildInTown(spot.x, spot.z, held.id));
     (held.ghost.userData.ghostMat as THREE.MeshBasicMaterial | undefined)?.color.set(ok ? '#7CFF8A' : '#FF6A55');
+
+    // Pose side-by-side extra ghosts
+    if (held.extraGhosts && held.extraGhosts.length > 0) {
+      for (let i = 0; i < held.extraGhosts.length; i++) {
+        const extraSpot = this.buildSpotForIndex(spot, i + 1, held);
+        this.placedView.pose(held.extraGhosts[i], { ...extraSpot, data: held.kind === 'model' ? held.data : {} });
+        if (held.kind === 'mob') held.extraGhosts[i].scale.setScalar(1);
+        const extraOk = (!entry || entry.allowed) && (this.buildMayTown() || !this.buildInTown(extraSpot.x, extraSpot.z, null));
+        (held.extraGhosts[i].userData.ghostMat as THREE.MeshBasicMaterial | undefined)?.color.set(extraOk ? '#7CFF8A' : '#FF6A55');
+      }
+    }
   },
 
   /** True within a binding stone's radius (metres; `except`: the stone itself being moved). */
@@ -469,6 +605,29 @@ export const BuildWorld = {
     if (!this.buildMode || !this.buildHeld) return false;
     if (e.type === 'wheel') {
       const w = e as WheelEvent;
+      if (w.shiftKey) {
+        // Shift + scroll wheel: increase or decrease number of side-by-side objects
+        const change = w.deltaY < 0 ? 1 : -1;
+        const currentCount = this.buildHeld.count || 1;
+        const newCount = Math.max(1, Math.min(10, currentCount + change));
+        if (newCount !== currentCount) {
+          this.buildHeld.count = newCount;
+          this.buildUpdateMultiGhosts();
+          this.buildPose();
+          this.buildWindow?.setHeld({
+            name: this.buildHeld.name,
+            kind: this.buildHeld.kind,
+            isNew: !this.buildHeld.id,
+            data: this.buildHeld.data,
+            snap: !!this.buildSnap,
+            canSnap: this.buildHeld.asset.startsWith('K_'),
+            count: newCount,
+          });
+          this.audio?.play('click', 0.4);
+          this.combatLog(`Placing ${newCount}x ${this.buildHeld.name} side-by-side`, '#9FE39F');
+        }
+        return true;
+      }
       this.buildHeld.rot += Math.sign(w.deltaY) * STEP;
       this.buildPose();
       return true;
@@ -488,8 +647,12 @@ export const BuildWorld = {
       void this.buildCommit(e.shiftKey);
       return true;
     }
-    const id = this.buildPickAt(e);
+    const id = this.buildPickAt(e) || (e.shiftKey && this.targetId && this.placedView?.get(this.targetId) ? this.targetId : null);
     if (id) {
+      if (e.shiftKey) {
+        this.buildDuplicate(id, this.buildGroundUnder(e));
+        return true;
+      }
       this.buildPickUp(id, this.buildGroundUnder(e));
       return true;
     }
@@ -646,12 +809,14 @@ export const BuildWorld = {
     const spot = this.buildSpot(this.buildAlt);
     if (!held || !spot || this.buildBusy) return;
     this.buildBusy = true;
-    const payload = { asset: held.asset, x: spot.x, y: spot.y, z: spot.z, rot: spot.rot, scale: spot.scale, data: held.data };
-    if (held.id) {
+    const count = held.count || 1;
+
+    // Moving a single existing object
+    if (held.id && count === 1) {
       const id = held.id;
       const before = held.before;
-      // set it down at once; the server's word follows
       this.buildDropHeld(false);
+      const payload = { asset: held.asset, x: spot.x, y: spot.y, z: spot.z, rot: spot.rot, scale: spot.scale, data: held.data };
       if (before) this.placedView?.put({ ...before, ...payload, id });
       const res = await reply(this, 'build_move', { id, ...payload });
       this.buildBusy = false;
@@ -666,18 +831,81 @@ export const BuildWorld = {
       this.audio?.play('click', 0.5);
       return;
     }
-    const res = await reply(this, 'build_place', payload);
-    this.buildBusy = false;
-    if (!res.ok) {
-      this.combatLog(res.error || "That can't go there.", '#FF9B7A');
-      return;
+
+    // Pre-calculate all side-by-side positions before dropping ghosts
+    const spots = [];
+    for (let i = 0; i < count; i++) {
+      spots.push(this.buildSpotForIndex(spot, i, held));
     }
-    this.placedView?.put(res.placement);
-    if (res.placement.npc) void this.npcsView?.put(res.placement.npc);
-    this.buildRemember({ kind: 'placed', id: res.placement.id });
-    this.audio?.play('click', 0.6);
-    // Shift: another of the same, turned the same way
-    if (!again) this.buildDropHeld(false);
+
+    const savedAsset = held.asset;
+    const savedScale = held.scale;
+    const savedData = { ...held.data };
+    const savedName = held.name;
+    const savedKind = held.kind;
+    const savedCount = held.count || 1;
+    const savedLift = held.lift;
+    const movingId = held.id;
+    const movingBefore = held.before;
+
+    this.buildDropHeld(false);
+
+    let placedAny = false;
+    for (let i = 0; i < spots.length; i++) {
+      const s = spots[i];
+      const payload = { asset: savedAsset, x: s.x, y: s.y, z: s.z, rot: s.rot, scale: s.scale, data: savedData };
+
+      if (i === 0 && movingId) {
+        const res = await reply(this, 'build_move', { id: movingId, ...payload });
+        if (res.ok) {
+          placedAny = true;
+          this.placedView?.put(res.placement);
+          if (res.placement.npc) void this.npcsView?.put(res.placement.npc);
+          if (movingBefore) this.buildRemember({ kind: 'moved', before: movingBefore });
+        }
+      } else {
+        const res = await reply(this, 'build_place', payload);
+        if (res.ok) {
+          placedAny = true;
+          this.placedView?.put(res.placement);
+          if (res.placement.npc) void this.npcsView?.put(res.placement.npc);
+          this.buildRemember({ kind: 'placed', id: res.placement.id });
+        } else {
+          this.combatLog(res.error || "Some pieces couldn't be placed here.", '#FF9B7A');
+        }
+      }
+    }
+
+    this.buildBusy = false;
+    if (placedAny) {
+      this.audio?.play('click', 0.6);
+    }
+
+    // Shift: another of the same, turned the same way with the same side-by-side count
+    if (again) {
+      const ghost = this.placedView.ghost(savedAsset, savedData);
+      this.placedView.group.add(ghost);
+      this.buildHeld = {
+        id: null,
+        asset: savedAsset,
+        name: savedName,
+        kind: savedKind,
+        rot: spot.rot,
+        lift: savedLift,
+        scale: savedScale,
+        data: savedData,
+        grab: { x: 0, z: 0 },
+        ghost,
+        before: null,
+        at: { x: spot.x, y: spot.y, z: spot.z },
+        supportY: spot.y - savedLift,
+        count: savedCount,
+        extraGhosts: [],
+      } as Held;
+      this.buildUpdateMultiGhosts();
+      this.buildRefreshHeld();
+      this.buildPointer(this.lastBuildPointer);
+    }
   },
 
   async buildDelete(this: any, id: string) {

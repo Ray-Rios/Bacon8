@@ -63,6 +63,16 @@ defmodule BaconWorld.Melee do
     if rand.() < crit_chance, do: {round(dmg * crit_mult), true}, else: {dmg, false}
   end
 
+  @doc "Base non-critical melee damage with `item` for an attacker of `level`."
+  def base_damage(item, level \\ 1) do
+    hi = max(1, (is_map(item) && (item[:dmg] || Map.get(item, :dmg))) || 1)
+    lo = max(1, round(hi * 0.4))
+    avg = div(hi + lo, 2)
+    t = Tuning.current()
+    lvl_div = max(1.0, Map.get(t, "melee_level_div", 3.0))
+    avg + trunc(max(level || 1, 1) / lvl_div)
+  end
+
   @doc "Total Armour Class (AC) from an equipment map (`slot => item | nil`)."
   def total_ac(equipment) when is_map(equipment) do
     equipment

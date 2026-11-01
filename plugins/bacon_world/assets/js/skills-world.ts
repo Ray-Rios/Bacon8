@@ -194,6 +194,9 @@ export const SkillsWorld = {
       }
     } else if (a.target === 'friendly') {
       target = this.targetId && this.isOtherPlayer(this.targetId) ? this.targetId : myId;
+    } else {
+      // 'none' or 'self' abilities (strikes, cleaves, spins): pass selected target if any
+      if (this.targetId) target = this.targetId;
     }
     if (target && a.target === 'enemy') this.controller?.faceCamera?.(1200);
     const me = this.localCharacter();
@@ -421,7 +424,7 @@ export const SkillsWorld = {
         stopGlow();
         if (ch) {
           this.spellFx.spin(ch.mesh, 2.1, col);
-          anim?.oneShot('Sword_Regular_C', { upperOnly: true, rate: 1.3 });
+          anim?.oneShot('Sword_Regular_B', { upperOnly: true, rate: 1.3 });
           const human = this.characterManager?.getHuman(p.character_id);
           if (human?.model) this.spins.push({ model: human.model, t: 0 });
           this.audio?.playAt('spin', ch.mesh.position, 1);

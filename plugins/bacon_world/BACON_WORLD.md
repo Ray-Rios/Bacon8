@@ -64,13 +64,44 @@ flat round island.
   volume). The town's centre is the game's origin and its ground is height 0. The server (`BaconWorld.Terrain`,
   `BaconWorld.Water`) answers height, water and walkable questions; the browser (`terrain.ts`, `terrain-world.ts`)
   draws 32 x 32 chunks with level of detail, painted by slope and height. One water plane is the sea and every lake.
+- **Terrain Ground Mesh Integration** (2026-10-31 fix): When a 3D terrain heightfield is loaded (`hasTerrain` / `groundAt`), the old flat island ground geometry (the 141 m circle of grass, flat plaza, and dirt paths in `world-dressing.ts`), mob camp earth patches (`patch()`), barrow mound (`SphereGeometry`), warren burrow discs, and the scorched ground discs in Baconator's lair are completely bypassed so they do not collide or z-fight with the zone's new 3D terrain mesh. `WorldDressing` construction now awaits terrain heightfield readiness (`groundReady`) before laying out camps and props, preventing race conditions where props and camps were built at flat elevation Y=0.
 - **Water**: wading to 1.2 m; deeper water is swum (slower, no jumping, fighting or fishing), **C** swims down and
   **Space** up. Mounts swim too. `water.ts` mirrors `BaconWorld.Water` with the same tests on both sides.
 - **Fishing**: Old Bram, Angler, sells the pole; **R** casts and reels in; the Millpond and the sea have their own
   catches. The bobber is a curl of bacon (`crafted.ts`).
 - **Sound**: placed sound (pan, distance, low-pass, a voice cap, a master compressor), spell schools, dragon and
   mount voices, beds and music by mood. CC0 sources, built by `library/pipeline/scripts/audio/build_audio_v2.py`.
-  Real surf, splash and kraken recordings are still wanted.
+- **Procedural Nature Sound & Ambient Integration (2026-10-31)**:
+  - **Phase 1 (Audio Core & Asset Caching)**: Added `ambient-catalog.ts` mapping all 100 procedural WAV audio files in `/assets/audio/` across 5 categories (Rain & Storms, Wind & Foliage, Water & Ocean, Campfire & Crackles, Night Insects & Birds). Integrated Service Worker (`sw-game.js`) caching for `/assets/audio/` to guarantee zero-latency persistent disk caching on subsequent reloads. Extended `LobbyAudio` (`lobby-audio.ts`) and `audio-mix.ts` with transparent WAV decoding, ambient aliases, randomized audio pools, lazy on-demand bed loading (`ensureBed`), and decoupled volume scaling.
+  - **Phase 2 (Water & Swimming Audio)**:
+    - Shorelines & Lakes: dynamically blends `water_06_calm_sandy_beach_waves_loop` near ocean shorelines and `water_08_gentle_lake_lapping_loop` near lakes (Millpond, Crater Lake) in `tickAudio`.
+    - Underwater Immersion & Muffling: when swimming and diving (`isSwimming && dive > 0`), fades in `water_10_underwater_submerged_ambience_loop` while dynamically sweeping an underwater low-pass filter (`BiquadFilterNode` down to 380 Hz) across surface effects, wind, combat, and music.
+    - Water Movement & Splashes: walking in shallow water plays `water_17_water_wading_slosh` footsteps; swimming strokes trigger rhythmic splashes; jumping or falling into water plays `water_15_water_splash_medium_jump` or `water_16_water_splash_large_plunge` based on air time instead of ground thuds.
+    - Fishing Audio: bobber cast lands with `water_14_water_splash_small_stone`, and fish bites trigger splash and tug cues.
+    - Water Sweeteners: nocturnal frog croaks (`wildlife_17..18`), ocean wave washes (`water_11..13`), and cavern drips (`water_18..20`) dynamically scheduled based on player proximity to lakes and shores.
+  - **Phase 3 (Campfires & Positional 3D Fire Audio)**:
+    - Comprehensive fire detection in `tickAudio` across village campfires, goblin camps, Orc warcamps, and player-built campfires/braziers.
+    - Blends `fire_01_cozy_campfire_steady_loop` near standard campfires, `fire_02_roaring_bonfire_loop` near Orc warcamps, and `fire_06_brushfire_crackle_wall_loop` inside Baconator's Lair.
+    - Scheduled 3D fire sweeteners near fire sources: pine wood snaps (`fire_07..10`), spark crackle bursts (`fire_11..13`), and sap sizzles (`fire_14..15`).
+  - **Phase 4 (Diurnal Wildlife & Foliage Atmosphere)**:
+    - Diurnal clock synchronization with `SkySystem` wall-clock time $t$: blends `wildlife_04_dawn_forest_bird_chorus_loop` during dawn ($t \approx 0.22 - 0.32$), `wildlife_03_midday_cicada_drone_loop` during high noon ($t \approx 0.45 - 0.62$), and `wildlife_01_summer_night_cricket_chorus_loop` at night.
+    - Biome wind beds: `wind_02_steady_forest_wind_loop` in woodlands, `wind_03_howling_canyon_wind_loop` in barrows/ruins/gorges, and `wind_06_mountain_summit_draft_loop` at high altitudes.
+    - Foliage sweeteners: songbirds (`bird_song`) and woodpeckers (`woodpecker`) by day in woods, crickets (`night_cricket`) and owls (`owl`) by night, tree trunk/branch creaks (`tree_creak`), and tall grass swishes (`foliage_grass_step`) during meadow movement.
+  - **Phase 5 (Dynamic Weather, Visual Atmosphere & Lethal Lightning)**:
+    - 30-minute real-world synchronized weather cycle: Clear skies (18m) $\to$ Light Drizzle (`rain_drizzle`, 3m) $\to$ Steady Rain (`rain_steady`, 4.5m) $\to$ Thunderstorm (`rain_thunderstorm`, 3m) $\to$ Post-storm clearing (1.5m).
+    - Shelter-aware attenuation: dynamically routes rain audio to `rain_canopy` under trees, `rain_tent` near camp tents, `rain_cabin` inside or near wooden village cottages, and open rain over fields.
+    - **Lightweight Overhead Clouds (`weather-system.ts`)**: Single horizontal quad mesh (2,800m $\times$ 2,800m at Y=280m, 1 draw call, 2 triangles) dynamically following the camera. Uses a procedural multi-octave FBM dual-scrolling noise shader that smoothly shifts from soft daylight cirrus clouds to dark slate-grey storm thunderheads, illuminating with electric cyan-white bursts on lightning flashes without GPU overhead.
+    - **Dynamic Raindrops (`weather-system.ts`)**: Camera-wrapping particle system (2,000 line streaks, 1 draw call) that wrap in a 50m $\times$ 50m $\times$ 32m bounding volume around the player. Streaks angle with storm winds; density and opacity scale with weather intensity and dynamically attenuate inside shelters (completely clear inside cabins).
+    - **Sky Lightning Bolts**: Procedurally generated branching jagged lightning across cloud altitudes, flickering during storm peaks.
+    - **Lethal Ground Strikes (Instant Overkill Death)**:
+      - During thunderstorms (`rainIntensity >= 0.70`), ground lightning strikes threaten outdoor players every 14-25 seconds.
+      - **Warning Telegraph (1.8s)**: A glowing 3.5m electric warning ring appears on the ground with pulsing cyan-yellow hues and crackling ground sparks, providing players time to sprint or evade.
+      - **Strike Impact (0.24s)**: A massive vertical jagged bolt strikes straight down with an electric flash and `thunder_strike` audio boom.
+      - **Lethal Radius (3.5m)**: If an outdoor player is caught inside the radius, they take extreme overkill damage (99,999) via `lightning_struck`, instantly killing and shattering their character!
+    - **Extreme Damage & Character Shatter (`smash-fx.ts`)**:
+      - When a character suffers death from overkill damage ($\ge \text{max\_hp}$, including lethal lightning or devastating hits), their character model explodes into physics debris pieces using `SmashFx.shatterCharacter`.
+      - Traverses the character's clothing, gear, and body meshes, isolates parts, unsets skinning for instant rigid instanced rendering, and launches chunks with gravity, terrain collision/bouncing, rotation, settling, and fading, accompanied by crimson gore, spark, and dust puffs.
+      - Server (`GameEvents.take_hit`) computes `overkill? = damage >= max_hp`, broadcasts `"shattered"` status in `zone_hp` for all clients in the zone, and pushes `character_died` with `shatter: true`. On respawn, character meshes cleanly restore visibility.
 - **The sky and the glass**: the sun and moon sit in the sky; the player's personal glass colour reaches the game's
   windows through `--bwg-*` CSS variables (unset on the default theme).
 
@@ -97,16 +128,35 @@ flat round island.
 - **Stacking & Snapping** (2026-10-31):
   - Objects stack on top of each other in build mode: pointing the cursor at an existing placed object raycasts its bounding box and sets the support height to the top surface (`box.max.y`), allowing floors, walls, crates, roofs, and props to stack vertically.
   - Snapping aligns pieces both vertically (stacking to the object's center and orientation, or 1.5m / 3m surface grid) and horizontally (proximity snapping to adjacent pieces and foundations, leveling elevations flush with each other). Holding `Alt` enables freeform placement at arbitrary positions and rotations.
+- **Object Duplication & Multi-Object Side-by-Side Placement** (2026-10-31):
+  - **Duplicate (`Shift + Left-Click`)**: In build mode, Shift+Left-Clicking any placed object (or Shift+Left-Clicking while an object is selected) grabs an exact copy of that object (inheriting asset, rotation, scale, elevation lift, and data) without moving or hiding the original object. Players can immediately stamp down duplicates nearby.
+  - **Multi-Object Side-by-Side (`Shift + Scroll Wheel`)**: When holding any object, Shift+Wheel dynamically increases or decreases the number of items to place down side-by-side (1 to 10). Dynamic semi-transparent ghost previews display the entire row aligned along the piece's lateral axis (spaced by the asset's bounding width or modular 1.5m kit grid). Clicking places all pieces simultaneously, and Shift+Click commits the row while keeping another line ready in hand.
 - **Picking placed things** (2026-10-30 fix): an InstancedMesh measures its bounds on the first raycast and keeps
   them. A piece placed or moved outside those bounds could not be clicked, so it could not be picked up.
   `placed-view.ts` now forgets the bounds on every write (`stale()`).
+- **Building & Combat Performance Architecture** (2026-10-31):
+  - In-game rules (`rules()`) and HP rules (`hps()`) are cached in `:persistent_term`, ensuring zero database queries during placement listing or combat damage calculations.
+  - Placements are cached in ETS (`:bacon_world_placements_cache`), making `Building.get` and `Building.placement?` instant in-memory lookups.
+  - AoE, spin, and cone smash attacks only execute if the player has Smash toggled ON, and query only bounded local coordinate boxes (`[x - r, x + r]`, `[z - r, z + r]`) in SQL rather than scanning the entire zone.
+  - Natural HP regen operates directly on ETS state without database lookups during ticks.
+  - LiveView account presence checking recognizes reconnections of the *same* character, preventing players from being locked out with "account is already logged in" after reconnects or reloads.
+  - Removed obsolete `buildSetSmash` call in `buildExit`, allowing '`' and the close button ('✕') to close the build window without client exceptions.
 
 ### Combat and creatures
 
 - Melee for both hands (arcs 90 degrees one-handed, 110 two-handed), looting EverQuest style (G takes everything),
   levels, coins, con colours, PvP with red names. Bows never run out of arrows (cone hit along the aim; arrows fly
   and stick for four seconds).
-- **PvP Spells & Skills** (2026-10-31): Spells and skills (projectiles, direct damage, AoE, cones, spins, and strikes) can now target and hit PvP-flagged opponents when both caster and target have PvP toggled ON. Projectiles calculate flight time to moving players. Spells and abilities also damage placed objects when Smash mode is ON.
+- **PvP & Smash Spells, Skills & Mount Attacks** (2026-10-31):
+  - Spells and skills (projectiles, direct damage, AoE, cones, spins, strikes, and dash impacts) can now target and hit PvP-flagged opponents when both caster and target have PvP toggled ON.
+  - Placed/buildable objects take smash damage when Smash mode is ON when hit by:
+    - Direct combat skills (`strike`) either with a direct target or sweeping in an arc in front of the player.
+    - Spin Attack (`spin`) hitting all buildable objects within the character's weapon and spin reach.
+    - Frontal cones (`cone`) and AoE circles (`aoe`).
+    - Dash arrival impacts (`dash`).
+    - Mount special attacks: Drake Claw Swipe (left) and Fire Breath cone (right); Abyssal Kraken Tentacle Lash (left) and Maelstrom (right) damage placed objects in their reach and arc, and damage PvP players in the sweep.
+  - Placed object queries utilize `Building.list/1` and round damage values to ensure clean, consistent damage against ETS-cached and database placements.
+- **Spin Attack Stability & Animation** (2026-10-31 fix): Fixed LiveView crash on `spin_attack` execution caused by undefined `Melee.base_damage/2`. Implemented `Melee.base_damage/2` and routed damage roll through `Melee.roll_damage/5` with weapon damage, player level, and skill multipliers. Mapped spin attack animation to `Sword_Regular_B` and added `Sword_Regular_C` fallback alias in `anim-driver.ts`.
 - **Spells and skills** (2026-10-30 expansion): **207 abilities** (`BaconWorld.Abilities`) — **Recall** + **100 spells** across ten schools of ten (*Fire, Frost, Storm, Arcane, Holy, Nature, Shadow, Blood, Earth, Water*, cast from the 2×10 spell bar, `1-0` and `Shift+1-0`) + **100 combat skills** across ten archetypes of ten (*Blade, Berserker, Blunt, Polearm, Rogue, Ranger, Guardian, Monk, Warlord, Survival*, on `Q E F Z X V`) + **6 passive stat buffs**.
   - **15 server-side effect types** (`BaconWorldWeb.SkillEvents`, `BaconWorld.Mobs.Brain`): `"recall"`, `"heal"` (direct + HoT ticks), `"damage"` (projectiles/beams + DoT, stun, root, slow, knockback, pull), `"drain"` (lifedrain / mana siphon), `"aoe"` (self- or target-centred circle AoE), `"cone"` (frontal breath / shockwave / barrage), `"chain"` (multi-target arc jumps), `"root"` (single-target or AoE hold), `"stun"` (single-target or AoE stun/incapacitate), `"shield"` (absorb barrier + temporary AC), `"buff_temp"` (combat stances, shouts, meditations), `"dash"` (forward leaps/charges/dives and backward disengage vaults, terrain-checked, with arrival slam), `"spin"` (360° whirlwinds), `"strike"` (cleaves, executes below 35% HP, bleeds, sunders, ranged shots), `"taunt"` (single or AoE challenge), and `"stat"` (passive buffs).
   - **Icons & palette** (`skill-tree-canvas.ts`, `skill-tree-editor.ts`): glossy school-coloured circular spell icons, rounded-square archetype skill icons, and golden buff icons with 65+ crisp SVG inner glyphs. The `/admin/bacon_world/skills` editor features a searchable **Grid / List** palette with **All / Spells / Skills / Buffs** filter tabs.
@@ -169,6 +219,11 @@ flat round island.
 - **Nameplates**: a name never gets smaller than 15 px on screen (it used to shrink into a few pixels). The texture is
   mipmapped, so far names don't shimmer, and they show to 90 m. Overlapping names are culled each frame: the nearer
   one wins, and the target always shows.
+- **Persistent Game Asset Service Worker (2026-10-31)**:
+  - Added `/sw-game.js` (registered in `world-character-ui-scene.ts` via `service-worker.ts`) managing `bacon-world-assets-v1` in the browser's persistent `CacheStorage`.
+  - Intercepts all `/models/**` (3D GLBs, textures, animations, terrain heightmaps), `/audio/world/**` (sound effects and music), and `/fonts/**`.
+  - Employs a **Stale-While-Revalidate with Auto-Update** strategy: on page reload or revisiting the game, assets load instantaneously from local disk (0 ms network delay); in the background, the service worker verifies with the server and automatically caches any updated models or textures without requiring manual hard-refreshes (`Ctrl+F5`).
+  - Window debug tools exposed as `window.bwCache.info()` and `window.bwCache.clear()`.
 
 ### Human Characters, Wardrobe & Sliders Overhaul (2026-10-31, completed)
 
@@ -269,6 +324,12 @@ harness (see §8).
 | 2026-10-31 | **Object stacking and snapping**: Objects stack on top of each other in build mode, and snap both vertically (stacking) and horizontally (side-by-side) to existing objects; Alt allows freeform placement. |
 | 2026-10-31 | **Slope step-down snapping and jump sound fix**: Characters moving downhill snap to terrain within a step-down threshold (0.6 m) so slopes don't flutter grounded state; jump grunts only trigger on active upward jumps (verticalSpeed > 1.0) and landing sounds require > 200 ms airtime. |
 | 2026-10-31 | **Zone-wide flight altitude ceiling**: Drake mount flight height is no longer restricted to local ground elevation directly underneath; players can fly anywhere in the zone up to 100 m above the highest point in that zone (`hi: 672.0 m` on Crater Lake, ceiling = 772 m), or 100 m above high structures. |
+| 2026-10-31 | **Combat & Building Performance & Stability Fixes**: Cached asset rules and HPs in `:persistent_term` and active placements in `:bacon_world_placements_cache` ETS; eliminated N-queries on `Building.list` and attacks; scoped AoE/cone smash checks to bounded SQL bounding boxes; prevented re-connecting the same character from triggering "account is already logged in"; fixed `TypeError` in `buildExit` enabling clean exit via '`' or close button. |
+| 2026-10-31 | **Persistent Game Asset Service Worker**: Added `/sw-game.js` caching `/models/**`, `/audio/world/**`, and `/fonts/**` in browser `CacheStorage` with background auto-updating (Stale-While-Revalidate), eliminating asset re-downloads on page reloads. |
+| 2026-10-31 | **Slash Commands & Zone Warping**: Added `/zone` (warps to default starting location of the current zone) and `/zone x,y,z` (warps to specified coordinates). Added `/loc` / `/pos` / `/where` (coordinates and heading), `/stuck` (safe warp to zone entrance), `/die` / `/suicide` / `/kill` (instantly slays character with shatter), `/roll [max]` (zone-wide dice roll), `/shout <msg>` / `/yell` (zone-wide broadcast), `/time` (server UTC & day/night status), `/weather [type]` (view/set weather), `/help` (command reference), and emotes (`/dance`, `/wave`, `/bow`, `/cheer`, `/clap`, `/sit`, `/point`). |
+| 2026-10-31 | **Abyss / Void Death**: Falling below the world into nothingness (Y < -120 m or >25 m below terrain bottom) triggers a lethal kill event ("You fell into the abyss!"), shatters the character into physics debris, and respawns them at the safe zone entrance. |
+| 2026-10-31 | **Combat Skills & Spin Attack PvP Hits**: Fixed Spin Attack and martial skills failing to damage other players in PvP. Fixed `spin_reach` calculation (previously evaluating to only 0.6 m instead of weapon reach + 4.2 m 360-degree radius), preserved target selection for `"none"`/directional skills, added `Melee.in_arc?` player detection for untargeted strikes/cleaves/dashes, and included `pvp_hits` in `cast_result`. |
+| 2026-10-31 | **Rain Effect Optimization & Visual Refinement**: Overhauled weather rain and clouds for high performance. Reduced particle count from 2,000 to 360 drops within an 18 m local camera cylinder (eliminating distant white needles across mountains and reducing CPU/bus transfer by 82%), softened streak color and opacity (`0x6e889e`, 0.08–0.22 opacity), and bypassed the cloud plane during clear weather with 2-octave shader evaluation to eliminate GPU fillrate bottlenecks. |
 
 ## 4. How it fits together
 

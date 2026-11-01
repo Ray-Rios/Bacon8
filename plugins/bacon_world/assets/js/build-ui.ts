@@ -23,6 +23,7 @@ export interface HeldInfo {
   data: Record<string, any>;
   snap: boolean;
   canSnap: boolean;
+  count?: number;
 }
 
 export interface BuildCallbacks {
@@ -190,7 +191,8 @@ export class BuildWindow {
       this.renderList();
       return;
     }
-    const kids: Array<HTMLElement | null> = [h('div', {}, info.isNew ? 'Placing ' : 'Moving ', h('b', {}, info.name))];
+    const countTag = info.count && info.count > 1 ? ` (${info.count}x)` : '';
+    const kids: Array<HTMLElement | null> = [h('div', {}, info.isNew ? 'Placing ' : 'Moving ', h('b', {}, info.name + countTag))];
     if (info.kind === 'mob') {
       const count = h('input', { type: 'number', min: 1, max: 12, step: 1, value: info.data.count ?? 1 }) as HTMLInputElement;
       const radius = h('input', { type: 'number', min: 0, max: 40, step: 0.5, value: info.data.radius ?? 0 }) as HTMLInputElement;
@@ -245,9 +247,9 @@ export class BuildWindow {
     );
     this.renderList();
     this.keys.innerHTML =
-      '<kbd>Click</kbd> something placed to pick it up, <kbd>click</kbd> again to set it down (<kbd>Shift</kbd>: place another). ' +
+      '<kbd>Click</kbd> something placed to pick it up (<kbd>Shift+Click</kbd>: grab copy to duplicate); <kbd>click</kbd> again to set down (<kbd>Shift</kbd>: place another). ' +
       'Hovering over objects stacks on top; pieces snap to each other when Snap is on (hold <kbd>Alt</kbd> for free placement). ' +
-      'Holding it: <kbd>right button</kbd> turns it gently (<kbd>Shift</kbd>: the other way), <kbd>wheel</kbd> or <kbd>Q</kbd>/<kbd>E</kbd> in steps, ' +
+      'Holding it: <kbd>Shift+wheel</kbd> sets side-by-side count, <kbd>right button</kbd> turns gently (<kbd>Shift</kbd>: the other way), <kbd>wheel</kbd> or <kbd>Q</kbd>/<kbd>E</kbd> in steps, ' +
       '<kbd>PgUp</kbd>/<kbd>PgDn</kbd> raise and lower (<kbd>Shift</kbd>: a storey), <kbd>[</kbd>/<kbd>]</kbd> size. ' +
       '<kbd>Right-click</kbd> something to destroy and shatter it (requires permissions); <kbd>Ctrl+Z</kbd> undoes. <kbd>Esc</kbd> drops what you hold; <kbd>`</kbd> leaves build mode.' +
       (this.role ? ` <span style="color:#cdbf9f">You build as ${this.role}.</span>` : '');

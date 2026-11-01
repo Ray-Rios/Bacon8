@@ -205,10 +205,13 @@ defmodule BaconWorldWeb.GameEvents do
           item: item,
           heavy: false,
           target: params["target_id"],
-          sweep: {move.targets, move.arc}
+          sweep: {move.targets, move.arc},
+          reach: move.reach + (move[:body] || 0.0)
         }
 
         slug = socket.assigns[:mobs_zone] || "lobby"
+        pvp = pvp_swing(socket, me, attack)
+        smash = smash_mount(socket, me, attack, params, move)
 
         case Mobs.melee(slug, attack) do
           {:ok, hits} ->
@@ -219,10 +222,10 @@ defmodule BaconWorldWeb.GameEvents do
             end
 
             {socket, progress} = award_kills(socket, hits)
-            {:reply, %{ok: true, move: move.move, hits: hits, delay_ms: delay, progress: progress}, socket}
+            {:reply, %{ok: true, move: move.move, hits: hits, pvp: pvp, smash: smash, delay_ms: delay, progress: progress}, socket}
 
           {:error, _} ->
-            {:reply, %{ok: true, move: move.move, hits: [], delay_ms: delay, progress: nil}, socket}
+            {:reply, %{ok: true, move: move.move, hits: [], pvp: pvp, smash: smash, delay_ms: delay, progress: nil}, socket}
         end
       end
     else
@@ -345,6 +348,16 @@ defmodule BaconWorldWeb.GameEvents do
     end
   end
 
+  def handle_event("lightning_struck", _params, socket) do
+    if socket.assigns[:is_dead?] do
+      {:noreply, socket}
+    else
+      # Extreme damage: deal 99,999 raw damage, instantly shattering the character
+      socket = take_hit(socket, 99_999)
+      {:noreply, socket}
+    end
+  end
+
   def handle_event(_event, _params, socket), do: {:reply, %{ok: false, error: "bad request"}, socket}
 
   # The character, and the merchant if it is in this zone and within reach.
@@ -431,8 +444,8 @@ defmodule BaconWorldWeb.GameEvents do
   """
   def pvp_swing(socket, me, attack) do
     topic = socket.assigns[:current_zone_topic]
-    {max_targets, arc} = Melee.sweep(attack.item)
-    reach = Melee.pvp_reach(attack.item) * Brain.u()
+    {max_targets, arc} = attack[:sweep] || Melee.sweep(attack.item)
+    reach = (attack[:reach] || Melee.pvp_reach(attack.item)) * Brain.u()
 
     victims =
       (socket.assigns[:zone_online_characters] || [])
@@ -484,31 +497,35 @@ defmodule BaconWorldWeb.GameEvents do
     if params["smash"] == true do
       target_id = params["target_id"]
       u = Brain.u()
-      reach = Melee.pvp_reach(attack.item) * u
-      {_max_targets, arc} = Melee.sweep(attack.item)
+      reach = (attack[:reach] || Melee.pvp_reach(attack.item)) * u
+      {_max_targets, arc} = attack[:sweep] || Melee.sweep(attack.item)
 
       placement_id =
-        if is_binary(target_id) and BaconWorld.Building.placement?(zone, target_id) do
-          target_id
-        else
-          BaconWorld.Building.list(zone)
-          |> Enum.filter(fn p ->
-            px = p.x * u
-            pz = p.z * u
-            Melee.in_arc?({attack.x, attack.z}, attack.heading, {px, pz}, reach, arc)
-          end)
-          |> Enum.min_by(fn p -> :math.pow(p.x * u - attack.x, 2) + :math.pow(p.z * u - attack.z, 2) end, fn -> nil end)
-          |> case do
-            %{id: pid} -> pid
-            _ -> nil
-          end
+        cond do
+          is_binary(target_id) and BaconWorld.Building.placement?(zone, target_id) ->
+            target_id
+
+          true ->
+            placements = BaconWorld.Building.list(zone)
+
+            placements
+            |> Enum.filter(fn p ->
+              px = p.x * u
+              pz = p.z * u
+              Melee.in_arc?({attack.x, attack.z}, attack.heading, {px, pz}, reach, arc)
+            end)
+            |> Enum.min_by(fn p -> :math.pow(p.x * u - attack.x, 2) + :math.pow(p.z * u - attack.z, 2) end, fn -> nil end)
+            |> case do
+              %{id: pid} -> pid
+              _ -> nil
+            end
         end
 
       if placement_id do
         mult = 1 + (attack[:pct] || 0) / 100
         crit_bonus = attack[:crit_bonus] || 0.0
         {damage, crit} = Melee.roll_damage(attack.item, attack.level, attack.heavy, &:rand.uniform/0, mult: mult, crit_bonus: crit_bonus)
-        dmg = max(1, damage)
+        dmg = max(1, round(damage))
 
         case BaconWorld.Building.damage_placement(socket.assigns.current_user, zone, placement_id, dmg) do
           {:ok, outcome, placement} ->
@@ -518,6 +535,49 @@ defmodule BaconWorldWeb.GameEvents do
             nil
         end
       end
+    end
+  end
+
+  defp smash_mount(socket, _me, attack, params, move) do
+    zone = socket.assigns[:mobs_zone] || "lobby"
+
+    if params["smash"] == true do
+      target_id = params["target_id"]
+      u = Brain.u()
+      reach = (move.reach + (move[:body] || 0.0)) * u
+      arc = move[:arc] || 90
+      max_targets = move[:targets] || 1
+      dmg = max(1, round(move[:dmg] || 10))
+
+      targeted_id = if is_binary(target_id) and BaconWorld.Building.placement?(zone, target_id), do: target_id, else: nil
+
+      placements = BaconWorld.Building.list(zone)
+
+      nearby_ids =
+        placements
+        |> Enum.filter(fn p ->
+          px = p.x * u
+          pz = p.z * u
+          p.id != targeted_id and Melee.in_arc?({attack.x, attack.z}, attack.heading, {px, pz}, reach, arc)
+        end)
+        |> Enum.sort_by(fn p -> :math.pow(p.x * u - attack.x, 2) + :math.pow(p.z * u - attack.z, 2) end)
+        |> Enum.take(if(targeted_id, do: max(0, max_targets - 1), else: max_targets))
+        |> Enum.map(& &1.id)
+
+      all_ids = if targeted_id, do: [targeted_id | nearby_ids], else: nearby_ids
+
+      Enum.map(all_ids, fn pid ->
+        case BaconWorld.Building.damage_placement(socket.assigns.current_user, zone, pid, dmg) do
+          {:ok, outcome, placement} ->
+            %{id: pid, asset: placement.asset, damage: dmg, crit: false, outcome: outcome, x: placement.x, y: placement.y, z: placement.z}
+
+          _ ->
+            nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+    else
+      []
     end
   end
 
@@ -539,16 +599,24 @@ defmodule BaconWorldWeb.GameEvents do
       else
         case Combat.get_character_stats(me.character_id) do
           {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}} ->
+            overkill? = damage >= max_hp
             new_hp = max(0, hp - damage)
             {:ok, _} = Combat.update_character_hp_mp(me.character_id, new_hp, mp)
+
+            state =
+              cond do
+                new_hp == 0 && overkill? -> "shattered"
+                new_hp == 0 -> "dead"
+                true -> "hurt"
+              end
 
             socket =
               socket
               |> update_runtime(%{hp: new_hp})
               |> push_event("character_stats_update", %{hp: new_hp, max_hp: max_hp, mp: mp, max_mp: max_mp})
-              |> broadcast_hp(me.character_id, new_hp, max_hp, if(new_hp == 0, do: "dead", else: "hurt"))
+              |> broadcast_hp(me.character_id, new_hp, max_hp, state)
 
-            if new_hp == 0, do: die(socket, me), else: socket
+            if new_hp == 0, do: die(socket, me, shatter: overkill?, reason: "slain"), else: socket
 
           _ ->
             socket
@@ -557,7 +625,28 @@ defmodule BaconWorldWeb.GameEvents do
     end
   end
 
-  defp die(socket, me) do
+  @doc "Instantly kills the character (e.g. falling into the abyss, suicide command, lethal overkill)."
+  def kill_character(socket, opts \\ []) do
+    me = current(socket)
+
+    if socket.assigns[:is_dead?] || is_nil(me) do
+      socket
+    else
+      shatter? = Keyword.get(opts, :shatter, true)
+      reason = Keyword.get(opts, :reason, "killed")
+      Combat.update_character_hp_mp(me.character_id, 0, 0)
+
+      socket
+      |> update_runtime(%{hp: 0})
+      |> push_event("character_stats_update", %{hp: 0, max_hp: me.max_hp, mp: 0, max_mp: me.max_mp})
+      |> broadcast_hp(me.character_id, 0, me.max_hp, if(shatter?, do: "shattered", else: "dead"))
+      |> die(me, shatter: shatter?, reason: reason)
+    end
+  end
+
+  defp die(socket, me, opts \\ []) do
+    shatter? = Keyword.get(opts, :shatter, false)
+    reason = Keyword.get(opts, :reason, "slain")
     {:ok, coords} = Combat.respawn_character(me.character_id)
     if timer = socket.assigns[:pending_respawn_timer], do: Process.cancel_timer(timer)
     timer = Process.send_after(self(), {:auto_respawn, me.character_id}, @respawn_ms)
@@ -574,7 +663,9 @@ defmodule BaconWorldWeb.GameEvents do
       max_hp: me.max_hp,
       mp: me.max_mp,
       max_mp: me.max_mp,
-      respawn_in_ms: @respawn_ms
+      respawn_in_ms: @respawn_ms,
+      shatter: shatter?,
+      reason: reason
     })
   end
 

@@ -76,12 +76,23 @@ export class WorldDressing {
   underwater = 0;
   private uw = 0;
 
-  constructor(private scene: THREE.Scene, private renderer: THREE.WebGLRenderer) {
+  hasTerrain = false;
+  private groundResolve: (() => void) | null = null;
+  readonly groundReady: Promise<void>;
+
+  constructor(private scene: THREE.Scene, private renderer: THREE.WebGLRenderer, hasTerrain = false) {
+    this.hasTerrain = hasTerrain;
     this.loader = new GLTFLoader();
     this.loader.setMeshoptDecoder(MeshoptDecoder);
     this.group.name = 'WorldDressing';
     this.group.scale.setScalar(UNITS_PER_METRE);
     this.hemi = new THREE.HemisphereLight('#CFE3FF', '#4A5A3A', 0.6);
+    this.groundReady = new Promise((resolve) => {
+      this.groundResolve = resolve;
+    });
+    if (!this.hasTerrain) {
+      this.groundResolve();
+    }
   }
 
   private load(url: string): Promise<THREE.Object3D | null> {
@@ -97,6 +108,10 @@ export class WorldDressing {
    */
   setGround(groundAt: ((x: number, z: number) => number) | null, fog: [number, number] = [450, 2600]) {
     this.groundAt = groundAt;
+    if (groundAt) {
+      this.hasTerrain = true;
+      this.groundResolve?.();
+    }
     this.fog = groundAt ? fog : [70, 190];
     if (this.scene.fog instanceof THREE.Fog) {
       this.scene.fog.near = this.fog[0] * UNITS_PER_METRE;
@@ -115,9 +130,13 @@ export class WorldDressing {
   }
 
   private async buildOnce(parent: THREE.Object3D): Promise<void> {
+    if (this.hasTerrain && !this.groundAt) {
+      await this.groundReady;
+    }
     parent.add(this.group);
     this.scene.add(this.hemi);
-    this.group.add(this.ground());
+    const g = this.ground();
+    if (g) this.group.add(g);
     const [props, kit] = await Promise.all([this.load(`${WORLD_BASE}/B8_Props.glb`), this.load(`${WORLD_BASE}/B8_BuildKit.glb`)]);
     for (const [root, family] of [[props, 'props'], [kit, 'kit']] as Array<[THREE.Object3D | null, Family]>) {
       root?.traverse((o: any) => {
@@ -469,6 +488,9 @@ export class WorldDressing {
    * build(); merged like the village, with colliders.
    */
   async addCamps(camps: Array<{ id: string; theme: string; x: number; z: number; radius: number }>): Promise<void> {
+    if (this.hasTerrain && !this.groundAt) {
+      await this.groundReady;
+    }
     await this.build(this.group.parent || this.scene);
     if (this.campsDone || !this.templates.size) return;
     this.campsDone = true;
@@ -496,6 +518,7 @@ export class WorldDressing {
   }
 
   private patch(cx: number, cz: number, radius: number, color: string, seed: number) {
+    if (this.hasTerrain || this.groundAt) return;
     const mat = groundMaterial(color, seed, radius / 2, { set: 'earth', scale: 3, antiTile: true }, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const geo = new THREE.CircleGeometry(radius, 40, 0, Math.PI * 2).rotateX(-Math.PI / 2);
     const m = new THREE.Mesh(this.drape(geo, cx, cz, 0.012), mat);
@@ -647,9 +670,11 @@ export class WorldDressing {
     const dark = new THREE.MeshStandardMaterial({ color: '#120E0A', roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     for (let i = 0; i < 4; i++) {
       const p = at(r() * Math.PI * 2, R * (0.2 + r() * 0.5));
-      const m = new THREE.Mesh(this.drape(new THREE.CircleGeometry(0.45 + r() * 0.25, 18).rotateX(-Math.PI / 2), p.x, p.z, 0.02), dark);
-      m.position.set(p.x, 0, p.z);
-      this.group.add(m);
+      if (!this.hasTerrain && !this.groundAt) {
+        const m = new THREE.Mesh(this.drape(new THREE.CircleGeometry(0.45 + r() * 0.25, 18).rotateX(-Math.PI / 2), p.x, p.z, 0.02), dark);
+        m.position.set(p.x, 0, p.z);
+        this.group.add(m);
+      }
       for (let k = 0; k < 3; k++) {
         const q = at(r() * Math.PI * 2, 0.7);
         this.put('Rock3', p.x + q.x - cx, p.z + q.z - cz, r() * 360, -0.05, 0.35, 0.18, 0.35);
@@ -741,13 +766,15 @@ export class WorldDressing {
     // the mound, behind the camp (away from town), its door facing the camp
     const away = toTown + Math.PI;
     const mx = cx + Math.sin(away) * (R + 3), mz = cz + Math.cos(away) * (R + 3);
-    const grass = groundMaterial('#4F6A35', 43, 6, { set: 'grass', scale: 2.5, strength: 0.75, antiTile: true }, { roughness: 1 });
-    const mound = new THREE.Mesh(new THREE.SphereGeometry(6, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), grass);
-    mound.scale.set(1, 0.42, 1);
-    mound.position.set(mx, this.gy(mx, mz) - 0.05, mz);
-    mound.castShadow = true;
-    mound.receiveShadow = true;
-    this.group.add(mound);
+    if (!this.hasTerrain && !this.groundAt) {
+      const grass = groundMaterial('#4F6A35', 43, 6, { set: 'grass', scale: 2.5, strength: 0.75, antiTile: true }, { roughness: 1 });
+      const mound = new THREE.Mesh(new THREE.SphereGeometry(6, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), grass);
+      mound.scale.set(1, 0.42, 1);
+      mound.position.set(mx, this.gy(mx, mz) - 0.05, mz);
+      mound.castShadow = true;
+      mound.receiveShadow = true;
+      this.group.add(mound);
+    }
     this.cols.push({ kind: 'circle', x: mx, z: mz, r: 5.4 });
     const dx = mx + Math.sin(toTown) * 5.6, dz = mz + Math.cos(toTown) * 5.6;
     this.put('K_Wall_Stone_Gateway', dx, dz, toTown / D2R);
@@ -868,7 +895,8 @@ export class WorldDressing {
 
   // ---------------------------------------------------------------- ground
 
-  private ground(): THREE.Object3D {
+  private ground(): THREE.Object3D | null {
+    if (this.hasTerrain || this.groundAt) return null;
     const g = new THREE.Group();
     g.name = 'Ground';
     // the grass ends 9 m inside the waterline (BaconWorld.Water's shore, 150 m): the beach is

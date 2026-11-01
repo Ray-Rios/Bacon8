@@ -114,7 +114,7 @@ const FALLBACK: Record<string, string[]> = {
   TwoHand_Idle_Loop: ['Sword_Idle'], Spear_Idle_Loop: ['Sword_Idle'], Staff_Idle_Loop: ['Sword_Idle'],
   Dagger_Idle_Loop: ['Sword_Idle'], Idle_Shield_Loop: ['Idle_Loop'], Idle_Torch_Loop: ['Idle_Loop'],
   Idle_Lantern_Loop: ['Idle_Loop'],
-  Sword_Regular_B: ['Sword_Regular_A'], Punch_Cross: ['Punch_Jab'], Melee_Hook: ['Punch_Jab'],
+  Sword_Regular_B: ['Sword_Regular_A'], Sword_Regular_C: ['Sword_Regular_B', 'Sword_Regular_A'], Punch_Cross: ['Punch_Jab'], Melee_Hook: ['Punch_Jab'],
   Dagger_Stab: ['Sword_Regular_A'], Dagger_Slash: ['Sword_Regular_A'],
   TwoHand_Slash_A: ['Sword_Regular_A'], TwoHand_Slash_B: ['Sword_Regular_A'], TwoHand_Overhead: ['Sword_Regular_A'],
   Spear_Thrust_A: ['Sword_Regular_A'], Spear_Thrust_B: ['Sword_Regular_A'], Spear_Sweep: ['Sword_Regular_A'],

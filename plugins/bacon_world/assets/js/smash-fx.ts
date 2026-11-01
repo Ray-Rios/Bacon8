@@ -141,6 +141,8 @@ interface Flying {
   age: number;
   rest: number;
   scale0: THREE.Vector3;
+  temporaryGeo?: boolean;
+  temporaryMat?: boolean;
 }
 
 interface Dust {
@@ -210,6 +212,106 @@ export class SmashFx {
     while (this.flying.length > MAX_BITS) this.drop(this.flying.shift()!);
     const size = box.getSize(new THREE.Vector3());
     this.puff(mid.setY(box.min.y + size.y * 0.35), 40, 2 + Math.max(size.x, size.z) * 0.5, '#A89A82');
+  }
+
+  /**
+   * Shatters a character model into flying physics debris pieces.
+   * Traverses visible meshes, isolates parts, disables skinning on chunk materials, and launches
+   * bits outward with gravity and terrain collision, accompanied by crimson/dust puffs.
+   */
+  shatterCharacter(id: string, root: THREE.Object3D, power = 2.2) {
+    if (!root) return;
+    root.updateWorldMatrix(true, true);
+
+    this.group.updateWorldMatrix(true, false);
+    const invSmashGroup = this.group.matrixWorld.clone().invert();
+    const charRootInGroup = invSmashGroup.multiply(root.matrixWorld.clone());
+
+    const invRoot = root.matrixWorld.clone().invert();
+    const parts: SmashPart[] = [];
+
+    root.traverse((obj: any) => {
+      if (!obj.isMesh || !obj.visible) return;
+      if (!obj.geometry || !obj.geometry.getAttribute('position')) return;
+
+      const srcGeo = obj.geometry;
+      const local = invRoot.clone().multiply(obj.matrixWorld);
+
+      // Clone material and ensure skinning is disabled so InstancedMesh renders properly
+      let mat = obj.material;
+      if (Array.isArray(mat)) {
+        mat = mat.map((m: THREE.Material) => {
+          const clone = m.clone();
+          (clone as any).skinning = false;
+          return clone;
+        });
+      } else if (mat) {
+        const clone = mat.clone();
+        (clone as any).skinning = false;
+        mat = clone;
+      }
+
+      parts.push({
+        geo: srcGeo,
+        mat: mat || new THREE.MeshLambertMaterial({ color: 0x992222 }),
+        local,
+      });
+    });
+
+    if (parts.length === 0) return;
+
+    const box = new THREE.Box3().setFromObject(root);
+    box.applyMatrix4(invRoot);
+
+    const size = box.getSize(new THREE.Vector3());
+    const n = Math.max(size.x, size.y, size.z) < 1.0 ? 2 : 3;
+    const cutParts = parts.map((p) => cutIntoBits(p.geo, p.local, n));
+
+    const mid = box.getCenter(new THREE.Vector3());
+    const scale = new THREE.Vector3();
+    charRootInGroup.decompose(new THREE.Vector3(), new THREE.Quaternion(), scale);
+
+    cutParts.forEach((bits, i) => {
+      const mat = parts[i].mat as any;
+      for (const bit of bits) {
+        const obj = new THREE.InstancedMesh(bit.geo, mat, 1);
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+        obj.raycast = () => {};
+        _m.copy(charRootInGroup).multiply(new THREE.Matrix4().makeTranslation(bit.center.x, bit.center.y, bit.center.z));
+        _m.decompose(obj.position, obj.quaternion, obj.scale);
+        const out = obj.position.clone().sub(mid);
+        out.y = 0;
+        if (out.lengthSq() < 1e-6) out.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+        out.normalize();
+        const speed = (2.2 + Math.random() * 3.8) * power;
+        const v = out.multiplyScalar(speed);
+        v.y = (2.4 + Math.random() * 4.2) * power * (0.6 + 0.4 * Math.min(1, (obj.position.y - box.min.y) / Math.max(0.3, box.max.y - box.min.y)));
+        const spin = new THREE.Vector3((Math.random() - 0.5) * 16, (Math.random() - 0.5) * 16, (Math.random() - 0.5) * 16);
+        this.group.add(obj);
+        this.flying.push({
+          obj,
+          v,
+          spin,
+          radius: bit.radius * Math.max(scale.x, scale.y, scale.z),
+          age: 0,
+          rest: 0,
+          scale0: obj.scale.clone(),
+          temporaryGeo: true,
+          temporaryMat: true,
+        });
+      }
+    });
+
+    while (this.flying.length > MAX_BITS) this.drop(this.flying.shift()!);
+
+    // Crimson gore / dust / sparks
+    const midWorld = new THREE.Vector3();
+    root.getWorldPosition(midWorld);
+    const midInGroup = midWorld.clone().applyMatrix4(invSmashGroup);
+    this.puff(midInGroup.clone().setY(midInGroup.y + 0.8), 45, 3.2, '#880000');
+    this.puff(midInGroup.clone().setY(midInGroup.y + 0.3), 35, 2.4, '#cc2222');
+    this.puff(midInGroup.clone().setY(midInGroup.y + 0.5), 25, 1.8, '#d4c2a5');
   }
 
   update(dt: number) {
@@ -289,6 +391,16 @@ export class SmashFx {
 
   private drop(f: Flying) {
     this.group.remove(f.obj);
+    if ((f as any).temporaryGeo) {
+      f.obj.geometry.dispose();
+    }
+    if ((f as any).temporaryMat) {
+      if (Array.isArray(f.obj.material)) {
+        f.obj.material.forEach((m: any) => m?.dispose?.());
+      } else {
+        (f.obj.material as any)?.dispose?.();
+      }
+    }
     // the bit's geometry is the kind's, kept for the next smash; the material is the placed copies'
     f.obj.dispose();
   }

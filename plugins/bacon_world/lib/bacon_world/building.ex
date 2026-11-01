@@ -144,8 +144,23 @@ defmodule BaconWorld.Building do
     end
   end
 
-  @doc "`%{asset => min_role}`: the admins' rules over the defaults."
+  @rules_cache_key :bacon_world_asset_rules
+  @hps_cache_key :bacon_world_asset_hps
+
+  @doc "`%{asset => min_role}`: the admins' rules over the defaults (cached in `:persistent_term`)."
   def rules do
+    case :persistent_term.get(@rules_cache_key, nil) do
+      nil ->
+        map = load_rules()
+        :persistent_term.put(@rules_cache_key, map)
+        map
+
+      map ->
+        map
+    end
+  end
+
+  defp load_rules do
     saved = GamesRepo.all(from(r in AssetRule, select: {r.asset, r.min_role})) |> Map.new()
     Map.new(catalogue(), fn a -> {a.id, Map.get(saved, a.id, a.default_role)} end)
   rescue
@@ -154,8 +169,20 @@ defmodule BaconWorld.Building do
       Map.new(catalogue(), &{&1.id, &1.default_role})
   end
 
-  @doc "`%{asset => hp}`: the admins' object HP rules over the default (10)."
+  @doc "`%{asset => hp}`: the admins' object HP rules over the default 10 (cached in `:persistent_term`)."
   def hps do
+    case :persistent_term.get(@hps_cache_key, nil) do
+      nil ->
+        map = load_hps()
+        :persistent_term.put(@hps_cache_key, map)
+        map
+
+      map ->
+        map
+    end
+  end
+
+  defp load_hps do
     saved =
       try do
         GamesRepo.all(from(r in AssetRule, select: {r.asset, r.hp})) |> Map.new()
@@ -218,6 +245,7 @@ defmodule BaconWorld.Building do
           conflict_target: [:asset]
         )
 
+        :persistent_term.put(@rules_cache_key, Map.put(rules(), asset_id, role))
         {:ok, role}
     end
   end
@@ -237,6 +265,7 @@ defmodule BaconWorld.Building do
           conflict_target: [:asset]
         )
 
+        :persistent_term.put(@hps_cache_key, Map.put(hps(), asset_id, hp))
         {:ok, hp}
     end
   end
@@ -248,9 +277,17 @@ defmodule BaconWorld.Building do
   @doc "The PubSub topic a zone's building is broadcast on."
   def topic(zone), do: "bacon_world:build:#{zone}"
 
-  @doc "Every placement in a zone, as `view/1` maps."
+  @doc "Every placement in a zone, as `view/2` maps."
   def list(zone) do
-    GamesRepo.all(from(p in Placement, where: p.zone == ^zone, order_by: p.inserted_at)) |> Enum.map(&view/1)
+    h_map = hps()
+    ensure_cache_tables()
+
+    rows = GamesRepo.all(from(p in Placement, where: p.zone == ^zone, order_by: p.inserted_at))
+    Enum.each(rows, fn p ->
+      :ets.insert(:bacon_world_placements_cache, {{zone, p.id}, p})
+    end)
+
+    Enum.map(rows, &view(&1, h_map))
   rescue
     _ -> []
   end
@@ -271,6 +308,8 @@ defmodule BaconWorld.Building do
       case GamesRepo.insert(row) do
         {:ok, p} ->
           after_change(p)
+          ensure_cache_tables()
+          :ets.insert(:bacon_world_placements_cache, {{zone, p.id}, p})
           {:ok, view(p)}
 
         {:error, _} ->
@@ -289,6 +328,8 @@ defmodule BaconWorld.Building do
       case p |> Ecto.Changeset.change(fields) |> GamesRepo.update() do
         {:ok, p2} ->
           after_change(p2)
+          ensure_cache_tables()
+          :ets.insert(:bacon_world_placements_cache, {{zone, p2.id}, p2})
           {:ok, view(p2)}
 
         {:error, _} ->
@@ -309,7 +350,8 @@ defmodule BaconWorld.Building do
          true <- can_place?(user, p.asset) || {:error, "You aren't allowed to remove #{(asset(p.asset) || %{name: "that"}).name}."},
          :ok <- town_ok(user, zone, [{p.x, p.z}], p.id),
          {:ok, _} <- GamesRepo.delete(p) do
-      ensure_hp_table()
+      ensure_cache_tables()
+      :ets.delete(:bacon_world_placements_cache, {zone, p.id})
       :ets.delete(:bacon_world_placement_hp, {zone, p.id})
       if String.starts_with?(p.asset, "mob:"), do: Mobs.put_points(zone, p.id, [])
       msg = if opts[:smash], do: {:build_removed, p.id, p.asset, :smashed}, else: {:build_removed, p.id, p.asset}
@@ -323,9 +365,22 @@ defmodule BaconWorld.Building do
 
   @doc "Fetches a placement by zone and ID."
   def get(zone, id) when is_binary(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> GamesRepo.one(from(p in Placement, where: p.zone == ^zone and p.id == ^uuid))
-      :error -> nil
+    ensure_cache_tables()
+    case :ets.lookup(:bacon_world_placements_cache, {zone, id}) do
+      [{_, %Placement{} = p}] -> p
+      _ ->
+        case Ecto.UUID.cast(id) do
+          {:ok, uuid} ->
+            case GamesRepo.one(from(p in Placement, where: p.zone == ^zone and p.id == ^uuid)) do
+              %Placement{} = p ->
+                :ets.insert(:bacon_world_placements_cache, {{zone, id}, p})
+                p
+
+              nil -> nil
+            end
+
+          :error -> nil
+        end
     end
   end
 
@@ -333,6 +388,16 @@ defmodule BaconWorld.Building do
 
   @doc "True if `id` is a placed object in `zone`."
   def placement?(zone, id), do: !is_nil(get(zone, id))
+
+  defp ensure_cache_tables do
+    ensure_hp_table()
+    if :ets.whereis(:bacon_world_placements_cache) == :undefined do
+      :ets.new(:bacon_world_placements_cache, [:named_table, :public, :set, read_concurrency: true, write_concurrency: true])
+    end
+    :ok
+  rescue
+    _ -> :ok
+  end
 
   defp ensure_hp_table do
     if :ets.whereis(:bacon_world_placement_hp) == :undefined do
@@ -347,12 +412,9 @@ defmodule BaconWorld.Building do
   def get_placement_hp(zone, id) do
     ensure_hp_table()
     case :ets.lookup(:bacon_world_placement_hp, {zone, id}) do
+      [{_, hp, _, _}] -> hp
       [{_, hp}] -> hp
-      [] ->
-        case get(zone, id) do
-          %Placement{} = p -> max_hp(p.asset)
-          _ -> nil
-        end
+      [] -> nil
     end
   end
 
@@ -361,12 +423,14 @@ defmodule BaconWorld.Building do
   All players with Smash toggle ON may damage and destroy buildable objects with weapons/skills.
   When HP reaches 0, the object is shattered and deleted.
   """
-  def damage_placement(_user, zone, id, amount) when is_integer(amount) and amount > 0 do
+  def damage_placement(_user, zone, id, amount) when is_number(amount) and amount > 0 do
+    amount = max(1, round(amount))
     ensure_hp_table()
     with %Placement{} = p <- get(zone, id) || {:error, "That isn't there any more."} do
       m_hp = max_hp(p.asset)
       cur_hp =
         case :ets.lookup(:bacon_world_placement_hp, {zone, id}) do
+          [{_, h, _, _}] -> h
           [{_, h}] -> h
           [] -> m_hp
         end
@@ -374,6 +438,7 @@ defmodule BaconWorld.Building do
       new_hp = max(0, cur_hp - amount)
 
       if new_hp <= 0 do
+        :ets.delete(:bacon_world_placements_cache, {zone, id})
         :ets.delete(:bacon_world_placement_hp, {zone, id})
         case GamesRepo.delete(p) do
           {:ok, _} ->
@@ -385,7 +450,7 @@ defmodule BaconWorld.Building do
             {:error, "That couldn't be destroyed."}
         end
       else
-        :ets.insert(:bacon_world_placement_hp, {{zone, id}, new_hp})
+        :ets.insert(:bacon_world_placement_hp, {{zone, id}, new_hp, m_hp, p.asset})
         Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_damaged, p.id, p.asset, new_hp, m_hp, amount})
         {:ok, :damaged, new_hp, m_hp, view(p)}
       end
@@ -405,30 +470,42 @@ defmodule BaconWorld.Building do
     try do
       entries = :ets.tab2list(:bacon_world_placement_hp)
 
-      Enum.each(entries, fn {{zone, id}, cur_hp} ->
-        case get(zone, id) do
-          %Placement{} = p ->
-            m_hp = max_hp(p.asset)
+      Enum.each(entries, fn
+        {{zone, id}, cur_hp, m_hp, asset} ->
+          if cur_hp < m_hp do
+            regen_amt = max(1, round(m_hp * 0.10))
+            new_hp = min(m_hp, cur_hp + regen_amt)
 
-            if cur_hp < m_hp do
-              regen_amt = max(1, round(m_hp * 0.10))
-              new_hp = min(m_hp, cur_hp + regen_amt)
-
-              if new_hp >= m_hp do
-                :ets.delete(:bacon_world_placement_hp, {zone, id})
-              else
-                :ets.insert(:bacon_world_placement_hp, {{zone, id}, new_hp})
-              end
-
-              Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_repaired, p.id, p.asset, new_hp, m_hp, regen_amt})
-            else
+            if new_hp >= m_hp do
               :ets.delete(:bacon_world_placement_hp, {zone, id})
+            else
+              :ets.insert(:bacon_world_placement_hp, {{zone, id}, new_hp, m_hp, asset})
             end
 
-          _ ->
-            # Placement no longer exists: clean up
+            Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_repaired, id, asset, new_hp, m_hp, regen_amt})
+          else
             :ets.delete(:bacon_world_placement_hp, {zone, id})
-        end
+          end
+
+        {{zone, id}, cur_hp} ->
+          case get(zone, id) do
+            %Placement{} = p ->
+              m_hp = max_hp(p.asset)
+              if cur_hp < m_hp do
+                regen_amt = max(1, round(m_hp * 0.10))
+                new_hp = min(m_hp, cur_hp + regen_amt)
+                if new_hp >= m_hp do
+                  :ets.delete(:bacon_world_placement_hp, {zone, id})
+                else
+                  :ets.insert(:bacon_world_placement_hp, {{zone, id}, new_hp, m_hp, p.asset})
+                end
+                Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_repaired, p.id, p.asset, new_hp, m_hp, regen_amt})
+              else
+                :ets.delete(:bacon_world_placement_hp, {zone, id})
+              end
+            _ ->
+              :ets.delete(:bacon_world_placement_hp, {zone, id})
+          end
       end)
     rescue
       _ -> :ok
@@ -490,8 +567,16 @@ defmodule BaconWorld.Building do
   defp keep(old), do: Map.take(old || %{}, ["origin", "s"])
 
   @doc "A placement as clients get it (metres, radians)."
-  def view(%Placement{} = p) do
-    cur_hp = get_placement_hp(p.zone, p.id) || max_hp(p.asset)
+  def view(%Placement{} = p, hps_map \\ nil) do
+    h_map = hps_map || hps()
+    m_hp = max_hp(p.asset, h_map)
+    cur_hp =
+      case :ets.lookup(:bacon_world_placement_hp, {p.zone, p.id}) do
+        [{_, hp, _, _}] -> hp
+        [{_, hp}] -> hp
+        [] -> m_hp
+      end
+
     base = %{
       id: p.id,
       asset: p.asset,
@@ -502,7 +587,7 @@ defmodule BaconWorld.Building do
       scale: Float.round(p.scale * 1.0, 3),
       data: p.data || %{},
       hp: cur_hp,
-      max_hp: max_hp(p.asset)
+      max_hp: m_hp
     }
 
     case p.asset do

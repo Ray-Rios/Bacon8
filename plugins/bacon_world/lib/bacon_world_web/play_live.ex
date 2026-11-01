@@ -32,7 +32,7 @@ defmodule BaconWorldWeb.PlayLive do
   # Fighting, looting and the inventory (BaconWorldWeb.GameEvents).
   @game_events ~w(fetch_mobs melee_attack mount_attack loot_open loot_take loot_all loot_close
                   inventory_fetch inventory_move inventory_equip inventory_unequip inventory_destroy
-                  merchant_open merchant_buy merchant_sell)
+                  merchant_open merchant_buy merchant_sell lightning_struck)
   # Riding (BaconWorldWeb.MountEvents).
   @mount_events ~w(mounts_fetch mount_summon mount_dismount stable_open stable_choose)
   # The skill tree and casting (BaconWorldWeb.SkillEvents).
@@ -51,7 +51,7 @@ defmodule BaconWorldWeb.PlayLive do
     if connected?(socket) do
       case World.character_login_payload(socket.assigns.current_user.id, character_id) do
         {:ok, payload} ->
-          if account_online_elsewhere?(socket) do
+          if account_online_elsewhere?(socket, payload.character_id) do
             Logger.warning("bacon_world:handle_params account_already_online user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id}")
             {:noreply,
              socket
@@ -287,7 +287,7 @@ defmodule BaconWorldWeb.PlayLive do
 
     case selected_character_id && World.character_login_payload(socket.assigns.current_user.id, selected_character_id) do
       {:ok, payload} ->
-        if account_online_elsewhere?(socket) do
+        if account_online_elsewhere?(socket, payload.character_id) do
           Logger.warning("bacon_world:login_character account_already_online user_id=#{socket.assigns.current_user.id} character_id=#{payload.character_id}")
           {:noreply, put_flash(socket, :error, "You already have a character logged in from another session. Log out there first.")}
         else
@@ -402,73 +402,106 @@ defmodule BaconWorldWeb.PlayLive do
          {:ok, z} <- to_float(raw_z),
          {:ok, heading} <- to_float(raw_heading),
          motion = motion_flags(params),
-         %{} = current_character <- current_character(socket),
-         # the mount ridden, or the one just left (a fall from the saddle)
-         mount = BaconWorldWeb.MountEvents.move_mount(socket),
-         :ok <- validate_ground_bounds(current_character.position, x, y, z, mount),
-         :ok <- validate_on_island(current_character.position, x, y, z),
-         :ok <- validate_move_speed(socket, current_character.position, x, y, z, mount),
-         :ok <- if(mount, do: :ok, else: validate_player_collision(socket.assigns.zone_online_characters || [], current_character.character_id, current_character.position, x, z)) do
-      topic = socket.assigns.current_zone_topic
-      now_ms = System.monotonic_time(:millisecond)
+         %{} = current_character <- current_character(socket) do
+      # Abyss / Void check: if falling below the bottom of the world into nothingness
+      ground = ground_y(x, z)
+      u = BaconWorld.Mobs.Brain.u()
+      floor = min(ground, BaconWorld.Terrain.bottom_units(x, z, u))
 
-      last_presence_ms = socket.assigns.last_presence_update_ms || (now_ms - @presence_broadcast_interval_ms - 1)
-      should_broadcast = not is_nil(topic) and now_ms - last_presence_ms >= @presence_broadcast_interval_ms
+      if (y < floor - 25.0 or y < -400.0 * u or y < -120.0) and not socket.assigns[:is_dead?] do
+        Logger.info("bacon_world:abyss_death character_id=#{current_character.character_id} y=#{y} floor=#{floor}")
 
-      if should_broadcast do
-        presence_updated_at = System.system_time(:millisecond)
+        socket =
+          socket
+          |> push_event("system_message", %{sender: "Abyss", message: "You fell into the abyss!"})
+          |> GameEvents.kill_character(shatter: true, reason: "abyss")
 
-        Presence.update(self(), topic, current_character.character_id, fn meta ->
-          Map.merge(meta, %{x: x, y: y, z: z, heading: heading, m: motion, updated_at: presence_updated_at})
-        end)
-      end
-
-      if not is_nil(topic) do
-        PubSub.broadcast(Bacon8.PubSub, topic, {:zone_position_update, %{
-          character_id: current_character.character_id,
-          character_name: current_character.name,
-          character_type: current_character.character_type,
-          model_path: current_character.model_path,
-          user_id: socket.assigns.current_user.id,
-          x: x,
-          y: y,
-          z: z,
-          heading: heading,
-          m: motion,
-          mount: socket.assigns[:mount],
-          hp: Map.get(current_character, :hp, 10),
-          max_hp: Map.get(current_character, :max_hp, 10)
-        }})
-      end
-
-      last_persist_ms = socket.assigns.last_position_persist_ms || (now_ms - @position_persist_interval_ms - 1)
-      should_persist = now_ms - last_persist_ms >= @position_persist_interval_ms
-
-      if should_persist do
-        persist_character_position_async(socket.assigns.current_user.id, current_character, x, y, z, heading)
-      end
-
-      {:noreply,
-       assign(socket,
-         current_character_runtime:
-           Map.put(current_character, :position, %{
-             x: x,
-             y: y,
-             z: z,
-             heading: heading
-           }),
-         last_world_update_ms: now_ms,
-         last_presence_update_ms: if(should_broadcast, do: now_ms, else: last_presence_ms),
-         last_position_persist_ms: if(should_persist, do: now_ms, else: last_persist_ms)
-       )}
-    else
-      {:error, :invalid_move} ->
-        Logger.warning("bacon_world:world_position_update_REJECTED invalid_move character_id=#{inspect(current_character(socket) && current_character(socket).character_id)}")
-        {:noreply, push_authoritative_correction(socket)}
-
-      other ->
-        Logger.warning("bacon_world:world_position_update_REJECTED other=#{inspect(other)} character_id=#{inspect(current_character(socket) && current_character(socket).character_id)}")
         {:noreply, socket}
+      else
+        mount = BaconWorldWeb.MountEvents.move_mount(socket)
+        with :ok <- validate_ground_bounds(current_character.position, x, y, z, mount),
+             :ok <- validate_on_island(current_character.position, x, y, z),
+             :ok <- validate_move_speed(socket, current_character.position, x, y, z, mount),
+             :ok <- if(mount, do: :ok, else: validate_player_collision(socket.assigns.zone_online_characters || [], current_character.character_id, current_character.position, x, z)) do
+          topic = socket.assigns.current_zone_topic
+          now_ms = System.monotonic_time(:millisecond)
+
+          last_presence_ms = socket.assigns.last_presence_update_ms || (now_ms - @presence_broadcast_interval_ms - 1)
+          should_broadcast = not is_nil(topic) and now_ms - last_presence_ms >= @presence_broadcast_interval_ms
+
+          if should_broadcast do
+            presence_updated_at = System.system_time(:millisecond)
+
+            Presence.update(self(), topic, current_character.character_id, fn meta ->
+              Map.merge(meta, %{x: x, y: y, z: z, heading: heading, m: motion, updated_at: presence_updated_at})
+            end)
+          end
+
+          if not is_nil(topic) do
+            PubSub.broadcast(Bacon8.PubSub, topic, {:zone_position_update, %{
+              character_id: current_character.character_id,
+              character_name: current_character.name,
+              character_type: current_character.character_type,
+              model_path: current_character.model_path,
+              user_id: socket.assigns.current_user.id,
+              x: x,
+              y: y,
+              z: z,
+              heading: heading,
+              m: motion,
+              mount: socket.assigns[:mount],
+              hp: Map.get(current_character, :hp, 10),
+              max_hp: Map.get(current_character, :max_hp, 10)
+            }})
+          end
+
+          last_persist_ms = socket.assigns.last_position_persist_ms || (now_ms - @position_persist_interval_ms - 1)
+          should_persist = now_ms - last_persist_ms >= @position_persist_interval_ms
+
+          if should_persist do
+            persist_character_position_async(socket.assigns.current_user.id, current_character, x, y, z, heading)
+          end
+
+          {:noreply,
+           assign(socket,
+             current_character_runtime:
+               Map.put(current_character, :position, %{
+                 x: x,
+                 y: y,
+                 z: z,
+                 heading: heading
+               }),
+             last_world_update_ms: now_ms,
+             last_presence_update_ms: if(should_broadcast, do: now_ms, else: last_presence_ms),
+             last_position_persist_ms: if(should_persist, do: now_ms, else: last_persist_ms)
+           )}
+        else
+          {:error, :invalid_move} ->
+            Logger.warning("bacon_world:world_position_update_REJECTED invalid_move character_id=#{inspect(current_character(socket) && current_character(socket).character_id)}")
+            {:noreply, push_authoritative_correction(socket)}
+
+          other ->
+            Logger.warning("bacon_world:world_position_update_REJECTED other=#{inspect(other)} character_id=#{inspect(current_character(socket) && current_character(socket).character_id)}")
+            {:noreply, socket}
+        end
+      end
+    else
+      other ->
+        Logger.warning("bacon_world:world_position_update_REJECTED parse_fail other=#{inspect(other)} character_id=#{inspect(current_character(socket) && current_character(socket).character_id)}")
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("world_void_fall", _params, socket) do
+    if not socket.assigns[:is_dead?] do
+      socket =
+        socket
+        |> push_event("system_message", %{sender: "Abyss", message: "You fell into the abyss!"})
+        |> GameEvents.kill_character(shatter: true, reason: "abyss")
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -484,6 +517,9 @@ defmodule BaconWorldWeb.PlayLive do
 
       is_nil(socket.assigns.current_zone_topic) or is_nil(current_character(socket)) ->
         {:noreply, socket}
+
+      String.starts_with?(message, "/") ->
+        handle_slash_command(message, socket)
 
       true ->
         current = current_character(socket)
@@ -514,6 +550,13 @@ defmodule BaconWorldWeb.PlayLive do
       if topic = socket.assigns.current_zone_topic do
         Presence.update(self(), topic, current.character_id, &Map.put(&1, :pvp, flag))
       end
+
+      socket =
+        socket
+        |> assign(
+          current_character_payload: socket.assigns[:current_character_payload] && Map.put(socket.assigns[:current_character_payload], :pvp_flagged, flag),
+          current_character_runtime: socket.assigns[:current_character_runtime] && Map.put(socket.assigns[:current_character_runtime], :pvp_flagged, flag)
+        )
 
       {:noreply, push_event(socket, "pvp_flag_changed", %{pvp_flagged: flag})}
     else
@@ -579,6 +622,10 @@ defmodule BaconWorldWeb.PlayLive do
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_info({:zone_weather_update, payload}, socket) do
+    {:noreply, push_event(socket, "weather_changed", payload)}
   end
 
   def handle_info({:zone_position_update, payload}, socket) do
@@ -651,7 +698,7 @@ defmodule BaconWorldWeb.PlayLive do
   # Other tabs of the same account refresh their character list on changes.
   defp characters_topic(user_id), do: "bacon_world:user:#{user_id}:characters"
 
-  defp account_online_elsewhere?(socket) do
+  defp account_online_elsewhere?(socket, character_id \\ nil) do
     user_id = socket.assigns.current_user.id
     own_ref = socket.assigns[:account_presence_ref]
 
@@ -659,7 +706,9 @@ defmodule BaconWorldWeb.PlayLive do
     |> Presence.list()
     |> Map.get(user_id, %{metas: []})
     |> Map.get(:metas, [])
-    |> Enum.any?(fn meta -> meta[:phx_ref] != own_ref end)
+    |> Enum.any?(fn meta ->
+      meta[:phx_ref] != own_ref and (is_nil(character_id) or meta[:character_id] != character_id)
+    end)
   end
 
   defp active_account_character_id(user_id) do
@@ -1034,15 +1083,320 @@ defmodule BaconWorldWeb.PlayLive do
   end
 
   defp within_chat_radius?(socket, payload) do
-    case current_character(socket) do
-      nil ->
-        false
+    if payload[:zone_wide] || is_nil(payload[:x]) do
+      true
+    else
+      case current_character(socket) do
+        nil ->
+          false
 
-      current ->
-        dx = (payload[:x] || payload["x"] || 0.0) - (current.position.x || 0.0)
-        dz = (payload[:z] || payload["z"] || 0.0) - (current.position.z || 0.0)
-        :math.sqrt(dx * dx + dz * dz) <= @chat_radius
+        current ->
+          dx = (payload[:x] || payload["x"] || 0.0) - (current.position.x || 0.0)
+          dz = (payload[:z] || payload["z"] || 0.0) - (current.position.z || 0.0)
+          :math.sqrt(dx * dx + dz * dz) <= @chat_radius
+      end
     end
+  end
+
+  defp teleport_to(socket, x, y, z, heading \\ 0.0) do
+    current = current_character(socket)
+
+    if is_nil(current) do
+      socket
+    else
+      pos = %{x: x, y: y, z: z, heading: heading}
+      persist_character_position_async(socket.assigns.current_user.id, current, x, y, z, heading)
+
+      if topic = socket.assigns[:current_zone_topic] do
+        Presence.update(self(), topic, current.character_id, fn meta ->
+          Map.merge(meta, %{x: x, y: y, z: z, heading: heading, updated_at: System.system_time(:millisecond)})
+        end)
+
+        PubSub.broadcast(Bacon8.PubSub, topic, {:zone_position_update, %{
+          character_id: current.character_id,
+          character_name: current.name,
+          character_type: current.character_type,
+          model_path: current.model_path,
+          user_id: socket.assigns.current_user.id,
+          x: x,
+          y: y,
+          z: z,
+          heading: heading,
+          m: 0,
+          hp: Map.get(current, :hp, 10),
+          max_hp: Map.get(current, :max_hp, 10)
+        }})
+      end
+
+      socket
+      |> assign(current_character_runtime: Map.put(current, :position, pos))
+      |> push_event("character_teleported", %{x: x, y: y, z: z, heading: heading})
+    end
+  end
+
+  defp handle_slash_command(command_str, socket) do
+    trimmed = String.trim_leading(command_str, "/") |> String.trim()
+    [cmd | rest] = String.split(trimmed, ~r/\s+/, parts: 2)
+    arg = (rest != [] && hd(rest)) || ""
+    current = current_character(socket)
+
+    case String.downcase(cmd) do
+      "zone" ->
+        handle_zone_command(arg, socket, current)
+
+      cmd when cmd in ["loc", "pos", "where"] ->
+        handle_loc_command(socket, current)
+
+      cmd when cmd in ["stuck", "unstuck"] ->
+        handle_zone_command("", socket, current)
+
+      cmd when cmd in ["suicide", "die", "kill"] ->
+        socket =
+          socket
+          |> push_event("system_message", %{sender: "System", message: "You ended your own life."})
+          |> GameEvents.kill_character(shatter: true, reason: "suicide")
+
+        {:noreply, socket}
+
+      "roll" ->
+        handle_roll_command(arg, socket, current)
+
+      cmd when cmd in ["shout", "yell", "s"] ->
+        handle_shout_command(arg, socket, current)
+
+      "time" ->
+        handle_time_command(socket)
+
+      "weather" ->
+        handle_weather_command(arg, socket)
+
+      cmd when cmd in ["wave", "dance", "bow", "cheer", "clap", "sit", "point"] ->
+        handle_emote_command(cmd, socket, current)
+
+      cmd when cmd in ["help", "?"] ->
+        handle_help_command(socket)
+
+      other ->
+        {:noreply,
+         push_event(socket, "system_message", %{
+           sender: "System",
+           message: "Unknown command '/#{other}'. Type /help for available commands."
+         })}
+    end
+  end
+
+  defp handle_zone_command(arg, socket, current) do
+    trimmed_arg = String.trim(arg)
+
+    if trimmed_arg == "" do
+      zone_slug = (current.zone && current.zone.slug) || "lobby"
+      zone = World.zone_for(zone_slug)
+      spawn = World.spawn_point(zone)
+      spawn = free_spawn(spawn, socket.assigns[:zone_online_characters] || [], current.character_id)
+
+      socket =
+        socket
+        |> teleport_to(spawn.x, spawn.y, spawn.z, spawn.heading)
+        |> push_event("system_message", %{
+          sender: "System",
+          message: "Warped to zone entrance (X: #{Float.round(spawn.x * 1.0, 1)}, Y: #{Float.round(spawn.y * 1.0, 1)}, Z: #{Float.round(spawn.z * 1.0, 1)})."
+        })
+
+      {:noreply, socket}
+    else
+      parts =
+        trimmed_arg
+        |> String.replace(",", " ")
+        |> String.split(~r/\s+/, trim: true)
+
+      case parse_coords(parts) do
+        {:ok, x, y, z} ->
+          if abs(x) <= 10_000.0 and abs(z) <= 10_000.0 and y >= -500.0 and y <= 2000.0 do
+            heading = (current.position && (current.position[:heading] || current.position["heading"])) || 0.0
+
+            socket =
+              socket
+              |> teleport_to(x, y, z, heading)
+              |> push_event("system_message", %{
+                sender: "System",
+                message: "Warped to coordinates (X: #{Float.round(x * 1.0, 1)}, Y: #{Float.round(y * 1.0, 1)}, Z: #{Float.round(z * 1.0, 1)})."
+              })
+
+            {:noreply, socket}
+          else
+            {:noreply,
+             push_event(socket, "system_message", %{
+               sender: "System",
+               message: "Coordinates are out of zone bounds (-10000 to 10000)."
+             })}
+          end
+
+        :error ->
+          {:noreply,
+           push_event(socket, "system_message", %{
+             sender: "System",
+             message: "Invalid coordinates. Usage: /zone or /zone <x>,<y>,<z> (e.g. /zone 10,5,-20)"
+           })}
+      end
+    end
+  end
+
+  defp parse_coords([raw_x, raw_y, raw_z]) do
+    with {:ok, x} <- to_float(raw_x),
+         {:ok, y} <- to_float(raw_y),
+         {:ok, z} <- to_float(raw_z) do
+      {:ok, x, y, z}
+    else
+      _ -> :error
+    end
+  end
+
+  defp parse_coords(_), do: :error
+
+  defp handle_loc_command(socket, current) do
+    pos = (current && current.position) || %{x: 0.0, y: 0.0, z: 0.0, heading: 0.0}
+    x = Float.round((pos[:x] || pos["x"] || 0.0) * 1.0, 2)
+    y = Float.round((pos[:y] || pos["y"] || 0.0) * 1.0, 2)
+    z = Float.round((pos[:z] || pos["z"] || 0.0) * 1.0, 2)
+    h = (pos[:heading] || pos["heading"] || 0.0) * 1.0
+    heading_deg = round(rem(round((h * 180.0 / :math.pi()) + 360.0), 360))
+    zone_name = (current.zone && current.zone.name) || "Crater Lake"
+
+    msg = "Location: X=#{x}, Y=#{y}, Z=#{z} | Heading: #{heading_deg}° | Zone: #{zone_name}"
+    {:noreply, push_event(socket, "system_message", %{sender: "System", message: msg})}
+  end
+
+  defp handle_roll_command(arg, socket, current) do
+    max_roll =
+      case Integer.parse(String.trim(arg)) do
+        {n, _} when n > 0 and n <= 1_000_000 -> n
+        _ -> 100
+      end
+
+    result = :rand.uniform(max_roll)
+    name = current.name || "Player"
+    text = "** #{name} rolls #{result} (1-#{max_roll}) **"
+
+    if topic = socket.assigns[:current_zone_topic] do
+      PubSub.broadcast(Bacon8.PubSub, topic, {:zone_chat_message, %{
+        character_id: nil,
+        character_name: "Roll",
+        message: text,
+        zone_wide: true,
+        sent_at: DateTime.utc_now() |> DateTime.to_iso8601()
+      }})
+    end
+
+    {:noreply, socket}
+  end
+
+  defp handle_shout_command(arg, socket, current) do
+    text = String.trim(arg)
+
+    if text == "" do
+      {:noreply, push_event(socket, "system_message", %{sender: "System", message: "Usage: /shout <message>"})}
+    else
+      if topic = socket.assigns[:current_zone_topic] do
+        PubSub.broadcast(Bacon8.PubSub, topic, {:zone_chat_message, %{
+          character_id: current.character_id,
+          character_name: "[SHOUT] #{current.name}",
+          message: text,
+          zone_wide: true,
+          sent_at: DateTime.utc_now() |> DateTime.to_iso8601()
+        }})
+      end
+
+      {:noreply, socket}
+    end
+  end
+
+  defp handle_time_command(socket) do
+    utc_now = DateTime.utc_now()
+    time_str = Calendar.strftime(utc_now, "%H:%M:%S UTC")
+    hour = utc_now.hour
+    cycle_phase = if hour in 6..19, do: "Day", else: "Night"
+    msg = "Server time: #{time_str} (#{cycle_phase})"
+    {:noreply, push_event(socket, "system_message", %{sender: "System", message: msg})}
+  end
+
+  defp handle_weather_command(arg, socket) do
+    weather_type = String.downcase(String.trim(arg))
+
+    case weather_type do
+      w when w in ["clear", "drizzle", "rain", "storm", "thunder"] ->
+        normalized = if(w == "thunder", do: "storm", else: w)
+
+        if topic = socket.assigns[:current_zone_topic] do
+          PubSub.broadcast(Bacon8.PubSub, topic, {:zone_weather_update, %{weather: normalized}})
+        end
+
+        {:noreply, push_event(socket, "system_message", %{sender: "System", message: "Weather set to #{normalized}."})}
+
+      "" ->
+        {:noreply,
+         push_event(socket, "system_message", %{
+           sender: "System",
+           message: "Weather commands: /weather clear, /weather drizzle, /weather rain, /weather storm"
+         })}
+
+      other ->
+        {:noreply,
+         push_event(socket, "system_message", %{
+           sender: "System",
+           message: "Unknown weather '#{other}'. Choose clear, drizzle, rain, or storm."
+         })}
+    end
+  end
+
+  defp handle_emote_command(emote, socket, current) do
+    name = current.name || "Player"
+
+    emote_text =
+      case emote do
+        "wave" -> "* #{name} waves."
+        "dance" -> "* #{name} dances passionately!"
+        "bow" -> "* #{name} bows gracefully."
+        "cheer" -> "* #{name} cheers enthusiastically!"
+        "clap" -> "* #{name} claps their hands!"
+        "sit" -> "* #{name} sits down to rest."
+        "point" -> "* #{name} points into the distance."
+        _ -> "* #{name} #{emote}s."
+      end
+
+    if topic = socket.assigns[:current_zone_topic] do
+      PubSub.broadcast(Bacon8.PubSub, topic, {:zone_chat_message, %{
+        character_id: nil,
+        character_name: "Emote",
+        message: emote_text,
+        zone_wide: true,
+        sent_at: DateTime.utc_now() |> DateTime.to_iso8601()
+      }})
+    end
+
+    {:noreply, socket}
+  end
+
+  defp handle_help_command(socket) do
+    commands = [
+      "/zone [x,y,z] - Teleport to zone entrance or specified coordinates",
+      "/loc - Show current coordinates and heading",
+      "/stuck - Escape stuck terrain and warp to zone entrance",
+      "/die, /suicide - End your own life to respawn",
+      "/roll [max] - Roll a random number (default 1-100)",
+      "/shout <message> - Zone-wide yell",
+      "/time - Current server time",
+      "/weather [clear|drizzle|rain|storm] - View or set weather",
+      "/mount, /dismount - Mount or dismount your steed",
+      "/invite, /leave, /disband, /g <msg> - Group commands",
+      "/dance, /wave, /bow, /cheer, /clap, /sit, /point - Character emotes"
+    ]
+
+    socket =
+      Enum.reduce(commands, socket, fn line, acc ->
+        push_event(acc, "system_message", %{sender: "Help", message: line})
+      end)
+
+    {:noreply, socket}
   end
 
   defp current_character(socket) do

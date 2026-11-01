@@ -105,6 +105,10 @@ export type MovementState = {
   /** Movement direction relative to where the character faces: +x right, +z forward (unit, or 0). */
   dirX: number;
   dirZ: number;
+  /** How deep submerged below water surface, metres (0 at surface). */
+  dive?: number;
+  /** Whether the character is in deep or shallow water. */
+  inWater?: boolean;
 };
 
 // Facing the camera, moving backwards is slower (EverQuest and WoW backpedal).
@@ -939,6 +943,8 @@ export class CharacterController {
       isSwimming: this.isSwimming,
       speed: this.speed,
       verticalSpeed: this.verticalSpeed,
+      dive: this.dive,
+      inWater: this.isSwimming || this.mountSwimming,
     };
   }
 

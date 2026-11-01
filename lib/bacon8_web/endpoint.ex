@@ -69,7 +69,7 @@ defmodule Bacon8Web.Endpoint do
     # that changed one needed a hard refresh (2026-10-26). Digested assets (app.js, app.css) stay
     # immutable for a year (Plug.Static's `cache_control_for_vsn_requests`).
     cache_control_for_etags: "public, max-age=3600",
-    only: ~w(assets audio css js fonts images favicon.ico robots.txt sitemap.xml site.webmanifest .well-known terrain heightmaps)
+    only: ~w(assets audio css js fonts images favicon.ico robots.txt sitemap.xml site.webmanifest .well-known terrain heightmaps sw-game.js)
 
   if code_reloading? do
     socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket

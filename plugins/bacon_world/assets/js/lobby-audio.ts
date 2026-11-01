@@ -19,8 +19,16 @@
 
 import { MUSIC, Playlist, gapFor, placeSound, restAfter, sweetenersFor, weighted, type Mood, type Vec3 } from './audio-mix';
 import { UNITS_PER_METRE } from './controls-math';
+import { getAmbientAudioUrl } from './ambient-catalog';
 
 const BASE = '/audio/world';
+
+// Ambient procedural sound pools for randomized variety
+const AMBIENT_POOLS: Record<string, string[]> = {
+  water_frog: ['wildlife_17_bullfrog_deep_croak_01', 'wildlife_18_tree_frog_double_ribbit_02'],
+  water_wave_wash: ['water_11_single_ocean_wave_wash_soft', 'water_12_single_ocean_wave_crash_big', 'water_13_shore_wave_pebble_drawback'],
+  water_drip: ['water_18_cave_water_drip_single_01', 'water_19_cave_water_drip_single_02', 'water_20_cave_water_drip_cluster'],
+};
 
 // Kinds with several takes: name -> number of files (<name>_1.mp3 ...).
 const GROUPS: Record<string, number> = {
@@ -101,7 +109,18 @@ const RANGE_M: Record<string, number> = {
   bone_collapse: 40,
 };
 const DEFAULT_RANGE_M = 33;
-const BEDS = ['amb_day', 'amb_birds', 'amb_wind', 'amb_night', 'amb_campfire', 'amb_lair', 'amb_high'];
+const BEDS = [
+  'amb_day',
+  'amb_birds',
+  'amb_wind',
+  'amb_night',
+  'amb_campfire',
+  'amb_lair',
+  'amb_high',
+  'water_beach',
+  'water_lake',
+  'water_submerged',
+];
 
 const PREF_KEY = 'bacon_world:sound';
 // Before the volume sliders (2026-10-22), music had an on/off switch of its own.
@@ -201,8 +220,20 @@ export class LobbyAudio {
   private voices: Array<{ src: AudioBufferSourceNode; gain: number }> = [];
   private daylight = 1;
   private campfire = 0;
+  private bonfire = 0;
   private lair = 0;
   private high = 0;
+  private lake = 0;
+  private ocean = 0;
+  private forest = 0;
+  private canyon = 0;
+  private rain = 0;
+  private shelter: 'open' | 'tree' | 'tent' | 'cabin' = 'open';
+  private timeOfDay = 0.5;
+  private submerged = 0;
+  private underwaterFilter: BiquadFilterNode | null = null;
+  private directAmb: GainNode | null = null;
+  private bedLoading = new Set<string>();
   private volumes: Record<VolumeKind, number> = {
     effects: readVolume('effects'),
     ambience: readVolume('ambience'),
@@ -259,6 +290,9 @@ export class LobbyAudio {
     writeVolume(kind, value);
     const node = kind === 'effects' ? this.fx : kind === 'ambience' ? this.amb : this.mus;
     if (node && this.ctx) node.gain.setTargetAtTime(level(kind, value), this.ctx.currentTime, 0.03);
+    if (kind === 'ambience' && this.directAmb && this.ctx) {
+      this.directAmb.gain.setTargetAtTime(level(kind, value), this.ctx.currentTime, 0.03);
+    }
     if (kind === 'music') {
       if (value > 0) this.lastMusic = value;
       if (value > 0 && this.wantMusic && this.enabled && this.unlocked && !this.track) this.startMusic();
@@ -292,19 +326,31 @@ export class LobbyAudio {
     comp.attack.value = 0.008;
     comp.release.value = 0.25;
     this.master.connect(comp).connect(this.ctx.destination);
+
+    // Underwater lowpass filter: muffles surface audio when diving/submerged
+    this.underwaterFilter = this.ctx.createBiquadFilter();
+    this.underwaterFilter.type = 'lowpass';
+    this.underwaterFilter.frequency.value = 20000;
+    this.underwaterFilter.connect(this.master);
+
     this.fx = this.ctx.createGain();
     this.fx.gain.value = level('effects', this.volumes.effects);
-    this.fx.connect(this.master);
+    this.fx.connect(this.underwaterFilter);
     this.amb = this.ctx.createGain();
     this.amb.gain.value = level('ambience', this.volumes.ambience);
-    this.amb.connect(this.master);
+    this.amb.connect(this.underwaterFilter);
+    this.directAmb = this.ctx.createGain();
+    this.directAmb.gain.value = level('ambience', this.volumes.ambience);
+    this.directAmb.connect(this.master);
     this.mus = this.ctx.createGain();
     this.mus.gain.value = level('music', this.volumes.music);
-    this.mus.connect(this.master);
+    this.mus.connect(this.underwaterFilter);
     return this.ctx;
   }
 
   private file(name: string): string | null {
+    const ambient = getAmbientAudioUrl(name);
+    if (ambient) return ambient;
     if (SINGLES.includes(name) || BEDS.includes(name) || LOOPS.includes(name) || /_\d+$/.test(name)) return `${BASE}/${name}.mp3`;
     return null;
   }
@@ -347,6 +393,14 @@ export class LobbyAudio {
   // A take of a kind, not the same one twice in a row.
   private pick(kind: string): string | null {
     const name = ALIASES[kind] ?? kind;
+    const ambPool = AMBIENT_POOLS[name];
+    if (ambPool && ambPool.length > 0) {
+      const prev = this.last.get(name) ?? -1;
+      let k = Math.floor(Math.random() * ambPool.length);
+      if (ambPool.length > 1 && k === prev) k = (k + 1) % ambPool.length;
+      this.last.set(name, k);
+      return ambPool[k];
+    }
     const pool = POOLS[name];
     if (pool) {
       const total = pool.reduce((s, g) => s + (GROUPS[g] || 0), 0);
@@ -361,7 +415,10 @@ export class LobbyAudio {
       }
     }
     const n = GROUPS[name];
-    if (!n) return SINGLES.includes(name) || LOOPS.includes(name) ? name : null;
+    if (!n) {
+      if (getAmbientAudioUrl(name)) return name;
+      return SINGLES.includes(name) || LOOPS.includes(name) ? name : null;
+    }
     if (n === 1) return `${name}_1`;
     const prev = this.last.get(name) ?? 0;
     let i = 1 + Math.floor(Math.random() * n);
@@ -700,9 +757,36 @@ export class LobbyAudio {
     this.mixBeds();
   }
 
+  /** Time of day in the cycle (0..1, where 0.25 is dawn, 0.5 is noon, 0.75 is dusk, 0/1 is midnight). */
+  setTimeOfDay(t: number): void {
+    this.timeOfDay = Math.max(0, Math.min(1, t));
+    this.mixBeds();
+  }
+
   /** How close the campfire is: 1 next to it, 0 out of earshot. */
   setCampfire(nearness: number): void {
     this.campfire = Math.max(0, Math.min(1, nearness));
+    this.mixBeds();
+  }
+
+  /** Proximity to fire sources: campfire (0..1) and roaring bonfire (0..1). */
+  setFire(campfire: number, bonfire = 0): void {
+    this.campfire = Math.max(0, Math.min(1, campfire));
+    this.bonfire = Math.max(0, Math.min(1, bonfire));
+    this.mixBeds();
+  }
+
+  /** Biome environment: forest/woodland (0..1) and canyon/rocky gorge (0..1). */
+  setEnvironment(forest: number, canyon = 0): void {
+    this.forest = Math.max(0, Math.min(1, forest));
+    this.canyon = Math.max(0, Math.min(1, canyon));
+    this.mixBeds();
+  }
+
+  /** Dynamic weather: rain intensity (0..1) and immediate shelter type. */
+  setWeather(rain: number, shelter: 'open' | 'tree' | 'tent' | 'cabin' = 'open'): void {
+    this.rain = Math.max(0, Math.min(1, rain));
+    this.shelter = shelter;
     this.mixBeds();
   }
 
@@ -713,41 +797,123 @@ export class LobbyAudio {
     this.mixBeds();
   }
 
-  private mixBeds(): void {
+  /** Water proximity and immersion. lake: 0..1, ocean: 0..1, submerged: 0..1. */
+  setWater(lake: number, ocean: number, submerged: number): void {
+    this.lake = Math.max(0, Math.min(1, lake));
+    this.ocean = Math.max(0, Math.min(1, ocean));
+    this.submerged = Math.max(0, Math.min(1, submerged));
+    if (this.ctx && this.underwaterFilter) {
+      const targetCutoff = this.submerged > 0.05 ? Math.max(380, 20000 * Math.pow(0.019, this.submerged)) : 20000;
+      this.underwaterFilter.frequency.setTargetAtTime(targetCutoff, this.ctx.currentTime, 0.25);
+    }
+    this.mixBeds();
+  }
+
+  private calculateBedLevels(): Record<string, number> {
     const d = this.daylight;
-    const out = (1 - this.lair) * (1 - this.high * 0.8);
+    const t = this.timeOfDay;
+    const sub = this.submerged;
+    const out = (1 - this.lair) * (1 - this.high * 0.8) * (1 - sub);
+    const rain = this.rain;
+    const isRaining = rain > 0.05;
+
+    // Dawn window: peaks around t=0.27
+    const dawnWeight = Math.max(0, 1 - Math.abs(t - 0.27) / 0.06);
+    // Midday window: peaks around t=0.52
+    const middayWeight = Math.max(0, 1 - Math.abs(t - 0.52) / 0.08);
+    // Night window
+    const nightWeight = (1 - d) * (1 - d);
+
+    // Weather shelter gating
+    const underTree = this.shelter === 'tree' ? 1 : 0;
+    const nearTent = this.shelter === 'tent' ? 1 : 0;
+    const inCabin = this.shelter === 'cabin' ? 1 : 0;
+    const openSky = (1 - underTree * 0.7) * (1 - nearTent * 0.8) * (1 - inCabin * 0.9);
+
     const levels: Record<string, number> = {
-      amb_day: 0.5 * d * out,
-      amb_birds: 0.35 * d * d * out,
-      amb_wind: (0.3 + 0.15 * (1 - d)) * (1 - this.lair * 0.6),
-      amb_night: 0.55 * (1 - d) * (1 - d) * out,
-      amb_campfire: 0.8 * this.campfire,
-      amb_lair: 0.9 * this.lair,
-      amb_high: 0.8 * this.high,
+      // General day/wind/night
+      amb_day: 0.35 * d * out * (1 - rain * 0.7),
+      amb_wind: (0.25 + 0.15 * (1 - d)) * (1 - this.lair * 0.6) * (1 - sub),
+      wind_forest: 0.55 * this.forest * out * (1 - rain * 0.5),
+      wind_canyon: 0.65 * this.canyon * out * (1 - rain * 0.5),
+      wind_summit: 0.75 * this.high * (1 - sub),
+
+      // Diurnal wildlife loops
+      wildlife_dawn_birds: 0.65 * dawnWeight * out * (1 - rain * 0.8),
+      wildlife_cicadas_noon: 0.6 * middayWeight * out * (1 - rain * 0.9),
+      wildlife_night_crickets: 0.55 * nightWeight * (1 - this.lake * 0.7) * out * (1 - rain * 0.8),
+      wildlife_night_pond: 0.7 * nightWeight * this.lake * out * (1 - rain * 0.7),
+
+      // Fire loops
+      fire_campfire: 0.8 * this.campfire * (1 - sub),
+      fire_bonfire: 0.9 * this.bonfire * (1 - sub),
+      fire_brushfire: 0.75 * this.lair * (1 - sub),
+      amb_lair: 0.85 * this.lair * (1 - sub),
+
+      // Water loops
+      water_beach: 0.7 * this.ocean * out * (1 - rain * 0.4),
+      water_lake: 0.65 * this.lake * out * (1 - rain * 0.4),
+      water_submerged: 0.85 * sub,
+
+      // Weather rain loops
+      rain_drizzle: rain > 0.05 && rain < 0.45 ? 0.75 * (rain / 0.45) * openSky * (1 - sub) : 0,
+      rain_steady: rain >= 0.35 && rain < 0.8 ? 0.85 * Math.min(1, (rain - 0.35) / 0.3) * openSky * (1 - sub) : 0,
+      rain_thunderstorm: rain >= 0.7 ? 0.95 * Math.min(1, (rain - 0.7) / 0.25) * openSky * (1 - sub) : 0,
+
+      // Shelter rain loops
+      rain_canopy: isRaining && underTree ? 0.8 * rain * underTree * (1 - sub) : 0,
+      rain_tent: isRaining && nearTent ? 0.85 * rain * nearTent * (1 - sub) : 0,
+      rain_cabin: isRaining && inCabin ? 0.9 * rain * inCabin * (1 - sub) : 0,
     };
-    if (!this.ctx) return;
-    for (const [name, b] of this.beds) b.gain.gain.setTargetAtTime(levels[name] ?? 0, this.ctx.currentTime, 0.8);
+
+    return levels;
+  }
+
+  private ensureBed(name: string): void {
+    if (this.beds.has(name) || this.bedLoading.has(name)) return;
+    this.bedLoading.add(name);
+    void this.load(name).then((buf) => {
+      this.bedLoading.delete(name);
+      if (!buf || !this.ctx || this.beds.has(name) || !this.wantAmbience || !this.enabled) return;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const gain = this.ctx.createGain();
+      gain.gain.value = 0;
+      const out = (name === 'water_submerged' && this.directAmb) ? this.directAmb : this.amb;
+      if (!out) return;
+      src.connect(gain).connect(out);
+      src.start(0, Math.random() * buf.duration);
+      this.beds.set(name, { src, gain });
+      this.mixBeds();
+    });
+  }
+
+  private mixBeds(): void {
+    if (!this.ctx || !this.wantAmbience || !this.enabled) return;
+    const levels = this.calculateBedLevels();
+    for (const [name, targetGain] of Object.entries(levels)) {
+      if (targetGain > 0.01) {
+        if (!this.beds.has(name)) {
+          this.ensureBed(name);
+          continue;
+        }
+      }
+      const b = this.beds.get(name);
+      if (b) {
+        b.gain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.8);
+      }
+    }
   }
 
   private startBeds(): void {
     const ctx = this.context();
     if (!ctx || !this.amb) return;
-    for (const name of BEDS) {
-      if (this.beds.has(name)) continue;
-      void this.load(name).then((buf) => {
-        if (!buf || !this.ctx || !this.amb || this.beds.has(name) || !this.wantAmbience || !this.enabled) return;
-        const src = this.ctx.createBufferSource();
-        src.buffer = buf;
-        src.loop = true;
-        const gain = this.ctx.createGain();
-        gain.gain.value = 0;
-        src.connect(gain).connect(this.amb);
-        // Start each bed at a random point so the loops don't line up.
-        src.start(0, Math.random() * buf.duration);
-        this.beds.set(name, { src, gain });
-        this.mixBeds();
-      });
+    const coreBeds = ['amb_day', 'amb_wind', 'wildlife_night_crickets'];
+    for (const name of coreBeds) {
+      this.ensureBed(name);
     }
+    this.mixBeds();
     this.scheduleSweetener();
   }
 
@@ -759,7 +925,20 @@ export class LobbyAudio {
     this.sweetTimer = window.setTimeout(() => {
       this.sweetTimer = null;
       if (!this.wantAmbience || !this.enabled || !this.unlocked) return;
-      const kind = weighted(sweetenersFor(this.daylight, this.lair, this.high), Math.random());
+      const kind = weighted(
+        sweetenersFor(
+          this.daylight,
+          this.lair,
+          this.high,
+          this.lake,
+          this.ocean,
+          Math.max(this.campfire, this.bonfire),
+          this.forest,
+          this.rain,
+          this.timeOfDay
+        ),
+        Math.random()
+      );
       if (kind && this.amb && this.ctx) {
         const name = this.pick(kind);
         if (name) {

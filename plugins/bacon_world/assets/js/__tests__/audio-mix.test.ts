@@ -2,7 +2,7 @@
 // Run with __tests__/run.sh (esbuild + node --test).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MUSIC, Playlist, gapFor, placeSound, restAfter, sweetenersFor, weighted } from '../audio-mix';
+import { MUSIC, Playlist, gapFor, placeSound, restAfter, sweetenersFor, weighted } from '../audio-mix.ts';
 
 function lcg(seed: number) {
   let s = seed >>> 0;
