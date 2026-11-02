@@ -23,18 +23,21 @@ defmodule BaconWorld.InventoryTest do
   defp slots(id), do: Map.new(Inventory.list(id), &{&1.slot, &1.item_id})
 
   test "a new character wears the linen underwear; the starter kit arrives once, at first login", %{user_id: user_id, c: c} do
-    assert slots(c.id) == %{"under_top" => "linen_bikini_top", "under_bottom" => "linen_bikini_bottom"}
+    assert slots(c.id) == %{"under_top" => "homespun_top", "under_bottom" => "homespun_bottom"}
     assert {:ok, payload} = World.character_login_payload(user_id, c.id)
 
     assert payload.gear == %{
              "main" => "worn_short_sword",
              "off" => nil,
              "head" => nil,
-             "under_top" => "linen_bikini_top",
-             "under_bottom" => "linen_bikini_bottom",
+             "under_top" => "homespun_top",
+             "under_bottom" => "homespun_bottom",
              "chest" => nil,
              "legs" => nil,
-             "feet" => nil
+             "feet" => nil,
+             "wrist" => nil,
+             "arms" => nil,
+             "hands" => nil
            }
 
     assert %{"main" => "worn_short_sword", "bag0" => "worn_round_shield"} = slots(c.id)
@@ -52,29 +55,29 @@ defmodule BaconWorld.InventoryTest do
     for slot <- ["under_top", "under_bottom"], do: {:ok, _} = Inventory.destroy(c.id, slot)
     World.merge_stats(World.by_id_query(c.id), %{"starter_wear" => false, "starter_purse" => false})
     [view] = World.list_user_characters(user_id)
-    assert World.gear_for([view])[c.id]["under_top"] == "linen_bikini_top", "the select screen shows what it will wear"
+    assert World.gear_for([view])[c.id]["under_top"] == "homespun_top", "the select screen shows what it will wear"
     assert {:ok, _} = World.character_login_payload(user_id, c.id)
-    assert %{"under_top" => "linen_bikini_top", "under_bottom" => "linen_bikini_bottom"} = slots(c.id)
+    assert %{"under_top" => "homespun_top", "under_bottom" => "homespun_bottom"} = slots(c.id)
   end
 
   test "clothes go to their own slot, swap with what is worn, and come off", %{c: c} do
-    {:ok, ["bag0"]} = Inventory.add(c.id, "cloth_tunic")
-    {:ok, ["bag1"]} = Inventory.add(c.id, "wool_sweater")
-    {:ok, ["bag2"]} = Inventory.add(c.id, "rose_lace_top")
+    {:ok, ["bag0"]} = Inventory.add(c.id, "wayfarer_chest")
+    {:ok, ["bag1"]} = Inventory.add(c.id, "frost_chest")
+    {:ok, ["bag2"]} = Inventory.add(c.id, "thornrose_top")
     assert {:error, :cannot_equip_there} = Inventory.move(c.id, "bag0", "legs")
     assert {:error, :cannot_equip_there} = Inventory.move(c.id, "bag0", "main")
     assert {:ok, _} = Inventory.auto_equip(c.id, "bag0")
-    assert slots(c.id)["chest"] == "cloth_tunic"
+    assert slots(c.id)["chest"] == "wayfarer_chest"
     # the sweater takes the tunic's place; the tunic goes where the sweater was
     assert {:ok, _} = Inventory.auto_equip(c.id, "bag1")
-    assert %{"chest" => "wool_sweater", "bag1" => "cloth_tunic"} = slots(c.id)
+    assert %{"chest" => "frost_chest", "bag1" => "wayfarer_chest"} = slots(c.id)
     # underwear swaps the same way
     assert {:ok, _} = Inventory.auto_equip(c.id, "bag2")
-    assert %{"under_top" => "rose_lace_top", "bag2" => "linen_bikini_top"} = slots(c.id)
+    assert %{"under_top" => "thornrose_top", "bag2" => "homespun_top"} = slots(c.id)
     # and comes off
     assert {:ok, _} = Inventory.unequip(c.id, "under_top")
     refute Map.has_key?(slots(c.id), "under_top")
-    assert Inventory.gear_ids(Inventory.equipment(c.id))["chest"] == "wool_sweater"
+    assert Inventory.gear_ids(Inventory.equipment(c.id))["chest"] == "frost_chest"
   end
 
   test "the grill fork is the starter piercing weapon; the Robin Hood hat goes on the head", %{user_id: user_id, c: c} do

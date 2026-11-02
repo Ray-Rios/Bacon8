@@ -45,11 +45,11 @@ defmodule BaconWorld.Merchants do
         "facial" => %{"style" => "none", "color" => "#3A2418"}
       },
       gear: %{
-        "under_top" => "linen_bikini_top",
-        "under_bottom" => "linen_bikini_bottom",
-        "chest" => "cloth_tunic",
-        "legs" => "cloth_trousers",
-        "feet" => "leather_boots"
+        "under_top" => "homespun_top",
+        "under_bottom" => "homespun_bottom",
+        "chest" => "wayfarer_chest",
+        "legs" => "wayfarer_legs",
+        "feet" => "ranger_feet"
       },
       sells: []
     },
@@ -75,16 +75,16 @@ defmodule BaconWorld.Merchants do
         "facial" => %{"style" => "none", "color" => "#8E5A35"}
       },
       gear: %{
-        "under_top" => "linen_bikini_top",
-        "under_bottom" => "linen_bikini_bottom",
-        "chest" => "wool_sweater",
-        "legs" => "cloth_trousers",
-        "feet" => "leather_boots"
+        "under_top" => "homespun_top",
+        "under_bottom" => "homespun_bottom",
+        "chest" => "frost_chest",
+        "legs" => "wayfarer_legs",
+        "feet" => "ranger_feet"
       },
-      sells: ~w(linen_bikini_top linen_bikini_bottom athletic_top athletic_bottom rose_lace_top rose_lace_bottom
-                coral_top coral_bottom polka_dot_top polka_dot_bottom emerald_top emerald_bottom
-                cloth_tunic blue_dyed_tunic cloth_tank wool_sweater cloth_shorts cloth_trousers cloth_shoes leather_boots
-                robin_hood_hat linen_arm_wraps)
+      # every underwear set (cloth and Gemini's metal ones), every armour set, the robes
+      sells: (for set <- Items.underwear_sets(), part <- ~w(top bottom), do: "#{set}_#{part}") ++ ["robin_hood_hat"] ++
+             (for set <- Items.armor_sets(), slot <- ~w(head hands arms wrist chest legs feet), do: "#{set}_#{slot}") ++
+             Items.robes()
     },
     # The angler (2026-10-26): on the Millpond's east bank (BaconWorld.Water), facing the water.
     # Sells fishing poles; like every merchant, buys what you bring (the catch included).
@@ -109,12 +109,46 @@ defmodule BaconWorld.Merchants do
         "facial" => %{"style" => "FullBeard", "color" => "#B9B2A6"}
       },
       gear: %{
-        "under_bottom" => "linen_bikini_bottom",
-        "chest" => "wool_sweater",
-        "legs" => "cloth_trousers",
-        "feet" => "leather_boots"
+        "under_bottom" => "homespun_bottom",
+        "chest" => "frost_chest",
+        "legs" => "wayfarer_legs",
+        "feet" => "ranger_feet"
       },
       sells: ~w(fishing_pole hunting_bow)
+    },
+    # The jeweller (2026-11-01, owner: the polished pink sets "available to purchase from a merchant
+    # in-game for gems"): behind the north-west market stall, facing the plaza. Sells the jeweller's
+    # sets (BaconWorld.Items `jewel_sets/0`) for Gems, a whole set at a time (`gems: true`).
+    %{
+      kind: "trader",
+      id: "rosalind",
+      name: "Rosalind Gemcutter",
+      title: "Jeweller",
+      zone: "lobby",
+      gems: true,
+      x: -15.5,
+      z: -6.7,
+      face: {0.0, 0.0},
+      look: %{
+        "v" => 1,
+        "body" => "female",
+        "height" => 1.01,
+        "shape" => %{"weight" => 0.05, "muscle" => 0.1, "shoulders" => 0.0, "chest" => 0.3, "belly" => 0.0, "hips" => 0.3, "glutes" => 0.2, "face" => 0.1, "jaw" => 0.0, "nose" => 0.0},
+        "skin" => "#E9BFA3",
+        "eyes" => "#6B3F7A",
+        "brows" => nil,
+        "hair" => %{"style" => "BraidBun", "color" => "#E7C9A0"},
+        "facial" => %{"style" => "none", "color" => "#E7C9A0"}
+      },
+      gear: %{
+        "under_top" => "jw_diamond_top",
+        "under_bottom" => "jw_diamond_bottom",
+        "chest" => "mystic_chest",
+        "legs" => "mystic_legs",
+        "feet" => "mystic_feet",
+        "wrist" => "mystic_wrist"
+      },
+      sells: Enum.flat_map(Items.jewel_sets(), &["#{&1}_bottom", "#{&1}_shoes"])
     }
   ]
 
@@ -123,13 +157,13 @@ defmodule BaconWorld.Merchants do
   # What build mode can place (2026-10-28, BaconWorld.Building): each kind of person, with a few
   # looks to tell copies apart (picked by the placement's id). Merchants sell their village
   # counterpart's stock.
-  @clothes %{"under_top" => "linen_bikini_top", "under_bottom" => "linen_bikini_bottom", "chest" => "cloth_tunic", "legs" => "cloth_trousers", "feet" => "leather_boots"}
-  @his_clothes %{"under_bottom" => "linen_bikini_bottom", "chest" => "cloth_tunic", "legs" => "cloth_trousers", "feet" => "cloth_shoes"}
+  @clothes %{"under_top" => "homespun_top", "under_bottom" => "homespun_bottom", "chest" => "wayfarer_chest", "legs" => "wayfarer_legs", "feet" => "ranger_feet"}
+  @his_clothes %{"under_bottom" => "homespun_bottom", "chest" => "wayfarer_chest", "legs" => "wayfarer_legs", "feet" => "wayfarer_feet"}
   @villager_looks [
     %{name: "Mira", look: %{"v" => 1, "body" => "female", "height" => 0.99, "shape" => %{"weight" => 0.1, "muscle" => 0.1, "hips" => 0.25, "face" => 0.2}, "skin" => "#E8B898", "eyes" => "#4C6A8A", "brows" => nil, "hair" => %{"style" => "LooseBraid", "color" => "#6B4228"}, "facial" => %{"style" => "none", "color" => "#6B4228"}}, gear: @clothes},
     %{name: "Hob", look: %{"v" => 1, "body" => "male", "height" => 1.0, "shape" => %{"weight" => 0.3, "muscle" => 0.3, "belly" => 0.3, "jaw" => 0.3}, "skin" => "#C98E68", "eyes" => "#4F3A26", "brows" => nil, "hair" => %{"style" => "Messy", "color" => "#2E2016"}, "facial" => %{"style" => "ShortBeard", "color" => "#2E2016"}}, gear: @his_clothes},
-    %{name: "Wenna", look: %{"v" => 1, "body" => "female", "height" => 0.96, "shape" => %{"weight" => 0.3, "belly" => 0.2, "hips" => 0.35, "face" => 0.4}, "skin" => "#B57A55", "eyes" => "#3B2B1E", "brows" => nil, "hair" => %{"style" => "Bun", "color" => "#1C1410"}, "facial" => %{"style" => "none", "color" => "#1C1410"}}, gear: Map.put(@clothes, "chest", "wool_sweater")},
-    %{name: "Aldric", look: %{"v" => 1, "body" => "male", "height" => 1.03, "shape" => %{"weight" => 0.0, "muscle" => 0.5, "shoulders" => 0.3, "face" => 0.2}, "skin" => "#EBC3A4", "eyes" => "#5E7F4F", "brows" => nil, "hair" => %{"style" => "SweptBack", "color" => "#C89B5B"}, "facial" => %{"style" => "Stubble", "color" => "#C89B5B"}}, gear: Map.put(@his_clothes, "chest", "blue_dyed_tunic")}
+    %{name: "Wenna", look: %{"v" => 1, "body" => "female", "height" => 0.96, "shape" => %{"weight" => 0.3, "belly" => 0.2, "hips" => 0.35, "face" => 0.4}, "skin" => "#B57A55", "eyes" => "#3B2B1E", "brows" => nil, "hair" => %{"style" => "Bun", "color" => "#1C1410"}, "facial" => %{"style" => "none", "color" => "#1C1410"}}, gear: Map.put(@clothes, "chest", "frost_chest")},
+    %{name: "Aldric", look: %{"v" => 1, "body" => "male", "height" => 1.03, "shape" => %{"weight" => 0.0, "muscle" => 0.5, "shoulders" => 0.3, "face" => 0.2}, "skin" => "#EBC3A4", "eyes" => "#5E7F4F", "brows" => nil, "hair" => %{"style" => "SweptBack", "color" => "#C89B5B"}, "facial" => %{"style" => "Stubble", "color" => "#C89B5B"}}, gear: Map.put(@his_clothes, "chest", "ranger_chest")}
   ]
   @templates [
     %{id: "villager", label: "a villager", kind: "villager", title: "Villager", sells: [], looks: @villager_looks,
@@ -189,10 +223,22 @@ defmodule BaconWorld.Merchants do
   def buy_price(%{value: v}) when is_integer(v) and v > 0, do: max(1, trunc(v * @buy_rate))
   def buy_price(_), do: 0
 
-  @doc "The merchant's list: `[%{item_id, price}]`, in the order it is shown."
-  def stock(%{sells: ids}) do
-    for id <- ids, item = Items.get(id), do: %{item_id: id, price: sell_price(item)}
+  @doc """
+  The merchant's list: `[%{item_id, price}]`, in the order it is shown. The jeweller's entries are
+  whole sets for Gems: `%{item_id, price: 0, gems, set: name, pieces: [item ids]}`.
+  """
+  def stock(%{sells: ids} = m) do
+    for id <- ids, item = Items.get(id) do
+      if gems?(m) and item.jewel do
+        %{item_id: id, price: 0, gems: item.gems, jewel: item.jewel, pieces: Items.jewel_bundle(item, "female")}
+      else
+        %{item_id: id, price: sell_price(item)}
+      end
+    end
   end
+
+  @doc "True for a merchant who sells for Gems (the jeweller)."
+  def gems?(m), do: Map.get(m, :gems, false) == true
 
   @doc "True when a position (scene units) is within reach of the merchant."
   def near?(%{x: x, z: z}, {px, pz}) do

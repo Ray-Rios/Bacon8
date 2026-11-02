@@ -211,6 +211,7 @@ export class LobbyAudio {
   private mus: GainNode | null = null;
   private buffers = new Map<string, AudioBuffer>();
   private loading = new Map<string, Promise<AudioBuffer | null>>();
+  private failed = new Set<string>();
   private beds = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>();
   private wantMusic = false;
   private wantAmbience = false;
@@ -358,6 +359,9 @@ export class LobbyAudio {
   private load(name: string): Promise<AudioBuffer | null> {
     const cached = this.buffers.get(name);
     if (cached) return Promise.resolve(cached);
+    // A file that failed once is not asked for again this visit: the beds are re-mixed four times
+    // a second, and a missing file was fetched every time (2026-11-01: thousands of 404s a minute).
+    if (this.failed.has(name)) return Promise.resolve(null);
     const pending = this.loading.get(name);
     if (pending) return pending;
     const ctx = this.context();
@@ -372,6 +376,7 @@ export class LobbyAudio {
       })
       .catch((err) => {
         console.warn('[audio] could not load', url, err);
+        this.failed.add(name);
         return null;
       })
       .finally(() => this.loading.delete(name));

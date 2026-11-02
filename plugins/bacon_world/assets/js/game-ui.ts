@@ -14,8 +14,9 @@ export interface Inventory { items: InvItem[]; coins: number; bag_slots: number 
 export interface LootItem { index: number; item_id: string; quantity: number }
 export interface PlayerInfo { name: string; level: number; hp: number; maxHp: number; mp: number; maxMp: number; xp: number; xpNext: number; pvp: boolean; sound: boolean; smash?: boolean }
 export interface TargetInfo { name: string; color: string; level?: number; hpPct: number; corpse?: boolean; kind: 'mob' | 'player' | 'npc'; sub?: string }
-export interface MerchantInfo { id: string; name: string; title?: string }
-export interface StockItem { item_id: string; price: number }
+export interface MerchantInfo { id: string; name: string; title?: string; gems?: boolean }
+/** A merchant's row; the jeweller's are whole sets for Gems (`gems`, `pieces`). */
+export interface StockItem { item_id: string; price: number; gems?: number; jewel?: string; pieces?: string[] }
 
 export interface StatsSheet {
   ac: number;
@@ -152,8 +153,10 @@ function h(tag: string, attrs: Attrs = {}, ...kids: Array<Node | string | null |
 
 const HAND_SLOTS: Array<[string, string]> = [['main', 'Primary'], ['off', 'Secondary']];
 const WORN_SLOTS: Array<[string, string]> = [['head', 'Head'], ['chest', 'Chest'], ['legs', 'Legs'], ['feet', 'Feet'], ['under_top', 'Undershirt'], ['under_bottom', 'Underwear']];
-const FUTURE_SLOTS = ['Arms', 'Hands'];
-const EQUIP_SLOTS = new Set(['main', 'off', ...WORN_SLOTS.map(([s]) => s)]);
+// the cloth armour sets (2026-11-01) fill the arms, wrists and hands
+const ARM_SLOTS: Array<[string, string]> = [['arms', 'Arms']];
+const HAND_WEAR_SLOTS: Array<[string, string]> = [['wrist', 'Wrists'], ['hands', 'Hands']];
+const EQUIP_SLOTS = new Set(['main', 'off', ...[...WORN_SLOTS, ...ARM_SLOTS, ...HAND_WEAR_SLOTS].map(([s]) => s)]);
 const SPECIAL_KEYS = ['Q', 'E', 'F', 'Z', 'X'];
 
 export class GameUI {
@@ -168,6 +171,7 @@ export class GameUI {
   private mer: HTMLElement;
   private merchant: MerchantInfo | null = null;
   private stock: StockItem[] = [];
+  private gemBalance = 0;
   private stockSel: string | null = null;
   private tip: HTMLElement;
   private cursorEl: HTMLElement;
@@ -387,9 +391,9 @@ export class GameUI {
     };
     const eq = h('div', { class: 'eq' },
       ...HAND_SLOTS.map(([s, label]) => slotEl(s, label)),
-      ...FUTURE_SLOTS.slice(0, 1).map((label) => this.futureSlot(label)),
+      ...ARM_SLOTS.map(([s, label]) => slotEl(s, label)),
       ...WORN_SLOTS.map(([s, label]) => slotEl(s, label)),
-      ...FUTURE_SLOTS.slice(1).map((label) => this.futureSlot(label)));
+      ...HAND_WEAR_SLOTS.map(([s, label]) => slotEl(s, label)));
     const bags = h('div', { class: 'bags' }, ...Array.from({ length: this.inventory.bag_slots || 24 }, (_, i) => slotEl(`bag${i}`)));
     let gearAc = 0;
     for (const sl of EQUIP_SLOTS) gearAc += item(slots.get(sl)?.item_id)?.ac || 0;
@@ -535,14 +539,21 @@ export class GameUI {
   // ---------------------------------------------------------------- merchant
 
   /** Opens a merchant's window (and the inventory beside it, to sell from). */
-  openMerchant(info: MerchantInfo, stock: StockItem[]) {
+  openMerchant(info: MerchantInfo, stock: StockItem[], gems?: number | null) {
     this.merchant = info;
     this.stock = stock;
+    this.gemBalance = gems || 0;
     this.stockSel = null;
     this.mer.style.display = 'block';
     this.renderMerchant();
     if (!this.isInventoryOpen()) this.toggleInventory(true);
     this.cb.windows(true);
+  }
+
+  /** The Gem balance shown in the jeweller's window (after a purchase). */
+  setGems(n: number) {
+    this.gemBalance = n || 0;
+    if (this.isMerchantOpen()) this.renderMerchant();
   }
 
   isMerchantOpen(): boolean {
@@ -578,13 +589,20 @@ export class GameUI {
     const m = this.merchant;
     // Re-rendering replaces the list: keep its scroll position (a click used to jump it to the top).
     const scroll = (this.mer.querySelector('.list') as HTMLElement | null)?.scrollTop || 0;
+    const gemsShop = !!m.gems;
+    const priceText = (s: StockItem) => (s.gems ? `${s.gems} Gems` : money(s.price));
+    const setName = (s: StockItem) => {
+      const nm = item(s.item_id)?.name || s.item_id;
+      // a jeweller's set is sold whole: name it by the set ("Rose Wire" from "Rose Wire Rose Brief")
+      return s.pieces && s.pieces.length > 1 ? `${nm.split(' ').slice(0, -2).join(' ') || nm} (set)` : nm;
+    };
     const rows = this.stock.map((s) => {
       const it = item(s.item_id);
-      const icon = iconUrl(s.item_id);
+      const icon = iconUrl(s.pieces ? s.pieces[0] : s.item_id);
       const row = h('div', { class: 'row' + (this.stockSel === s.item_id ? ' sel' : '') },
         h('div', { class: 's' }, icon ? h('img', { src: icon, alt: '' }) : null),
-        h('span', { class: 'nm' }, it?.name || s.item_id),
-        h('span', { class: 'pr' }, money(s.price)));
+        h('span', { class: 'nm' }, setName(s)),
+        h('span', { class: 'pr' }, priceText(s)));
       row.onclick = () => {
         if (this.stockSel === s.item_id) return;
         this.stockSel = s.item_id;
@@ -595,17 +613,18 @@ export class GameUI {
         this.stockSel = s.item_id;
         this.cb.buy(s.item_id);
       };
-      this.tipFor(row, () => [it?.name || s.item_id, ...describe(s.item_id), `Price: ${money(s.price)}`, 'Right-click to buy']);
+      this.tipFor(row, () => [setName(s), ...(s.pieces ? s.pieces.map((p) => item(p)?.name || p) : []), ...describe(s.item_id),
+        `Price: ${priceText(s)}`, 'Right-click to buy']);
       return row;
     });
     const sel = this.stockSel ? this.stock.find((x) => x.item_id === this.stockSel) : null;
-    const afford = !!sel && sel.price <= (this.inventory.coins || 0);
-    const buy = h('button', { class: 'btn', disabled: !afford, onclick: () => sel && this.cb.buy(sel.item_id) }, sel ? `Buy (${money(sel.price)})` : 'Buy') as HTMLButtonElement;
+    const afford = !!sel && (sel.gems ? sel.gems <= this.gemBalance : sel.price <= (this.inventory.coins || 0));
+    const buy = h('button', { class: 'btn', disabled: !afford, onclick: () => sel && this.cb.buy(sel.item_id) }, sel ? `Buy (${priceText(sel)})` : 'Buy') as HTMLButtonElement;
     const list = h('div', { class: 'list' }, ...rows);
     this.mer.replaceChildren(
       h('div', { class: 't' }, h('b', {}, m.name), h('span', {}, m.title || 'Merchant'), h('span', { class: 'x', onclick: () => this.closeMerchant() }, '✕')),
       list,
-      h('div', { class: 'coins' }, `Your money: ${money(this.inventory.coins)}`),
+      h('div', { class: 'coins' }, gemsShop ? `Your Gems: ${this.gemBalance}` : `Your money: ${money(this.inventory.coins)}`),
       h('div', { class: 'sellbox' }, h('span', { class: 'msg2' }, 'Right-click to buy. To sell, right-click an item in your bags.')),
       h('div', { class: 'foot' }, buy, h('button', { class: 'btn', onclick: () => this.closeMerchant() }, 'Done')));
     list.scrollTop = scroll;

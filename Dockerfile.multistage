@@ -97,6 +97,8 @@ COPY priv/static/site.webmanifest ./priv/static/
 COPY priv/static/images ./priv/static/images
 COPY priv/static/audio ./priv/static/audio
 COPY priv/static/robots.txt ./priv/static/
+# Bacon World's asset cache worker; served at /sw-game.js (endpoint.ex). Missing until 2026-11-01.
+COPY priv/static/sw-game.js ./priv/static/
 COPY priv/static/.well-known ./priv/static/.well-known
 COPY priv/static/maps ./priv/static/maps
 
@@ -184,6 +186,8 @@ COPY priv/static/site.webmanifest ./priv/static/
 COPY priv/static/images ./priv/static/images
 COPY priv/static/audio ./priv/static/audio
 COPY priv/static/robots.txt ./priv/static/
+# Bacon World's asset cache worker; served at /sw-game.js (endpoint.ex). Missing until 2026-11-01.
+COPY priv/static/sw-game.js ./priv/static/
 
 # Compile application (ignore unavailable optional dependencies)
 RUN mix deps.loadpaths --no-deps-check + compile

@@ -21,7 +21,6 @@ defmodule BaconWorldWeb.PlayLive do
   @max_move_speed 30.0
   # On a mount (BaconWorld.Mounts): faster, and a flying one may climb (scene units).
   @max_mounted_speed 45.0
-  @max_flying_y 160.0
   @interest_radius 2000.0
   @chat_radius 64.0
   @collision_radius 1.1
@@ -36,7 +35,7 @@ defmodule BaconWorldWeb.PlayLive do
   # Riding (BaconWorldWeb.MountEvents).
   @mount_events ~w(mounts_fetch mount_summon mount_dismount stable_open stable_choose)
   # The skill tree and casting (BaconWorldWeb.SkillEvents).
-  @skill_events ~w(skills_fetch skill_learn hotbar_set cast cast_cancel)
+  @skill_events ~w(skills_fetch skill_learn skill_unlearn skill_reset hotbar_set cast cast_cancel)
   # Fishing (BaconWorldWeb.FishingEvents, BaconWorld.Water).
   @fishing_events ~w(fish_cast fish_reel fish_stop)
   # Build mode (BaconWorldWeb.BuildEvents, BaconWorld.Building).
@@ -698,7 +697,7 @@ defmodule BaconWorldWeb.PlayLive do
   # Other tabs of the same account refresh their character list on changes.
   defp characters_topic(user_id), do: "bacon_world:user:#{user_id}:characters"
 
-  defp account_online_elsewhere?(socket, character_id \\ nil) do
+  defp account_online_elsewhere?(socket, character_id) do
     user_id = socket.assigns.current_user.id
     own_ref = socket.assigns[:account_presence_ref]
 
@@ -1098,7 +1097,7 @@ defmodule BaconWorldWeb.PlayLive do
     end
   end
 
-  defp teleport_to(socket, x, y, z, heading \\ 0.0) do
+  defp teleport_to(socket, x, y, z, heading) do
     current = current_character(socket)
 
     if is_nil(current) do
@@ -1167,8 +1166,12 @@ defmodule BaconWorldWeb.PlayLive do
       "time" ->
         handle_time_command(socket)
 
+      # Setting the weather changes it for the whole zone, and a storm's lightning kills: GMs and
+      # admins only (2026-11-01; any player could do it). Anyone may ask what it is.
       "weather" ->
-        handle_weather_command(arg, socket)
+        if String.trim(arg) == "" or staff?(socket),
+          do: handle_weather_command(arg, socket),
+          else: {:noreply, push_event(socket, "system_message", %{sender: "System", message: "Only GMs and admins can change the weather."})}
 
       cmd when cmd in ["wave", "dance", "bow", "cheer", "clap", "sit", "point"] ->
         handle_emote_command(cmd, socket, current)
@@ -1185,9 +1188,27 @@ defmodule BaconWorldWeb.PlayLive do
     end
   end
 
+  # GMs and admins (BaconWorld.Building's ranks).
+  defp staff?(socket), do: BaconWorld.Building.at_least?(BaconWorld.Building.role_of(socket.assigns.current_user), "gm")
+
   defp handle_zone_command(arg, socket, current) do
     trimmed_arg = String.trim(arg)
 
+    cond do
+      socket.assigns[:is_dead?] ->
+        {:noreply, push_event(socket, "system_message", %{sender: "System", message: "You can't warp while dead."})}
+
+      # A warp to any coordinates skips every movement check (speed, walls, binding stones'
+      # towns, a boss's lair): GMs and admins only (2026-11-01; any player could do it).
+      trimmed_arg != "" and not staff?(socket) ->
+        {:noreply, push_event(socket, "system_message", %{sender: "System", message: "Only GMs and admins can warp to coordinates. /stuck takes you to the zone entrance."})}
+
+      true ->
+        zone_command(trimmed_arg, socket, current)
+    end
+  end
+
+  defp zone_command(trimmed_arg, socket, current) do
     if trimmed_arg == "" do
       zone_slug = (current.zone && current.zone.slug) || "lobby"
       zone = World.zone_for(zone_slug)

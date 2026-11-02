@@ -63,6 +63,8 @@ export const SkillsWorld = {
     if (!this.skillsUI) {
       this.skillsUI = new SkillsUI(this.gameUI.root, {
         learn: (node: string) => void this.learnNode(node),
+        unlearn: (node: string) => void this.respec('skill_unlearn', { node }),
+        reset: () => void this.respec('skill_reset', {}),
         cast: (id: string) => this.castAbility(id),
         assign: (slot: string, id: string | null) => this.assignSlot(slot, id),
         windows: (open: boolean) => {
@@ -116,6 +118,21 @@ export const SkillsWorld = {
     }
     this.audio?.play('ui_learn', 0.8);
     this.applySkills(res);
+  },
+
+  /** Unlearning one node or all of them: the points come back (2026-11-01). */
+  async respec(this: any, event: 'skill_unlearn' | 'skill_reset', params: Record<string, string>) {
+    const before: string[] = this.skillsUI?.['data']?.abilities || [];
+    const res = await reply(this, event, params);
+    if (!res.ok) {
+      this.combatLog(res.error || "You can't change that right now.", '#B8B8B8');
+      return;
+    }
+    this.audio?.play('ui_close', 0.7);
+    this.applySkills(res);
+    const gone = before.filter((id: string) => !res.abilities.includes(id));
+    for (const id of gone) this.combatLog(`You have unlearned ${res.catalog[id]?.name || id}.`, '#C9B48A');
+    if (event === 'skill_reset') this.combatLog(`Your skill points are back: ${res.points} to spend.`, '#9FD8FF');
   },
 
   assignSlot(this: any, slot: string, id: string | null) {

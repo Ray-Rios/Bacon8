@@ -292,6 +292,8 @@ export const GameWorld = {
       }
       else this.npcsView?.faceWhileTrading(this.tradingWith, me.mesh.position.x, me.mesh.position.z);
     }
+    // the gear's run speed (the jeweller's heels, BaconWorld.Items run_speed)
+    if (this.controller) this.controller.runSpeed = item(this.localGear?.feet)?.run_speed || 1;
     // Held mouse buttons keep swinging when the hand is ready.
     if (this.controller && !this.isDead) {
       const now = performance.now();
@@ -691,6 +693,8 @@ export const GameWorld = {
     }
     void reply(this, 'melee_attack', { hand, heading: yaw, heavy, target_id: target, smash: !!this.smashMode }).then((res: any) => {
       if (!res?.ok) return;
+      // the jeweller's powers that fired on this swing (BaconWorld.Powers)
+      for (const p of res.powers || []) this.powerFired?.({ power: p });
       if (ranged) {
         const firstHit = (res.hits || [])[0];
         setTimeout(() => this.loose(myId, yaw, h.def.reach, firstHit?.id ?? null, !!firstHit?.hit, () => this.showHits(res.hits || [])), Math.max(0, hitIn - (performance.now() - now)));
@@ -1238,13 +1242,31 @@ export const GameWorld = {
     this.tradingWith = npcId;
     if (this.lootingId) this.closeLoot();
     this.combatLog(`${n.name} says, 'Welcome, ${this.state?.currentPlayer?.name || 'traveller'}! Have a look around.'`, '#8FD3FF');
-    this.gameUI?.openMerchant(res.merchant, res.stock || []);
+    this.gameUI?.openMerchant(res.merchant, res.stock || [], res.gems);
     this.audio?.play('bag_open', 0.5);
+  },
+
+  /** A gear power fired (BaconWorld.Powers): a line in the combat log, a sound. */
+  powerFired(this: any, p: { power: string; coins?: number; damage?: number }) {
+    const lines: Record<string, string> = {
+      midas: `Midas Ward turns the blow to gold (${p.coins || 0} copper).`,
+      thorns: `Thornbite bites back for ${p.damage || 0}.`,
+      starfire: 'Starfire bursts from your strike!',
+      snare: 'Silken threads snare your foe.',
+      lasso: 'Your lasso drags your foe in.',
+      phoenix: 'Phoenix Rebirth! You rise from the killing blow.',
+    };
+    const line = lines[p.power];
+    if (line) this.combatLog(line, '#F7A8D0');
+    if (p.power === 'midas') this.audio?.play('coins', 0.6);
   },
 
   async merchantBuy(this: any, itemId: string) {
     if (!this.tradingWith) return;
-    const res = await reply(this, 'merchant_buy', { id: this.tradingWith, item_id: itemId });
+    // a nonce per click: the server spends Gems once for it, however often the request arrives
+    const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const res = await reply(this, 'merchant_buy', { id: this.tradingWith, item_id: itemId, nonce });
+    if (typeof res.gems === 'number') this.gameUI?.setGems(res.gems);
     if (res.inventory) {
       this.inventory = res.inventory;
       this.gameUI?.setInventory(this.inventory);
@@ -1254,8 +1276,16 @@ export const GameWorld = {
       this.combatLog(res.error || "You can't buy that.", '#FF9B7A');
       return;
     }
-    this.combatLog(`You give ${moneyWords(res.price)} to ${this.npcsView?.get(this.tradingWith)?.name || 'the merchant'}.`, '#F0D77A');
-    this.combatLog(`You receive ${item(res.bought)?.name || res.bought}.`, '#9FE39F');
+    const who = this.npcsView?.get(this.tradingWith)?.name || 'the merchant';
+    if (res.gems_spent) {
+      this.combatLog(`You give ${res.gems_spent} Gems to ${who}.`, '#F7A8D0');
+      for (const p of res.pieces || [res.bought]) this.combatLog(`You receive ${item(p)?.name || p}.`, '#9FE39F');
+      const pw = (res.pieces || []).map((p: string) => item(p)?.power).find(Boolean);
+      if (pw) this.combatLog(`Wear the bottom to call on its power, ${pw.name}: ${pw.summary}`, '#F7A8D0');
+    } else {
+      this.combatLog(`You give ${moneyWords(res.price)} to ${who}.`, '#F0D77A');
+      this.combatLog(`You receive ${item(res.bought)?.name || res.bought}.`, '#9FE39F');
+    }
     this.audio?.play('coins', 0.8);
   },
 

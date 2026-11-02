@@ -26,7 +26,8 @@ export type ShapeKey =
   | 'weight' | 'muscle' | 'shoulders' | 'waist' | 'belly' | 'hips'
   | 'chest' | 'chest_height' | 'chest_spacing' | 'chest_shape'
   | 'glutes' | 'glute_lift' | 'arms' | 'thighs' | 'calves'
-  | 'face' | 'jaw' | 'nose';
+  | 'face' | 'jaw' | 'nose'
+  | 'cheekbones' | 'jaw_square' | 'chin' | 'brow' | 'lips' | 'nose_width';
 
 /** Where a slider sits in the creator: body sections, Black Desert style, or the face tab. */
 export type ShapeGroup = 'Body' | 'Chest' | 'Glutes' | 'Arms and legs' | 'Face';
@@ -72,6 +73,13 @@ export const SHAPES: ShapeSpec[] = [
   { key: 'face', label: 'Face', min: 0, max: 1, pos: 'Face_Full', tab: 'face', group: 'Face', ends: ['Lean', 'Full'] },
   { key: 'jaw', label: 'Jaw', min: 0, max: 1, pos: 'Jaw_Wide', tab: 'face', group: 'Face', ends: ['Soft', 'Wide'] },
   { key: 'nose', label: 'Nose', min: 0, max: 1, pos: 'Nose_Large', tab: 'face', group: 'Face', ends: ['Small', 'Large'] },
+  // v3 face sliders (2026-11-01, the pipeline's face_v3.py): both bodies, beards follow them
+  { key: 'cheekbones', label: 'Cheekbones', min: 0, max: 1, pos: 'Cheekbones', tab: 'face', group: 'Face', ends: ['Soft', 'High'], rand: 0.7 },
+  { key: 'jaw_square', label: 'Jaw angle', min: 0, max: 1, pos: 'Jaw_Square', tab: 'face', group: 'Face', ends: ['Round', 'Square'], rand: 0.7 },
+  { key: 'chin', label: 'Chin', min: 0, max: 1, pos: 'Chin_Strong', tab: 'face', group: 'Face', ends: ['Soft', 'Strong'], rand: 0.6 },
+  { key: 'brow', label: 'Brow', min: 0, max: 1, pos: 'Brow_Heavy', tab: 'face', group: 'Face', ends: ['Smooth', 'Heavy'], rand: 0.6 },
+  { key: 'lips', label: 'Lips', min: 0, max: 1, pos: 'Lips_Full', tab: 'face', group: 'Face', ends: ['Thin', 'Full'], rand: 0.7 },
+  { key: 'nose_width', label: 'Nose bridge', min: 0, max: 1, pos: 'Nose_Narrow', tab: 'face', group: 'Face', ends: ['Natural', 'Narrow'], rand: 0.6 },
 ];
 
 export const HEIGHT_RANGE: [number, number] = [0.92, 1.08];

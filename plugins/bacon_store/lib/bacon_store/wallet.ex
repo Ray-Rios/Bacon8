@@ -77,6 +77,32 @@ defmodule BaconStore.Wallet do
     |> Repo.all()
   end
 
+  @doc """
+  What the user has spent Gems on, newest first (2026-11-01: the store's Purchases page lists them under
+  "Bought with Gems"): `%{id, amount (positive), memo, game_slug, reference_type, reference_id, at}`.
+  """
+  def spends(user_or_id, limit \\ 50) do
+    user_id = user_id(user_or_id)
+
+    from(e in Entry,
+      join: a in assoc(e, :account),
+      join: t in assoc(e, :transaction),
+      where: a.user_id == ^user_id and a.currency == ^@currency and t.kind == "spend",
+      order_by: [desc: t.inserted_at],
+      limit: ^limit,
+      select: %{
+        id: t.id,
+        amount: fragment("-?", e.amount),
+        memo: t.memo,
+        game_slug: t.game_slug,
+        reference_type: t.reference_type,
+        reference_id: t.reference_id,
+        at: t.inserted_at
+      }
+    )
+    |> Repo.all()
+  end
+
   # ---------------------------------------------------------------------------
   # Moving Gems
   # ---------------------------------------------------------------------------

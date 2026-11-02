@@ -10,8 +10,8 @@ defmodule BaconWorld.Items do
   `Weapons/icons/W_<model>.png`) and animated with an animation set from the B8
   packs (`anims.json` "sets": `sword_1h`, `two_hand`, ...).
 
-  Clothes are items too: underwear (`"under_top"`, `"under_bottom"`) and cloth armour
-  (`"chest"`, `"legs"`, `"feet"`). A worn item is drawn on the character: `wear` says
+  Clothes are items too: underwear (`"under_top"`, `"under_bottom"`), cloth armour
+  (`"head"`, `"hands"`, `"arms"`, `"wrist"`, `"chest"`, `"legs"`, `"feet"`) and robes (`"chest"`). A worn item is drawn on the character: `wear` says
   which garment of each body model shows it and, for the garments made from the body,
   which design (`Humans/Wardrobe/<garment>__<design>.webp`); `colors` tints it (`main`,
   `trim`, `accent`; shoes use `upper`, `sole` and `laces`). Characters start in the
@@ -131,65 +131,327 @@ defmodule BaconWorld.Items do
       icon_url: "/plugins/bacon_world/icons/robin_hood_hat.png"}
   ]
 
-  # What can be worn. Underwear: six sets (top and bottom are separate items), the
-  # linen one given to every character. The male (MakeHuman, 2026-10-23) wears no top; his
-  # bottoms are his own Under_Bottom shell in briefs or boxer briefs (@male_bottom).
+  # The metal bikinis (2026-11-01, Gemini's chain and plate sets): worth more than cloth, and a
+  # little armour. Copper value and AC by set; the cloth sets keep 6c and none.
+  @under_value %{"chain_iron" => 40, "chain_brass" => 60, "chain_steel" => 80, "chain_gold" => 150,
+                 "plate_steel" => 120, "plate_dark" => 200, "plate_gold" => 220, "plate_draconic" => 260, "plate_mythril" => 300}
+  @under_ac %{"chain_iron" => 1, "chain_brass" => 1, "chain_steel" => 1, "chain_gold" => 1,
+              "plate_steel" => 2, "plate_dark" => 2, "plate_gold" => 2, "plate_draconic" => 2, "plate_mythril" => 2}
+
+  # What can be worn. Underwear (2026-11-01, second pass; owner: "photo-realistic"): ten sets made
+  # as real garments, each its own GLB per body (Humans/Garments/<Body>/uw_<set>_top|bottom.glb,
+  # library/pipeline/scripts/b8_garments.py + b8_garment_designs.py) in photographed CC0 fabrics
+  # (Humans/Fabrics): the cotton starter every character gets and nine more Tilda sells, 6 copper
+  # a piece. The female wears top and bottom; the male the bottom only, in his own cut. The
+  # texture-painted sets of the same morning are retired (games migration 20261101000001).
   @under [
-    {"linen_bikini", "Linen Bikini", {"classic", "classic"}, {"#EAE0C8", "#D2C3A3", "#D2C3A3"}, 20, {"Top", "Bottom"}},
-    {"athletic", "Athletic", {"sport", "boyshort"}, {"#262224", "#8E6F5E", "#6E1D2A"}, 60, {"Top", "Shorts"}},
-    {"rose_lace", "Rose Lace", {"lace", "lace"}, {"#E2AFA6", "#B9776E", "#F7DDD7"}, 90, {"Bralette", "Briefs"}},
-    {"coral", "Coral", {"bandeau", "highcut"}, {"#E0644E", "#FFFFFF", "#B8402F"}, 70, {"Bandeau", "High-Cut Bottom"}},
-    {"polka_dot", "Polka Dot", {"halter", "string"}, {"#1E2E5C", "#F4F4F4", "#F4F4F4"}, 80, {"Halter Top", "Tie-Side Bottom"}},
-    {"emerald", "Emerald", {"longline", "highwaist"}, {"#1F6B4A", "#D6A92B", "#D6A92B"}, 120, {"Longline Top", "High-Waist Bottom"}}
+    {"homespun", "Homespun", {"Bralette", "Briefs"}, %{"main" => "#E8DFCB", "trim" => "#D9CBAE"}},
+    {"moonsilk", "Moonsilk", {"Balconette", "Bottoms"}, %{"main" => "#1E2340", "trim" => "#2A3156", "accent" => "#C9C3D9"}},
+    {"thornrose", "Thornrose", {"Lace Plunge", "Lace Bottoms"}, %{"main" => "#2B0E14", "trim" => "#4A0F1C"}},
+    {"velvet", "Velvet Court", {"Bustier", "Bottoms"}, %{"main" => "#4B1030", "trim" => "#2A0A1C"}},
+    {"nightweave", "Nightweave", {"Cage Top", "Strappy Bottoms"}, %{"main" => "#121214", "trim" => "#1B1B1F", "metal" => "#C9CED6"}},
+    {"seafoam", "Seafoam", {"Zip Crop", "Shorts"}, %{"main" => "#1D6B6B", "trim" => "#123F3F", "accent" => "#E8F1EE"}},
+    {"georgette", "Georgette", {"Ruffle Bralette", "Ruffle Shorts"}, %{"main" => "#F2C6CF", "trim" => "#E9AFBC", "accent" => "#E8E2D0"}},
+    {"brocade", "Brocade", {"Bandeau", "Tie-Sides"}, %{"main" => "#0E4B3A", "trim" => "#C8A951"}},
+    {"waffle", "Waffle", {"Camisole", "Lounge Shorts"}, %{"main" => "#D9C29A", "trim" => "#8C6F4A", "accent" => "#F4EFE6"}},
+    {"linen", "Linen", {"Wrap Halter", "Wrap Bottoms"}, %{"main" => "#C9B79C", "trim" => "#B8A37F"}},
+    {"chain_iron", "Rough Iron Chain", {"Bikini Top", "Bikini Bottoms"}, %{"main" => "#9AA0A6", "trim" => "#4A3524"}},
+    {"chain_brass", "Ornamented Brass Chain", {"Bikini Top", "Bikini Bottoms"}, %{"main" => "#D4AF37", "trim" => "#C8A951"}},
+    {"chain_steel", "Reinforced Steel", {"Bikini Top", "Bikini Bottoms"}, %{"main" => "#BAC2C7", "trim" => "#8A9298"}},
+    {"chain_gold", "Gilded Paladin Chain", {"Bikini Top", "Bikini Bottoms"}, %{"main" => "#F3C13A", "trim" => "#E0A526"}},
+    {"plate_steel", "Glorious Steel Plate", {"Bikini Top", "Bikini Bottoms"}, %{"main" => "#BAC2C7", "trim" => "#6A7278", "accent" => "#3B2A1C"}},
+    {"plate_gold", "Champion Gold Plate", {"Bikini Top", "Bikini Bottoms"}, %{"main" => "#D4AF37", "trim" => "#C8A951", "accent" => "#3B2A1C"}},
+    {"plate_dark", "Dread Iron Spiked", {"Bikini Top", "Bikini Bottoms"}, %{"main" => "#3A3E42", "trim" => "#1E2022", "accent" => "#161618"}},
+    {"plate_draconic", "Draconic Scale Plate", {"Bikini Top", "Bikini Bottoms"}, %{"main" => "#8B1E1E", "trim" => "#3A1A1A", "accent" => "#2A1414"}},
+    {"plate_mythril", "Mythril Runed Plate", {"Bikini Top", "Bikini Bottoms"}, %{"main" => "#7FB8D4", "trim" => "#C0E2F0", "accent" => "#2B3A55"}}
   ]
-  @band_tops ~w(sport bandeau longline)
-  # the male's cut for each of her bottom designs
-  @male_bottom %{"classic" => "classic", "lace" => "classic", "boyshort" => "boyshort", "highcut" => "classic",
-                 "string" => "classic", "highwaist" => "boyshort"}
 
-  @underwear Enum.flat_map(@under, fn {id, name, {top, bottom}, {main, trim, accent}, value, {tn, bn}} ->
-               colors = %{"main" => main, "trim" => trim, "accent" => accent}
-               top_garment = if top in @band_tops, do: "Under_Top_Band", else: "Under_Top_Contour"
+  @doc "The underwear set ids, starter first (for the merchant and the tests)."
+  def underwear_sets, do: Enum.map(@under, &elem(&1, 0))
 
+  @underwear Enum.flat_map(@under, fn {id, name, {tn, bn}, colors} ->
                [
-                 %{id: "#{id}_top", name: "#{name} #{tn}", kind: "armor", slots: ["under_top"], value: value, colors: colors,
-                   wear: %{"female" => %{"garment" => top_garment, "design" => top}, "male" => nil}},
-                 %{id: "#{id}_bottom", name: "#{name} #{bn}", kind: "armor", slots: ["under_bottom"], value: value, colors: colors,
-                   wear: %{"female" => %{"garment" => "Under_Bottom", "design" => bottom}, "male" => %{"garment" => "Under_Bottom", "design" => @male_bottom[bottom]}}}
+                 %{id: "#{id}_top", name: "#{name} #{tn}", kind: "armor", slots: ["under_top"], value: Map.get(@under_value, id, 6),
+                   ac: Map.get(@under_ac, id, 0), colors: colors,
+                   wear: %{"female" => %{"part" => "Garments/Female/uw_#{id}_top.glb"}, "male" => nil}},
+                 %{id: "#{id}_bottom", name: "#{name} #{bn}", kind: "armor", slots: ["under_bottom"], value: Map.get(@under_value, id, 6),
+                   ac: Map.get(@under_ac, id, 0), colors: colors,
+                   wear: %{"female" => %{"part" => "Garments/Female/uw_#{id}_bottom.glb"}, "male" => %{"part" => "Garments/Male/uw_#{id}_bottom.glb"}}}
                ]
              end)
 
-  # Cloth armour: the same garments and designs on both bodies (each body has its own textures).
-  @cloth [
-    %{id: "cloth_tunic", name: "Cloth Tunic", slots: ["chest"], ac: 2, value: 40, garment: "Top_Tee", colors: %{"main" => "#8A6A4A", "trim" => "#5C4630"}},
-    %{id: "blue_dyed_tunic", name: "Blue Dyed Tunic", slots: ["chest"], ac: 2, value: 60, garment: "Top_Tee", colors: %{"main" => "#247DF1", "trim" => "#1B5FBA"}},
-    %{id: "cloth_tank", name: "Cloth Tank Top", slots: ["chest"], ac: 1, value: 30, garment: "Top_Tank", design: "tank", colors: %{"main" => "#E7F1FD", "trim" => "#9AA3AD", "accent" => "#C8D2DC"}},
-    %{id: "wool_sweater", name: "Wool Sweater", slots: ["chest"], ac: 3, value: 90, garment: "Top_LongSleeve", colors: %{"main" => "#6B7A35", "trim" => "#4F5A27"}},
-    %{id: "cloth_trousers", name: "Cloth Trousers", slots: ["legs"], ac: 2, value: 50, garment: "Bottom_Pants", design: "pants", colors: %{"main" => "#4A4F57", "trim" => "#2B2F36", "accent" => "#2B2F36"}},
-    %{id: "cloth_shorts", name: "Cloth Shorts", slots: ["legs"], ac: 1, value: 30, garment: "Bottom_Shorts", design: "shorts", colors: %{"main" => "#1E2E5C", "trim" => "#14203F", "accent" => "#14203F"}},
-    %{id: "cloth_shoes", name: "Cloth Shoes", slots: ["feet"], ac: 1, value: 25, garment: "Shoes_Sneakers", colors: %{"upper" => "#3A3F47", "sole" => "#F4F4F4", "laces" => "#E8E8E8"}},
-    %{id: "leather_boots", name: "Tall Leather Boots", slots: ["feet"], ac: 3, value: 150, garment: "Shoes_Boots", colors: %{"upper" => "#6B4A2F", "sole" => "#2A2522", "laces" => "#3D2B1F"}},
-    %{id: "linen_arm_wraps", name: "Linen Arm Wraps", slots: ["wrist"], ac: 1, value: 25, garment: "Wrist_Wraps", design: "wrist_linen", colors: %{"main" => "#D2C3A3", "trim" => "#B8A785"}}
+  # The jeweller's sets (2026-11-01, owner: highly polished pink plate bikinis, "100 gems each",
+  # "make them available to purchase from a merchant in-game for gems"): ten sets in polished
+  # rose-pink metal (library/pipeline/scripts/b8_jewel_designs.py, Humans/Garments/<Body>/
+  # uw_jw_<set>_top|bottom.glb). Rosalind the jeweller (BaconWorld.Merchants) sells a whole set,
+  # both pieces, for `jewel_price_gems/0` Gems from the player's Bacon Store wallet. Each set has
+  # a power of its own (BaconWorld.Powers), carried by the bottom piece. {set, name, {top, bottom},
+  # power, colours}.
+  @jewel_price_gems 100
+  @jewel [
+    {"jw_filament", "Gilded Filament", {"Jewelled Cups", "Jewelled Brief"}, "midas", %{"main" => "#F2A9C4", "trim" => "#E9B9A0", "accent" => "#C23B8E"}},
+    {"jw_thorn", "Thorned Thread", {"Thorned Cups", "Thorned Brief"}, "thorns", %{"main" => "#EFA0BF", "trim" => "#D98FA8", "accent" => "#8E2050"}},
+    {"jw_diamond", "Diamond Link", {"Sunburst Cups", "Sunburst Brief"}, "brilliance", %{"main" => "#F4B6CD", "trim" => "#F7DCE6", "accent" => "#FFFFFF"}},
+    {"jw_filigree", "Filigree Web", {"Filigree Cups", "Filigree Brief"}, "snare", %{"main" => "#EBA3C0", "trim" => "#E9C2CF", "accent" => "#F3D7E2"}},
+    {"jw_celestial", "Celestial Link", {"Crescent Cups", "Starfall Brief"}, "starlit", %{"main" => "#F0B0CA", "trim" => "#F6D2DF", "accent" => "#FFE7F0"}},
+    {"jw_starfire", "Starfire Wire", {"Starfire Cups", "Starfire Brief"}, "starfire", %{"main" => "#E0258F", "trim" => "#F06AB4", "accent" => "#FFC2E2"}},
+    {"jw_lasso", "Jeweled Lasso", {"Engraved Cups", "Tasselled Brief"}, "lasso", %{"main" => "#EDA6C2", "trim" => "#DDB4A6", "accent" => "#B8337A"}},
+    {"jw_oceanic", "Oceanic Tendril", {"Seashell Cups", "Seashell Brief"}, "riptide", %{"main" => "#F3B5CB", "trim" => "#E6C4B6", "accent" => "#FFE9F1"}},
+    {"jw_rose", "Rose Wire", {"Rose Cups", "Rose Brief"}, "bloom", %{"main" => "#EE9DBD", "trim" => "#D9A994", "accent" => "#7A9A5C"}},
+    {"jw_phoenix", "Phoenix Strand", {"Winged Cups", "Winged Brief"}, "phoenix", %{"main" => "#F2ABC6", "trim" => "#F4C9A8", "accent" => "#FF8FB8"}}
   ]
 
-  @wearables @underwear ++
-               Enum.map(@cloth, fn c ->
-                 female = %{"garment" => c.garment} |> then(&if(c[:design], do: Map.put(&1, "design", c.design), else: &1))
+  @doc "The jeweller's set ids (`jw_*`)."
+  def jewel_sets, do: Enum.map(@jewel, &elem(&1, 0))
 
-                 c
-                 |> Map.drop([:garment, :design])
-                 |> Map.merge(%{kind: "armor", wear: %{"female" => female, "male" => female}})
-               end)
+  @doc "What a jeweller's set costs (Gems)."
+  def jewel_price_gems, do: @jewel_price_gems
 
-  @wear_slots ~w(head under_top under_bottom chest legs feet wrist)
+  @doc "What buying `item` from the jeweller gives a body: the heels alone, or the set's pieces."
+  def jewel_bundle(%{slots: ["feet"], id: id}, _body), do: [id]
+  def jewel_bundle(%{jewel: set}, body) when is_binary(set), do: jewel_pieces(set, body)
+
+  @doc "The pieces of a jeweller's set a body wears (the male wears the bottom only)."
+  def jewel_pieces(set, body \\ "female")
+  def jewel_pieces(set, "male"), do: ["#{set}_bottom"]
+  def jewel_pieces(set, _), do: ["#{set}_top", "#{set}_bottom"]
+
+  @jewelry Enum.flat_map(@jewel, fn {id, name, {tn, bn}, power, colors} ->
+             [
+               %{id: "#{id}_top", name: "#{name} #{tn}", kind: "armor", slots: ["under_top"], value: 0, ac: 2, gems: @jewel_price_gems,
+                 jewel: id, colors: colors,
+                 wear: %{"female" => %{"part" => "Garments/Female/uw_#{id}_top.glb"}, "male" => nil}},
+               %{id: "#{id}_bottom", name: "#{name} #{bn}", kind: "armor", slots: ["under_bottom"], value: 0, ac: 2, gems: @jewel_price_gems,
+                 jewel: id, power: power, colors: colors,
+                 wear: %{"female" => %{"part" => "Garments/Female/uw_#{id}_bottom.glb"}, "male" => %{"part" => "Garments/Male/uw_#{id}_bottom.glb"}}},
+               # the heels to go with the set (2026-11-01, owner: "also 100 gems and give 50% increased run speed"),
+               # sold on their own (library/pipeline/scripts/b8_heels.py; the client points the feet)
+               %{id: "#{id}_shoes", name: "#{name} Heels", kind: "armor", slots: ["feet"], value: 0, ac: 1, gems: @jewel_price_gems,
+                 jewel: id, power: "swift", run_speed: 1.5, colors: colors,
+                 wear: %{"female" => %{"part" => "Garments/Female/uw_#{id}_shoes.glb"}, "male" => %{"part" => "Garments/Male/uw_#{id}_shoes.glb"}}}
+             ]
+           end)
+
+  # Cloth armour (2026-11-01, owner: "10 sets of cloth armor. FULL SETS"): ten sets of seven pieces
+  # (head, hands, arms, wrist, chest, legs, feet), each piece its own garment GLB per body
+  # (Humans/Garments/<Body>/ca_<set>_<slot>.glb, library/pipeline/scripts/b8_armor_designs.py). Value
+  # and AC grow with the set's tier. {slot, piece name, value, ac, colors}.
+  @armor_sets [
+    {"wayfarer", "Wayfarer's", [
+      {"head", "Hat", 20, 1, %{"main" => "#6B5A44", "trim" => "#2E2219"}},
+      {"hands", "Mitts", 15, 1, %{"main" => "#8A7B66"}},
+      {"arms", "Rolled Sleeves", 15, 1, %{"main" => "#E4D8BE"}},
+      {"wrist", "Wrist Strap", 10, 1, %{}},
+      {"chest", "Tunic", 40, 3, %{"main" => "#D9CCAE", "trim" => "#C4B591", "accent" => "#5C4027"}},
+      {"legs", "Trousers", 30, 2, %{"main" => "#6F6A5C", "trim" => "#8C7A58"}},
+      {"feet", "Shoes", 25, 1, %{"trim" => "#2A1D14"}}
+    ]},
+    {"hearth", "Hearthguard", [
+      {"head", "Arming Cap", 40, 1, %{"main" => "#C8B898", "trim" => "#8C7A58"}},
+      {"hands", "Gauntlets", 30, 1, %{"main" => "#BFAF8E", "trim" => "#4A3524"}},
+      {"arms", "Spaulders", 30, 1, %{"main" => "#BFAF8E", "trim" => "#4A3524"}},
+      {"wrist", "Quilted Cuffs", 20, 1, %{"main" => "#BFAF8E", "trim" => "#4A3524"}},
+      {"chest", "Gambeson", 80, 3, %{"main" => "#BFAF8E", "trim" => "#4A3524"}},
+      {"legs", "Padded Trousers", 60, 2, %{"main" => "#BFAF8E", "trim" => "#4A3524"}},
+      {"feet", "Padded Boots", 50, 1, %{"main" => "#BFAF8E", "trim" => "#4A3524"}}
+    ]},
+    {"ranger", "Ranger's", [
+      {"head", "Hood", 60, 1, %{"main" => "#3E5233", "trim" => "#5C4630"}},
+      {"hands", "Gloves", 45, 1, %{"main" => "#7A5C3E", "trim" => "#3B2A1C"}},
+      {"arms", "Shoulder Caps", 45, 1, %{"trim" => "#3B2A1C"}},
+      {"wrist", "Laced Bracers", 30, 1, %{"trim" => "#3B2A1C"}},
+      {"chest", "Jerkin", 120, 3, %{"main" => "#3E5233", "trim" => "#5C4630", "accent" => "#5C4027"}},
+      {"legs", "Trousers", 90, 2, %{"main" => "#4B4A3A", "trim" => "#5C4630"}},
+      {"feet", "Tall Boots", 75, 1, %{"main" => "#5C3F28", "trim" => "#7A5C3E"}}
+    ]},
+    {"scholar", "Scholar's", [
+      {"head", "Beret", 100, 1, %{"main" => "#3B1F4A", "trim" => "#C9A227", "accent" => "#F2EBDD"}},
+      {"hands", "Silk Gloves", 75, 1, %{"main" => "#F1EBDD", "accent" => "#F7F3EA"}},
+      {"arms", "Slashed Sleeves", 75, 1, %{"main" => "#3B1F4A", "accent" => "#C9A227"}},
+      {"wrist", "Lace Cuffs", 50, 1, %{"main" => "#F4EFE6"}},
+      {"chest", "Doublet", 200, 4, %{"main" => "#3B1F4A", "trim" => "#C9A227", "accent" => "#F4EFE6"}},
+      {"legs", "Breeches", 150, 3, %{"main" => "#3B1F4A", "accent" => "#EDE6D8", "trim" => "#C9A227"}},
+      {"feet", "Buckled Shoes", 125, 1, %{"main" => "#1B1B1B", "accent" => "#3B1F4A"}}
+    ]},
+    {"nomad", "Nomad's", [
+      {"head", "Turban", 60, 1, %{"main" => "#D8C7A3", "accent" => "#5B6F8C"}},
+      {"hands", "Hand Wraps", 45, 1, %{"main" => "#E2D3B3"}},
+      {"arms", "Arm Wraps", 45, 1, %{"main" => "#D8C7A3"}},
+      {"wrist", "Bangles", 30, 1, %{}},
+      {"chest", "Sash Vest", 120, 3, %{"main" => "#E2D3B3", "accent" => "#7A2E1E", "trim" => "#C8A951"}},
+      {"legs", "Harem Trousers", 90, 2, %{"main" => "#5B6F8C", "trim" => "#C8A951"}},
+      {"feet", "Sandals", 75, 1, %{"trim" => "#2E2016"}}
+    ]},
+    {"frost", "Frostwarden", [
+      {"head", "Trapper Hat", 80, 1, %{"main" => "#5A4632", "accent" => "#E8E2D6", "trim" => "#E8E2D6"}},
+      {"hands", "Mittens", 60, 1, %{"main" => "#6E4B3A", "trim" => "#EFE8DC"}},
+      {"arms", "Fur-Cuffed Sleeves", 60, 1, %{"main" => "#5A4632", "trim" => "#EFE8DC"}},
+      {"wrist", "Wrist Warmers", 40, 1, %{"main" => "#8B9A8F"}},
+      {"chest", "Fur Coat", 160, 4, %{"main" => "#5A4632", "trim" => "#EFE8DC", "accent" => "#3B2A1C"}},
+      {"legs", "Fleece Trousers", 120, 3, %{"main" => "#4C4A46", "trim" => "#EFE8DC"}},
+      {"feet", "Fur Boots", 100, 1, %{"main" => "#6E4B3A", "trim" => "#EFE8DC", "accent" => "#2A1D14"}}
+    ]},
+    {"corsair", "Corsair's", [
+      {"head", "Bandana", 80, 1, %{"main" => "#8E1B1B"}},
+      {"hands", "Knuckle Gloves", 60, 1, %{"trim" => "#2A1B12"}},
+      {"arms", "Billowing Sleeves", 60, 1, %{"main" => "#F1E9D8", "trim" => "#E5DAC2"}},
+      {"wrist", "Studded Cuffs", 40, 1, %{"trim" => "#2A1B12"}},
+      {"chest", "Vest and Shirt", 160, 4, %{"main" => "#F1E9D8", "accent" => "#3B2416", "trim" => "#8E1B1B"}},
+      {"legs", "Striped Breeches", 120, 3, %{"main" => "#5A2420", "trim" => "#2A1B12"}},
+      {"feet", "Bucket Boots", 100, 1, %{"trim" => "#2A1B12"}}
+    ]},
+    {"monastic", "Pilgrim's", [
+      {"head", "Straw Hat", 20, 1, %{"main" => "#C9A86A", "trim" => "#7A5A3A"}},
+      {"hands", "Hand Wraps", 15, 1, %{"main" => "#A88B5E"}},
+      {"arms", "Bound Sleeves", 15, 1, %{"main" => "#A88B5E", "trim" => "#6E5434"}},
+      {"wrist", "Prayer Beads", 10, 1, %{"main" => "#4A2E1A"}},
+      {"chest", "Rope-Belted Tunic", 40, 3, %{"main" => "#A88B5E", "trim" => "#6E5434"}},
+      {"legs", "Puttee Trousers", 30, 2, %{"main" => "#A88B5E", "trim" => "#D8CDB4"}},
+      {"feet", "Straw Sandals", 25, 1, %{"main" => "#C9A86A", "trim" => "#7A5A3A"}}
+    ]},
+    {"duelist", "Duelist's", [
+      {"head", "Cavalier Hat", 120, 1, %{"main" => "#141414", "trim" => "#7A1020", "accent" => "#B3122E"}},
+      {"hands", "Gauntlet Gloves", 90, 1, %{"main" => "#141414", "trim" => "#1E1E1E", "accent" => "#7A1020"}},
+      {"arms", "Buckled Half-Sleeves", 90, 1, %{"main" => "#141414", "trim" => "#1E1E1E", "accent" => "#7A1020"}},
+      {"wrist", "Bracers", 60, 1, %{"main" => "#141414", "trim" => "#1E1E1E", "accent" => "#7A1020"}},
+      {"chest", "Jacket", 240, 4, %{"main" => "#141414", "accent" => "#7A1020"}},
+      {"legs", "Laced Trousers", 180, 3, %{"main" => "#141414", "accent" => "#7A1020"}},
+      {"feet", "Thigh Boots", 150, 1, %{"main" => "#141414"}}
+    ]},
+    {"mystic", "Mystic's", [
+      {"head", "Circlet", 140, 1, %{"main" => "#E8D9F2", "accent" => "#3FA7D6"}},
+      {"hands", "Opera Gloves", 105, 1, %{"main" => "#2B1D4E", "accent" => "#3FA7D6"}},
+      {"arms", "Draped Armlets", 105, 1, %{"main" => "#E8D9F2", "accent" => "#3FA7D6"}},
+      {"wrist", "Gilded Cuffs", 70, 1, %{"accent" => "#3FA7D6"}},
+      {"chest", "Wrap Top", 280, 4, %{"main" => "#2B1D4E", "accent" => "#C9B7E8"}},
+      {"legs", "Palazzo Trousers", 210, 3, %{"main" => "#5E3A86"}},
+      {"feet", "Slippers", 175, 1, %{"main" => "#2B1D4E", "trim" => "#1B1B1B"}}
+    ]},
+    {"chain_iron", "Iron Chainmail", [
+      {"head", "Coif", 80, 2, %{"main" => "#9AA0A6", "trim" => "#4A3524"}},
+      {"hands", "Mitts", 60, 2, %{"main" => "#9AA0A6", "trim" => "#4A3524"}},
+      {"arms", "Sleeves", 60, 2, %{"main" => "#9AA0A6", "trim" => "#4A3524"}},
+      {"wrist", "Bracers", 40, 2, %{"main" => "#9AA0A6", "trim" => "#4A3524"}},
+      {"chest", "Hauberk", 240, 6, %{"main" => "#9AA0A6", "trim" => "#4A3524"}},
+      {"legs", "Chausses", 180, 4, %{"main" => "#9AA0A6", "trim" => "#4A3524"}},
+      {"feet", "Boots", 120, 2, %{"main" => "#9AA0A6", "trim" => "#4A3524"}}
+    ]},
+    {"chain_steel", "Knight's Steel", [
+      {"head", "Aventail", 140, 3, %{"main" => "#BAC2C7", "trim" => "#6A7278"}},
+      {"hands", "Gauntlets", 100, 2, %{"main" => "#BAC2C7", "trim" => "#6A7278"}},
+      {"arms", "Voiders", 100, 2, %{"main" => "#BAC2C7", "trim" => "#6A7278"}},
+      {"wrist", "Cuffs", 70, 2, %{"main" => "#BAC2C7", "trim" => "#6A7278"}},
+      {"chest", "Heavy Hauberk", 380, 8, %{"main" => "#BAC2C7", "trim" => "#6A7278"}},
+      {"legs", "Leggings", 280, 5, %{"main" => "#BAC2C7", "trim" => "#6A7278"}},
+      {"feet", "Boots", 200, 2, %{"main" => "#BAC2C7", "trim" => "#6A7278"}}
+    ]},
+    {"chain_gold", "Paladin's Gilded", [
+      {"head", "Champion's Hood", 220, 4, %{"main" => "#F3C13A", "trim" => "#E0A526"}},
+      {"hands", "Sovereign Gauntlets", 160, 3, %{"main" => "#F3C13A", "trim" => "#E0A526"}},
+      {"arms", "Extensions", 160, 3, %{"main" => "#F3C13A", "trim" => "#E0A526"}},
+      {"wrist", "Ringmail Wraps", 110, 2, %{"main" => "#F3C13A", "trim" => "#E0A526"}},
+      {"chest", "Gilded Hauberk", 550, 10, %{"main" => "#F3C13A", "trim" => "#E0A526"}},
+      {"legs", "Splinted Chausses", 420, 6, %{"main" => "#F3C13A", "trim" => "#E0A526"}},
+      {"feet", "Foot Guards", 300, 3, %{"main" => "#F3C13A", "trim" => "#E0A526"}}
+    ]},
+    {"chain_dark", "Dread Guard", [
+      {"head", "Guarded Hood", 180, 3, %{"main" => "#4F555A", "trim" => "#25282A"}},
+      {"hands", "Claw Gloves", 130, 2, %{"main" => "#4F555A", "trim" => "#25282A"}},
+      {"arms", "Arm Wraps", 130, 3, %{"main" => "#4F555A", "trim" => "#25282A"}},
+      {"wrist", "Spiked Wraps", 90, 2, %{"main" => "#4F555A", "trim" => "#25282A"}},
+      {"chest", "Dark Chain Shirt", 480, 9, %{"main" => "#4F555A", "trim" => "#25282A"}},
+      {"legs", "Splinted Pants", 360, 5, %{"main" => "#4F555A", "trim" => "#25282A"}},
+      {"feet", "Viking Boots", 250, 3, %{"main" => "#4F555A", "trim" => "#25282A"}}
+    ]},
+    {"plate_steel", "Knight's Vanguard Steel", [
+      {"head", "Sallet", 240, 4, %{"main" => "#BAC2C7", "trim" => "#6A7278", "accent" => "#3B2A1C"}},
+      {"hands", "Gauntlets", 180, 3, %{"main" => "#BAC2C7", "trim" => "#6A7278", "accent" => "#3B2A1C"}},
+      {"arms", "Spaulders", 180, 3, %{"main" => "#BAC2C7", "trim" => "#6A7278", "accent" => "#3B2A1C"}},
+      {"wrist", "Vambraces", 120, 2, %{"main" => "#BAC2C7", "trim" => "#6A7278", "accent" => "#3B2A1C"}},
+      {"chest", "Fluted Cuirass", 650, 12, %{"main" => "#BAC2C7", "trim" => "#6A7278", "accent" => "#3B2A1C"}},
+      {"legs", "Greaves", 480, 7, %{"main" => "#BAC2C7", "trim" => "#6A7278", "accent" => "#3B2A1C"}},
+      {"feet", "Sabatons", 280, 3, %{"main" => "#BAC2C7", "trim" => "#6A7278", "accent" => "#3B2A1C"}}
+    ]},
+    {"plate_gold", "Paladin's Sacred Gilded", [
+      {"head", "Phoenix Greathelm", 360, 5, %{"main" => "#D4AF37", "trim" => "#C8A951", "accent" => "#3B2A1C"}},
+      {"hands", "Sovereign Gauntlets", 260, 4, %{"main" => "#D4AF37", "trim" => "#C8A951", "accent" => "#3B2A1C"}},
+      {"arms", "Royal Winged Spaulders", 260, 4, %{"main" => "#D4AF37", "trim" => "#C8A951", "accent" => "#3B2A1C"}},
+      {"wrist", "Inlaid Vambraces", 180, 3, %{"main" => "#D4AF37", "trim" => "#C8A951", "accent" => "#3B2A1C"}},
+      {"chest", "Sacred Winged Cuirass", 950, 14, %{"main" => "#D4AF37", "trim" => "#C8A951", "accent" => "#3B2A1C"}},
+      {"legs", "Winged Greaves", 680, 8, %{"main" => "#D4AF37", "trim" => "#C8A951", "accent" => "#3B2A1C"}},
+      {"feet", "Gilded Sabatons", 380, 4, %{"main" => "#D4AF37", "trim" => "#C8A951", "accent" => "#3B2A1C"}}
+    ]},
+    {"plate_dark", "Dreadlord Spiked Obsidian", [
+      {"head", "Spiked Barbuta", 300, 4, %{"main" => "#3A3E42", "trim" => "#1E2022", "accent" => "#161618"}},
+      {"hands", "Claw Gauntlets", 220, 3, %{"main" => "#3A3E42", "trim" => "#1E2022", "accent" => "#161618"}},
+      {"arms", "Spiked Pauldrons", 240, 4, %{"main" => "#3A3E42", "trim" => "#1E2022", "accent" => "#161618"}},
+      {"wrist", "Spiked Bracers", 160, 3, %{"main" => "#3A3E42", "trim" => "#1E2022", "accent" => "#161618"}},
+      {"chest", "Demon Hunter Cuirass", 820, 13, %{"main" => "#3A3E42", "trim" => "#1E2022", "accent" => "#161618"}},
+      {"legs", "Heavy Leg-guards", 580, 7, %{"main" => "#3A3E42", "trim" => "#1E2022", "accent" => "#161618"}},
+      {"feet", "Spurred Sabatons", 320, 3, %{"main" => "#3A3E42", "trim" => "#1E2022", "accent" => "#161618"}}
+    ]},
+    {"plate_draconic", "Dragon Slayer Scale", [
+      {"head", "Horned Visor", 380, 5, %{"main" => "#8B1E1E", "trim" => "#3A1A1A", "accent" => "#2A1414"}},
+      {"hands", "Scale Mitts", 280, 4, %{"main" => "#8B1E1E", "trim" => "#3A1A1A", "accent" => "#2A1414"}},
+      {"arms", "Scale Pauldrons", 280, 4, %{"main" => "#8B1E1E", "trim" => "#3A1A1A", "accent" => "#2A1414"}},
+      {"wrist", "Scaled Vambraces", 200, 3, %{"main" => "#8B1E1E", "trim" => "#3A1A1A", "accent" => "#2A1414"}},
+      {"chest", "Dragon Slayer Cuirass", 980, 14, %{"main" => "#8B1E1E", "trim" => "#3A1A1A", "accent" => "#2A1414"}},
+      {"legs", "Dragon Scale Greaves", 720, 8, %{"main" => "#8B1E1E", "trim" => "#3A1A1A", "accent" => "#2A1414"}},
+      {"feet", "Dragon Claw Sabatons", 400, 4, %{"main" => "#8B1E1E", "trim" => "#3A1A1A", "accent" => "#2A1414"}}
+    ]},
+    {"plate_mythril", "Celestial Mythril Runed", [
+      {"head", "Runed Casque", 420, 5, %{"main" => "#7FB8D4", "trim" => "#C0E2F0", "accent" => "#2B3A55"}},
+      {"hands", "Runed Gloves", 300, 4, %{"main" => "#7FB8D4", "trim" => "#C0E2F0", "accent" => "#2B3A55"}},
+      {"arms", "Celestial Shoulderplates", 300, 4, %{"main" => "#7FB8D4", "trim" => "#C0E2F0", "accent" => "#2B3A55"}},
+      {"wrist", "Ethereal Vambraces", 220, 3, %{"main" => "#7FB8D4", "trim" => "#C0E2F0", "accent" => "#2B3A55"}},
+      {"chest", "Celestial Runed Cuirass", 1100, 15, %{"main" => "#7FB8D4", "trim" => "#C0E2F0", "accent" => "#2B3A55"}},
+      {"legs", "Luminous Greaves", 780, 8, %{"main" => "#7FB8D4", "trim" => "#C0E2F0", "accent" => "#2B3A55"}},
+      {"feet", "Mythril Sabatons", 440, 4, %{"main" => "#7FB8D4", "trim" => "#C0E2F0", "accent" => "#2B3A55"}}
+    ]}
+  ]
+
+
+  # Robes (2026-11-01): ten, worn in the chest slot over everything else (layer 9: they hide what
+  # they cover of the trousers and boots). Humans/Garments/<Body>/rb_<robe>.glb.
+  @robes [
+    {"novice", "Novice's Robe", 60, %{"main" => "#8C7A5A", "trim" => "#76664A", "accent" => "#C2A878"}},
+    {"acolyte", "Acolyte's Robe", 120, %{"main" => "#F3EFE6", "trim" => "#C9A227", "accent" => "#B3122E"}},
+    {"arcanist", "Arcanist's Robe", 320, %{"main" => "#1F2A5E", "trim" => "#C9A227"}},
+    {"druid", "Druid's Robe", 220, %{"main" => "#3E5A34", "accent" => "#6B8E3A", "trim" => "#4A3524"}},
+    {"shadow", "Shadowed Robe", 280, %{"main" => "#141418", "accent" => "#5D1A7A"}},
+    {"pyre", "Pyre Robe", 300, %{"main" => "#9E1B0E", "trim" => "#E0A526", "accent" => "#2A0A06"}},
+    {"frost", "Frostweave Robe", 260, %{"main" => "#E9EEF2", "trim" => "#F7F5F0", "accent" => "#5C6F80"}},
+    {"sage", "Sage's Robe", 240, %{"main" => "#6E1E2C", "trim" => "#C9A227", "accent" => "#2A2F5E"}},
+    {"wanderer", "Wanderer's Robe", 160, %{"main" => "#C9B48C", "accent" => "#5A3E2B", "trim" => "#8A6E4B"}},
+    {"celestial", "Celestial Robe", 400, %{"main" => "#1A2B6B", "trim" => "#C9D3E6"}}
+  ]
+
+  @armor Enum.flat_map(@armor_sets, fn {set, prefix, pieces} ->
+           for {slot, name, value, ac, colors} <- pieces do
+             %{id: "#{set}_#{slot}", name: "#{prefix} #{name}", kind: "armor", slots: [slot], ac: ac, value: value, colors: colors,
+               wear: %{"female" => %{"part" => "Garments/Female/ca_#{set}_#{slot}.glb"}, "male" => %{"part" => "Garments/Male/ca_#{set}_#{slot}.glb"}}}
+           end
+         end) ++
+           Enum.map(@robes, fn {id, name, value, colors} ->
+             %{id: "#{id}_robe", name: name, kind: "armor", slots: ["chest"], ac: 3, value: value, colors: colors,
+               wear: %{"female" => %{"part" => "Garments/Female/rb_#{id}.glb", "layer" => 9}, "male" => %{"part" => "Garments/Male/rb_#{id}.glb", "layer" => 9}}}
+           end)
+
+  @doc "The cloth armour set ids and the robe item ids (for the merchant and the tests)."
+  def armor_sets, do: Enum.map(@armor_sets, &elem(&1, 0))
+  def robes, do: Enum.map(@robes, &"#{elem(&1, 0)}_robe")
+
+  @wearables @underwear ++ @jewelry ++ @armor
+
+  @wear_slots ~w(head under_top under_bottom chest legs feet wrist arms hands)
 
   @armor_defaults %{hands: 1, set: nil, skill: nil, dmg: 0, dly: 0, reach: 0, ac: 0, stack: 1, model: nil, icon: nil, icon_url: nil}
 
-  @defaults %{ac: 0, stack: 1, icon: nil, icon_url: nil, wear: nil, colors: nil, ranged: false}
+  @defaults %{ac: 0, stack: 1, icon: nil, icon_url: nil, wear: nil, colors: nil, ranged: false, gems: nil, jewel: nil, power: nil, run_speed: nil}
   @by_id Map.new(@items, fn i -> {i.id, Map.merge(@defaults, i)} end)
          |> Map.merge(Map.new(@wearables, fn i -> {i.id, @defaults |> Map.merge(@armor_defaults) |> Map.merge(i)} end))
 
-  @starter_wear [{"linen_bikini_top", "under_top"}, {"linen_bikini_bottom", "under_bottom"}]
+  @starter_wear [{"homespun_top", "under_top"}, {"homespun_bottom", "under_bottom"}]
 
   @starter_kit [
     {"worn_short_sword", "main"},
@@ -256,12 +518,20 @@ defmodule BaconWorld.Items do
          wear: i.wear,
          colors: i.colors,
          # a bow: shoots arrows (BaconWorld.Melee.ranged?/1)
-         ranged: i.ranged == true
+         ranged: i.ranged == true,
+         # the jeweller's sets: bought with Gems, a power of their own (BaconWorld.Powers)
+         gems: i.gems,
+         jewel: i.jewel,
+         power: power_payload(i.power),
+         run_speed: Map.get(i, :run_speed)
        }}
     end)
   end
 
   # Where the inventory icon is, under /models.
+  defp power_payload(nil), do: nil
+  defp power_payload(id), do: (p = BaconWorld.Powers.get(id)) && %{id: id, name: p.name, summary: p.summary}
+
   defp icon_path(%{kind: "armor", id: id}), do: "Humans/Wardrobe/icons/#{id}.png"
   defp icon_path(%{model: m}) when is_binary(m), do: "Weapons/icons/W_#{m}.png"
   defp icon_path(%{icon: i}) when is_binary(i), do: "Weapons/icons/W_#{i}.png"

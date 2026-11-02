@@ -8,6 +8,8 @@ defmodule BaconWorldWeb.SkillEvents do
     * `"skills_fetch"` - the tree, the ability catalogue, what you have, the points
       left and your hotbars (`BaconWorld.Skills.payload/1`).
     * `"skill_learn"` `%{node}` - spend a point. Replies the new payload.
+    * `"skill_unlearn"` `%{node}` - take a node back for its point (not the start, nor one that
+      others hang from); `"skill_reset"` - all of them. Reply as `"skill_learn"`.
     * `"hotbar_set"` `%{hotbars}` - `%{"skills" => %{"Q" => id}, "spells" => [20]}`.
     * `"cast"` `%{ability, target_id, heading}` - a spell or skill. Checks you have it,
       it is off cooldown, you have the mana and a fitting target; a spell with a cast
@@ -120,6 +122,10 @@ defmodule BaconWorldWeb.SkillEvents do
     end
   end
 
+  # Unlearning (2026-11-01): one node back for its point, or the whole tree.
+  def handle_event("skill_unlearn", %{"node" => node}, socket), do: respec(socket, &Skills.unlearn(&1, node))
+  def handle_event("skill_reset", _params, socket), do: respec(socket, &Skills.reset/1)
+
   def handle_event("hotbar_set", %{"hotbars" => bars}, socket) do
     with {:ok, c} <- character(socket),
          {:ok, clean} <- Skills.set_hotbars(c.id, bars) do
@@ -170,6 +176,18 @@ defmodule BaconWorldWeb.SkillEvents do
 
   def handle_event(_event, _params, socket), do: {:reply, %{ok: false, error: "bad request"}, socket}
 
+  defp respec(socket, fun) do
+    with {:ok, c} <- character(socket),
+         {:ok, payload} <- fun.(c.id) do
+      {:ok, c} = World.fetch_character(c.id)
+      socket = socket |> refresh_pools(c) |> push_stats_sheet()
+      {:reply, Map.put(payload, :ok, true), socket}
+    else
+      {:error, msg} when is_binary(msg) -> {:reply, %{ok: false, error: msg}, socket}
+      _ -> {:reply, %{ok: false, error: "You can't change that right now."}, socket}
+    end
+  end
+
   @doc "A cast time ran out: the spell goes off, unless the caster moved or died."
   def cast_complete(token, socket) do
     case socket.assigns[:casting] do
@@ -205,7 +223,7 @@ defmodule BaconWorldWeb.SkillEvents do
   end
 
   # The spell or skill goes off: mana, cooldown, then what it does.
-  defp complete(socket, a, target, heading, smash? \\ false) do
+  defp complete(socket, a, target, heading, smash?) do
     with {:ok, c} <- character(socket),
          me when not is_nil(me) <- runtime(socket),
          {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}} <- Combat.get_character_stats(c.id),
@@ -806,11 +824,13 @@ defmodule BaconWorldWeb.SkillEvents do
 
       placement_id =
         cond do
-          is_binary(target) and BaconWorld.Building.placement?(zone(socket), target) ->
+          # a targeted piece must be in reach (2026-11-01: any piece in the zone could be hit by its id)
+          is_binary(target) and
+              BaconWorld.Building.near?(zone(socket), target, me.position.x / u, me.position.z / u, max(a.range_m, 4.0) + 2.0) ->
             target
 
           true ->
-            placements = BaconWorld.Building.list(zone(socket))
+            placements = BaconWorld.Building.cached(zone(socket))
 
             placements
             |> Enum.filter(fn p ->
@@ -951,7 +971,8 @@ defmodule BaconWorldWeb.SkillEvents do
 
               result(socket, a, %{hits: [%{id: target_player.character_id, name: target_player.character_name, damage: final_damage, crit: crit}]})
 
-            is_binary(target) and payload[:smash] == true and BaconWorld.Building.placement?(zone(socket), target) ->
+            is_binary(target) and payload[:smash] == true and
+                BaconWorld.Building.near?(zone(socket), target, me.position.x / Brain.u(), me.position.z / Brain.u(), a.range_m * 1.2 + 2.0) ->
               dmg = max(1, damage)
               BaconWorld.Building.damage_placement(socket.assigns.current_user, zone(socket), target, dmg)
               broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", target: target, school: a.school})
@@ -1275,7 +1296,7 @@ defmodule BaconWorldWeb.SkillEvents do
   defp smash_aoe(socket, cx, cz, radius_scene, damage) do
     zone = zone(socket)
     u = Brain.u()
-    placements = BaconWorld.Building.list(zone)
+    placements = BaconWorld.Building.cached(zone)
 
     placements
     |> Enum.filter(fn p ->
@@ -1291,7 +1312,7 @@ defmodule BaconWorldWeb.SkillEvents do
   defp smash_cone(socket, me, heading, arc_deg, range_scene, damage) do
     zone = zone(socket)
     u = Brain.u()
-    placements = BaconWorld.Building.list(zone)
+    placements = BaconWorld.Building.cached(zone)
 
     placements
     |> Enum.filter(fn p ->

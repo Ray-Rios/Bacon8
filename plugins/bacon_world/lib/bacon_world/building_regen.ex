@@ -21,6 +21,8 @@ defmodule BaconWorld.BuildingRegen do
 
   @impl true
   def init(_opts) do
+    # this long-lived process owns the placement caches (Building.ensure_tables/0)
+    BaconWorld.Building.ensure_tables()
     schedule_tick()
     {:ok, %{}}
   end

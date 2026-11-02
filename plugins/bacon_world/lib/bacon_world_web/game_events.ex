@@ -42,7 +42,7 @@ defmodule BaconWorldWeb.GameEvents do
   import Phoenix.Component, only: [assign: 2]
   require Logger
 
-  alias BaconWorld.{Combat, Inventory, Items, Melee, Merchants, Mobs, Progression, Skills, Tuning, World}
+  alias BaconWorld.{Combat, Inventory, Items, Melee, Merchants, Mobs, Powers, Progression, Skills, Tuning, World}
   alias BaconWorld.Mobs.{Brain, Spawns}
   alias BaconWorldWeb.SkillEvents
   alias Bacon8Web.Presence
@@ -155,16 +155,22 @@ defmodule BaconWorldWeb.GameEvents do
           crit_bonus: buffs.crit
         }
 
+        # the jeweller's sets (BaconWorld.Powers): crits, starfire, snares, the lasso
+        powers = Powers.active(eq)
+        {attack, fired} = Powers.swing(powers, attack)
+
         pvp = pvp_swing(socket, me, attack)
         smash = smash_melee(socket, me, attack, params)
 
         case Mobs.melee(socket.assigns[:mobs_zone] || "lobby", attack) do
           {:ok, hits} ->
             {socket, progress} = award_kills(socket, hits)
-            {:reply, %{ok: true, hits: hits, pvp: pvp, smash: smash, delay_ms: delay, progress: progress}, socket}
+            {hp, mp} = Powers.after_swing(powers, Enum.filter(hits, &Map.get(&1, :hit, true)))
+            socket = restore(socket, hp, mp)
+            {:reply, %{ok: true, hits: hits, pvp: pvp, smash: smash, delay_ms: delay, progress: progress, powers: fired}, socket}
 
           {:error, _} ->
-            {:reply, %{ok: true, hits: [], pvp: pvp, smash: smash, delay_ms: delay, progress: nil}, socket}
+            {:reply, %{ok: true, hits: [], pvp: pvp, smash: smash, delay_ms: delay, progress: nil, powers: fired}, socket}
         end
       end
     else
@@ -310,25 +316,18 @@ defmodule BaconWorldWeb.GameEvents do
   def handle_event("merchant_open", %{"id" => id}, socket) do
     case trader(socket, id) do
       {:ok, _me, m} ->
-        {:reply, %{ok: true, merchant: %{id: m.id, name: m.name, title: m.title}, stock: Merchants.stock(m)}, socket}
+        gems = if Merchants.gems?(m), do: gem_balance(socket), else: nil
+        {:reply, %{ok: true, merchant: %{id: m.id, name: m.name, title: m.title, gems: Merchants.gems?(m)}, stock: Merchants.stock(m), gems: gems}, socket}
 
       {:error, msg} ->
         {:reply, %{ok: false, error: msg}, socket}
     end
   end
 
-  def handle_event("merchant_buy", %{"id" => id, "item_id" => item_id}, socket) do
-    with {:ok, me, m} <- trader(socket, id),
-         true <- item_id in m.sells || {:error, "They don't sell that."},
-         %{} = item <- Items.get(item_id) || {:error, "They don't sell that."},
-         price = Merchants.sell_price(item),
-         true <- Inventory.coins(me.character_id) >= price || {:error, "You can't afford that."},
-         {:ok, _slots} <- buy_add(me.character_id, item.id) do
-      coins = Inventory.add_coins(me.character_id, -price)
-      {:reply, %{ok: true, bought: item.id, price: price, coins: coins, inventory: Inventory.payload(me.character_id)}, socket}
-    else
-      {:error, msg} when is_binary(msg) -> {:reply, %{ok: false, error: msg}, socket}
-      _ -> {:reply, %{ok: false, error: "You can't buy that right now."}, socket}
+  def handle_event("merchant_buy", %{"id" => id, "item_id" => item_id} = params, socket) do
+    case trader(socket, id) do
+      {:ok, me, %{gems: true} = m} -> buy_jewel(socket, me, m, item_id, params["nonce"])
+      _ -> buy_coins(socket, id, item_id)
     end
   end
 
@@ -360,6 +359,21 @@ defmodule BaconWorldWeb.GameEvents do
 
   def handle_event(_event, _params, socket), do: {:reply, %{ok: false, error: "bad request"}, socket}
 
+  defp buy_coins(socket, id, item_id) do
+    with {:ok, me, m} <- trader(socket, id),
+         true <- item_id in m.sells || {:error, "They don't sell that."},
+         %{} = item <- Items.get(item_id) || {:error, "They don't sell that."},
+         price = Merchants.sell_price(item),
+         true <- Inventory.coins(me.character_id) >= price || {:error, "You can't afford that."},
+         {:ok, _slots} <- buy_add(me.character_id, item.id) do
+      coins = Inventory.add_coins(me.character_id, -price)
+      {:reply, %{ok: true, bought: item.id, price: price, coins: coins, inventory: Inventory.payload(me.character_id)}, socket}
+    else
+      {:error, msg} when is_binary(msg) -> {:reply, %{ok: false, error: msg}, socket}
+      _ -> {:reply, %{ok: false, error: "You can't buy that right now."}, socket}
+    end
+  end
+
   # The character, and the merchant if it is in this zone and within reach.
   defp trader(socket, id) do
     with %{} = me <- current(socket) || {:error, "You aren't in the world."},
@@ -370,6 +384,26 @@ defmodule BaconWorldWeb.GameEvents do
       {:ok, me, m}
     end
   end
+
+  # A jeweller's set for Gems (BaconWorld.Jeweller: the pieces into the bags, the Gems spent from the
+  # Bacon Store wallet as a recorded transaction). `nonce` (the client's, per click) keeps a retried
+  # request from paying twice.
+  defp buy_jewel(socket, me, m, item_id, nonce) do
+    user = socket.assigns[:current_user]
+    body = get_in(me, [Access.key(:appearance, %{}), "body"]) || "female"
+    who = %{character_id: me.character_id, name: Map.get(me, :name), body: body}
+
+    case BaconWorld.Jeweller.buy(user, who, item_id, nonce, m.sells) do
+      {:ok, r} ->
+        {:reply, %{ok: true, bought: item_id, pieces: r.pieces, gems_spent: r.gems_spent, gems: r.balance, price: 0,
+                   coins: Inventory.coins(me.character_id), inventory: Inventory.payload(me.character_id)}, socket}
+
+      {:error, msg} ->
+        {:reply, %{ok: false, error: msg, gems: BaconWorld.Jeweller.balance(user)}, socket}
+    end
+  end
+
+  defp gem_balance(socket), do: BaconWorld.Jeweller.balance(socket.assigns[:current_user])
 
   defp buy_add(character_id, item_id) do
     case Inventory.add(character_id, item_id, 1) do
@@ -389,7 +423,7 @@ defmodule BaconWorldWeb.GameEvents do
 
     socket =
       Enum.reduce(events, socket, fn
-        %{t: "attack", target: ^me, hit: true, damage: dmg}, acc when is_integer(dmg) and dmg > 0 -> take_hit(acc, dmg)
+        %{t: "attack", target: ^me, hit: true, damage: dmg} = ev, acc when is_integer(dmg) and dmg > 0 -> take_hit(acc, dmg, ev[:id])
         _, acc -> acc
       end)
 
@@ -502,11 +536,12 @@ defmodule BaconWorldWeb.GameEvents do
 
       placement_id =
         cond do
-          is_binary(target_id) and BaconWorld.Building.placement?(zone, target_id) ->
+          # in reach (2026-11-01: any piece in the zone could be hit by its id)
+          is_binary(target_id) and BaconWorld.Building.near?(zone, target_id, attack.x / u, attack.z / u, reach / u + 2.0) ->
             target_id
 
           true ->
-            placements = BaconWorld.Building.list(zone)
+            placements = BaconWorld.Building.cached(zone)
 
             placements
             |> Enum.filter(fn p ->
@@ -549,9 +584,12 @@ defmodule BaconWorldWeb.GameEvents do
       max_targets = move[:targets] || 1
       dmg = max(1, round(move[:dmg] || 10))
 
-      targeted_id = if is_binary(target_id) and BaconWorld.Building.placement?(zone, target_id), do: target_id, else: nil
+      targeted_id =
+        if is_binary(target_id) and BaconWorld.Building.near?(zone, target_id, attack.x / u, attack.z / u, reach / u + 2.0),
+          do: target_id,
+          else: nil
 
-      placements = BaconWorld.Building.list(zone)
+      placements = BaconWorld.Building.cached(zone)
 
       nearby_ids =
         placements
@@ -581,7 +619,49 @@ defmodule BaconWorldWeb.GameEvents do
     end
   end
 
-  defp take_hit(socket, raw_damage) do
+  # Health and mana given back by a power (capped at the maximums), pushed and broadcast.
+  defp restore(socket, hp_add, mp_add) when hp_add > 0 or mp_add > 0 do
+    me = current(socket)
+
+    with %{} <- me,
+         false <- socket.assigns[:is_dead?] || false,
+         {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}} <- Combat.get_character_stats(me.character_id),
+         true <- hp > 0 do
+      new_hp = min(max_hp, hp + hp_add)
+      new_mp = min(max_mp, mp + mp_add)
+      {:ok, _} = Combat.update_character_hp_mp(me.character_id, new_hp, new_mp)
+
+      socket
+      |> update_runtime(%{hp: new_hp, mp: new_mp})
+      |> push_event("character_stats_update", %{hp: new_hp, max_hp: max_hp, mp: new_mp, max_mp: max_mp})
+      |> broadcast_hp(me.character_id, new_hp, max_hp, "healed")
+    else
+      _ -> socket
+    end
+  end
+
+  defp restore(socket, _, _), do: socket
+
+  # Thornbite: the creature that struck takes damage back (and dies of it, for experience).
+  defp thorn(socket, me, mob_id, damage) do
+    zone = socket.assigns[:mobs_zone] || "lobby"
+    attack = %{id: me.character_id, target: mob_id, damage: damage, x: me.position.x, z: me.position.z, range: 1_000.0, crit: false}
+
+    case Mobs.spell_hit(zone, attack) do
+      %{killed: true} = hit ->
+        {socket, progress} = award_kills(socket, [hit])
+        socket = if progress, do: push_event(socket, "xp_gained", progress), else: socket
+        push_event(socket, "power_fired", %{power: "thorns", damage: damage})
+
+      %{} ->
+        push_event(socket, "power_fired", %{power: "thorns", damage: damage})
+
+      _ ->
+        socket
+    end
+  end
+
+  defp take_hit(socket, raw_damage, from_mob \\ nil) do
     me = current(socket)
 
     if socket.assigns[:is_dead?] || is_nil(me) do
@@ -593,6 +673,21 @@ defmodule BaconWorldWeb.GameEvents do
       total_ac = Melee.total_ac(eq) + buffs.ac
       mitigated = Tuning.mitigate_ac(raw_damage, total_ac)
       {damage, socket} = SkillEvents.absorb_shield(socket, mitigated)
+      powers = Powers.active(eq)
+
+      # Midas Ward and Thornbite (BaconWorld.Powers); lightning (99 999) is beyond both
+      {damage, socket} =
+        case Powers.on_hit(powers, if(raw_damage >= 99_999, do: 0, else: damage)) do
+          {:gold, coins} ->
+            Inventory.add_coins(me.character_id, coins)
+            {0, push_event(socket, "power_fired", %{power: "midas", coins: coins})}
+
+          {:hit, _, thorns} when thorns > 0 and is_binary(from_mob) ->
+            {damage, thorn(socket, me, from_mob, thorns)}
+
+          _ ->
+            {damage, socket}
+        end
 
       if damage <= 0 do
         socket
@@ -601,6 +696,13 @@ defmodule BaconWorldWeb.GameEvents do
           {:ok, %{hp: hp, max_hp: max_hp, mp: mp, max_mp: max_mp}} ->
             overkill? = damage >= max_hp
             new_hp = max(0, hp - damage)
+            now = System.monotonic_time(:millisecond)
+            # Phoenix Rebirth (BaconWorld.Powers): a killing blow leaves you standing
+            reborn = if raw_damage < 99_999, do: Powers.rebirth(powers, new_hp, max_hp, socket.assigns[:phoenix_at], now)
+            {new_hp, overkill?, socket} =
+              if reborn,
+                do: {reborn, false, socket |> assign(phoenix_at: now) |> push_event("power_fired", %{power: "phoenix"})},
+                else: {new_hp, overkill?, socket}
             {:ok, _} = Combat.update_character_hp_mp(me.character_id, new_hp, mp)
 
             state =
@@ -644,7 +746,7 @@ defmodule BaconWorldWeb.GameEvents do
     end
   end
 
-  defp die(socket, me, opts \\ []) do
+  defp die(socket, me, opts) do
     shatter? = Keyword.get(opts, :shatter, false)
     reason = Keyword.get(opts, :reason, "slain")
     {:ok, coords} = Combat.respawn_character(me.character_id)
@@ -681,6 +783,9 @@ defmodule BaconWorldWeb.GameEvents do
     if kills == [] or is_nil(me) do
       {socket, nil}
     else
+      # Bloom (BaconWorld.Powers): each kill heals
+      bloom = Powers.on_kills(Powers.active(socket.assigns[:equipment] || %{}), length(kills), me.max_hp || 0)
+      socket = restore(socket, bloom, 0)
       level = socket.assigns[:level] || 1
       near = groupmates_near(socket, me)
 

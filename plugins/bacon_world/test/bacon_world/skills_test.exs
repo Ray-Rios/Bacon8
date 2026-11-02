@@ -92,6 +92,33 @@ defmodule BaconWorld.SkillsTest do
       assert "far" in learned
     end
 
+    test "unlearning gives the point back, from a branch's tip inward; reset gives them all", %{c: c} do
+      t = SkillTree.default()
+      far = %{t | "nodes" => t["nodes"] ++ [%{"id" => "far", "x" => 0.0, "y" => 2.0, "ability" => "hp_25"}], "edges" => t["edges"] ++ [["n1", "far"]]}
+      {:ok, _} = SkillTree.save(far)
+      points!(c, 3)
+      {:ok, _} = Skills.learn(c.id, "n1")
+      {:ok, %{points: 1}} = Skills.learn(c.id, "far")
+      {:ok, c1} = World.fetch_character(c.id)
+      hp_far = World.stat(c1, "max_hp")
+
+      # n1 holds "far" to the start: it can't go first
+      assert {:error, "Other nodes you have depend" <> _} = Skills.unlearn(c.id, "n1")
+      assert {:error, "Everyone keeps" <> _} = Skills.unlearn(c.id, far["start"])
+      assert {:error, "You don't have" <> _} = Skills.unlearn(c.id, "n2")
+
+      assert {:ok, %{points: 2, learned: learned}} = Skills.unlearn(c.id, "far")
+      refute "far" in learned
+      {:ok, c2} = World.fetch_character(c.id)
+      assert World.stat(c2, "max_hp") == hp_far - 25
+      assert {:ok, %{points: 3}} = Skills.unlearn(c.id, "n1")
+
+      {:ok, _} = Skills.learn(c.id, "n1")
+      {:ok, _} = Skills.learn(c.id, "n2")
+      assert {:ok, %{points: 3, learned: [start]}} = Skills.reset(c.id)
+      assert start == far["start"]
+    end
+
     test "buffs raise the pools now and on later level ups; a removed node hands its point back", %{c: c} do
       points!(c, 2)
       tree = SkillTree.current()

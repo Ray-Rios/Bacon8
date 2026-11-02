@@ -189,6 +189,29 @@ defmodule BaconWorld.SkillTree do
     node(tree, id) != nil and id not in learned and Enum.any?(neighbours(tree, id), &(&1 in learned))
   end
 
+  @doc """
+  True when every node in `learned` is joined to the start through learned nodes. Unlearning a
+  node is allowed only when what is left stays joined this way (2026-11-01).
+  """
+  def connected?(tree, learned) do
+    have = MapSet.new(learned)
+    start = tree["start"]
+
+    if not MapSet.member?(have, start) do
+      MapSet.size(have) == 0
+    else
+      seen = walk(tree, have, [start], MapSet.new([start]))
+      MapSet.equal?(seen, have)
+    end
+  end
+
+  defp walk(_tree, _have, [], seen), do: seen
+
+  defp walk(tree, have, [id | rest], seen) do
+    next = for n <- neighbours(tree, id), MapSet.member?(have, n), not MapSet.member?(seen, n), do: n
+    walk(tree, have, rest ++ next, Enum.reduce(next, seen, &MapSet.put(&2, &1)))
+  end
+
   @doc "The abilities on these nodes (ids, unique, tree order)."
   def abilities(tree, learned) do
     tree["nodes"] |> Enum.filter(&(&1["id"] in learned and &1["ability"])) |> Enum.map(& &1["ability"]) |> Enum.uniq()

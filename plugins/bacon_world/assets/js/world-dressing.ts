@@ -91,7 +91,7 @@ export class WorldDressing {
       this.groundResolve = resolve;
     });
     if (!this.hasTerrain) {
-      this.groundResolve();
+      this.groundResolve?.();
     }
   }
 

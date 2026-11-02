@@ -614,6 +614,8 @@ export class CharacterController {
     this.isSprinting = this.held('ShiftLeft', 'ShiftRight') && !this.isCrouching && !(facingCamera && fwd < 0);
     let maxSpeed: number = this.isCrouching ? MOVE.crouchSpeed : this.isSprinting ? MOVE.sprintSpeed : MOVE.jogSpeed;
     if (this.isSwimming) maxSpeed = this.isSprinting ? MOVE.swimSprintSpeed : MOVE.swimSpeed;
+    // on foot, the gear's run speed (the jeweller's heels: 1.5)
+    else maxSpeed *= this.runSpeed;
     // A mount runs at its own pace (sprinting half as fast again); one that swims, at its swimming
     // pace in deep water (a quarter faster sprinting).
     // A mount that can't swim paddles at half its pace.
@@ -812,6 +814,9 @@ export class CharacterController {
       this.isGrounded = false;
     }
   }
+
+  /** On foot, a multiplier of the running speeds from what's worn (game-world.ts sets it each frame). */
+  runSpeed = 1;
 
   /** Climbs on (a mount's speeds; `pivot` its rider's head height, scene units) or off (null). */
   setMount(spec: { groundSpeed: number; flySpeed: number; flies: boolean; pivot: number; swimSpeed?: number } | null): void {

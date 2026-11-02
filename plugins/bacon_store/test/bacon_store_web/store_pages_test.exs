@@ -93,6 +93,18 @@ defmodule BaconStoreWeb.StorePagesTest do
     assert html =~ "Order ##{receipt.number}" and html =~ user.email
   end
 
+  test "Purchases lists what Gems bought in the games, under the receipts" do
+    user = verified()
+    {:ok, _} = Wallet.grant(user, 300, idempotency_key: "spends-page-grant")
+    {:ok, _} = Wallet.spend(user, 100, idempotency_key: "spends-page-1", game_slug: "bacon_world", memo: "Rose Wire set, for Rosebud",
+                            reference_type: "bacon_world_jewel", reference_id: "jw_rose")
+    {:ok, _view, html} = live(signed_in(user), "/store/orders")
+    assert html =~ "Bought with Gems"
+    assert html =~ "Rose Wire set, for Rosebud"
+    assert html =~ "Bacon World"
+    assert [%{amount: 100, reference_id: "jw_rose"}] = Wallet.spends(user)
+  end
+
   test "a buyer finds a product, buys it with Gems, and downloads it from the library" do
     {p, _img, file} = on_sale_download()
     user = verified()

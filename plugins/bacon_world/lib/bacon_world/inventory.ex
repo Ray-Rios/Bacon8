@@ -1,8 +1,8 @@
 defmodule BaconWorld.Inventory do
   @moduledoc """
   What a character carries, EverQuest style: the hands, `"main"` (right) and `"off"`
-  (left); what it wears, `"head"` (2026-10-29), `"under_top"`, `"under_bottom"`, `"chest"`, `"legs"` and
-  `"feet"`; and 24 bag slots `"bag0"`..`"bag23"`. One `bacon_world_items` row per
+  (left); what it wears, `"head"` (2026-10-29), `"under_top"`, `"under_bottom"`, `"chest"`, `"legs"`,
+  `"feet"`, and (2026-11-01, the cloth armour sets) `"wrist"`, `"arms"` and `"hands"`; and 24 bag slots `"bag0"`..`"bag23"`. One `bacon_world_items` row per
   occupied slot; coins are `stats["coins"]` (copper: 10 copper make a silver, 10 silver
   a gold, 10 gold a platinum).
 
@@ -22,7 +22,7 @@ defmodule BaconWorld.Inventory do
 
   @bag_slots 24
   @hands ~w(main off)
-  @equipment ~w(main off head under_top under_bottom chest legs feet)
+  @equipment ~w(main off head under_top under_bottom chest legs feet wrist arms hands)
   @starter_purse 100
 
   def bag_slots, do: @bag_slots

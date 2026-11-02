@@ -4,6 +4,9 @@
  * animations, terrain heightmaps, and audio in browser CacheStorage.
  */
 
+// Must match CACHE_NAME in priv/static/sw-game.js.
+const CACHE_NAME = 'bacon-world-assets-v2';
+
 export function initGameServiceWorker(): void {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return;
@@ -35,10 +38,10 @@ export function initGameServiceWorker(): void {
 /** Utility to inspect the current cache contents from the browser console. */
 export async function getGameCacheInfo(): Promise<any> {
   if (typeof window === 'undefined' || !('caches' in window)) return null;
-  const cache = await window.caches.open('bacon-world-assets-v1');
+  const cache = await window.caches.open(CACHE_NAME);
   const requests = await cache.keys();
   return {
-    cacheName: 'bacon-world-assets-v1',
+    cacheName: CACHE_NAME,
     count: requests.length,
     urls: requests.map((r) => r.url)
   };
@@ -47,7 +50,7 @@ export async function getGameCacheInfo(): Promise<any> {
 /** Utility to clear the game asset cache from the browser console if needed. */
 export async function clearGameCache(): Promise<boolean> {
   if (typeof window === 'undefined' || !('caches' in window)) return false;
-  return window.caches.delete('bacon-world-assets-v1');
+  return window.caches.delete(CACHE_NAME);
 }
 
 // Expose debug utilities on window for convenience

@@ -38,6 +38,12 @@ export interface ItemDef {
   colors?: Record<string, string> | null;
   /** A bow (2026-10-28): shoots endless arrows out to `reach` (BaconWorld.Melee). */
   ranged?: boolean;
+  /** The jeweller's sets (2026-11-01): their price in Gems (a whole set), the set, and its power. */
+  gems?: number | null;
+  jewel?: string | null;
+  power?: { id: string; name: string; summary: string } | null;
+  /** A multiplier of the running speed while worn (the jeweller's heels: 1.5). */
+  run_speed?: number | null;
 }
 
 export type Catalog = Record<string, ItemDef>;
@@ -118,7 +124,10 @@ export function describe(id: string): string[] {
   } else if (it.kind === 'armor') {
     lines.push(`Slot: ${it.slots.map((x) => SLOT_NAMES[x] || x).join(', ')}`);
     if (it.ac) lines.push(`AC: ${it.ac}`);
-    lines.push(it.slots.includes('under_top') || it.slots.includes('under_bottom') ? 'Worn under clothes and armour' : 'Cloth');
+    const under = it.slots.includes('under_top') || it.slots.includes('under_bottom');
+    lines.push(under ? 'Worn under clothes and armour' : id.startsWith('plate_') ? 'Plate' : id.startsWith('chain_') ? 'Mail' : 'Cloth');
+    if (it.power) lines.push(`Power - ${it.power.name}: ${it.power.summary}`);
+    else if (it.jewel) lines.push("Part of a jeweller's set: the matching bottom carries its power");
   } else {
     const slot = it.hands === 2 ? 'Primary (two-handed)' : it.slots.length === 2 ? 'Primary, Secondary' : it.slots[0] === 'off' ? 'Secondary' : 'Primary';
     lines.push(`Slot: ${slot}`);
@@ -127,7 +136,8 @@ export function describe(id: string): string[] {
     if (it.ac) lines.push(`AC: ${it.ac}`);
     lines.push(it.ranged ? `Range: ${Math.round(it.reach)} m (arrows never run out)` : `Reach: ${it.reach.toFixed(1)} m`);
   }
-  lines.push(`Value: ${money(it.value)}`);
+  if (it.gems) lines.push(`Bought with Gems (${it.gems} the set)`);
+  else lines.push(`Value: ${money(it.value)}`);
   return lines;
 }
 

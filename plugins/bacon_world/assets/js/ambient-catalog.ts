@@ -6,7 +6,10 @@
 // 4. 04_campfire_and_crackles (20 files: 6 loops, 14 one-shots)
 // 5. 05_night_insects_and_birds (20 files: 5 loops, 15 one-shots)
 
-const BASE = '/assets/audio';
+// MP3 copies of the WAVs (2026-11-01): /assets/audio was never in the image, so every request
+// 404'd, and the WAVs were 91 MB. Built by ffmpeg (mono, 96 kbit/s) into priv/static/audio, which the
+// Dockerfile does copy.
+const BASE = '/audio/world/ambient';
 
 export interface AmbientTrack {
   id: string;
@@ -248,7 +251,7 @@ export function getAmbientAudioUrl(name: string): string | null {
   const resolved = AMBIENT_ALIASES[name] ?? name;
   const meta = AMBIENT_FILES[resolved];
   if (meta) {
-    return `${BASE}/${meta.cat}/${resolved}.wav`;
+    return `${BASE}/${meta.cat}/${resolved}.mp3`;
   }
   return null;
 }

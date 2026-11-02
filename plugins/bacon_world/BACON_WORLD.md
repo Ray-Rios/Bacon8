@@ -18,7 +18,7 @@ Related documents:
   deployment.
 - Facts dated. The owner's decisions are recorded, not re-argued.
 
-Last update: **2026-10-31**.
+Last update: **2026-11-01**.
 
 ---
 
@@ -120,7 +120,7 @@ flat round island.
 - Placed creatures are spawn points (count 1-12, spread 0-40 m); placed merchants trade with their template's stock.
 - **Smashing & Object HP** (2026-10-31):
   - Smash mode is moved out of build mode into an in-game combat toggle on the character's info bar (alongside PvP).
-  - When Smash is toggled ON, all players can target and destroy buildable placed objects with their weapons (melee & bows), spells, and skills. Placed objects show an HP bar in the target frame and trigger floating damage numbers on hit.
+  - When Smash is toggled ON, players can damage and destroy placed objects with their weapons (melee & bows), spells, and skills. **Who may break what** (2026-11-01): the build-mode delete rule, i.e. what your role may place, and nothing within a binding stone's 100 m unless GM or admin (`Building.damage_placement/4`); a targeted piece must be in reach. Before, anyone could break anything from anywhere in the zone, the village, binding stones, camps and merchants included, and a broken placement is deleted for good. Placed objects show an HP bar in the target frame and trigger floating damage numbers on hit.
   - Every placed asset has hit points (default: 10 HP). Live health is tracked in `:bacon_world_placement_hp` ETS. Surviving hits broadcast `{:build_damaged, id, asset, new_hp, max_hp, amount}` and trigger dust and mesh jiggle; reaching 0 HP shatters the object into debris (`{:build_removed, id, asset, :smashed}`) via `smash-fx.ts` and removes it from the database.
   - Damaged placed objects naturally regenerate 10% of their max HP per tick (driven by `BaconWorld.BuildingRegen`, synchronized with `Tuning.get("regen_interval_ms")`). Surviving repairs broadcast `{:build_repaired, id, asset, new_hp, max_hp, healed_amt}` and smoothly update the target frame HP bar; reaching 100% cleans the entry from ETS.
   - Admins can configure each asset's max HP in-game via the build catalogue window (`AssetRule.hp`, table `bacon_world_asset_rules`), broadcasting `{:build_hp_rule, asset, hp}`.
@@ -141,6 +141,24 @@ flat round island.
   - Natural HP regen operates directly on ETS state without database lookups during ticks.
   - LiveView account presence checking recognizes reconnections of the *same* character, preventing players from being locked out with "account is already logged in" after reconnects or reloads.
   - Removed obsolete `buildSetSmash` call in `buildExit`, allowing '`' and the close button ('✕') to close the build window without client exceptions.
+
+- **Reference Nature & Rock Assets (Trees, Saplings, Stumps, Logs, Boulders, Ores, Crystals)** (2026-11-01):
+  - Procedurally generated in Blender (`library/pipeline/scripts/build_props.py`, `b8_kit.py`) and integrated into `B8_Props.glb`:
+    - **Trees**: Oak Tree (`TreeOak`), Pine Tree with pine cones (`TreePine`), Weeping Willow (`TreeWillow`), Gnarled Dead Tree (`TreeDead`), Birch Tree with white bark (`TreeBirch`), Enchanted Tree with bioluminescent cyan foliage and violet trunk (`TreeEnchanted`), Blossom Tree with warm amber trunk and glowing orange/coral foliage (`TreeBlossom`).
+    - **Saplings & Stumps**: Sapling Oak (`SaplingOak`), Sapling Pine (`SaplingPine`), Sapling Birch (`SaplingBirch`), Mossy Stumps with shelf bracket fungi (`StumpMossy`), Hollow Decayed Stump (`StumpHollow`), Fallen Hollow Log (`LogHollow`), Clustered Fallen Logs with vines (`LogCluster`).
+    - **Rocks & Minerals**: Angular Granite Boulders (`BoulderGranite`), Granite Boulder Cluster (`RockGraniteCluster`), Rounded Mossy Rocks with fern tufts (`RockMossy`), Mossy Rock Cluster (`RockMossyCluster`), Dark Ore Nodes with metallic gold veins (`OreDarkVein`), Hexagonal Crystal Clusters with point glow in blue, purple, and green (`CrystalsBlue`, `CrystalsPurple`, `CrystalsGreen`), Small Pebbles Scatter (`PebblesScatter`), Stepping Stones path set (`SteppingStones`).
+  - Registered in `BaconWorld.Building` under `"Trees & plants"` and `"Rocks"`, available in build mode for all players with member rank or higher.
+  - Surface triplanar detail textures and emissive glow mapping added in `surface-textures.ts` and `placed-view.ts`.
+
+- **Modular Building Kit Expansion (Walls, Doors & Openings, Floors & Roads, Roofs, Stairs & Transitions)** (2026-11-01):
+  - Procedurally generated in Blender (`library/pipeline/scripts/build_kit.py`, `b8_kit.py`) and integrated into `B8_BuildKit.glb` (141 pieces):
+    - **Walls & Facades (32 pieces)**: Upgraded core stone and timber walls; added Coarse Cobblestone, Rough Granite, Sandstone Brick, Dry Stone, Ancient Mossy Stone, Fine Red Brick, Burnt Red Brick, Industrial Brick with coping, Plaster with exposed brick, Intact Timber-frame, Decayed Timber-frame, Ornate Tudor with chevrons, Horizontal Log Cabin walls with notched ends, Vertical Log Palisade, Thatch Mud wall with window, Reinforced Iron wall with cross-braces, Rusting Plate wall, Rough Wood wall, Horizontal Lap Plank wall, Intricately Carved Nordic knotwork wall, Decorative Marble wall with classical cornice, Plaster on Stone Base, Curved Stone Wall (90° quadrant), Angled Stone & Log Corners, T-junction Stone Wall, and Crumbled / Collapsed / Blasted Ruin walls.
+    - **Openings, Portals, & Doors (27 pieces)**: Upgraded wooden doors, gates, and glazed windows; added Rustic Plank door with Z-brace, Heavy Iron-Studded door, Heavy Jail Bar door with lock plate, Arched Cathedral twin doors, Double Wooden Gate, Ornate Scrolled Iron Gate with spears, Dilapidated broken wood door, Sliding Barn Door on overhead iron rail, Spiked Iron Portcullis, Exterior Angled Cellar Hatch, Small Square Barred Stone Window, Arrow Slit Flared Embrasure, Circular Bullseye Leaded Window, Ornate Stained Glass Gothic Window, Leaded Diamond Glass Window, Standard 4-Pane Window, Double-Pane Mullioned Window, Ornate Carved Classical Archway, Hewn Timber Archway with knee braces, Red Brick Semicircular Archway, Deep Arched Stone Passageway, Ruined Broken Archway, and Dungeon Gate.
+    - **Floors, Grounds, & Roads (24 pieces)**: Modular 3m × 3m tiles including Flat Dirt, Mud & Embedded Gravel, Patchy Grass, Lush Fern Grass with 3D fronds, Forest Floor Leaf Scatter, Desert Sand Dune ripples, Uneven Cobblestones, Fine Stone Paver flagstones, 45° Herringbone Brick Street pavers, Dungeon Flagstones, Rotting Decay Wood planks, Sturdy Parquet Timber tiles, Industrial Rusty Iron Grating, Broken Cobblestone Crater, Mossy Flagstones, Overgrown Stone Path, Cracked Parched Mud, Fired Clay Terracotta tiles, Patterned Inlaid Terracotta, and Worn Oriental Rug on Wood floor.
+    - **Roofs (20 pieces)**: Upgraded Thatch, Tile, Shingle, and Ridge pieces; added Thatch Roof Peak & Corner Hip, Weathered Wood Shingle Slope & Peak, Ornate Carved Bargeboard Gable, Red Clay Spanish Barrel Tile Slope & Peak, Slate Shingle Slope & Valley, Corrugated Rusty Tin Metal Roof, Mossy Slate Roof, Damaged Shingle Roof with exposed rafters, Ruined Collapsed Thatch, Flat Stone Rooftop with parapet coping, Turquoise Verdigris Copper Spire Peak, and Overgrown Leafy Turf Living Roof.
+    - **Verticality, Stairs, & Transitions (20 pieces)**: Upgraded straight wood and stone stairs and ladders; added Chipped Weathered Steps, Sweeping 90° Curved Stone Stairs, Grand Monumental Stone Staircase with balustrades, Welded Industrial Steel Channel Stairs with pipe rails, Steep Ship's Ladder Steps, Hemp Rope Ladder, Double-Width Wooden Ladder, Spiraling Stone Central Newel Stairs, Spiraling Wood Cantilever Stairs with balusters, Short Wood Cleated Ramp, Mud & Timber Retaining Ramp, Heavy Stone Ramp with curbs, Modular Scaffolding Base, Scaffolding Extension, and Scaffolding Platform with side access ladder.
+  - Registered in `BaconWorld.Building` (`@kit`) in the `"Building"` category for build mode (press `` ` ``).
+  - Triplanar surface detail textures and PBR shaders configured in `surface-textures.ts` for all 22 new kit materials.
 
 ### Combat and creatures
 
@@ -219,11 +237,18 @@ flat round island.
 - **Nameplates**: a name never gets smaller than 15 px on screen (it used to shrink into a few pixels). The texture is
   mipmapped, so far names don't shimmer, and they show to 90 m. Overlapping names are culled each frame: the nearer
   one wins, and the target always shows.
-- **Persistent Game Asset Service Worker (2026-10-31)**:
-  - Added `/sw-game.js` (registered in `world-character-ui-scene.ts` via `service-worker.ts`) managing `bacon-world-assets-v1` in the browser's persistent `CacheStorage`.
-  - Intercepts all `/models/**` (3D GLBs, textures, animations, terrain heightmaps), `/audio/world/**` (sound effects and music), and `/fonts/**`.
-  - Employs a **Stale-While-Revalidate with Auto-Update** strategy: on page reload or revisiting the game, assets load instantaneously from local disk (0 ms network delay); in the background, the service worker verifies with the server and automatically caches any updated models or textures without requiring manual hard-refreshes (`Ctrl+F5`).
-  - Window debug tools exposed as `window.bwCache.info()` and `window.bwCache.clear()`.
+- **Game asset service worker** (2026-10-31, rewritten 2026-11-01): `/sw-game.js` (registered by `service-worker.ts`)
+  keeps `/models/**`, `/audio/**` and `/fonts/**` in the browser's CacheStorage (`bacon-world-assets-v2`). A URL with
+  `?vsn=` (every model URL) is answered from the cache with no network request; anything else from the cache at once
+  and refreshed in the background at most hourly. **The first version never reached production**: the Dockerfile copies
+  `priv/static` file by file and didn't list `sw-game.js`, so `/sw-game.js` was a 404 (both Dockerfile stages copy it
+  now). It also re-downloaded every model in the background on every load. `window.bwCache.info()` / `.clear()`.
+- **Ambient sounds** (2026-10-31, fixed 2026-11-01): 100 synthesized ambience files (kept: the owner dropped the
+  real-recordings-only rule on 2026-11-01). They sat in
+  `priv/static/assets/audio/` (91 MB), which the image never copied, so every one was a 404, and `lobby-audio.ts`
+  re-requested a failed file every time the beds were re-mixed (four times a second): about 4,000 404s an hour on
+  production. Now MP3 copies (mono, 96 kbit/s, 13 MB) in `priv/static/audio/world/ambient/<category>/`, and a file that
+  failed once isn't asked for again that visit. The WAVs were deleted on 2026-11-01 (owner's OK).
 
 ### Human Characters, Wardrobe & Sliders Overhaul (2026-10-31, completed)
 
@@ -255,6 +280,67 @@ flat round island.
   These amplified shape keys are baked directly into `Female.glb` and `Male.glb`, providing dramatic silhouette variation from
   svelte/runner frames to powerhouse/heavyweight builds while maintaining standard [0..1] normalized client weights.
 
+### The v3 humans (2026-11-01)
+
+Built by three new pipeline stages on top of stage G (`library/pipeline/scripts`, outputs in `out/mh_v3/`; jobs in
+`tmp/b8work/v3/`: `v3body.cmd`, `v3face.cmd`, `v3hair.cmd`, `meshopt_v3.cmd`, then `stage_v3.py`):
+
+- **H, `body_v3.py`**: the bodies subdivided once (Catmull-Clark on the limit surface; every shape key subdivided the
+  same way through a key-less copy), 13,380 -> ~57k vertices (female) / ~53.5k (male), plus one flat extra level on the
+  female's breasts before the smoothing. Weights, UVs, `_REGION` (nearest original vertex) and all sliders carry over.
+  A second level on the face is opt-in (`B8_V3_FACE=1`): it nearly doubled the body.
+- **H3, `face_v3.py`**: six face sliders as displacement fields around landmarks the script finds (eyes, nose tip, mouth,
+  chin, jaw angles, cheekbones): `Cheekbones`, `Jaw_Square`, `Chin_Strong`, `Brow_Heavy`, `Lips_Full`, `Nose_Narrow`,
+  on the body, brows and lashes, and on the male's six facial hair styles so beards follow. Client sliders: appearance.ts
+  `cheekbones`, `jaw_square`, `chin`, `brow`, `lips`, `nose_width`; server: `Appearance` `@shapes`.
+- **H2, `hair_v3.py`**: every hair style is now **grown**, not a MakeHuman proxy: roots planted inside a hairline on the
+  scalp, strands combed (part, swept back, fringe, crown), pulled by gravity, kept out of the body (BVH) and off the
+  face, cut, and turned into textured cards with volume normals; gathered styles run on into a ponytail, a three-lock
+  braid or a bun. A scalp decal (dense to soft at the hairline) under each. 18 female styles (Cascade, Waves, SideSweep,
+  HighPonytail, LowPonytail, Braid, TwinBraids, TopKnot, Bun, Bob, BobBangs, Lob, Pixie, Undercut, Curls, Afro,
+  WarriorBraid, HalfUp) and 14 male (Buzz, Crew, SidePart, SlickBack, Pompadour, Undercut, Messy, Curly, Shoulder,
+  LongTied, ManBun, Mohawk, Viking, Afro). Every retired style id maps to one of these (`aliases`). The strand atlas
+  and its normal map are made by the script (numpy), so all of it is original.
+
+### Garment parts: real clothes (2026-11-01, second pass)
+
+The owner rejected the texture-painted underwear ("designed in MS paint... pixelated") and asked for photo-realistic
+underwear, ten full sets of cloth armour and ten robes, all unique. Every worn item is now its own skinned GLB per body,
+loaded like the hair (`Humans/Garments/<Body>/<id>.glb`), cut from the v3 body and dressed in photographed fabrics:
+
+- **Generator** `library/pipeline/scripts/b8_garments.py` (Blender 5.1, `run_pipe.py`): panels are regions of the body
+  cut along the zero line of a field drawn in its charts (torso: angle and "levels" from crotch to throat; breast: a
+  geodesic map about the apex; legs and limbs: angle and distance along the bone; head: azimuth/elevation), fitted as a
+  membrane held off a smoothed copy of the skin (nipples smoothed with a dome of their height, crotch and buttock cleft
+  filled, so cloth bridges them), with a turned edge for thickness. Straps, bindings, piping, seams, lacing, ruffles,
+  fringe, rings, sliders, hooks, bows, beads, buckles, belts, skirts (hung from the body's slice hulls, bridging the
+  legs; pelvis/thigh weights), hats (lathes, brims, plumes), soles and hull-shell mittens are swept or built
+  procedurally. Weights and every body morph come from the skin point under each vertex; big pieces are decimated to a
+  budget. Previews and item icons are rendered in Eevee. Designs: `b8_garment_designs.py` (underwear) and
+  `b8_armor_designs.py` (cloth armour, robes). Jobs: `tmp/b8work/garments/full_female.cmd`, `full_male.cmd`,
+  `stage_garments.cmd` (meshopt into the models volume).
+- **Fabrics** `b8_fabrics.py`: 44 CC0 photo-scanned sets from Poly Haven and ambientCG (`library/textures`, fetched
+  2026-11-01 and logged in its LICENSES.md) made into `Humans/Fabrics/<fabric>_c|_n|_r.webp` (neutral grey for tinted
+  fabrics, so one texture takes any item colour; `gain` brings the mean to the colour). Lace: two real lace scans,
+  Rijksmuseum/The Met open-access CC0 photographs on Wikimedia Commons, keyed to alpha and tiled
+  (`lace_chantilly`, `lace_garland`), drawn blended as a veil over the skin.
+- **Client** `garment-parts.ts` (cover sets, masks; unit-tested), `garment-materials.ts` (fabric materials: role tint,
+  sheen for satin/velvet, sheer opacity, lace blending), `human-factory.ts` (loads parts, binds them to the bones, sets
+  morphs, hides skin under them and inner layers under outer ones, clips hair inside a hat), `wardrobe.ts` (`part`,
+  `layer`; slots `hands` and `arms`; layers under 0, legs 2, chest 3, feet 4, arms 5, wrist 6, hands 7, head 8, robes 9).
+  A part's extras carry `cover` (a voxel set of the body it hides, rest metres) and each vertex its skin point
+  (`_ANCHOR`), so hiding needs no body ids and survives body rebuilds of the same shape.
+  - **Items**: 19 underwear sets (ten cloth + four chainmail bikinis: `chain_iron`, `chain_brass`, `chain_steel`, `chain_gold` + five heroic plate bikinis: `plate_steel`, `plate_gold`, `plate_dark`, `plate_draconic`, `plate_mythril`; cloth 6c a piece, the metal bikinis 40-300c with AC 1-2; the male wears each set's bottom in his own cut: subligaculum, war-trunks, and plate war-girdles); 19 armour sets of seven pieces (ten cloth + four chainmail sets: `chain_iron`, `chain_steel`, `chain_gold`, `chain_dark` + five heroic heavy plate sets: `plate_steel` Knight's Vanguard Steel, `plate_gold` Paladin's Sacred Gilded, `plate_dark` Dreadlord Spiked Obsidian, `plate_draconic` Dragon Slayer Scale, `plate_mythril` Celestial Mythril Runed; ids `<set>_<slot>`, with sallets/greathelms/visors, fluted/winged/scale/runed cuirasses with faulds & tassets, spaulders/pauldrons, anatomical vambraces, articulated gauntlets, greaves & cuisses, and spurred sabatons; AC 28–43); ten robes (`<name>_robe`). Tilda sells them all. Migrations `20261101000001` (the morning's painted sets) and `20261101000002` (the old cloth armour) move owned items.
+- **Chain Armor & Bikinis (2026-11-01, third pass)**: Re-created from high-detail references. Interlocking riveted 4-in-1 chainmail PBR sets (`chainmail`, `chain_iron`, `chain_steel`, `chain_brass`, `chain_gold`, `chain_dark`, `chain_rusted`) baked via `b8_fabrics.py` with metallic specular reflection, surface normal relief, and roughness maps. All 36 female and 32 male pieces are fully skinned 3D GLBs with shape keys and anchor attributes bound to the v3 character skeleton.
+  - **Plate Mail Armor & Plate Bikinis (2026-11-01, fourth pass)**: Re-created from high-detail reference pre-renders. Features heavy metallic PBR plate materials (`plate_steel`, `plate_gold`, `plate_dark`, `plate_draconic`, `plate_mythril`, `metal_plate`) with specular metallicity, normal relief, and micro-roughness. Includes 5 heroic plate bikini sets (`plate_steel` Glorious Steel Plate, `plate_gold` Champion Gold Plate, `plate_dark` Dread Iron Spiked, `plate_draconic` Draconic Scale Plate, `plate_mythril` Mythril Runed Plate; female molded demi-cup plates, halter strapping, and leather/chain hip shields; male segmented plate war-girdles and armored subligacula) and 5 complete 7-piece heroic heavy plate armor sets (`plate_steel` Knight's Vanguard Steel, `plate_gold` Paladin's Sacred Gilded, `plate_dark` Dreadlord Spiked Obsidian, `plate_draconic` Dragon Slayer Scale, `plate_mythril` Celestial Mythril Runed; sallets/greathelms with closed visors and hidden hair, fluted heavy breastplates with faulds & tassets, articulated pauldrons, anatomical vambraces, hourglass gauntlets, greaves & cuisses with poleyns, and spurred sabatons; AC 28–43). All 45 female and 40 male pieces are fully skinned 3D GLBs bound to the v3 character skeleton with wardrobe icons in `Humans/Wardrobe/icons/`.
+
+- **Plate, rebuilt as real plate (2026-11-01, Claude's review of the fourth pass)**: the fourth pass dressed the body in fitted cloth with a metal texture, and the five plate sets shared one mesh byte for byte. They are rebuilt in `library/pipeline/scripts/b8_plate_designs.py`: every plate is a shell fitted taut over the body and pushed out to the convex hull of its own cross-sections (a cuirass bridges the cleavage), given an inner face and a rolled rim, and **skinned rigidly** (one blend of bones for the whole plate, the average of the skin under it); articulation comes from overlapping lames, each rigid on its own (faulds, pauldron lames, finger lames, sabaton lames). Helmets are shells around the head's own distance field (`helm()`), with slits and openings cut in azimuth/elevation. Each set has its own silhouette: steel gothic and fluted (sallet, pointed sabatons), gold domed with a sun boss, wings and a winged great helm, dark keeled with saw-toothed edges, spikes, claws and a barbuta, draconic plate under overlapping scales with fins, talons and a horned visor, mythril slim with pointed edges, crescent pauldrons, inlaid lines and an open casque with a crest blade. The plate bikinis are rigid cups and plates too. Plate fabrics are tintable metals (`neutral` in `b8_fabrics.py`: luminance kept, mean set, the item colour tints it).
+- **The jeweller's sets (2026-11-01, owner's rendering of ten polished pink bikinis)**: `jw_filament`, `jw_thorn`, `jw_diamond`, `jw_filigree`, `jw_celestial`, `jw_starfire`, `jw_lasso`, `jw_oceanic`, `jw_rose`, `jw_phoenix` (`b8_jewel_designs.py`; fabrics `polished` and `gloss`). Rosalind Gemcutter, behind the north-west market stall, sells a whole set (the female's top and bottom, the male's bottom) for **100 Gems** from the player's Bacon Store wallet (`BaconStore.Wallet.spend/3`, idempotent per click), not in the store. Each has a power (`BaconWorld.Powers`), carried by the bottom piece and applied in `BaconWorldWeb.GameEvents` on basic swings, kills and hits taken: Midas Ward, Thornbite, Brilliance, Silken Snare, Starlit Mind, Starfire, Long Lasso, Riptide, Bloom, Phoenix Rebirth.
+
+- **Mail, redesigned (2026-11-01, owner: "yes, redesign the chain")**: `b8_chain_designs.py`. Mail is cut and fitted like cloth (it deforms with the skin); what stands on it (plates, rondels, splints, buckles, spikes) is rigid. Iron: a soldier's coif laced at the chin, a split hauberk over a quilted collar, belt and pouch, mail mittens, laced leather bracers, gartered chausses, turnshoes. Steel: a pointed bascinet with a mail aventail, a blue surcoat and sword belt, rondels and couters, splinted vambraces, plate-cuffed gauntlets, poleyns and shin plates, capped sabatons. Gold: a circleted coif, a white tabard with a gold sun, sun rondels, gilded spiral wraps, brass-cuffed gloves, gold splints. Dark: a veiled hood with a spiked cap, a short shirt over a lamellar skirt and a crossed harness, spiked spaulders, wraps with spikes, clawed gloves, strapped splints, fur-topped boots. The four mail bikinis are new too (iron triangles and thongs, coin-fringed brass, a steel bandeau, gilded halter with draped chains).
+- **The jeweller's heels (2026-11-01, owner's rendering)**: `jw_<set>_shoes`, one per jeweller's set, 100 Gems each from Rosalind, power `swift` (Items `run_speed: 1.5`; `character-controller.ts` `runSpeed`, set each frame from the worn feet item; still under the server's speed check). Built by `b8_heels.py` on the flat-footed rest body with `heel` extras {deg, rise}: `human-factory.ts` `heelPose()` turns each foot toes-down about the world axis across it, turns the ball back so the toes lie flat, and lifts the body by `rise`; the stiletto is modelled tilted so it stands straight and just reaches the ground in that pose. The Blender previews use the same pose (`heel_pose`).
+- **Gem purchases are recorded** (owner): `BaconWorld.Jeweller.buy/5` spends through `BaconStore.Wallet.spend/3` (one `spend` transaction: `game_slug` `bacon_world`, memo naming the set or heels and the character, reference `bacon_world_jewel`); the store's Purchases page (`/store/orders`) lists them under "Bought with Gems" (`Wallet.spends/2`). Tested end to end with a real wallet (`jeweller_test.exs`, `store_pages_test.exs`).
+
 ### Tests
 
 The plugin's Elixir tests run with the hub's suite; the JavaScript tests run with
@@ -271,9 +357,9 @@ harness (see §8).
 | 2026-10-21 | **RaysSpaceSim's on-foot controls, minus flight**: camera-relative WASD, the character turns to face its movement, the same speeds and acceleration (`controls-math.ts`). |
 | 2026-10-21 | **EverQuest feel**: names over heads with no box, con colours, a target window, an inventory window (click to carry, click to drop or swap, right-click to equip), corpses looted killer-first, one looter at a time, combat text in the chat log. |
 | 2026-10-21 | **Skeleton creatures** live in camps outside the village; the village is safe. |
-| 2026-10-21 | **Real recorded sounds** for grunts, landings, hits and swings (CC0 recordings), **not synthesized**. |
+| 2026-10-21 | ~~**Real recorded sounds** for grunts, landings, hits and swings (CC0 recordings), **not synthesized**.~~ Reversed 2026-11-01: synthesized sounds are fine (the owner kept the synthesized ambience). |
 | 2026-10-22 | **Volume sliders**, not on/off switches, for effects, nature and music. |
-| 2026-10-25 | **Sound is immersive but never loud or jarring**: several takes of everything, never the same take twice, minimum gaps, distance dulling, music that rests between tracks. Real CC0 recordings, still not synthesized. |
+| 2026-10-25 | **Sound is immersive but never loud or jarring**: several takes of everything, never the same take twice, minimum gaps, distance dulling, music that rests between tracks. ~~Real CC0 recordings, still not synthesized.~~ (reversed 2026-11-01) |
 | 2026-10-22 | **No camera-smoothing option.** Remote-desktop jumps are repaired by `mouse-filter.ts`; a local mouse is untouched. |
 | 2026-10-21 | **Assets are ours or CC0.** Epic's content stays Unreal-only, and no paid UAL Pro/Source files from mirrors. **No DAZ-derived meshes**: the owner's two DAZ-based female files must not be used, so the female is built on MakeHuman (owner's choice, 2026-10-21). |
 | 2026-10-23 | **Asset rule widened on purpose: ours, CC0, or licensed for commercial use, credited, with the source files never redistributed.** Licensed sources (Substance .sbsar and the like) live in the gitignored shared library `C:\Bacon8\library\` with a licence table; only what we bake from them ships, and it goes on the credits page. The DAZ and Epic exclusions above still stand. |
@@ -283,7 +369,7 @@ harness (see §8).
 | 2026-10-21 | The female should be **stunning**. She is editable in Blender (`library/pipeline/Characters/B8Human/B8_Female_MPFB.blend`) so the owner can sculpt her later. |
 | 2026-10-23 | **No clothes in character creation.** New characters start in **cream bikini underwear**. |
 | 2026-10-23 | **Underwear is equipment**: a top and a bottom, separate items, layered under clothes and armour, and removable. They are ordinary 3D gear: no content warnings around them. |
-| 2026-10-23 | **At least five underwear sets for sale from an NPC merchant.** The old clothes meshes become **cloth armour**. |
+| 2026-10-23 | ~~**At least five underwear sets for sale from an NPC merchant.**~~ (superseded 2026-11-01: ten sets, below) The old clothes meshes become **cloth armour**. |
 | 2026-10-23 | **EverQuest currency**: platinum, gold, silver and copper. |
 | 2026-10-23 | **Throw Stone is removed**: it was only a test from the old web-lobby game. |
 | 2026-10-23 | **R is reserved for interactions** (NPCs now; doors and the like later). Right-clicking a merchant with the cursor free still works too. |
@@ -329,6 +415,17 @@ harness (see §8).
 | 2026-10-31 | **Slash Commands & Zone Warping**: Added `/zone` (warps to default starting location of the current zone) and `/zone x,y,z` (warps to specified coordinates). Added `/loc` / `/pos` / `/where` (coordinates and heading), `/stuck` (safe warp to zone entrance), `/die` / `/suicide` / `/kill` (instantly slays character with shatter), `/roll [max]` (zone-wide dice roll), `/shout <msg>` / `/yell` (zone-wide broadcast), `/time` (server UTC & day/night status), `/weather [type]` (view/set weather), `/help` (command reference), and emotes (`/dance`, `/wave`, `/bow`, `/cheer`, `/clap`, `/sit`, `/point`). |
 | 2026-10-31 | **Abyss / Void Death**: Falling below the world into nothingness (Y < -120 m or >25 m below terrain bottom) triggers a lethal kill event ("You fell into the abyss!"), shatters the character into physics debris, and respawns them at the safe zone entrance. |
 | 2026-10-31 | **Combat Skills & Spin Attack PvP Hits**: Fixed Spin Attack and martial skills failing to damage other players in PvP. Fixed `spin_reach` calculation (previously evaluating to only 0.6 m instead of weapon reach + 4.2 m 360-degree radius), preserved target selection for `"none"`/directional skills, added `Melee.in_arc?` player detection for untargeted strikes/cleaves/dashes, and included `pvp_hits` in `cast_result`. |
+| 2026-11-01 | ~~**Ten underwear sets replace all the old ones**: a plain linen starter and nine more sold by Tilda at **6 copper a piece** (top and bottom are separate items), each with its own cut and pattern (`library/pipeline/scripts/b8_underwear.py`); the male wears each set's bottom in a cut of his own. Retired sets owned by players move to the nearest new one (games migration `20261101000000`).~~ (superseded the same day by the garment parts, below) |
+| 2026-11-01 | **No painted muscles or blemishes on the skin** (owner: "a TERRIBLE look"), and **smoother bodies**: the body sculpt below the head is gentler and smoothed, every body slider's shape is smoothed so maxed sliders don't go blocky, and the male's upper chest has more vertices (`b8_anatomy.py` `B8_SKIN_PLAIN`, `B8_SCULPT_BODY`; `body_v3.py` `smooth_keys`). |
+| 2026-11-01 | **Synthesized sounds are allowed** (the 2026-10-21 and 2026-10-25 "not synthesized" rules are reversed) and **storm lightning stays lethal**. |
+| 2026-11-01 | **Skill points can be taken back** (owner): right-click a learned node to unlearn it and get its point back; the footer's Reset (clicked twice) unlearns everything but the start. A node others hang from comes off only after them, so the rest stays joined to the start (`Skills.unlearn/2`, `Skills.reset/1`, `SkillTree.connected?/2`; events `skill_unlearn`, `skill_reset`). |
+| 2026-11-01 | **v3 humans** (owner: "a v3 that is not embarrassing", denser breasts and face, better hair): see "The v3 humans" in §2. |
+| 2026-11-01 | ~~Ten texture-painted underwear sets (`b8_underwear.py`)~~ (reversed the same day, owner: "I want photo-realistic underwear... STOP USING THE OLD SHIT DESIGNS"): **every garment is a real 3D part in photographed fabrics**: ten new underwear sets (6c each, a cotton starter), **ten full sets of cloth armour** (head, hands, arms, wrists, chest, legs, feet) and **ten robes**, all new designs. See "Garment parts" in §2. |
+| 2026-11-01 | **Plate Mail Armor & Plate Bikinis**: Full suite of 3D heroic heavy plate armor and plate bikinis: 5 plate bikini sets (`plate_steel`, `plate_gold`, `plate_dark`, `plate_draconic`, `plate_mythril`) with male plate war-girdles/subligacula, and 5 complete 7-piece heroic plate armor sets covering all 7 equipment slots (`head`, `chest`, `arms`, `wrist`, `hands`, `legs`, `feet`) built through Blender 5.1 with PBR metallic plate materials (`plate_steel`, `plate_gold`, `plate_dark`, `plate_draconic`, `plate_mythril`, `metal_plate`). |
+| 2026-11-01 | **Chain Armor & Chain Bikinis**: Full suite of 3D chainmail gear: 4 chain bikini sets (`chain_iron`, `chain_brass`, `chain_steel`, `chain_gold`) with male subligaculum/trunks, and 4 complete 7-piece chain armor sets (`chain_iron`, `chain_steel`, `chain_gold`, `chain_dark`) covering all 7 equipment slots (head, chest, arms, wrist, hands, legs, feet) built through Blender 5.1 with PBR metallic chain materials (`chainmail`, `chain_iron`, `chain_steel`, `chain_brass`, `chain_gold`, `chain_dark`, `chain_rusted`). |
+| 2026-11-01 | **Plate is rigid plate** (owner chose the rebuild): Gemini's fitted-cloth plate (one mesh for five sets) is replaced by forged, rigidly skinned shells, every set its own design. See "Plate, rebuilt" in §2. |
+| 2026-11-01 | **The jeweller's sets are sold in-game for Gems, not in the Bacon Store** (owner: "make them available to purchase from a merchant in-game for gems"): 100 Gems a set, each with its own power. |
+| 2026-11-01 | **Retired leftovers deleted** (owner): the painted Wardrobe textures and the 28 icons of retired items are gone from the models volume; the Robin Hood Hat stays. |
 | 2026-10-31 | **Rain Effect Optimization & Visual Refinement**: Overhauled weather rain and clouds for high performance. Reduced particle count from 2,000 to 360 drops within an 18 m local camera cylinder (eliminating distant white needles across mountains and reducing CPU/bus transfer by 82%), softened streak color and opacity (`0x6e889e`, 0.08–0.22 opacity), and bypassed the cloud plane during clear weather with 2-octave shader evaluation to eliminate GPU fillrate bottlenecks. |
 
 ## 4. How it fits together
@@ -427,8 +524,9 @@ README has every script, source and run order.
   tank, wool sweater (fisherman sweater), trousers, shorts, cloth shoes and tall leather
   boots (thigh-high). The tee, sweater, flats and boots are the MakeHuman CC0 garments;
   boots go under trousers, trousers under shirts.
-- **Underwear sets**: linen (cream, the starter), athletic, rose lace, coral, polka dot and
-  emerald.
+- **Underwear sets** (2026-11-01): Linen (the starter), Ranger, Twist, Keyhole, Corset, Rose Lace, Crossfront,
+  Asymmetric, Dragonscale and Runic, 6 copper a piece at Tilda's; cuts and patterns in `b8_underwear.py`, icons by
+  `uw_icons.py`.
 - **Female hair**: 31 styles from MakeHuman's system assets and the community Hair 01 pack,
   all CC0. Each has a soft scalp decal so the hairline isn't a hard edge, and the morphs.
 - **Credits**: `priv/static/models/Humans/CREDITS.md` (models volume) and the site's
@@ -559,7 +657,7 @@ throws the shells about. Possible next levels, cheapest first:
 
 The hit sounds borrow `bone_break` and `bone_collapse`; wood and stone breaking sounds are wanted.
 
-**Sound.** Real CC0 recordings are wanted for: surf, a cast, a splash, a reel, the Kraken's water (a big splash,
+**Sound.** Sounds still wanted (recorded or synthesized) for: surf, a cast, a splash, a reel, the Kraken's water (a big splash,
 a whirlpool, a wet slap, ink), a bow's twang, an arrow's thud, rat squeaks, goblin chatter and orc grunts. The
 placeholders reuse existing recordings (`sw_drip`, `loot`, the dragon's roars pitched down).
 
@@ -572,7 +670,25 @@ timely reel): no fishing skill, bait or rod tiers, and fish can't be cooked yet.
 get the linen set and 1 gold at their next login. Throw Stone's spell rows stay in the games DB (retired in code);
 deleting them needs the owner's OK.
 
+**Review of the 2026-10-30/31 changes (done 2026-11-01)**
+
+- Fixed: the service worker and the ambience files never shipped (Dockerfile), the 404 storm, `/zone x,y,z` and
+  `/weather` open to every player (now GMs and admins; `/stuck` for all), smash able to delete anything from anywhere,
+  every smash hit re-reading the zone's placements from Postgres (`Building.cached/1`), the ETS caches owned by
+  whichever player's process made them (now `BuildingRegen`), `view/2` crashing when the table was missing, the
+  damaged-but-not-broken hit result never matching its callers, the rule caches leaking between tests, and five
+  compile warnings (the commits never passed `--warnings-as-errors`).
+- Owner, 2026-11-01: **lethal lightning stays** (a storm kills anyone outdoors in a 3.5 m ring every 14-25 s, decided by
+  each client's own clock) and **the synthesized ambience stays**. Still open: `account_online_elsewhere?`
+  now lets the same character in from a second tab (meant for reloads); the abyss check trusts the client's `y` (it can
+  only kill itself).
+
 **Characters (art)**
+
+- v3 (2026-11-01) needs a look in the game: the hair is new geometry (cards up to ~70k vertices for braids; the
+  female body ~57k). Things to watch: hair clipping the shoulders in animation (hair below the head is weighted to
+  neck_01/spine_03), the scalp decal z-fighting at distance, and the body GLB size (~4x the old one; the service worker
+  keeps it after the first load). The face of the MakeHuman base is unchanged; the six sliders sculpt it.
 
 - Tuning the male's posture: all of it is in `mhm_build.py`'s `POSTURE`; the harness's `?tilt=`, `?spine=a,b,c`,
   `?clav=fwd,down`, `?arm=free:u,l;torch:u,l`, `?fh=x,y,z` and `?relax=index:a,b,c,s;...` override the manifest on

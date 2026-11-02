@@ -42,21 +42,48 @@ defmodule BaconWorld.Building do
   @roles ~w(member editor moderator gm admin)
 
   @props ~w(Amphora Anvil ArcheryTarget Banner Barrel BarrelSide BarrelWater Basket Bed Bedroll Bench Book
-            Bookshelf Bottle Boulder Bowl Brazier Bucket Bush BushFlowers Cabinet Campfire Candelabra Candle
-            Cart Cauldron Chair Chest ClayPot CoinPile Crate CrateSmall CrateStack Desk FishingFish FoodBread
-            FoodCheese FoodMeat FoodPumpkin Forge GemPile Goblet GrassTuft Haystack Jug Key LampPost
-            LanternProp Lever Log LootBag MarketStall Mug Mushrooms PlateFood PotionBlue PotionGreen PotionRed
-            PressurePlate Rock1 Rock2 Rock3 RopeCoil Rug Sack SackPile Scarecrow Scroll SignHanging Signpost
-            Skull Statue Stool Stump Table TableRound Tent Throne Tombstone TorchSconce TrainingDummy TreeDead
-            TreeOak TreePine Waystone WeaponRack Well Wheelbarrow Woodpile Workbench)
-  @kit ~w(Arch_Stone Beam_Wood Chimney_Stone Door_Wood Fence_Gate Fence_Stone Fence_Wood Floor_Stone
-          Floor_Wood Foundation_Stone Foundation_Wood Gate_Wood Ladder_Wood Pillar_Stone Pillar_Wood
-          Railing_Wood Roof_Flat Roof_Ridge Roof_Shingle Roof_Thatch Roof_Tile Shutters_Wood Stairs_Stone
-          Stairs_Wood Wall_Stone Wall_Stone_Door Wall_Stone_Gable Wall_Stone_Gateway Wall_Stone_Half
-          Wall_Stone_Window Wall_Wood Wall_Wood_Door Wall_Wood_Gable Wall_Wood_Half Wall_Wood_Window
-          Window_Glass)
-  @plants ~w(Bush BushFlowers GrassTuft Mushrooms Stump Log TreeDead TreeOak TreePine Haystack)
-  @rocks ~w(Boulder Rock1 Rock2 Rock3)
+            Bookshelf Bottle Boulder BoulderGranite Bowl Brazier Bucket Bush BushFlowers Cabinet Campfire
+            Candelabra Candle Cart Cauldron Chair Chest ClayPot CoinPile Crate CrateSmall CrateStack
+            CrystalsBlue CrystalsGreen CrystalsPurple Desk FishingFish FoodBread FoodCheese FoodMeat
+            FoodPumpkin Forge GemPile Goblet GrassTuft Haystack Jug Key LampPost LanternProp Lever Log
+            LogCluster LogHollow LootBag MarketStall Mug Mushrooms OreDarkVein PebblesScatter PlateFood
+            PotionBlue PotionGreen PotionRed PressurePlate Rock1 Rock2 Rock3 RockGraniteCluster RockMossy
+            RockMossyCluster RopeCoil Rug Sack SackPile SaplingBirch SaplingOak SaplingPine Scarecrow Scroll
+            SignHanging Signpost Skull Statue SteppingStones Stool Stump StumpHollow StumpMossy Table
+            TableRound Tent Throne Tombstone TorchSconce TrainingDummy TreeBirch TreeBlossom TreeDead
+            TreeEnchanted TreeOak TreePine TreeWillow Waystone WeaponRack Well Wheelbarrow Woodpile
+            Workbench)
+  @kit ~w(Arch_Brick Arch_Passageway_Stone Arch_Ruined_Stone Arch_Stone Arch_Stone_Ornate Arch_Wood_Rough
+          Beam_Wood Chimney_Stone Door_Barn_Sliding Door_Cathedral_Arched Door_Gate_Double_Wood Door_Gate_Iron_Ornate
+          Door_Iron_Studded Door_Jail_Heavy Door_Rustic_Wood Door_Wood Door_Wooden_Dilapidated Fence_Gate
+          Fence_Stone Fence_Wood Floor_Brick_Herringbone Floor_Clay_Tile Floor_Cobblestone_Broken Floor_Cobblestone_Uneven
+          Floor_Dirt_Flat Floor_Flagstone_Dungeon Floor_Flagstone_Mossy Floor_Forest_Leaves Floor_Grass_Fern_Lush
+          Floor_Grass_Patchy Floor_Grate_Rusty_Iron Floor_Gravel_Mud Floor_Mud_Cracked Floor_Rug_Wood_Worn
+          Floor_Sand_Desert Floor_Stone Floor_Stone_Path_Overgrown Floor_Stone_Paver_Fine Floor_Terracotta_Patterned
+          Floor_Timber_Sturdy Floor_Wood Floor_Wood_Rotting Foundation_Stone Foundation_Wood Gate_Dungeon
+          Gate_Wood Hatch_Cellar Ladder_Rope Ladder_Steep_Steps Ladder_Wood Ladder_Wood_Double Pillar_Stone
+          Pillar_Wood Portcullis_Iron Railing_Wood Ramp_Stone_Heavy Ramp_Timber_Mud Ramp_Wood_Short Roof_Copper_Peak
+          Roof_Flat Roof_Gable_Wood_Ornate Roof_Metal_Corrugated_Rusty Roof_Overgrown_Leafy Roof_Ridge
+          Roof_Shingle Roof_Shingle_Damaged Roof_Shingle_Wood_Peak Roof_Shingle_Wood_Slope Roof_Slate_Mossy
+          Roof_Slate_Slope Roof_Slate_Valley Roof_Stone_Flat_Parapet Roof_Thatch Roof_Thatch_Corner Roof_Thatch_Peak
+          Roof_Thatch_Ruined Roof_Tile Roof_Tile_Red_Peak Roof_Tile_Red_Slope Scaffolding_Base Scaffolding_Extension
+          Scaffolding_Platform_Ladder Shutters_Wood Stairs_Metal_Industrial Stairs_Spiral_Stone Stairs_Spiral_Wood
+          Stairs_Stone Stairs_Stone_Basic Stairs_Stone_Chipped Stairs_Stone_Curved Stairs_Stone_Grand
+          Stairs_Wood Stairs_Wood_Basic Wall_Ancient_Mossy Wall_Brick_Burnt_Red Wall_Brick_Fine_Red Wall_Brick_Industrial
+          Wall_Cobblestone_Coarse Wall_Dry_Stone Wall_Granite_Rough Wall_Iron_Reinforced Wall_Log_Cabin_H
+          Wall_Log_Corner_Angled Wall_Marble_Decorative Wall_Palisade_Vertical Wall_Plaster_Exposed_Brick
+          Wall_Plaster_Stone_Base Wall_Plate_Rusting Wall_Ruin_Brick_Blasted Wall_Ruin_Stone_Crumbled
+          Wall_Ruin_Timber_Collapsed Wall_Sandstone_Brick Wall_Stone Wall_Stone_Corner_Angled Wall_Stone_Curved
+          Wall_Stone_Door Wall_Stone_Gable Wall_Stone_Gateway Wall_Stone_Half Wall_Stone_T_Junction Wall_Stone_Window
+          Wall_Thatch_Mud Wall_Timber_Decayed Wall_Timber_Intact Wall_Timber_Tudor Wall_Wood Wall_Wood_Carved
+          Wall_Wood_Door Wall_Wood_Gable Wall_Wood_Half Wall_Wood_Plank_H Wall_Wood_Rough Wall_Wood_Window
+          Window_Arrow_Slit Window_Circular_Glass Window_Double_Pane Window_Glass Window_Leaded_Glass
+          Window_Square_Small Window_Stained_Glass_Ornate Window_Standard_Glass)
+  @plants ~w(Bush BushFlowers GrassTuft Mushrooms Stump StumpHollow StumpMossy Log LogHollow LogCluster
+             TreeBirch TreeBlossom TreeDead TreeEnchanted TreeOak TreePine TreeWillow SaplingBirch
+             SaplingOak SaplingPine Haystack)
+  @rocks ~w(Boulder BoulderGranite Rock1 Rock2 Rock3 RockGraniteCluster RockMossy RockMossyCluster
+            OreDarkVein CrystalsBlue CrystalsPurple CrystalsGreen PebblesScatter SteppingStones)
   # the waystone will be the binding stone (BACON_WORLD.md): admins only, like the bosses
   @admin_props ~w(Waystone)
 
@@ -146,6 +173,19 @@ defmodule BaconWorld.Building do
 
   @rules_cache_key :bacon_world_asset_rules
   @hps_cache_key :bacon_world_asset_hps
+
+  @doc """
+  Forgets the cached rules, HP rules and placements, so the next read comes from the database.
+  For tests (the database rolls back, the caches don't) and for a node that missed a change.
+  """
+  def reset_caches do
+    :persistent_term.erase(@rules_cache_key)
+    :persistent_term.erase(@hps_cache_key)
+    ensure_cache_tables()
+    :ets.delete_all_objects(:bacon_world_placements_cache)
+    :ets.delete_all_objects(:bacon_world_placement_hp)
+    :ok
+  end
 
   @doc "`%{asset => min_role}`: the admins' rules over the defaults (cached in `:persistent_term`)."
   def rules do
@@ -283,9 +323,12 @@ defmodule BaconWorld.Building do
     ensure_cache_tables()
 
     rows = GamesRepo.all(from(p in Placement, where: p.zone == ^zone, order_by: p.inserted_at))
+    # the cache is replaced, not added to: a row deleted some other way must not linger
+    :ets.match_delete(:bacon_world_placements_cache, {{zone, :_}, :_})
     Enum.each(rows, fn p ->
       :ets.insert(:bacon_world_placements_cache, {{zone, p.id}, p})
     end)
+    :ets.insert(:bacon_world_placements_cache, {{zone, :loaded}, true})
 
     Enum.map(rows, &view(&1, h_map))
   rescue
@@ -363,6 +406,31 @@ defmodule BaconWorld.Building do
     end
   end
 
+  @doc """
+  The zone's placements as `%Placement{}` structs, from the in-memory cache (loaded from the
+  database the first time). For hit tests: a swing, a spell or a mount's move used to run
+  `list/1` (every row of the zone from the database, 550-1,000 of them) on every hit
+  (2026-11-01).
+  """
+  def cached(zone) do
+    ensure_cache_tables()
+
+    case :ets.lookup(:bacon_world_placements_cache, {zone, :loaded}) do
+      [_] -> :ok
+      [] -> list(zone)
+    end
+
+    for {{_z, id}, %Placement{} = p} <- :ets.match_object(:bacon_world_placements_cache, {{zone, :_}, :_}), id != :loaded, do: p
+  end
+
+  @doc "True when placement `id` is within `range` (metres) of the point (metres)."
+  def near?(zone, id, x, z, range) do
+    case get(zone, id) do
+      %Placement{x: px, z: pz} -> :math.sqrt((px - x) * (px - x) + (pz - z) * (pz - z)) <= range
+      _ -> false
+    end
+  end
+
   @doc "Fetches a placement by zone and ID."
   def get(zone, id) when is_binary(id) do
     ensure_cache_tables()
@@ -388,6 +456,13 @@ defmodule BaconWorld.Building do
 
   @doc "True if `id` is a placed object in `zone`."
   def placement?(zone, id), do: !is_nil(get(zone, id))
+
+  @doc """
+  Creates the two ETS tables. `BaconWorld.BuildingRegen` calls it when it starts, so it owns them:
+  a table belongs to the process that made it and goes when that process ends, and these used to be
+  made by whichever LiveView got there first, so they vanished when that player left (2026-11-01).
+  """
+  def ensure_tables, do: ensure_cache_tables()
 
   defp ensure_cache_tables do
     ensure_hp_table()
@@ -423,10 +498,17 @@ defmodule BaconWorld.Building do
   All players with Smash toggle ON may damage and destroy buildable objects with weapons/skills.
   When HP reaches 0, the object is shattered and deleted.
   """
-  def damage_placement(_user, zone, id, amount) when is_number(amount) and amount > 0 do
+  # Who may smash what (2026-11-01): the same rule as deleting it in build mode. Anyone who may
+  # place a kind of thing may break one (the owner's rule for deleting, 2026-10-26), and nobody but
+  # GMs and admins breaks anything within a binding stone's town. Before, any player could smash
+  # anything, the village, the binding stones, the creature camps and the merchants included, and a
+  # smashed placement is deleted for good.
+  def damage_placement(user, zone, id, amount) when is_number(amount) and amount > 0 do
     amount = max(1, round(amount))
     ensure_hp_table()
-    with %Placement{} = p <- get(zone, id) || {:error, "That isn't there any more."} do
+    with %Placement{} = p <- get(zone, id) || {:error, "That isn't there any more."},
+         true <- can_place?(user, p.asset) || {:error, "You can't break that."},
+         :ok <- town_ok(user, zone, [{p.x, p.z}], p.id) do
       m_hp = max_hp(p.asset)
       cur_hp =
         case :ets.lookup(:bacon_world_placement_hp, {zone, id}) do
@@ -440,7 +522,7 @@ defmodule BaconWorld.Building do
       if new_hp <= 0 do
         :ets.delete(:bacon_world_placements_cache, {zone, id})
         :ets.delete(:bacon_world_placement_hp, {zone, id})
-        case GamesRepo.delete(p) do
+        case GamesRepo.delete(p, stale_error_field: :id) do
           {:ok, _} ->
             if String.starts_with?(p.asset, "mob:"), do: Mobs.put_points(zone, p.id, [])
             Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_removed, p.id, p.asset, :smashed})
@@ -452,7 +534,9 @@ defmodule BaconWorld.Building do
       else
         :ets.insert(:bacon_world_placement_hp, {{zone, id}, new_hp, m_hp, p.asset})
         Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_damaged, p.id, p.asset, new_hp, m_hp, amount})
-        {:ok, :damaged, new_hp, m_hp, view(p)}
+        # the same shape as :destroyed (the callers matched only that one, so a hit that didn't
+        # break the thing showed no damage number); `view` carries the new hp
+        {:ok, :damaged, view(p)}
       end
     end
   end
@@ -570,12 +654,7 @@ defmodule BaconWorld.Building do
   def view(%Placement{} = p, hps_map \\ nil) do
     h_map = hps_map || hps()
     m_hp = max_hp(p.asset, h_map)
-    cur_hp =
-      case :ets.lookup(:bacon_world_placement_hp, {p.zone, p.id}) do
-        [{_, hp, _, _}] -> hp
-        [{_, hp}] -> hp
-        [] -> m_hp
-      end
+    cur_hp = get_placement_hp(p.zone, p.id) || m_hp
 
     base = %{
       id: p.id,

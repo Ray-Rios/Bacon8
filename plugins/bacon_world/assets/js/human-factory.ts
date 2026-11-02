@@ -10,6 +10,9 @@
 // Files (served from the models volume, see BaconWorld.Models.human_assets/0):
 //   /models/Humans/Male.glb, Female.glb            bodies (meshopt-compressed)
 //   /models/Humans/Hair/<file>.glb                 hair and facial hair styles
+//   /models/Humans/Garments/<Body>/<item>.glb      clothes made as their own parts (2026-11-01,
+//                                                  garment-parts.ts), bound to the bones like hair
+//   /models/Humans/Fabrics/<fabric>_c|_n|_r.webp   their photographed fabrics (shared, tiling)
 //   /models/Humans/Hair/icons/<file>.png           style thumbnails for the creator
 // The manifests (Male.json, Female.json, Hair/hair_manifest.json) reach the client through
 // the LiveView (data-human-assets), because /models only serves runtime formats.
@@ -24,6 +27,8 @@ import { UNITS_PER_METRE } from './controls-math';
 import { modelUrl } from './asset-url';
 import { item as catalogItem } from './items';
 import { twoHandPose, type TwoHandPose } from './two-hand';
+import { Cover, FabricMeta, PartMeta, coverMask, decodeCover, dilateCover, parseMeta } from './garment-parts';
+import { fabricMaterial, tintFabric } from './garment-materials';
 import {
   Gear, KEEP_TRANSLATION, WornGarment, approach, boneOffsets, designFiles, gearKey, hiddenFor, relaxedCurl, relaxedSpread, wornGarments,
 } from './wardrobe';
@@ -92,6 +97,46 @@ interface BodyAsset {
 
 const TAG: Record<Body, 'Male' | 'Female'> = { male: 'Male', female: 'Female' };
 
+/** A garment part on one human (HumanInstance.parts). */
+interface WornPart {
+  obj: THREE.Group;
+  base: Map<THREE.Mesh, THREE.BufferGeometry>;
+  materials: THREE.MeshStandardMaterial[];
+  cover: Cover | null;
+  /** the cover grown for testing inner layers, made when first needed */
+  coverIn?: Cover;
+  layer: number;
+  colorsKey: string;
+  /** a hat's hair clip (b8_garments: {c, r, tilt, mode}) */
+  hair: { c: number[]; r: number[]; tilt?: number; mode?: string } | null;
+  /** heels: the feet pointed and the body lifted (PartMeta.heel) */
+  heel?: { deg: number; rise: number } | null;
+}
+
+/**
+ * Hair under a hat: fragments inside the hat's footprint (an ellipse across x/z, rest pose) and
+ * above its band (a tilted plane) are discarded; mode "hide" (hoods, coifs) takes everything
+ * inside the ellipse above the band. Uniforms live on material.userData.b8Hat.
+ */
+function hatClip(m: THREE.Material & { onBeforeCompile: any; customProgramCacheKey: any }, rest: THREE.Matrix4) {
+  const u = { b8RestM: { value: rest }, b8Hat: { value: new THREE.Vector4() }, b8HatR: { value: new THREE.Vector4(1, 0, 1, 0) } };
+  m.userData.b8Hat = u;
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (sh: any, r: any) => {
+    prev?.call(m, sh, r);
+    Object.assign(sh.uniforms, u);
+    // after the morphs, before skinning (the chunk was renamed morphtarget_vertex in newer three.js)
+    const at = ['#include <morphtarget_vertex>', '#include <morph_vertex>', '#include <begin_vertex>'].find((c) => sh.vertexShader.includes(c))!;
+    sh.vertexShader = 'uniform mat4 b8RestM;\nvarying vec3 vB8Rest;\n' + sh.vertexShader.replace(at, at + '\n\tvB8Rest = (b8RestM * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = 'uniform vec4 b8Hat;\nuniform vec4 b8HatR;\nvarying vec3 vB8Rest;\n' + sh.fragmentShader.replace(
+      'void main() {',
+      'void main() {\n\tif (b8HatR.w > 0.5) { vec2 hd = (vB8Rest.xz - b8Hat.xz) / b8HatR.xz; if (dot(hd, hd) < 1.0 && vB8Rest.y > b8Hat.y + b8Hat.w * (vB8Rest.z - b8Hat.z)) discard; }'
+    );
+  };
+  const prevKey = m.customProgramCacheKey?.bind(m);
+  m.customProgramCacheKey = () => (prevKey ? prevKey() : '') + '|b8hat';
+}
+
 /**
  * The clips key every bone's translation at its rest value. Only the root, the pelvis and the
  * weapon grips really move; the rest are dropped, so the bones the morphs move (and the
@@ -121,6 +166,12 @@ export class HumanFactory {
   private packs = new Map<string, Promise<THREE.AnimationClip[]>>();
   private filtered = new WeakMap<THREE.BufferGeometry, Map<string, THREE.BufferGeometry>>();
   private textures = new Map<string, Promise<THREE.Texture | null>>();
+  private fabricTex = new Map<string, Promise<THREE.Texture | null>>();
+  private partInfo = new WeakMap<THREE.Object3D, { meta: PartMeta; cover: Cover | null }>();
+  /** Rest-pose positions (glTF metres) of skinned templates whose positions are quantized. */
+  private restPoints = new WeakMap<THREE.BufferGeometry, Float32Array>();
+  /** Per skinned template geometry: raw (quantized) position -> rest metres. */
+  restMatrix = new WeakMap<THREE.BufferGeometry, THREE.Matrix4>();
   assets: HumanAssets;
 
   constructor(assets: HumanAssets = {}) {
@@ -158,6 +209,7 @@ export class HumanFactory {
       const tag = TAG[body];
       p = this.load(`${HUMANS_BASE}/${tag}.glb`).then((gltf: any) => {
         const scene: THREE.Object3D = gltf.scene;
+        this.noteRestPoints(scene);
         const bodyMesh = scene.getObjectByName(`${tag}_Body`) as THREE.SkinnedMesh | undefined;
         return {
           tag,
@@ -201,11 +253,107 @@ export class HumanFactory {
   loadPart(file: string): Promise<THREE.Object3D | null> {
     let p = this.parts.get(file);
     if (!p) {
-      p = this.load(`${HUMANS_BASE}/Hair/${file}`).then((g: any) => g.scene as THREE.Object3D).catch((err) => {
+      p = this.load(`${HUMANS_BASE}/Hair/${file}`).then((g: any) => {
+        this.noteRestMatrices(g.scene);
+        return g.scene as THREE.Object3D;
+      }).catch((err) => {
         console.warn('[humans] part failed to load', file, err);
         return null;
       });
       this.parts.set(file, p);
+    }
+    return p;
+  }
+
+  /**
+   * The meshopt'd GLBs store quantized positions (KHR_mesh_quantization) and fold the scale into
+   * the inverse bind matrices, so a template's raw positions aren't metres. Cover sets are in rest
+   * metres: keep each skinned template's rest positions (any bone's bind gives the same at rest).
+   */
+  private noteRestPoints(scene: THREE.Object3D) {
+    scene.updateMatrixWorld(true);
+    const M = new THREE.Matrix4();
+    const v = new THREE.Vector3();
+    scene.traverse((o: any) => {
+      if (!o.isSkinnedMesh || !o.skeleton?.bones?.length) return;
+      const geo = o.geometry as THREE.BufferGeometry;
+      if (this.restPoints.has(geo)) return;
+      M.copy(o.bindMatrixInverse).multiply(o.skeleton.bones[0].matrixWorld).multiply(o.skeleton.boneInverses[0]).multiply(o.bindMatrix);
+      this.restMatrix.set(geo, M.clone());
+      const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+      const out = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(M);
+        out[i * 3] = v.x;
+        out[i * 3 + 1] = v.y;
+        out[i * 3 + 2] = v.z;
+      }
+      this.restPoints.set(geo, out);
+    });
+  }
+
+  /** Rest matrices only (hair: no masks needed, just the hat clip). */
+  private noteRestMatrices(scene: THREE.Object3D) {
+    scene.updateMatrixWorld(true);
+    scene.traverse((o: any) => {
+      if (!o.isSkinnedMesh || !o.skeleton?.bones?.length || this.restMatrix.has(o.geometry)) return;
+      const M = new THREE.Matrix4().copy(o.bindMatrixInverse).multiply(o.skeleton.bones[0].matrixWorld).multiply(o.skeleton.boneInverses[0]).multiply(o.bindMatrix);
+      this.restMatrix.set(o.geometry, M);
+    });
+  }
+
+  /** Loads (once) a garment part GLB (path under /models/Humans) and returns its scene. */
+  loadGarment(rel: string): Promise<THREE.Object3D | null> {
+    const key = `garment:${rel}`;
+    let p = this.parts.get(key);
+    if (!p) {
+      p = this.load(`${HUMANS_BASE}/${rel}`).then((g: any) => g.scene as THREE.Object3D).catch((err) => {
+        console.warn('[humans] garment failed to load', rel, err);
+        return null;
+      });
+      this.parts.set(key, p);
+    }
+    return p;
+  }
+
+  /** A garment part's extras (layer, cover set), decoded once per template. */
+  partMeta(tpl: THREE.Object3D): { meta: PartMeta; cover: Cover | null } {
+    let info = this.partInfo.get(tpl);
+    if (!info) {
+      let meta: PartMeta | null = null;
+      tpl.traverse((o: any) => {
+        if (!meta && o.userData?.b8_part) meta = parseMeta<PartMeta>(o.userData.b8_part);
+      });
+      const m: PartMeta = meta || {};
+      info = { meta: m, cover: decodeCover(m.cover) };
+      this.partInfo.set(tpl, info);
+    }
+    return info;
+  }
+
+  /** A fabric texture (Humans/Fabrics/<fabric>_<kind>.webp: c colour, n normal, r roughness), tiling, loaded once. */
+  fabricTexture(fabric: string, kind: 'c' | 'n' | 'r'): Promise<THREE.Texture | null> {
+    const key = `${fabric}_${kind}`;
+    let p = this.fabricTex.get(key);
+    if (!p) {
+      p = new Promise((resolve) => {
+        new THREE.TextureLoader().load(
+          modelUrl(`${HUMANS_BASE}/Fabrics/${key}.webp`),
+          (t) => {
+            t.flipY = false;
+            t.colorSpace = kind === 'c' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+            t.wrapS = t.wrapT = THREE.RepeatWrapping;
+            t.anisotropy = 8;
+            resolve(t);
+          },
+          undefined,
+          () => {
+            console.warn('[humans] fabric texture failed to load', key);
+            resolve(null);
+          }
+        );
+      });
+      this.fabricTex.set(key, p);
     }
     return p;
   }
@@ -235,29 +383,40 @@ export class HumanFactory {
     return p;
   }
 
-  /** The body geometry with the triangles under `hidden` regions removed (cached). */
-  bodyGeometry(asset: BodyAsset, hidden: number[]): THREE.BufferGeometry | null {
-    return asset.bodyGeo ? this.filteredGeometry(asset.bodyGeo, hidden) : null;
+  /** The body geometry with the triangles under `hidden` regions and garment covers removed (cached). */
+  bodyGeometry(asset: BodyAsset, hidden: number[], covers: Cover[] = [], coverKey = ''): THREE.BufferGeometry | null {
+    return asset.bodyGeo ? this.filteredGeometry(asset.bodyGeo, hidden, covers, coverKey) : null;
   }
 
   /**
    * A mesh's geometry without the triangles whose three corners are all in `hidden` regions
    * (vertex attribute `_region`): the skin under clothes, and the parts of a garment under
-   * another (trousers under a shirt's hem or a boot). Cached per template and hidden set.
+   * another (trousers under a shirt's hem or a boot). Garment parts add cover sets: a triangle
+   * whose three corners are under them goes too (corners are tested at their skin point,
+   * attribute _anchor, or where they are). Cached per template, hidden set and covers.
    */
-  filteredGeometry(tpl: THREE.BufferGeometry, hidden: number[]): THREE.BufferGeometry {
+  filteredGeometry(tpl: THREE.BufferGeometry, hidden: number[], covers: Cover[] = [], coverKey = ''): THREE.BufferGeometry {
     let cache = this.filtered.get(tpl);
     if (!cache) {
       cache = new Map();
       this.filtered.set(tpl, cache);
     }
-    const key = [...new Set(hidden)].sort((a, b) => a - b).join(',');
+    const hkey = [...new Set(hidden)].sort((a, b) => a - b).join(',');
+    const key = covers.length ? `${hkey}|${coverKey}` : hkey;
     const hit = cache.get(key);
     if (hit) return hit;
     const region = tpl.getAttribute('_region') as THREE.BufferAttribute | undefined;
     const index = tpl.getIndex();
+    let mask: Uint8Array | null = null;
+    if (covers.length) {
+      // a garment's corners are tested at their skin point; the body's at its rest position
+      const anchor = tpl.getAttribute('_anchor') as THREE.BufferAttribute | undefined;
+      const rest = this.restPoints.get(tpl);
+      if (anchor) mask = coverMask(anchor.array as ArrayLike<number>, anchor.count, covers, anchor.itemSize);
+      else if (rest) mask = coverMask(rest, rest.length / 3, covers, 3);
+    }
     let geo: THREE.BufferGeometry;
-    if (!region || !index || key === '') {
+    if (!index || ((!region || hkey === '') && !mask)) {
       geo = tpl;
     } else {
       const hide = new Set(hidden);
@@ -270,7 +429,8 @@ export class HumanFactory {
         const end = Math.min(src.length, r.start + r.count);
         for (let i = r.start; i + 2 < end; i += 3) {
           const a = src[i], b = src[i + 1], c = src[i + 2];
-          if (hide.has(Math.round(region.getX(a))) && hide.has(Math.round(region.getX(b))) && hide.has(Math.round(region.getX(c)))) continue;
+          if (region && hide.size && hide.has(Math.round(region.getX(a))) && hide.has(Math.round(region.getX(b))) && hide.has(Math.round(region.getX(c)))) continue;
+          if (mask && mask[a] && mask[b] && mask[c]) continue;
           keep.push(a, b, c);
         }
         groups.push({ start, count: keep.length - start, materialIndex: r.materialIndex });
@@ -541,6 +701,14 @@ function approachDeg(cur: number, target: number, rate: number, dt: number): num
   return cur < target ? Math.min(target, cur + step) : Math.max(target, cur - step);
 }
 
+const _UP = new THREE.Vector3(0, 1, 0);
+const _hv1 = new THREE.Vector3();
+const _hv2 = new THREE.Vector3();
+const _hv3 = new THREE.Vector3();
+const _hv4 = new THREE.Vector3();
+const _hq1 = new THREE.Quaternion();
+const _hq2 = new THREE.Quaternion();
+
 export class HumanInstance {
   readonly root: THREE.Group;
   readonly model: THREE.Object3D;
@@ -554,6 +722,11 @@ export class HumanInstance {
   private baseGeometry = new Map<THREE.Mesh, THREE.BufferGeometry>();
   private materials = new Map<string, THREE.MeshStandardMaterial[]>();
   private hair: { file: string; obj: THREE.Object3D } | null = null;
+  /** Garment parts worn (by GLB path) and the ones loading. */
+  private parts = new Map<string, WornPart>();
+  private partsLoading = new Set<string>();
+  /** The morph weights last applied (new parts take them on). */
+  private morphW: Record<string, number> = {};
   private facial: { file: string; obj: THREE.Object3D } | null = null;
   private applying: Promise<void> = Promise.resolve();
   private disposed = false;
@@ -825,11 +998,13 @@ export class HumanInstance {
       this.facial = await this.swapPart(this.facial, facialEntry);
     }
     if (this.disposed) return;
+    this.applyHatClip(this.worn.filter((g) => g.part && this.parts.has(g.part)));
     this.tintPart(this.hair, a.hair.color);
     this.tintPart(this.facial, a.facial.color || a.hair.color);
 
     // morph targets on every mesh that has them (body, garments, facial hair)
     const w = morphWeights(a);
+    this.morphW = w;
     this.root.traverse((m: any) => {
       if (!m.isMesh || !m.morphTargetDictionary || !m.morphTargetInfluences) return;
       for (const [name, i] of Object.entries(m.morphTargetDictionary as Record<string, number>)) {
@@ -859,13 +1034,46 @@ export class HumanInstance {
 
   private dress() {
     if (this.disposed) return;
-    const shown = new Set(this.worn.map((g) => g.garment));
+    const shown = new Set(this.worn.filter((g) => !g.part).map((g) => g.garment));
     for (const [id, node] of this.garments) node.visible = shown.has(id);
     const hidden = this.factory.hiddenRegions(this.asset, [...shown].filter((g) => this.garments.has(g)));
+    // garment parts: drop what is no longer worn, start loading what is (dress runs again when one arrives)
+    this.syncParts();
+    const partsWorn = this.worn.filter((g) => g.part && this.parts.has(g.part));
+    const coverOf = (g: WornGarment) => this.parts.get(g.part!)!.cover;
+    const covering = partsWorn.filter((g) => coverOf(g));
+    const covers = covering.map((g) => coverOf(g)!) as Cover[];
+    const coverKey = covering.map((g) => g.part).join(',');
     if (this.bodyMesh) {
-      const geo = this.factory.bodyGeometry(this.asset, hidden);
+      const geo = this.factory.bodyGeometry(this.asset, hidden, covers, coverKey);
       if (geo && this.bodyMesh.geometry !== geo) this.bodyMesh.geometry = geo;
     }
+    // a hat hides the hair inside it
+    this.applyHatClip(partsWorn);
+    // a part under another loses what the outer one covers; colours follow the item
+    partsWorn.forEach((g, i) => {
+      const p = this.parts.get(g.part!)!;
+      const outer = partsWorn.slice(i + 1).filter((o) => o.layer > g.layer && coverOf(o));
+      // inner layers test against the grown cover (see dilateCover)
+      const oc = outer.map((o) => {
+        const q = this.parts.get(o.part!)!;
+        if (!q.coverIn) q.coverIn = dilateCover(q.cover!, 2);
+        return q.coverIn;
+      });
+      const okey = outer.map((o) => o.part).join(',');
+      for (const [m, base] of p.base) {
+        const geo = this.factory.filteredGeometry(base, [], oc, okey);
+        if (m.geometry !== geo) m.geometry = geo;
+      }
+      const ck = JSON.stringify(g.colors);
+      if (p.colorsKey !== ck) {
+        p.colorsKey = ck;
+        for (const mat of p.materials) {
+          const meta = mat.userData.b8 as FabricMeta | undefined;
+          if (meta) tintFabric(mat, meta, g.colors);
+        }
+      }
+    });
     // a garment worn under another loses the part the other covers
     for (const node of this.garments.values()) {
       if (!node.visible) continue;
@@ -893,6 +1101,90 @@ export class HumanInstance {
         this.tint(`${g.garment}_Trim`, c.trim || c.main || '#FFFFFF');
       }
     }
+  }
+
+  /** The worn hat's hair clip (extras "hair": a band height and the ellipse it covers) onto the hair materials. */
+  private applyHatClip(partsWorn: WornGarment[]) {
+    let clip: number[] | null = null;
+    for (const g of partsWorn) {
+      const h = this.parts.get(g.part!)?.hair;
+      if (h && Array.isArray(h.c) && Array.isArray(h.r)) clip = [h.c[0], h.c[1], h.c[2], h.tilt || 0, h.r[0], h.r[2] ?? h.r[1], h.mode === 'hide' ? 2 : 1];
+    }
+    this.hair?.obj.traverse((m: any) => {
+      if (!m.isMesh) return;
+      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+        const u = mat.userData?.b8Hat;
+        if (!u) continue;
+        if (clip) {
+          u.b8Hat.value.set(clip[0], clip[1], clip[2], clip[3]);
+          u.b8HatR.value.set(clip[4], clip[6] === 2 ? 1 : 0, clip[5], 1);
+        } else u.b8HatR.value.w = 0;
+      }
+    });
+  }
+
+  /** Removes parts no longer worn and starts loading new ones. */
+  private syncParts() {
+    const want = new Map<string, WornGarment>();
+    for (const g of this.worn) if (g.part) want.set(g.part, g);
+    for (const [file, p] of this.parts) {
+      if (want.has(file)) continue;
+      p.obj.parent?.remove(p.obj);
+      p.materials.forEach((m) => m.dispose());
+      this.parts.delete(file);
+    }
+    for (const file of want.keys()) {
+      if (this.parts.has(file) || this.partsLoading.has(file)) continue;
+      this.partsLoading.add(file);
+      void this.factory.loadGarment(file).then((tpl) => {
+        this.partsLoading.delete(file);
+        if (!tpl || this.disposed || this.parts.has(file)) return;
+        const now = this.worn.find((x) => x.part === file);
+        if (!now) return;
+        this.parts.set(file, this.makePart(tpl, now));
+        this.dress();
+      });
+    }
+  }
+
+  /** A garment part bound to this body's bones, its fabrics tinted for the item, morphs set. */
+  private makePart(tpl: THREE.Object3D, g: WornGarment): WornPart {
+    const info = this.factory.partMeta(tpl);
+    const group = new THREE.Group();
+    group.name = `Garment_${g.item}`;
+    const base = new Map<THREE.Mesh, THREE.BufferGeometry>();
+    const materials: THREE.MeshStandardMaterial[] = [];
+    const tex = (f: string, k: 'c' | 'n' | 'r') => this.factory.fabricTexture(f, k);
+    tpl.traverse((src: any) => {
+      if (!src.isSkinnedMesh) return;
+      const bones = src.skeleton.bones.map((b: THREE.Bone) => this.bones.get(b.name));
+      if (bones.some((b: any) => !b)) return;
+      const srcMats: any[] = Array.isArray(src.material) ? src.material : [src.material];
+      const mats = srcMats.map((m: any) => {
+        const meta = parseMeta<FabricMeta>(m.userData?.b8);
+        const mat = meta ? fabricMaterial(meta, g.colors, tex, m.name) : (m.clone() as THREE.MeshStandardMaterial);
+        materials.push(mat);
+        return mat;
+      });
+      const mesh = new THREE.SkinnedMesh(src.geometry, Array.isArray(src.material) ? mats : mats[0]);
+      mesh.name = src.name;
+      if (src.morphTargetDictionary) {
+        mesh.morphTargetDictionary = { ...src.morphTargetDictionary };
+        mesh.morphTargetInfluences = new Array((src.morphTargetInfluences || []).length).fill(0);
+        for (const [name, i] of Object.entries(mesh.morphTargetDictionary as Record<string, number>)) {
+          mesh.morphTargetInfluences[i] = this.morphW[name] || 0;
+        }
+      }
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      mesh.bind(new THREE.Skeleton(bones, src.skeleton.boneInverses), src.bindMatrix);
+      base.set(mesh, src.geometry);
+      group.add(mesh);
+    });
+    this.armature.add(group);
+    return { obj: group, base, materials, cover: info.cover, layer: g.layer, colorsKey: JSON.stringify(g.colors), hair: (info.meta.hair as any) || null,
+      heel: (info.meta.heel as any) || null };
   }
 
   // A garment made from the body: its design texture, tinted with the item's colours.
@@ -1029,6 +1321,46 @@ export class HumanInstance {
       if (w > 0.001) f.bone.quaternion.slerp(f.relaxed, w);
       this.wrote(f.bone);
     }
+    this.heelPose();
+  }
+
+  /**
+   * Heels (2026-11-01, the jeweller's shoes, b8_heels.py): each foot turned `deg` toes-down about the axis across
+   * it (in the world, so whatever the clip did to the foot), each ball turned back as much so the toes lie flat,
+   * and the body lifted `rise` metres onto the heels (not while seated on a mount).
+   */
+  private heelPose() {
+    let heel: { deg: number; rise: number } | null = null;
+    for (const p of this.parts.values()) if (p.heel) { heel = p.heel; break; }
+    const rise = heel && !this.seated ? heel.rise : 0;
+    if (this.model.position.y !== rise && !this.seated) this.model.position.y = rise;
+    if (!heel) return;
+    const rad = THREE.MathUtils.degToRad(heel.deg);
+    for (const side of ['l', 'r']) {
+      const foot = this.bones.get(`foot_${side}`);
+      const ball = this.bones.get(`ball_${side}`);
+      if (!foot || !ball || !foot.parent) continue;
+      foot.updateWorldMatrix(true, true);
+      const d = ball.getWorldPosition(_hv1).sub(foot.getWorldPosition(_hv2));
+      d.y = 0;
+      if (d.lengthSq() < 1e-12) continue;
+      d.normalize();
+      const k = _hv3.crossVectors(d, _UP).normalize();
+      this.fromAnimated(foot);
+      this.turnWorld(foot, k, -rad);
+      this.wrote(foot);
+      foot.updateWorldMatrix(false, true);
+      this.fromAnimated(ball);
+      this.turnWorld(ball, k, rad);
+      this.wrote(ball);
+    }
+  }
+
+  /** Turns a bone about a world axis through its own origin. */
+  private turnWorld(bone: THREE.Object3D, axis: THREE.Vector3, angle: number) {
+    const pq = bone.parent!.getWorldQuaternion(_hq1).invert();
+    const local = _hv4.copy(axis).applyQuaternion(pq).normalize();
+    bone.quaternion.premultiply(_hq2.setFromAxisAngle(local, angle));
   }
 
   /**
@@ -1317,6 +1649,8 @@ export class HumanInstance {
         mesh.morphTargetInfluences = new Array((src.morphTargetInfluences || []).length).fill(0);
       }
       const opacity = entry.opacity;
+      const rest = this.factory.restMatrix.get(src.geometry);
+      if (rest && entry.file.startsWith('Hair_')) for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) hatClip(m as any, rest);
       for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
         // hair cards are alpha-tested: with MSAA, alpha to coverage softens their edges
         if ((m as any).alphaTest > 0) (m as any).alphaToCoverage = true;
@@ -1353,9 +1687,11 @@ export class HumanInstance {
 
   /** Moves the body within its root: onto a mount's seat, or back on its feet (null). */
   setSeat(p: THREE.Vector3 | null) {
+    this.seated = !!p;
     if (p) this.model.position.copy(p);
     else this.model.position.set(0, 0, 0);
   }
+  private seated = false;
 
   dispose() {
     this.disposed = true;
@@ -1364,6 +1700,8 @@ export class HumanInstance {
     for (const part of [this.hair, this.facial]) {
       part?.obj.traverse((m: any) => m.isMesh && (Array.isArray(m.material) ? m.material : [m.material]).forEach((x: any) => x.dispose()));
     }
+    for (const p of this.parts.values()) p.materials.forEach((m) => m.dispose());
+    this.parts.clear();
     this.materials.clear();
   }
 }

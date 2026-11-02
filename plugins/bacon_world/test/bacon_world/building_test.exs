@@ -12,6 +12,13 @@ defmodule BaconWorld.BuildingTest do
 
   @zone "build_test"
 
+  # the rule and placement caches outlive each test's rolled-back database (2026-11-01)
+  setup do
+    Building.reset_caches()
+    on_exit(&Building.reset_caches/0)
+    :ok
+  end
+
   defp user(role, extra \\ %{}), do: Map.merge(%{id: Ecto.UUID.generate(), role: role, is_admin: false}, extra)
 
   defp at(asset, x, z, extra \\ %{}), do: Map.merge(%{"asset" => asset, "x" => x, "y" => 0.0, "z" => z, "rot" => 0.0}, extra)
@@ -24,8 +31,8 @@ defmodule BaconWorld.BuildingTest do
       assert MapSet.member?(ids, "K_Wall_Stone")
       for kind <- Map.keys(Spawns.kinds()), do: assert(MapSet.member?(ids, "mob:" <> kind))
       for t <- Merchants.templates(), do: assert(MapSet.member?(ids, "npc:" <> t.id))
-      # 90 props, 36 building pieces, the plinth and (2026-10-29) the Robin Hood hat
-      assert Enum.count(cat, &(&1.kind == "model")) == 128
+      # 111 props, 141 building pieces, the plinth and (2026-10-29) the Robin Hood hat
+      assert Enum.count(cat, &(&1.kind == "model")) == 254
       assert Building.asset("X_RobinHat").category == "Props"
       assert Building.asset("X_Plinth").category == "Building"
       assert Building.asset("P_TreeOak").category == "Trees & plants"

@@ -9,20 +9,31 @@
 // garments (MakeHuman's T-shirt, sweater and shoes; all of the male's) tint their
 // <Garment>_Main/_Trim (_Upper/_Sole/_Laces) materials as before.
 //
+// Since 2026-11-01 most clothes are their own GLBs instead ("garment parts", garment-parts.ts):
+// an item's wear entry names its `part` (a path under /models/Humans) and may set its `layer`
+// (outer layers hide what they cover of inner ones; by default the slot's, SLOT_LAYER).
+//
 // Pure functions here (unit-tested); human-factory.ts does the three.js side.
 import type { Body } from './appearance';
 
-export type GearSlot = 'main' | 'off' | 'head' | 'under_top' | 'under_bottom' | 'chest' | 'legs' | 'feet' | 'wrist';
+export type GearSlot = 'main' | 'off' | 'head' | 'under_top' | 'under_bottom' | 'chest' | 'legs' | 'feet' | 'wrist' | 'hands' | 'arms';
 export type Gear = Partial<Record<GearSlot, string | null>>;
 // 'head' (2026-10-29) holds hats, which go on the head bone (crafted.ts wearHat), not garments
-export const WORN_SLOTS: GearSlot[] = ['head', 'under_top', 'under_bottom', 'chest', 'legs', 'feet', 'wrist'];
+// 'hands' (gloves) and 'arms' (sleeves, arm guards) added 2026-11-01 with the cloth armour sets
+export const WORN_SLOTS: GearSlot[] = ['head', 'under_top', 'under_bottom', 'chest', 'legs', 'feet', 'wrist', 'hands', 'arms'];
+
+/** Layer of a worn slot, inner first: an outer layer hides what it covers of the inner ones. */
+export const SLOT_LAYER: Record<string, number> = { under_top: 0, under_bottom: 0, legs: 2, chest: 3, feet: 4, arms: 5, wrist: 6, hands: 7, head: 8 };
 
 /** What every character starts out wearing (BaconWorld.Items.starter_wear/0). */
-export const STARTER_GEAR: Gear = { under_top: 'linen_bikini_top', under_bottom: 'linen_bikini_bottom' };
+export const STARTER_GEAR: Gear = { under_top: 'homespun_top', under_bottom: 'homespun_bottom' };
 
 export interface WearDef {
-  garment: string;
+  garment?: string;
   design?: string;
+  /** a garment part GLB under /models/Humans (Garments/<Body>/<id>.glb) */
+  part?: string;
+  layer?: number;
 }
 
 export interface WearableItem {
@@ -36,6 +47,9 @@ export interface WornGarment {
   item: string;
   garment: string;
   design: string | null;
+  /** the part's GLB, for a garment part (garment is then `part:<path>`) */
+  part: string | null;
+  layer: number;
   colors: Record<string, string>;
 }
 
@@ -51,13 +65,17 @@ export function wornGarments(body: Body, gear: Gear | null | undefined, item: (i
     if (!id) continue;
     const it = item(id);
     const w = it?.wear?.[body];
-    if (!it || !w || !w.garment) continue;
-    const g: WornGarment = { slot, item: id, garment: w.garment, design: w.design || null, colors: { ...(it.colors || {}) } };
+    if (!it || !w || (!w.garment && !w.part)) continue;
+    const layer = typeof w.layer === 'number' ? w.layer : SLOT_LAYER[slot] ?? 1;
+    const g: WornGarment = w.part
+      ? { slot, item: id, garment: `part:${w.part}`, design: null, part: w.part, layer, colors: { ...(it.colors || {}) } }
+      : { slot, item: id, garment: w.garment!, design: w.design || null, part: null, layer, colors: { ...(it.colors || {}) } };
     const dup = out.findIndex((x) => x.garment === g.garment);
     if (dup >= 0) out.splice(dup, 1);
     out.push(g);
   }
-  return out;
+  // inner layers first (stable: same-layer items keep the slot order)
+  return out.map((g, i) => [g, i] as const).sort((a, b) => a[0].layer - b[0].layer || a[1] - b[1]).map(([g]) => g);
 }
 
 /** Region ids hidden under a set of garments (the manifest's `hides`). */

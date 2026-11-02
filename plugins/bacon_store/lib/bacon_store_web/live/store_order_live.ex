@@ -74,7 +74,12 @@ defmodule BaconStoreWeb.StoreOrderLive do
 
   defp load_list(socket) do
     user = socket.assigns.current_user
-    assign(socket, receipts: Store.list_user_receipts(user), open: Store.open_checkouts(user), balance: Wallet.balance(user))
+    assign(socket,
+      receipts: Store.list_user_receipts(user),
+      open: Store.open_checkouts(user),
+      balance: Wallet.balance(user),
+      spends: Wallet.spends(user)
+    )
   end
 
   @impl true
@@ -114,6 +119,14 @@ defmodule BaconStoreWeb.StoreOrderLive do
   end
 
   defp gems(%{orders: orders}), do: Enum.sum(Enum.map(orders, &(&1.gems || 0)))
+
+  # Where Gems were spent (a game's slug) as the buyer reads it.
+  defp game_name(nil), do: "Bacon8"
+  defp game_name("bacon_world"), do: "Bacon World"
+  defp game_name(slug), do: slug |> String.split("_") |> Enum.map_join(" ", &String.capitalize/1)
+
+  defp to_int(%Decimal{} = d), do: Decimal.to_integer(d)
+  defp to_int(n), do: n
 
   defp status_text("awaiting_payment"), do: "Not paid yet: the checkout is open"
   defp status_text("paid"), do: "Paid, being delivered"
@@ -175,6 +188,20 @@ defmodule BaconStoreWeb.StoreOrderLive do
           <div class="rc-grid">
             <.receipt :for={r <- @receipts} receipt={r} tz={@tz} href={~p"/store/orders/#{r.lead.id}"} id={"receipt-#{r.lead.id}"} />
           </div>
+          <%!-- what Gems bought in the games (2026-11-01): each a spend on the wallet's ledger --%>
+          <section :if={@spends != []} id="gem-spends" class="mt-10">
+            <h2 class="text-lg font-semibold text-white mb-1">Bought with Gems</h2>
+            <p class="text-sm text-gray-400 mb-3">Items you bought in the games with your Gems.</p>
+            <div class="glass-dark rounded-lg border border-gray-700 divide-y divide-gray-800">
+              <div :for={s <- @spends} id={"spend-#{s.id}"} class="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                <div class="min-w-0">
+                  <div class="text-white truncate">{s.memo || "Gems spent"}</div>
+                  <div class="text-xs text-gray-500">{game_name(s.game_slug)} · {BaconStoreWeb.StoreComponents.local_datetime(s.at, @tz)}</div>
+                </div>
+                <div class="text-sm text-gray-200 whitespace-nowrap">−<Bacon8Web.Components.Gem.gems amount={to_int(s.amount)} /></div>
+              </div>
+            </div>
+          </section>
         <% end %>
       </div>
     </div>

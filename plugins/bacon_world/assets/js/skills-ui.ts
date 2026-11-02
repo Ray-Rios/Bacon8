@@ -30,6 +30,10 @@ export interface SkillsData {
 
 export interface SkillsUICallbacks {
   learn(nodeId: string): void;
+  /** Take a learned node back for its point (right-click). */
+  unlearn(nodeId: string): void;
+  /** Take every node back (the footer's Reset, clicked twice). */
+  reset(): void;
   cast(abilityId: string): void;
   /** A slot ('spell:3', 'skill:Q') now holds this ability (null: emptied). */
   assign(slot: string, abilityId: string | null): void;
@@ -109,6 +113,7 @@ export class SkillsUI {
       ring: 96,
       state: (n) => this.stateOf(n),
       onNodeClick: (n) => this.clickNode(n),
+      onNodeContext: (n) => this.unlearnNode(n),
       onNodeDown: (n, e) => this.dragFromNode(n, e),
       onNodeHover: (n, e) => this.hoverNode(n, e),
     });
@@ -132,8 +137,40 @@ export class SkillsUI {
     this.title.replaceChildren('Skills ', h('b', {}, data.points > 0 ? `· ${data.points} point${data.points === 1 ? '' : 's'} to spend` : ''));
     this.footer.replaceChildren(
       h('span', {}, h('span', { class: 'pts' }, String(data.points)), ` skill point${data.points === 1 ? '' : 's'} left · one each level`),
-      h('span', {}, 'Click a glowing node to learn it · drag spells and skills to your bars · wheel to zoom'));
+      h('span', {}, 'Click a glowing node to learn it · right-click one you have to take it back · drag to your bars'),
+      this.resetButton());
     this.renderBar();
+  }
+
+  // Reset: two clicks (the first arms it for a few seconds), so a stray click costs nothing
+  private resetArmed = 0;
+  private resetButton(): HTMLElement {
+    const learnedCount = Math.max(0, (this.data?.learned.length || 1) - 1);
+    const btn = h('button', {
+      class: 'rst',
+      title: 'Unlearn every node and get all your points back',
+      disabled: learnedCount === 0,
+      style: { background: 'none', border: '1px solid #6b5a3a', color: '#e9cf8f', borderRadius: '3px', padding: '1px 8px', cursor: learnedCount ? 'pointer' : 'default', opacity: learnedCount ? '1' : '0.4', font: 'inherit' },
+    }, 'Reset');
+    btn.onclick = () => {
+      const now = performance.now();
+      if (now - this.resetArmed < 4000) {
+        this.resetArmed = 0;
+        this.cb.reset();
+        return;
+      }
+      this.resetArmed = now;
+      btn.textContent = `Refund ${learnedCount}?`;
+      btn.style.borderColor = '#e0a040';
+      window.setTimeout(() => {
+        if (btn.isConnected && this.resetArmed && performance.now() - this.resetArmed >= 3900) {
+          this.resetArmed = 0;
+          btn.textContent = 'Reset';
+          btn.style.borderColor = '#6b5a3a';
+        }
+      }, 4000);
+    };
+    return btn;
   }
 
   ability(id: string | null | undefined): Ability | null {
@@ -177,6 +214,12 @@ export class SkillsUI {
     if (this.stateOf(n) === 'available') this.cb.learn(n.id);
   }
 
+  private unlearnNode(n: TreeNode) {
+    if (!this.data || this.stateOf(n) !== 'learned' || n.id === this.data.tree.start) return;
+    this.hideTip();
+    this.cb.unlearn(n.id);
+  }
+
   private dragFromNode(n: TreeNode, e: PointerEvent) {
     const a = this.ability(n.ability);
     if (!a || a.kind === 'buff' || this.stateOf(n) !== 'learned') return;
@@ -198,7 +241,9 @@ export class SkillsUI {
     const st = this.stateOf(n);
     const joined = this.data.tree.edges.some(([x, y]) => (x === n.id && this.data!.learned.includes(y)) || (y === n.id && this.data!.learned.includes(x)));
     const status =
-      st === 'learned' ? (a && a.kind !== 'buff' ? 'Learned. Drag it to a bar.' : 'Learned.')
+      st === 'learned'
+        ? n.id === this.data.tree.start ? 'Everyone starts with this.'
+          : (a && a.kind !== 'buff' ? 'Learned. Drag it to a bar. Right-click to unlearn (point back).' : 'Learned. Right-click to unlearn (point back).')
         : st === 'available' ? 'Click to learn (1 skill point).'
           : joined ? 'You need a skill point: you earn one each level.' : 'Learn a node joined to it first.';
     this.showTip(e, a ? `${a.name} <span style="color:#a8997a;font-weight:400">(${a.kind})</span>` : 'A path', [...(a ? abilityLines(a) : ['Leads further out.']), status]);

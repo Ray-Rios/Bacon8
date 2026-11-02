@@ -46,7 +46,14 @@ defmodule BaconWorld.Appearance do
     {"calves", -1.0, 1.0},
     {"face", 0.0, 1.0},
     {"jaw", 0.0, 1.0},
-    {"nose", 0.0, 1.0}
+    {"nose", 0.0, 1.0},
+    # v3 face sliders (2026-11-01)
+    {"cheekbones", 0.0, 1.0},
+    {"jaw_square", 0.0, 1.0},
+    {"chin", 0.0, 1.0},
+    {"brow", 0.0, 1.0},
+    {"lips", 0.0, 1.0},
+    {"nose_width", 0.0, 1.0}
   ]
   @height {0.92, 1.08}
   @color ~r/\A#[0-9a-fA-F]{6}\z/

@@ -85,6 +85,39 @@ defmodule BaconWorld.Skills do
   end
 
   @doc """
+  Unlearns a node and gives its point back (2026-11-01: players may re-spend their points freely).
+  Not the start, and not a node others hang from: what is left must stay joined to the start, so
+  a branch comes off from its tip inward. Its spell or skill leaves the bars (they show only what
+  the character has); learning it again puts it back. `{:ok, payload}` or `{:error, message}`.
+  """
+  def unlearn(character_id, node_id) do
+    with {:ok, c} <- World.fetch_character(character_id),
+         tree = SkillTree.current(),
+         st = state(c, tree),
+         true <- is_binary(node_id) || {:error, "Pick a node."},
+         true <- node_id in st.learned || {:error, "You don't have that."},
+         true <- node_id != tree["start"] || {:error, "Everyone keeps the starting node."},
+         left = List.delete(st.learned, node_id),
+         true <- SkillTree.connected?(tree, left) || {:error, "Other nodes you have depend on that one. Unlearn the ones beyond it first."} do
+      World.merge_stats(World.by_id_query(c.id), %{"skill_nodes" => left})
+      {:ok, _} = sync_stats(c.id)
+      {:ok, c} = World.fetch_character(c.id)
+      {:ok, payload(c)}
+    end
+  end
+
+  @doc "Unlearns every node but the start: all points back. `{:ok, payload}` or `{:error, message}`."
+  def reset(character_id) do
+    with {:ok, c} <- World.fetch_character(character_id) do
+      tree = SkillTree.current()
+      World.merge_stats(World.by_id_query(c.id), %{"skill_nodes" => [tree["start"]]})
+      {:ok, _} = sync_stats(c.id)
+      {:ok, c} = World.fetch_character(c.id)
+      {:ok, payload(c)}
+    end
+  end
+
+  @doc """
   Sets max HP and mana to the level's plus the buffs (a bigger pool fills by the
   difference, a smaller one clamps). Returns `{:ok, patch}`.
   """

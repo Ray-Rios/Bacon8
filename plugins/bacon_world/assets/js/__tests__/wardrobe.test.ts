@@ -5,8 +5,11 @@ import assert from 'node:assert/strict';
 import { STARTER_GEAR, approach, boneOffsets, designFiles, gearKey, hiddenFor, relaxedCurl, relaxedSpread, wornGarments } from '../wardrobe';
 
 const CATALOG: Record<string, any> = {
-  linen_bikini_top: { slots: ['under_top'], wear: { female: { garment: 'Under_Top_Contour', design: 'classic' }, male: null }, colors: { main: '#EAE0C8' } },
-  linen_bikini_bottom: { slots: ['under_bottom'], wear: { female: { garment: 'Under_Bottom', design: 'classic' }, male: { garment: 'Bottom_Shorts' } }, colors: { main: '#EAE0C8' } },
+  homespun_top: { slots: ['under_top'], wear: { female: { part: 'Garments/Female/uw_homespun_top.glb' }, male: null }, colors: { main: '#E8DFCB' } },
+  homespun_bottom: { slots: ['under_bottom'], wear: { female: { part: 'Garments/Female/uw_homespun_bottom.glb' }, male: { part: 'Garments/Male/uw_homespun_bottom.glb' } }, colors: { main: '#E8DFCB' } },
+  old_bottom: { slots: ['under_bottom'], wear: { female: { garment: 'Under_Bottom', design: 'classic' }, male: { garment: 'Bottom_Shorts' } }, colors: { main: '#EAE0C8' } },
+  robe: { slots: ['chest'], wear: { female: { part: 'Garments/Female/robe.glb', layer: 9 }, male: { part: 'Garments/Male/robe.glb', layer: 9 } } },
+  boots: { slots: ['feet'], wear: { female: { part: 'Garments/Female/boots.glb' }, male: { part: 'Garments/Male/boots.glb' } } },
   cloth_trousers: { slots: ['legs'], wear: { female: { garment: 'Bottom_Pants', design: 'pants' }, male: { garment: 'Bottom_Pants' } }, colors: { main: '#4A4F57' } },
   cloth_shorts: { slots: ['legs'], wear: { female: { garment: 'Bottom_Shorts', design: 'shorts' }, male: { garment: 'Bottom_Shorts' } }, colors: { main: '#1E2E5C' } },
   cloth_tunic: { slots: ['chest'], wear: { female: { garment: 'Top_Tee' }, male: { garment: 'Top_Tee' } }, colors: { main: '#8A6A4A', trim: '#5C4630' } },
@@ -15,21 +18,30 @@ const CATALOG: Record<string, any> = {
 };
 const item = (id: string) => CATALOG[id] || null;
 
-test('the starter underwear: two design garments on her, his shorts on him', () => {
+test('the starter underwear: garment parts, top and bottom on her, the bottom on him', () => {
   const f = wornGarments('female', STARTER_GEAR, item);
-  assert.deepEqual(f.map((g) => [g.slot, g.garment, g.design]), [['under_top', 'Under_Top_Contour', 'classic'], ['under_bottom', 'Under_Bottom', 'classic']]);
+  assert.deepEqual(f.map((g) => [g.slot, g.part, g.layer]), [
+    ['under_top', 'Garments/Female/uw_homespun_top.glb', 0],
+    ['under_bottom', 'Garments/Female/uw_homespun_bottom.glb', 0],
+  ]);
+  assert.equal(f[0].garment, 'part:Garments/Female/uw_homespun_top.glb');
   const m = wornGarments('male', STARTER_GEAR, item);
-  assert.deepEqual(m.map((g) => g.garment), ['Bottom_Shorts']);
+  assert.deepEqual(m.map((g) => g.part), ['Garments/Male/uw_homespun_bottom.glb']);
 });
 
-test('inner layers first; hands and unknown items ignored', () => {
+test('inner layers first (legs under chest under feet); hands and unknown items ignored', () => {
   const g = wornGarments('female', { ...STARTER_GEAR, main: 'rusty_dagger', chest: 'cloth_tunic', legs: 'cloth_trousers', feet: 'no_such_boots' }, item);
-  assert.deepEqual(g.map((x) => x.garment), ['Under_Top_Contour', 'Under_Bottom', 'Top_Tee', 'Bottom_Pants']);
-  assert.equal(g[2].colors.trim, '#5C4630');
+  assert.deepEqual(g.map((x) => x.garment), ['part:Garments/Female/uw_homespun_top.glb', 'part:Garments/Female/uw_homespun_bottom.glb', 'Bottom_Pants', 'Top_Tee']);
+  assert.equal(g[3].colors.trim, '#5C4630');
 });
 
-test('the outer item wins a garment both would show (his underwear under his shorts)', () => {
-  const g = wornGarments('male', { ...STARTER_GEAR, legs: 'cloth_shorts' }, item);
+test('an item may set its own layer (a robe over the boots)', () => {
+  const g = wornGarments('male', { chest: 'robe', feet: 'boots' }, item);
+  assert.deepEqual(g.map((x) => [x.slot, x.layer]), [['feet', 4], ['chest', 9]]);
+});
+
+test('the outer item wins a garment both would show (old in-body underwear under shorts)', () => {
+  const g = wornGarments('male', { under_bottom: 'old_bottom', legs: 'cloth_shorts' }, item);
   assert.deepEqual(g.map((x) => [x.slot, x.garment]), [['legs', 'Bottom_Shorts']]);
 });
 

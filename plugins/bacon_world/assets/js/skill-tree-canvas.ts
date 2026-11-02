@@ -202,6 +202,8 @@ export interface CanvasOptions {
   state(node: TreeNode): NodeState;
   onNodeDown?(node: TreeNode, e: PointerEvent): void;
   onNodeClick?(node: TreeNode, e: MouseEvent): void;
+  /** Right-click on a node (the game: unlearn it). The browser's menu is suppressed only when set. */
+  onNodeContext?(node: TreeNode, e: MouseEvent): void;
   onNodeHover?(node: TreeNode | null, e: MouseEvent | null): void;
   onBackgroundDblClick?(x: number, y: number, e: MouseEvent): void;
   onBackgroundClick?(e: MouseEvent): void;
@@ -377,6 +379,13 @@ export class TreeCanvas {
       }
       g.addEventListener('pointerdown', (e) => this.opts.onNodeDown?.(n, e as PointerEvent));
       g.addEventListener('click', (e) => this.opts.onNodeClick?.(n, e as MouseEvent));
+      if (this.opts.onNodeContext) {
+        g.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.opts.onNodeContext?.(n, e as MouseEvent);
+        });
+      }
       g.addEventListener('mouseenter', (e) => this.opts.onNodeHover?.(n, e as MouseEvent));
       g.addEventListener('mousemove', (e) => this.opts.onNodeHover?.(n, e as MouseEvent));
       g.addEventListener('mouseleave', () => this.opts.onNodeHover?.(null, null));
