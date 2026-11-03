@@ -85,6 +85,29 @@ export const TerrainWorld = {
     this.dressing.underwater = under ? 1 : 0;
   },
 
+  /**
+   * The zone's terrain was replaced while we're in it (an admin's import or regeneration,
+   * /admin/bacon_world/world, 2026-11-02): the new ground replaces the old one, and whoever
+   * stands on it is set on the new ground. `info` is the new terrain payload (a new file id, so
+   * nothing cached answers for it).
+   */
+  replaceTerrain(this: any, info: TerrainInfo | null): Promise<Heightfield | null> {
+    if (this.terrainView) {
+      this.worldGroup?.remove(this.terrainView.group);
+      this.terrainView.dispose();
+    }
+    this.terrainView = null;
+    this.heightfield = null;
+    this.terrainReady = null;
+    if (this.el) this.el.dataset.terrain = JSON.stringify(info || null);
+    return this.initTerrain().then((hf: Heightfield | null) => {
+      if (hf && this.dressing) {
+        this.dressing.setGround((x: number, z: number) => hf.height(x * U, z * U) / U);
+      }
+      return hf;
+    });
+  },
+
   teardownTerrain(this: any) {
     this.terrainView?.dispose();
     this.terrainView = null;

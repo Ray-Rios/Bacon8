@@ -16,7 +16,11 @@
 .gc-inner {
   position: absolute;
   inset: 0;
+  -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
+  -webkit-backface-visibility: hidden;
+  -moz-backface-visibility: hidden;
+  backface-visibility: hidden;
   transition: transform 0.85s cubic-bezier(0.2, 0.75, 0.25, 1), filter 0.4s ease;
   border-radius: inherit;
 }
@@ -34,7 +38,10 @@
   overflow: hidden;
   border-radius: inherit;
   -webkit-backface-visibility: hidden;
+  -moz-backface-visibility: hidden;
   backface-visibility: hidden;
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
   background: #0b0d12;
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow:
@@ -43,7 +50,25 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
   transition: box-shadow 0.5s ease;
 }
-.gc-back { transform: rotateY(180deg); }
+.gc-front {
+  -webkit-transform: rotateY(0deg) translateZ(1px);
+  -moz-transform: rotateY(0deg) translateZ(1px);
+  transform: rotateY(0deg) translateZ(1px);
+}
+.gc-back {
+  -webkit-transform: rotateY(180deg) translateZ(1px);
+  -moz-transform: rotateY(180deg) translateZ(1px);
+  transform: rotateY(180deg) translateZ(1px);
+}
+
+@media (hover: hover) {
+  .gc:hover .gc-front { pointer-events: none; }
+}
+.gc.flipped .gc-front,
+.gc:focus-visible .gc-front,
+.gc:focus-within:not(:focus) .gc-front {
+  pointer-events: none;
+}
 
 .gc:hover .gc-face,
 .gc.flipped .gc-face,

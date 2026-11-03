@@ -27,10 +27,11 @@ export type ShapeKey =
   | 'chest' | 'chest_height' | 'chest_spacing' | 'chest_shape'
   | 'glutes' | 'glute_lift' | 'arms' | 'thighs' | 'calves'
   | 'face' | 'jaw' | 'nose'
-  | 'cheekbones' | 'jaw_square' | 'chin' | 'brow' | 'lips' | 'nose_width';
+  | 'cheekbones' | 'jaw_square' | 'chin' | 'brow' | 'lips' | 'nose_width'
+  | 'eye_tilt' | 'eye_open' | 'eye_hooded' | 'eye_monolid' | 'eye_spacing' | 'eye_height' | 'eye_bags';
 
 /** Where a slider sits in the creator: body sections, Black Desert style, or the face tab. */
-export type ShapeGroup = 'Body' | 'Chest' | 'Glutes' | 'Arms and legs' | 'Face';
+export type ShapeGroup = 'Body' | 'Chest' | 'Glutes' | 'Arms and legs' | 'Face' | 'Eyes';
 
 export interface ShapeSpec {
   key: ShapeKey;
@@ -80,7 +81,43 @@ export const SHAPES: ShapeSpec[] = [
   { key: 'brow', label: 'Brow', min: 0, max: 1, pos: 'Brow_Heavy', tab: 'face', group: 'Face', ends: ['Smooth', 'Heavy'], rand: 0.6 },
   { key: 'lips', label: 'Lips', min: 0, max: 1, pos: 'Lips_Full', tab: 'face', group: 'Face', ends: ['Thin', 'Full'], rand: 0.7 },
   { key: 'nose_width', label: 'Nose bridge', min: 0, max: 1, pos: 'Nose_Narrow', tab: 'face', group: 'Face', ends: ['Natural', 'Narrow'], rand: 0.6 },
+  // eye shapes (2026-11-02, owner: "different eye shapes can do the job"; the pipeline's face_eyes.py, from
+  // MakeHuman's CC0 eye targets): lids, brows and lashes follow, and the eyeballs move with spacing and height
+  { key: 'eye_tilt', label: 'Tilt', min: -1, max: 1, neg: 'Eyes_TiltDown', pos: 'Eyes_TiltUp', tab: 'face', group: 'Eyes', ends: ['Downturned', 'Upturned'], rand: 0.5 },
+  { key: 'eye_open', label: 'Opening', min: -1, max: 1, neg: 'Eyes_Narrow', pos: 'Eyes_Round', tab: 'face', group: 'Eyes', ends: ['Narrow', 'Round'], rand: 0.5 },
+  { key: 'eye_hooded', label: 'Lid fold', min: 0, max: 1, pos: 'Eyes_Hooded', tab: 'face', group: 'Eyes', ends: ['Open', 'Hooded'], rand: 0.5 },
+  { key: 'eye_monolid', label: 'Inner fold', min: 0, max: 1, pos: 'Eyes_Monolid', tab: 'face', group: 'Eyes', ends: ['None', 'Monolid'], rand: 0.4 },
+  { key: 'eye_spacing', label: 'Spacing', min: -1, max: 1, neg: 'Eyes_Close', pos: 'Eyes_Wide', tab: 'face', group: 'Eyes', ends: ['Close', 'Wide'], rand: 0.35 },
+  { key: 'eye_height', label: 'Height', min: -1, max: 1, neg: 'Eyes_Down', pos: 'Eyes_Up', tab: 'face', group: 'Eyes', ends: ['Low', 'High'], rand: 0.3 },
+  { key: 'eye_bags', label: 'Under-eyes', min: 0, max: 1, pos: 'Eyes_Bags', tab: 'face', group: 'Eyes', ends: ['Smooth', 'Full'], rand: 0.4 },
 ];
+
+/**
+ * Ready-made faces for the creator (2026-11-02, owner): each sets every face and eye slider (the ones it
+ * doesn't name go back to 0), so a player gets a different face in one click and fine-tunes from there.
+ */
+export interface FacePreset {
+  id: string;
+  label: string;
+  shape: Partial<Record<ShapeKey, number>>;
+}
+export const FACE_PRESETS: FacePreset[] = [
+  { id: 'classic', label: 'Classic', shape: {} },
+  { id: 'soft', label: 'Soft', shape: { face: 0.45, eye_open: 0.35, lips: 0.4, jaw_square: 0, eye_tilt: -0.1 } },
+  { id: 'sharp', label: 'Sharp', shape: { cheekbones: 0.8, jaw_square: 0.6, nose_width: 0.6, eye_tilt: 0.45, eye_open: -0.25, chin: 0.3 } },
+  { id: 'heroic', label: 'Heroic', shape: { jaw: 0.6, jaw_square: 0.8, chin: 0.7, brow: 0.55, cheekbones: 0.4, eye_open: -0.15 } },
+  { id: 'gentle', label: 'Gentle', shape: { eye_tilt: -0.45, eye_open: 0.3, lips: 0.5, face: 0.25, eye_bags: 0.15 } },
+  { id: 'fierce', label: 'Fierce', shape: { brow: 0.85, eye_tilt: 0.6, eye_open: -0.5, eye_hooded: 0.35, jaw_square: 0.5, cheekbones: 0.6 } },
+  { id: 'sleepy', label: 'Sleepy', shape: { eye_hooded: 0.8, eye_tilt: -0.35, eye_open: -0.35, eye_bags: 0.4 } },
+  { id: 'bright', label: 'Bright', shape: { eye_open: 0.8, eye_spacing: 0.3, lips: 0.45, cheekbones: 0.35, nose: 0.1 } },
+  { id: 'elfin', label: 'Elfin', shape: { eye_tilt: 0.8, eye_spacing: 0.35, cheekbones: 0.9, chin: 0.45, nose_width: 0.7, jaw_square: 0 } },
+  { id: 'almond', label: 'Almond', shape: { eye_monolid: 0.8, eye_tilt: 0.3, eye_open: -0.3, cheekbones: 0.5, nose_width: 0.25 } },
+  { id: 'rugged', label: 'Rugged', shape: { brow: 0.7, jaw: 0.8, nose: 0.55, chin: 0.45, eye_hooded: 0.5, eye_bags: 0.5 } },
+  { id: 'youthful', label: 'Youthful', shape: { face: 0.35, eye_open: 0.55, eye_height: -0.25, nose: 0, chin: 0, lips: 0.3 } },
+];
+
+/** The face and eye sliders a preset sets (all of the face tab's). */
+export const FACE_KEYS: ShapeKey[] = SHAPES.filter((s) => s.tab === 'face').map((s) => s.key);
 
 export const HEIGHT_RANGE: [number, number] = [0.92, 1.08];
 

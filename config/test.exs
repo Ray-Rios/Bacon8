@@ -36,6 +36,10 @@ config :bacon8, :extra_plugins, [Bacon8.Test.FixturePlugin]
 config :bacon8, :default_active_plugins, []
 # The store plugin's payments: the fake provider on, and no keys from the shell.
 config :bacon8, BaconStore.Payments, fake_enabled: true, read_env: false
+# Bacon World reads its item catalogue from the seed file in tests (no database read on every
+# Items.get from processes outside the sandbox); the table is filled from the same file in use.
+config :bacon8, BaconWorld.Items, source: :seed
+config :bacon8, BaconWorld.Defs, source: :seed
 # Bacon World: flat unless a test loads a terrain of its own (BaconWorld.Terrain)
 config :bacon8, BaconWorld.Terrain, zone: nil
 config :bacon8, Bacon8.Storage, root: Path.join(System.tmp_dir!(), "bacon8_test_drive")

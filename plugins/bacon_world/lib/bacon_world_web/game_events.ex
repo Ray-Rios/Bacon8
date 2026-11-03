@@ -57,8 +57,15 @@ defmodule BaconWorldWeb.GameEvents do
   @doc "Called as the character joins a zone: listen to its creatures, load what it holds."
   def join(socket, payload) do
     slug = payload.zone.slug || "lobby"
+    # this process's ground is the zone's from now on (BaconWorld.Terrain.use_zone/1), and its
+    # creatures run somewhere in the cluster (zones beyond the lobby, 2026-11-02)
+    BaconWorld.Terrain.use_zone(slug)
+    if Phoenix.LiveView.connected?(socket), do: Mobs.ensure_zone(slug)
     if Phoenix.LiveView.connected?(socket), do: PubSub.subscribe(Bacon8.PubSub, Mobs.topic(slug))
     socket = BaconWorldWeb.BuildEvents.join(socket, slug)
+    socket = sync_terrain(socket)
+    # the map and the minimap: the zone's name, picture and neighbours
+    socket = if Phoenix.LiveView.connected?(socket), do: push_event(socket, "zone_info", BaconWorld.WorldEditor.map_info(slug)), else: socket
 
     assign(socket,
       mobs_zone: slug,
@@ -67,6 +74,18 @@ defmodule BaconWorldWeb.GameEvents do
       level: payload[:level] || 1,
       looting: nil
     )
+  end
+
+  # The page was drawn with the lobby's ground; a character in another zone gets its own (the
+  # client rebuilds the ground on "terrain_replaced").
+  defp sync_terrain(socket) do
+    terrain = BaconWorld.Terrain.payload(Brain.u())
+
+    if terrain != socket.assigns[:terrain] and Phoenix.LiveView.connected?(socket) do
+      socket |> assign(terrain: terrain) |> push_event("terrain_replaced", %{terrain: terrain})
+    else
+      socket
+    end
   end
 
   @doc "Called as the character leaves the zone."
@@ -98,8 +117,9 @@ defmodule BaconWorldWeb.GameEvents do
     {:reply,
      %{
        mobs: Mobs.snapshot(slug),
-       camps: Spawns.camps_payload(Brain.u(), BaconWorld.Building.seeded(slug).camps),
-       safe_radius: Spawns.safe_radius() * Brain.u(),
+       # the camps and the town's safe ring are the lobby's
+       camps: if(BaconWorld.Terrain.lobby?(), do: Spawns.camps_payload(Brain.u(), BaconWorld.Building.seeded(slug).camps), else: []),
+       safe_radius: if(BaconWorld.Terrain.lobby?(), do: Spawns.safe_radius() * Brain.u(), else: 0),
        merchants: Merchants.payload(slug),
        # what players put in the world in build mode (BaconWorld.Building), metres
        placements: BaconWorld.Building.list(slug),
@@ -293,7 +313,8 @@ defmodule BaconWorldWeb.GameEvents do
   def handle_event("inventory_fetch", _params, socket) do
     case character_id(socket) do
       nil -> {:reply, %{ok: false}, socket}
-      id -> {:reply, %{ok: true, inventory: Inventory.payload(id)}, SkillEvents.push_stats_sheet(socket)}
+      # the account's Gems beside the coin (owner, 2026-11-01): shown in the inventory and every shop
+      id -> {:reply, %{ok: true, inventory: Inventory.payload(id), gems: gem_balance(socket)}, SkillEvents.push_stats_sheet(socket)}
     end
   end
 
@@ -316,7 +337,8 @@ defmodule BaconWorldWeb.GameEvents do
   def handle_event("merchant_open", %{"id" => id}, socket) do
     case trader(socket, id) do
       {:ok, _me, m} ->
-        gems = if Merchants.gems?(m), do: gem_balance(socket), else: nil
+        # every shop shows the Gems too (2026-11-01); only the jeweller takes them
+        gems = gem_balance(socket)
         {:reply, %{ok: true, merchant: %{id: m.id, name: m.name, title: m.title, gems: Merchants.gems?(m)}, stock: Merchants.stock(m), gems: gems}, socket}
 
       {:error, msg} ->

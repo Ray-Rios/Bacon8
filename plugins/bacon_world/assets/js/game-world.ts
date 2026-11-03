@@ -59,7 +59,7 @@ const SOUND_ALIAS: Record<string, [string, number]> = {
   kraken_roar: ['dragon_roar', 0.6],
   kraken_growl: ['dragon_growl', 0.62],
   kraken_hurt: ['dragon_hurt', 0.65],
-  kraken_stroke: ['sw_drip', 0.45],
+  kraken_stroke: ['swing_heavy', 0.5],
 };
 const MOUNT_REFUSALS: Record<string, string> = {
   no_mount: "You don't have a mount yet. Dragons are for sale in the Bacon Store.",
@@ -126,6 +126,12 @@ export const GameWorld = {
         if (open) this.controller?.releasePointerLock();
         if (open) this.audio?.play('bag_open', 0.5);
       },
+      // the account's Gems, for the inventory (they change in the Bacon Store as well as here)
+      gemsFetch: () => {
+        void reply(this, 'inventory_fetch', {}).then((res: any) => {
+          if (typeof res?.gems === 'number') this.gameUI?.setGems(res.gems);
+        });
+      },
     });
   },
 
@@ -159,6 +165,9 @@ export const GameWorld = {
         const c = this.characterManager?.getAllCharacters().get(id);
         return c ? c.mesh.position.clone().add(new THREE.Vector3(0, 1.4 * U, 0)) : null;
       };
+      // creatures are built near the player only, and animated only on screen (mobs-view.ts stream)
+      this.mobsView.viewer = () => this.localCharacter()?.mesh?.position || null;
+      this.mobsView.camera = this.camera || null;
       this.scene.add(this.mobsView.group);
     }
     if (!this.arrows) {
@@ -219,8 +228,16 @@ export const GameWorld = {
   applyWorldState(this: any, res: any) {
     this.mobsView.setAll(res.mobs || []);
     this.camps = res.camps || [];
-    // the sea and the lakes (water.ts, fishing-world.ts): once
-    if (res.water && !this.water) this.initWater(res.water);
+    // the sea and the lakes (water.ts, fishing-world.ts): again whenever they differ. It was drawn once
+    // per visit, so the lobby's Millpond (and its colliders) followed the player into every zone
+    // (owner, 2026-11-02: "instances of the old mill pond in many zones near 0, 0, 0").
+    if (res.water) {
+      const key = JSON.stringify({ sea: res.water.sea ?? null, lakes: res.water.lakes || [] });
+      if (key !== this.waterKey) {
+        this.waterKey = key;
+        this.initWater(res.water);
+      }
+    }
     // the village's, the people's, the water's and build mode's colliders (build-world.ts)
     this.rebuildColliders();
     void this.npcsView?.setAll(res.merchants || []).then(() => this.rebuildColliders());
@@ -514,7 +531,7 @@ export const GameWorld = {
     if (flying) {
       const speed = this.controller?.getMovementState?.()?.speed ?? 0;
       const k = 0.25 + 0.75 * Math.min(1, speed / (30 * U));
-      if (!this.flightWind) this.flightWind = a.loop('flight_wind', 0, undefined, 'amb');
+      if (!this.flightWind) this.flightWind = a.loop('flight_wind', 0, undefined, 'fx');
       this.flightWind?.set(k);
     } else if (this.flightWind) {
       this.flightWind.stop(1.2);

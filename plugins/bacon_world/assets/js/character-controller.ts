@@ -556,6 +556,23 @@ export class CharacterController {
     }
   }
 
+  /**
+   * Where the movement keys push (unit x, z, world axes; 0, 0 with none held): the player's intent,
+   * even when something stops them (a zone's edge: world-character-ui-scene.ts maybeCrossZone).
+   */
+  wishDirection(): { x: number; z: number } {
+    if (this.isHeld) return { x: 0, z: 0 };
+    return moveDirection(
+      {
+        forward: this.held('KeyW', 'ArrowUp'),
+        back: this.held('KeyS', 'ArrowDown'),
+        left: this.held('KeyA', 'ArrowLeft'),
+        right: this.held('KeyD', 'ArrowRight'),
+      },
+      this.yaw
+    );
+  }
+
   private held(...codes: string[]): boolean {
     return codes.some((c) => this.keys.has(c));
   }

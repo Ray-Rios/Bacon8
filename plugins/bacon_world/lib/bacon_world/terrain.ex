@@ -52,48 +52,188 @@ defmodule BaconWorld.Terrain do
   @retry_secs 20
 
   @doc "The zone the lobby uses (config `:bacon8, BaconWorld.Terrain, zone:`; nil for none)."
-  def zone_id, do: Application.get_env(:bacon8, __MODULE__, []) |> Keyword.get(:zone, "crater_lake")
+  # Which zone's ground this process works on (2026-11-02, zones beyond the lobby): a player's
+  # LiveView sets it as the character enters a zone (BaconWorldWeb.GameEvents.join), a zone's
+  # creature process for its zone; every call here without a terrain then reads that zone's.
+  @here {__MODULE__, :here}
 
-  def zone, do: zone_id() && Map.get(zones(), zone_id())
+  def zone_id do
+    case Process.get(@here) do
+      nil -> default_zone_id()
+      id -> id
+    end
+  end
+
+  @doc "This process works in zone `slug` from now on (nil or \"lobby\": the lobby, Crater Lake)."
+  def use_zone(slug) when slug in [nil, "lobby"] do
+    Process.delete(@here)
+    :ok
+  end
+
+  def use_zone(slug) when is_binary(slug) do
+    case terrain_of(slug) do
+      nil -> Process.delete(@here)
+      id -> Process.put(@here, id)
+    end
+
+    :ok
+  end
+
+  @doc "In the lobby (no other zone set for this process)."
+  def lobby?, do: Process.get(@here) == nil
+
+  @doc "The terrain id of the zone with this slug (cached), or nil."
+  def terrain_of(slug) do
+    key = {__MODULE__, :terrain_of, slug}
+
+    case :persistent_term.get(key, :none) do
+      :none ->
+        id =
+          try do
+            import Ecto.Query
+            Bacon8.GamesRepo.one(from z in BaconWorld.Zone, where: z.slug == ^slug, select: z.terrain)
+          rescue
+            _ -> nil
+          end
+
+        if id, do: :persistent_term.put(key, id)
+        id
+
+      id ->
+        id
+    end
+  end
+
+  @doc "Forgets the cached terrain id of a zone (its ground was replaced)."
+  def forget_terrain_of(slug), do: :persistent_term.erase({__MODULE__, :terrain_of, slug})
+
+  defp default_zone_id do
+    case Application.get_env(:bacon8, __MODULE__, []) |> Keyword.fetch(:zone) do
+      {:ok, id} -> id
+      :error -> lobby_terrain()
+    end
+  end
+
+  # The lobby's terrain id: its zone row's `terrain` (an admin may have replaced Crater Lake's ground,
+  # BaconWorld.WorldEditor, 2026-11-02), cached; "crater_lake" without a database.
+  defp lobby_terrain do
+    key = {__MODULE__, :lobby_terrain}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        id =
+          try do
+            import Ecto.Query
+            Bacon8.GamesRepo.one(from z in BaconWorld.Zone, where: z.slug == "lobby", select: z.terrain)
+          rescue
+            _ -> nil
+          end || "crater_lake"
+
+        :persistent_term.put(key, id)
+        id
+
+      id ->
+        id
+    end
+  end
+
+  @doc "Forgets the cached lobby terrain id (after the lobby's ground was replaced)."
+  def forget_lobby_terrain do
+    :persistent_term.erase({__MODULE__, :lobby_terrain})
+    :ok
+  end
+
+  def zone, do: (id = zone_id()) && terrain_def(id)
 
   # (tests add small zones of their own: config `zones: %{"id" => %{...}}`)
   defp zones, do: Map.merge(@zones, Application.get_env(:bacon8, __MODULE__, []) |> Keyword.get(:zones, %{}))
 
   @doc "The loaded zone (its description plus the two grids), or nil when there is none."
   def loaded do
-    case zone() do
-      nil ->
+    case zone_id() do
+      nil -> nil
+      id -> loaded_terrain(id)
+    end
+  end
+
+  @doc """
+  The loaded terrain `id` (Crater Lake's, or a generated zone's: `BaconWorld.Zone` `terrain`, its
+  numbers in the zone's `meta`, 2026-11-02), or nil when it has no files.
+  """
+  def loaded_terrain(id) when is_binary(id) do
+    key = {__MODULE__, id}
+    now = System.monotonic_time(:second)
+
+    case :persistent_term.get(key, :unloaded) do
+      {:missing, at} when now - at < @retry_secs ->
         nil
 
-      z ->
-        key = {__MODULE__, z.id}
-        now = System.monotonic_time(:second)
+      loaded when is_map(loaded) ->
+        loaded
 
-        case :persistent_term.get(key, :unloaded) do
-          {:missing, at} when now - at < @retry_secs ->
-            nil
-
-          loaded when is_map(loaded) ->
-            loaded
+      _ ->
+        case (z = terrain_def(id)) && load(z) do
+          v when is_map(v) ->
+            :persistent_term.put(key, v)
+            v
 
           _ ->
-            case load(z) do
-              nil ->
-                # asked before the files were synced? look again shortly, not only after a restart
-                :persistent_term.put(key, {:missing, now})
-                nil
-
-              value ->
-                :persistent_term.put(key, value)
-                value
-            end
+            # asked before the files were synced? look again shortly, not only after a restart
+            :persistent_term.put(key, {:missing, now})
+            nil
         end
     end
   end
 
-  @doc "Forgets the loaded grids (after new files were synced; tests)."
+  def loaded_terrain(_), do: nil
+
+  @doc "The description of terrain `id`: Crater Lake's from here, a generated zone's from its row."
+  def terrain_def(id) do
+    # a replaced Crater Lake is in the database under a new id; Crater Lake's own numbers are here
+    Map.get(zones(), id) || db_def(id)
+  end
+
+  defp db_def(id) do
+    case safe_zone(id) do
+      %{meta: %{"samples" => _} = m} = zone ->
+        %{
+          id: id,
+          name: zone.name,
+          dir: m["dir"] || BaconWorld.WorldGen.dir(),
+          size_m: m["size_m"] * 1.0,
+          samples: m["samples"],
+          water_samples: m["water_samples"],
+          x0: m["x0"] * 1.0,
+          z0: m["z0"] * 1.0,
+          lo: m["lo"] * 1.0,
+          hi: m["hi"] * 1.0,
+          step: m["step"] * 1.0,
+          sea: m["sea"] * 1.0,
+          margin: (m["margin"] || 0.0) * 1.0,
+          version: zone.terrain_version,
+          lakes: %{}
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  defp safe_zone(id) do
+    import Ecto.Query
+    Bacon8.GamesRepo.one(from z in BaconWorld.Zone, where: z.terrain == ^id, limit: 1)
+  rescue
+    _ -> nil
+  end
+
+  @doc "Forgets the loaded grids (after new files were synced or a zone's terrain was replaced; tests)."
   def reload do
-    if z = zone(), do: :persistent_term.erase({__MODULE__, z.id})
+    if id = zone_id(), do: reload(id)
+    :ok
+  end
+
+  def reload(id) when is_binary(id) do
+    :persistent_term.erase({__MODULE__, id})
     :ok
   end
 
@@ -240,8 +380,11 @@ defmodule BaconWorld.Terrain do
   end
 
   @doc "What the client needs, scene units (`u` per metre) except the file names. Nil without terrain."
-  def payload(u) do
-    case loaded() do
+  def payload(u), do: payload_for(zone_id(), u)
+
+  @doc "`payload/1` for terrain `id`."
+  def payload_for(id, u) do
+    case id && loaded_terrain(id) do
       nil ->
         nil
 
@@ -252,6 +395,7 @@ defmodule BaconWorld.Terrain do
           name: t.name,
           heights: "/models/#{t.dir}/#{t.id}_hd.bin",
           water: "/models/#{t.dir}/#{t.id}_w.bin",
+          version: Map.get(t, :version, 1),
           samples: t.samples,
           water_samples: t.water_samples,
           size: t.size_m * u,

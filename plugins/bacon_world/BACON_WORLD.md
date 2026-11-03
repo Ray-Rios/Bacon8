@@ -341,6 +341,202 @@ loaded like the hair (`Humans/Garments/<Body>/<id>.glb`), cut from the v3 body a
 - **The jeweller's heels (2026-11-01, owner's rendering)**: `jw_<set>_shoes`, one per jeweller's set, 100 Gems each from Rosalind, power `swift` (Items `run_speed: 1.5`; `character-controller.ts` `runSpeed`, set each frame from the worn feet item; still under the server's speed check). Built by `b8_heels.py` on the flat-footed rest body with `heel` extras {deg, rise}: `human-factory.ts` `heelPose()` turns each foot toes-down about the world axis across it, turns the ball back so the toes lie flat, and lifts the body by `rise`; the stiletto is modelled tilted so it stands straight and just reaches the ground in that pose. The Blender previews use the same pose (`heel_pose`).
 - **Gem purchases are recorded** (owner): `BaconWorld.Jeweller.buy/5` spends through `BaconStore.Wallet.spend/3` (one `spend` transaction: `game_slug` `bacon_world`, memo naming the set or heels and the character, reference `bacon_world_jewel`); the store's Purchases page (`/store/orders`) lists them under "Bought with Gems" (`Wallet.spends/2`). Tested end to end with a real wallet (`jeweller_test.exs`, `store_pages_test.exs`).
 
+### Load times, the bust and the crickets (2026-11-01, late; not yet deployed)
+
+Profiled on bacon8.net (owner's OK): a reload took about 4 s before the page arrived and the world then held the
+main thread for 27 to 46 s. The network was not the cause: after the first visit every model came from the
+service worker's cache.
+
+- **The page**: `BaconWorld.Models.list/0` and `human_assets/0` walked the models volume (a Windows folder mounted
+  into the cluster, every stat crossing to the host) at about a second each, and each page load called both twice
+  (static render, then the connected mount). They are cached now (`Models` `cached/2`, 60 s, refreshed behind the
+  answer; tests that set `roots` or `cache_ms: 0` read every time; `Models.clear_cache/0`). The 380 KB page is now
+  gzipped too (`compress: true` on the endpoint's `http` in `config/runtime.exs`).
+- **Bone textures**: every garment, hair and part had its own `THREE.Skeleton` over the same bones, and three.js
+  uploads one bone texture per skeleton per frame: 115,000 texture uploads in the first 25 s in the world.
+  `HumanInstance.skeletonFor()` shares one skeleton per distinct bind (bones and inverses), the body's own meshes
+  included; skeletons are disposed with the character.
+- **Shader compiles**: three.js read every program's info log to check for errors, which waits for the compile:
+  2 to 11 s on about 90 programs. `renderer.debug.checkShaderErrors` is now off except on a dev host or with
+  `localStorage bw_shader_check=1`, and `warmup.ts` `precompile()` asks for the village's and the player's programs
+  together (`compileAsync`) so the driver compiles them in parallel.
+- **Hard refresh**: Ctrl+Shift+R loads the page without its service worker for the page's whole life, so every model
+  came from the network although the cache held it. `service-worker.ts` now answers versioned model, sound and font
+  URLs from the same CacheStorage itself while no worker controls the page (and stores misses as the worker would).
+- **LiveView**: every page logged "asset version mismatch, JavaScript 1.0.18 vs server 1.0.19". The image built
+  LiveView's JavaScript from the package's source, which still says 1.0.18; it now uses the package's own built
+  bundle (`priv/static/phoenix_live_view.esm.js`), and the deps stage copies `mix.lock`.
+- Still large at world entry: the Kraken (7.7 MB) and the drake (7.4 MB) load when they are in the zone, the
+  building kit is 10.6 MB, the terrain 8.2 MB. Decoding them (`createImageBitmap`, meshopt) is off the main thread.
+- **The bust** (owner: at full Size "flat at the end with an odd sharp point"): `Breasts_Large` pushed the skin out
+  along its normals by the same distance over the whole front, and `Chest_Round` added up to 56 mm more above the
+  nipple the same way, so the front became a flat disc with a ridge round it and the nipple standing out as a point.
+  Both now grow the breast about a centre inside it (`mhf_fixes.bust_inflation`: a dome, the nipple in proportion),
+  `Breasts_Large` a little lower, `Chest_Round` more above. `mhf_bust.py` redid the two keys on the v3 blend and her
+  MakeHuman garments, and every female garment was rebuilt from it (they take the body's keys when built).
+- **Crickets removed** (owner): the cricket and katydid loops and chirps, `amb_night.mp3`, the `night_cricket`
+  group and the night beds that used them are gone (`ambient-catalog.ts`, `audio-mix.ts`, `lobby-audio.ts`; the catalogue itself was deleted on 2026-11-02).
+
+### The world beyond Crater Lake, Gems in view, the database editor (2026-11-02; not yet deployed)
+
+- **Zones on a grid** (owner: "200 zones ... the same size as the starter zone", walk across the edges): `bacon_world_zones`
+  gained `number` (what `/zone` takes; the lobby is 0), `grid_x`/`grid_z` (lobby 0,0; +x east, +z south), `terrain`,
+  `terrain_version`, `status`, `meta` (migration `20261102000000`). World coordinates are Crater Lake's own (its town
+  is the origin); zone (gx, gz) covers `-2456 + 4096 gx`, `-3824 + 4096 gz`, 4096 m square. A generated zone's local
+  origin is its centre.
+- **Generator** `BaconWorld.WorldGen`: one function of world position (domain-warped continents, hills, ridged
+  mountains under a mask, detail), sampled every 8 m and Catmull-Rom'd to the 2 m grid (2049², the same as Crater
+  Lake), so neighbours share their edges exactly (tested: 0.0 m). Within 640 m of Crater Lake it bends to Crater Lake's
+  own edge. About 21 s a zone (~70 min for 200), one at a time in the background. Files in `World/Zones/` on the
+  models volume (`BaconWorld.TerrainFiles`: `_h.bin`, `_hd.bin(.gz)`, `_w.bin`, `_preview.png`, `.json`; the formats
+  of `terrain_build.py`); the models sync adds without deleting, so they survive it. `Models.write_root/0`.
+- **Terrain per zone**: `BaconWorld.Terrain` serves any zone's terrain (`loaded_terrain/1`, `payload_for/2`; a generated
+  zone's numbers come from its row). Every call without a terrain reads **the calling process's zone**
+  (`Terrain.use_zone/1`): a player's LiveView sets it as the character enters a zone (`GameEvents.join`), a zone's
+  creature process for its zone. The Millpond, the village, the camps and the town's safe ring are the lobby's only.
+- **Moving between zones**: `/zone x y z <zone#>` (GMs and admins; without the number, the current zone), and walking:
+  near an edge the client asks `zone_cross`, and the server moves the player into the neighbour (if it has ground) at
+  the same world spot (`WorldGen.neighbour_at/4`, `PlayLive.transfer_to_zone/7`): presence, creatures
+  (`Mobs.ensure_zone/1` starts a zone's keeper on demand), build channel and saved position move with them, and the
+  client gets the new ground (`terrain_replaced`) and resyncs.
+- **The admin's World page** `/admin/bacon_world/world`: the grid of zones with their shaded maps (scroll, click one);
+  plan the 200 rows, generate them; a zone's map with its nodes (binding stones, NPCs, spawns, objects; hover for
+  details, toggle kinds); **export** for World Creator (16-bit PNG or RAW big-endian, 2049², 0..65535 = the min..max in
+  the file name), **import** (PNG16 or RAW16, any square size, min/max in metres) with the nodes **re-seated** on the new
+  ground (x, z and height above ground kept; any left under water or on a slope over 40° listed) or **cleared**, and the
+  edges blended into the neighbours (256 m). The new ground goes live at once under a new id (`<slug>_r<version>`, so no
+  cache serves the old one; the old files are deleted, Crater Lake's own excepted): players in the zone see it change.
+- **Gems** (owner): the account's Gems show in the inventory (under Coin) and in every shop ("Your money · Gems").
+- **Definitions in the database** (owner: "move everything into the DB"): items are rows of `bacon_world_item_defs`
+  (`BaconWorld.ItemDef`; `Items.save_def/1`, `delete_def/1`), monster types and the merchants/NPCs rows of
+  `bacon_world_defs` (`BaconWorld.Defs`, kinds `"monster"` and `"merchant"`; ranges, tuples and text-keyed maps encoded
+  in the JSON). Each is filled once from `priv/seed/items.json`, `monsters.json`, `merchants.json` (the code
+  catalogues, exported; the code lists are gone) the first time it is read, cached in `:persistent_term`, and reloaded on
+  every node after an edit. Tests read the seed files (`config/test.exs` `source: :seed`); `item_defs_test.exs` covers
+  the database path. Still in code: the starter kit and starter wear, the Fist, the jeweller's price, the camps' layout
+  (the lobby's camps are placements already), NPC look templates.
+- **Database editor** `/admin/bacon_world/database`: players (stats, money, zone, position, inventory: remove, give),
+  objects, placed NPCs and creature spawns per zone (move, turn, size, name/count/radius, delete), items (every field,
+  new, delete unless owned), monster types and merchants (JSON, new, delete). Edits to a player who is in the world
+  apply on their next login.
+
+- **Admin fixes after the first deploy (2026-11-02, morning)**: World answered 500 (LiveView refused the upload accept
+  list: `.r16` has no MIME type; now `accept: :any` and the extension is checked on import); Database answered 400 (a
+  query got `{:ok, game_id}`, an Ecto cast error); World tuning showed no settings (the page's section ids matched none
+  of `BaconWorld.Tuning`'s spec groups, and its sample used keys that don't exist; the combat code always read the
+  tuning). The sidebar lists Bacon World once; its pages are the buttons on `/admin/bacon_world` (owner).
+  `test/bacon_world_web/admin_pages_test.exs` opens every admin page and Database tab.
+- **Frosted menus (site-wide, `assets/css/app.css`)**: the start menu and the user menu sit inside the taskbar and the
+  navbar, which had their own `backdrop-filter`; that makes them backdrop roots, so a menu inside could only blur the bar,
+  never the page, and the profile's blur did nothing for menus. The bars now draw their frosting with `::before`.
+- **The generator ran the pod out of memory (2026-11-02)**: the first production run was `OOMKilled` (pod limit 1 GiB)
+  inside zone 1. Heights were tuples of floats (over a gigabyte for a 2049² zone, several copies). They are now a grid
+  of float32 rows in one binary (`TerrainFiles.grid/build/at/row`, 16 MB a zone), written a row at a time, with garbage
+  collected every 64 rows and after each zone: about 280 MB at the peak over the app's ~220 MB. A zone a run left as
+  "generating" is picked up again by the next "Generate". At the pod's 0.5 CPU a zone takes ~25-40 s.
+- **World page: zoom and progress (2026-11-02, owner)**: the zone map zooms 1-32x (wheel about the pointer, drag to pan,
+  double-click or 1:1 to reset, + and -); past 2x it switches to a 2048 px picture made on first request
+  (`/admin/bacon_world/world/detail/<n>.png`, `WorldEditor.detail_png/1`, `<terrain>_detail.png`), and from 6x names show
+  beside the nodes. A zone being generated is registered as `{WorldGen, :zone, n}` by its worker (`WorldGen.working_on/2`),
+  which broadcasts `{:worldgen_progress, n, stage, pct}`: the page shows a progress bar and the header lists zones in
+  progress. A zone left "generating" with no worker (`WorldGen.stalled?/1`) is drawn rust-red and offers "Generate it now"
+  (`WorldGen.generate_one/1`), as do planned and failed zones.
+- **Creatures stream by distance (2026-11-02, owner: Krakens round the starter zone's edge)**: the lobby holds 125 creatures,
+  31 of them Krakens (7.7 MB rigs, each with its own materials). Every one was built at world entry, animated and drawn
+  every frame (`frustumCulled = false`), kilometres away included. `mobs-view.ts` now builds a creature's model only
+  within 300 m of the player (700 m for Krakens and drakes), nearest first, one a frame; takes it down past 1.5x that;
+  and animates, names and draws only those on screen (`stream()`, `viewer`, `camera`). Its entry, proxy (clicks,
+  targeting) and server state stay.
+- **Minimap and map (owner)**: `world-map.ts`. Top right, a circle of the zone's shaded picture 360 m across around the
+  player, north up with a red N, an arrow for where the camera looks, dots for creatures (red), NPCs (gold) and players
+  (white), the zone's name under it. N (or a click on the minimap) opens the map: the zone and the eight around it
+  (named; "unexplored" without ground), N/E/S/W. The server sends `zone_info` on entering a zone
+  (`WorldEditor.map_info/1`; makes Crater Lake's picture in the background the first time). M stays the mount key.
+- **No zone ping-pong (2026-11-02, owner)**: a crossing landed 4 m inside the next zone, inside its own 6 m trigger band, so
+  the player was sent straight back, forever. Now: it lands 20 m in (`WorldGen.inside_m/0`); the client asks only while
+  moving outward and, after any crossing or warp, not again until the player has walked 14 m clear of every edge
+  (`maybeCrossZone`, `zoneCrossArmed`); the server checks the movement is outward (`neighbour_at/5`) and allows one
+  crossing per 3 s (`last_zone_cross_ms`).
+
+### Zone-line wall, music instead of nature, the MakeHuman hair back (2026-11-02, later; not yet deployed)
+
+- **Invisible wall at the zone line (owner: "I can no longer walk across ... 0 -> 1")**: the outward check used the
+  player's position change, which is zero while the character is held against the lobby's 40 m margin, and the client
+  only checked when the position changed. Now `maybeCrossZone` runs every frame and reads the keys the player is holding
+  (`CharacterController.wishDirection()`, a component of at least 0.2 outward), so walking into the edge crosses. The
+  arming distance, the server's outward check and the 3 s cooldown stay.
+- **No more nature noises (owner: "remove all ambient sounds ... more diverse set of ambient background music")**: the
+  `audio/world/ambient/` folder (the procedural rain, wind, water, fire and wildlife set), the beds `amb_*` and the
+  details `sw_*` are deleted, and `ambient-catalog.ts` with them. `LobbyAudio` keeps its `set*` calls as cheap setters
+  (only `setWater` still does something: under water everything is muffled); the Nature volume slider is gone from the
+  game menu. Thunder, splashes, wading and grass swish came from that folder too and are silent now; the Kraken's stroke
+  uses `swing_heavy` slowed, the fishing bobber `ui_drop`, the flight wind plays on the effects bus.
+- **Music**: 55 more CC0 tracks from OpenGameArt (`audio/world/CREDITS.md`): day 27 (orchestral, medieval, lute,
+  piano, lo-fi, bossa nova, western, Egyptian, desert), night 23 (ambient, piano, synthwave, choir), lair 13, boss 6.
+  Levelled to -21 LUFS, 80 kbit/s, at most 5 minutes, short loops repeated. `audio-mix.ts` `MUSIC`: rests of 3-10 s
+  (lair 2-6, boss 0-1) instead of 50-150 s, since the music is the background now. The folder is ~129 MB.
+- **Hair: the MakeHuman styles are back, reworked (owner: the grown v3 hair looks like "crinkled strips of paper"; the
+  previous CC0 styles "needed to be greatly enhanced/re-worked, but not completely destroyed")**:
+  `library/pipeline/scripts/hair_mh_v4.py` (jobs `tmp/b8work/v4hair/`: `v4hair.cmd <Body> [id+id]`,
+  `meshopt_v4hair.cmd`, `stage_v4hair.py`). The 31 female and 18 male styles of `mhf_syshair.py`, fitted to the v3
+  body, and: strands in the texture (an orientation field from the painted streaks, noise blurred along it), frayed
+  card edges (the alpha near an edge follows the strands, with short tips where the painter left soft alpha), gentle
+  fibre normals, a darker inner shell 2.8 mm in toward the head, per-vertex occlusion as `COLOR_0` (hair under hair and
+  near the scalp darker; the outer surface keeps the chosen colour), low-poly shells (< 6000 verts) subdivided once with
+  their keys, vertices inside the v3 head pushed out, and the v3 face sliders carried onto the hair from the skin under
+  it. The scalp decal is the old one. The grown v3 ids are aliases now (Cascade -> Long, Waves -> LongWavy, Buzz ->
+  Crop, ...); the v3 GLBs move to `tmp/b8work/backup_models/2026-11-02/`. The male's facial hair is unchanged.
+
+### Afro and men's cuts, the doubled brows, Recall across zones, the Millpond (2026-11-02, evening; not yet deployed)
+
+- **Shell hair** (`library/pipeline/scripts/hair_shells.py`; jobs `tmp/b8work/shells/`: `shells.cmd <Body> [id+id]`,
+  `shrink_shells.cmd`, `stage_shells.py`). Owner: the Afro "by no means is an afro", and over half the male styles were
+  women's. Dense hair is grown like fur: the scalp copied outward in layers; strand texture alpha 0.4 + 0.6 x the
+  strand's length, each layer's COLOR_0 alpha 0.4 / (0.4 + 0.6 h), so a strand shows up to its own length (three.js
+  multiplies vertex alpha in before the alpha test); layers' texture coordinates circle (coils trace helices) or lean
+  along the comb; an alpha-faded core layer gives the mass at a distance; the old scalp decal under it (its alpha follows
+  the length, so a fade's sides read as skin). Lengths per style from the head's landmarks; the distance to the hairline
+  is measured in 3D (in texture space the UV seams read as hairline: it split the afro and left a bare strip). New:
+  male Buzz, Crew, Fade, Undercut, Caesar, Flattop and Afro; female Afro (both round, wider than tall, the lower edge
+  curving in). Male list now: Buzz, Crew, Fade, Undercut, Caesar, Flat top, Short, Crop, Tousled, Side part, Swept back,
+  Messy, Chunky, Afro, Bun, Ponytail, Long. Retired from him (aliases): Headband, Windswept, Shag, Shoulder length,
+  Long wavy, Long layered, Braid.
+- **Doubled eyebrows** (owner: "shading above the eyes that look like a second set of eye-brows"): both skins carried
+  painted brows from their source above the brow cards. `face_brows.py` paints them out (a grey closing over the region
+  near the cards, feathered, grain kept; `B8_BROW_REACH` 17 mm female, 28 mm male) and lifts the female's cards 3.6 mm up
+  the skin (`B8_BROW_LIFT`); `brow_basis_export.py` (the exporter takes base positions from the vertices, not the Basis
+  key). The glTF exporter wrote the original skin pixels under the new name, so `tmp/b8work/brows/replace_image.py` swaps
+  the cleaned PNG into the GLB. Old bodies in `tmp/b8work/backup_models/2026-11-02b/`, old blends `*.prebrow.blend`.
+- **Recall and respawning go to the bind's zone** (owner: "Character stays in their current zone"): `Combat.bind_point/1`
+  carries the bind's zone; Recall (`SkillEvents`) and a respawn (`PlayLive.respawn_in_bind_zone/2`) move the character
+  there with `PlayLive.transfer_to_zone/7` (now public). An old bind without a zone is the lobby's.
+- **The Millpond in every zone** (owner: "instances of the old mill pond in many zones near 0, 0, 0"): the client drew the
+  water once per visit (`game-world.ts` `applyWorldState`); it is redrawn whenever the zone's water differs, and the
+  lobby's lake colliders go with it.
+- **Zone line still a wall** (owner, after the deploy that had the wishDirection fix): not found in the code. The server
+  now says why it refuses (`WorldGen.neighbour/5`: not at an edge, not outward, no zone that way, zone not ready, ground
+  files missing, ...), logs it (`zone_cross refused:`), and the client prints "You can't go that way: <reason>." in the
+  combat log and the console. No message at all means the client never asked (then the edge check on the client).
+- **Menus** use the profile's glass opacity as set (BACON8.md decisions, 2026-11-02).
+
+### The zone-line wall found; eye shapes and face presets (2026-11-02, night; not yet deployed)
+
+- **The zone line** (owner, after the reason messages: "You can't go that way: wait a moment" on every try): the
+  3-second cooldown read "never crossed" as `-10_000` ms, and the BEAM's monotonic clock is usually far below zero, so
+  every crossing was "too soon". `PlayLive.cross_cooled?/2` treats nil as never; a test uses a negative clock.
+- **Eye shapes** (owner chose eye shapes and presets over more features): `library/pipeline/scripts/face_eyes.py`
+  (stage H4; jobs `tmp/b8work/eyes/`: `eyes.cmd <Body> [--export]`, `export.cmd` (both bodies, meshopt), then the
+  cleaned skins put back with `tmp/b8work/brows/replace_image.py`). Eleven keys from MakeHuman's CC0 eye targets (both
+  sides; which corner is inner is read from the data): Eyes_TiltUp/TiltDown, Round/Narrow, Hooded, Monolid,
+  Wide/Close, Up/Down, Bags, with gains (tilt x2, folds x1.5, opening x1.3, bags x1.2). The base deltas sit on the v3
+  body's first 13,380 vertices; the subdivided ones, brows and lashes get them as a field (nearest base vertices, 1/d^3);
+  the eyeballs move rigidly with Wide/Close/Up/Down. Sliders (`appearance.ts`, `appearance.ex`): Tilt, Opening, Lid fold,
+  Inner fold, Spacing, Height, Under-eyes, in the creator's Face tab under "Eye shape". Body GLBs +0.9 MB each;
+  pre-eyes blends `*_MPFB.preeyes.blend`, old bodies in `tmp/b8work/backup_models/2026-11-02c/`.
+- **Face presets** (`appearance.ts` `FACE_PRESETS`, the creator's "Face preset" row): Classic, Soft, Sharp, Heroic,
+  Gentle, Fierce, Sleepy, Bright, Elfin, Almond, Rugged, Youthful. One click sets every face and eye slider (unnamed ones
+  to 0); the matching preset is lit; fine-tune from there.
+
 ### Tests
 
 The plugin's Elixir tests run with the hub's suite; the JavaScript tests run with
@@ -426,6 +622,13 @@ harness (see §8).
 | 2026-11-01 | **Plate is rigid plate** (owner chose the rebuild): Gemini's fitted-cloth plate (one mesh for five sets) is replaced by forged, rigidly skinned shells, every set its own design. See "Plate, rebuilt" in §2. |
 | 2026-11-01 | **The jeweller's sets are sold in-game for Gems, not in the Bacon Store** (owner: "make them available to purchase from a merchant in-game for gems"): 100 Gems a set, each with its own power. |
 | 2026-11-01 | **Retired leftovers deleted** (owner): the painted Wardrobe textures and the 28 icons of retired items are gone from the models volume; the Robin Hood Hat stays. |
+| 2026-11-02 | **A world of zones around Crater Lake** (owner): 200 zones, 4096 m and 2 m samples like Crater Lake, on a grid, **walked across at the edges**; generated, then edited in World Creator and re-imported live. When a zone's ground is replaced, its nodes are **re-seated** on the new ground (or cleared, the admin's choice). |
+| 2026-11-02 | **Item, NPC and monster definitions move into the database** (owner chose this over code defaults + overrides): the code catalogues go once they are seeded. |
+| 2026-11-02 | **Gems are shown with the money**: in the inventory and in every shop. `/zone x y z <zone#>` reaches any zone. |
+| 2026-11-02 | **No nature sounds; music is the background** (owner): the ambient recordings, beds and details are deleted; many more music tracks play with short rests. **The MakeHuman CC0 hair styles return**, reworked, in place of the grown v3 hair (owner). |
+| 2026-11-02 | **Men's hair is men's hair** (owner): the long and feminine MakeHuman styles leave the male list (aliases keep saved looks); short cuts and an Afro grown as shells come in. **Recall and respawn take you to the zone you're bound in.** |
+| 2026-11-02 | **Faces: eye shapes and presets first** (owner chose these two of the three options; more feature sliders (nose, mouth, ears) can follow). |
+| 2026-11-01 | **No cricket sounds** (owner: "delete whatever god awful cricket noise we have now"): the cricket and katydid recordings are deleted and nothing plays crickets at night. |
 | 2026-10-31 | **Rain Effect Optimization & Visual Refinement**: Overhauled weather rain and clouds for high performance. Reduced particle count from 2,000 to 360 drops within an 18 m local camera cylinder (eliminating distant white needles across mountains and reducing CPU/bus transfer by 82%), softened streak color and opacity (`0x6e889e`, 0.08–0.22 opacity), and bypassed the cloud plane during clear weather with 2-octave shader evaluation to eliminate GPU fillrate bottlenecks. |
 
 ## 4. How it fits together

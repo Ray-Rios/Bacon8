@@ -1018,11 +1018,35 @@ html.chrome-hidden [data-responsive-content] { top: 0 !important; bottom: 0 !imp
 }
 
 
+/* The navbar and the taskbar hold menus (.glass-menu: the start menu, the user menu, the
+   panels). An element with a backdrop-filter is a "backdrop root": a descendant's backdrop-filter
+   only sees what that element itself draws, never the page behind it, so the menus' blur did
+   nothing and the page showed through them sharp, whatever the profile's blur (owner, 2026-11-02).
+   The bars draw their own frosting with a pseudo-element instead, so they aren't backdrop roots. */
+#main-navbar.auth-glass-panel,
+#taskbar.auth-glass-panel {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+#main-navbar.auth-glass-panel::before,
+#taskbar.auth-glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+}
+
 /* ==================== FROSTED GLASS: MENUS, SWATCHES, GRAIN ==================== */
 /* The navbar and taskbar read as frosted because they sit on a thin strip. A menu is a big
    panel straight over the page, and with the user's glass opacity (0.15 by default) it was
-   nearly clear. Menus and popups use .glass-menu: a tinted body that is always mostly
-   opaque, a stronger blur, a sheen, a light edge and a fine grain. The tint follows the
+   nearly clear. Menus and popups use .glass-menu: a tinted body at the profile's glass
+   opacity (no longer forced opaque, owner 2026-11-02), a stronger blur, a sheen, a light edge and a fine grain. The tint follows the
    personal glass colour (--glass-menu-bg is set by glass_theme.ts and the root layout).
    Use it on an element that is already positioned (absolute or fixed). */
 :root {

@@ -11,5 +11,9 @@ defmodule BaconWorldWeb.Routes do
     live "/", Admin.HomeLive, :index
     live "/skills", Admin.SkillTreeLive, :index
     live "/tuning", Admin.TuningLive, :index
+    live "/world", Admin.WorldLive, :index
+    live "/database", Admin.DatabaseLive, :index
+    get "/world/export/:number", Admin.WorldFileController, :export
+    get "/world/detail/:number", Admin.WorldFileController, :detail
   end
 end

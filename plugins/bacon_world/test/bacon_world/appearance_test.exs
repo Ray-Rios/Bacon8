@@ -47,6 +47,14 @@ defmodule BaconWorld.AppearanceTest do
     assert %{"glute_lift" => +0.0, "arms" => 0.3, "thighs" => 1.0, "calves" => -0.2, "waist" => -0.6} = m["shape"]
   end
 
+  test "eye shapes are kept and clamped for both bodies (2026-11-02)" do
+    shape = %{"eye_tilt" => -0.4, "eye_open" => 2, "eye_hooded" => 0.6, "eye_monolid" => -1, "eye_spacing" => 0.3, "eye_height" => -0.2, "eye_bags" => 0.5}
+    for body <- ~w(male female) do
+      assert {:ok, a} = A.normalize(%{"body" => body, "shape" => shape}, nil)
+      assert %{"eye_tilt" => -0.4, "eye_open" => 1.0, "eye_hooded" => 0.6, "eye_monolid" => +0.0, "eye_spacing" => 0.3, "eye_height" => -0.2, "eye_bags" => 0.5} = a["shape"]
+    end
+  end
+
   test "shoulders: narrower than his look for the male only" do
     assert {:ok, m} = A.normalize(%{"body" => "male", "shape" => %{"shoulders" => -3}}, nil)
     assert m["shape"]["shoulders"] == -1.0

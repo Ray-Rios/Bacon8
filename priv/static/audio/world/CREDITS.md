@@ -31,7 +31,6 @@ the people who recorded them.
 | [AMB Outside 1](https://opengameart.org/content/amb-outside-1) | Kresiek The Furry | amb_day |
 | [Park ambiences](https://opengameart.org/content/park-ambiences) | thimras | amb_birds |
 | [Mild Wind Background Noise](https://opengameart.org/content/mild-wind-background-noise) | Bashar3A | amb_wind |
-| [Crickets Ambient Noise - loopable](https://opengameart.org/content/crickets-ambient-noise-loopable) | Wolfgang_ | amb_night |
 | [Fire Crackling](https://opengameart.org/content/fire-crackling) | AntumDeluge | amb_campfire |
 
 The first pass's generated music bed (`music_ambient.mp3`) was retired on 2026-10-25 for the tracks below.
@@ -103,3 +102,74 @@ from scratch. CC0 needs no credit; these are the people who made the sources.
 | lair_3 | [Dark Forest Theme](https://opengameart.org/content/dark-forest-theme) | cynicmusic |
 | boss_1 | [Battle Theme A](https://opengameart.org/content/battle-theme-a) | cynicmusic |
 | menu_1 | [Medieval: The Old Tower Inn](https://opengameart.org/content/medieval-the-old-tower-inn) | RandomMind |
+
+## 2026-11-02: no more nature noises; much more music
+
+The owner: "remove all ambient sounds ... they ALL are terrible. Just give me a more diverse set of ambient
+background music, no more nature noises." Deleted: the whole `ambient/` folder (the procedural rain, wind,
+water, fire and wildlife set of 2026-10-31), the nature beds `amb_day`, `amb_birds`, `amb_wind`,
+`amb_campfire`, `amb_lair`, `amb_high` and the details `sw_bird_*`, `sw_leaves_*`, `sw_gust_*`, `sw_drip_*`
+(the rows above for them are history). The music now plays nearly back to back.
+
+Added below: 55 more tracks (day 8-27, night 4-23, lair 4-13, boss 2-6), all from OpenGameArt.org, each page's licences checked on 2026-11-02 to include
+CC0 (some pages offer CC0 alongside CC-BY/OGA-BY; we take them as CC0). Levelled to -21 LUFS, 80 kbit/s
+stereo, at most 5 minutes; short loops repeated to 2.5-4 minutes (`tmp/b8work/music/`: plan.json,
+convert.sh, loop.sh, shrink.sh).
+
+| File | Page | By |
+|---|---|---|
+| day_8 | [mythica](https://opengameart.org/content/mythica) | congusbongus |
+| day_9 | [medieval-minstrel-dance](https://opengameart.org/content/medieval-minstrel-dance) | RandomMind |
+| day_10 | [lost-in-the-meadows](https://opengameart.org/content/lost-in-the-meadows) | HaelDB |
+| day_11 | [meadow-thoughts](https://opengameart.org/content/meadow-thoughts) | Écrivain |
+| day_12 | [jrpg-piano](https://opengameart.org/content/jrpg-piano) | Joth |
+| day_13 | [medieval-exploration](https://opengameart.org/content/medieval-exploration) | RandomMind |
+| day_14 | [beautiful-forest-orchestra](https://opengameart.org/content/beautiful-forest-orchestra) | nene |
+| day_15 | [ancient-fairytale](https://opengameart.org/content/ancient-fairytale) | obscure music |
+| day_16 | [grasslands-theme](https://opengameart.org/content/grasslands-theme) | DST |
+| day_17 | [green-hills](https://opengameart.org/content/green-hills) | Igor Gundarev |
+| day_18 | [mirror-lake](https://opengameart.org/content/mirror-lake) | Joth |
+| day_19 | [feel-good-island](https://opengameart.org/content/feel-good-island) | HaelDB |
+| day_20 | [medieval-market-day](https://opengameart.org/content/medieval-market-day) | RandomMind |
+| day_21 | [desert-theme](https://opengameart.org/content/desert-theme) | yd |
+| day_22 | [chill-lofi-inspired](https://opengameart.org/content/chill-lofi-inspired) | omfgdude |
+| day_23 | [bossa-nova](https://opengameart.org/content/bossa-nova) | Joth |
+| day_24 | [egyptian-meditation-music](https://opengameart.org/content/egyptian-meditation-music) | HaelDB |
+| day_25 | [apple-cider](https://opengameart.org/content/apple-cider) | Zane Little Music |
+| day_26 | [spaghetti-western](https://opengameart.org/content/spaghetti-western) | Spring Spring |
+| day_27 | [a-sailors-chant](https://opengameart.org/content/a-sailors-chant) | Thimras |
+| night_4 | [mysterious-ambience-song21](https://opengameart.org/content/mysterious-ambience-song21) | cynicmusic |
+| night_5 | [snowfall](https://opengameart.org/content/snowfall) | Kistol |
+| night_6 | [moon-chime](https://opengameart.org/content/moon-chime) | obscure music |
+| night_7 | [dream-ambience](https://opengameart.org/content/dream-ambience) | TokyoGeisha |
+| night_8 | [dream-2-ambience](https://opengameart.org/content/dream-2-ambience) | TokyoGeisha |
+| night_9 | [contemplation-0](https://opengameart.org/content/contemplation-0) | Joth |
+| night_10 | [lonelyhood](https://opengameart.org/content/lonelyhood) | yd |
+| night_11 | [cold-silence](https://opengameart.org/content/cold-silence) | Eponasoft |
+| night_12 | [calm-piano-1-vaporware](https://opengameart.org/content/calm-piano-1-vaporware) | cynicmusic |
+| night_13 | [calm-ambient-1-synthwave-4k](https://opengameart.org/content/calm-ambient-1-synthwave-4k) | cynicmusic |
+| night_14 | [calm-ambient-3-lifewave-2k](https://opengameart.org/content/calm-ambient-3-lifewave-2k) | cynicmusic |
+| night_15 | [ambient-relaxing-loop](https://opengameart.org/content/ambient-relaxing-loop) | isaiah658 |
+| night_16 | [mystical-enigmatic-background-music](https://opengameart.org/content/mystical-enigmatic-background-music) | CleytonKauffman |
+| night_17 | [haunting-piano](https://opengameart.org/content/haunting-piano) | Emma_MA |
+| night_18 | [tragic-ambient-main-menu](https://opengameart.org/content/tragic-ambient-main-menu) | HaelDB |
+| night_19 | [shrine](https://opengameart.org/content/shrine) | yd |
+| night_20 | [underwater-theme](https://opengameart.org/content/underwater-theme) | CleytonKauffman |
+| night_21 | [emptycity-background-music](https://opengameart.org/content/emptycity-background-music) | yd |
+| night_22 | [happy-lullaby-song17](https://opengameart.org/content/happy-lullaby-song17) | cynicmusic |
+| night_23 | [fantasy-lament-for-a-warriors-soul](https://opengameart.org/content/fantasy-lament-for-a-warriors-soul) | RandomMind |
+| lair_4 | [creepy-forest-f](https://opengameart.org/content/creepy-forest-f) | HaelDB |
+| lair_5 | [cave-theme](https://opengameart.org/content/cave-theme) | HaelDB |
+| lair_6 | [dark-shrine-loop](https://opengameart.org/content/dark-shrine-loop) | qubodup |
+| lair_7 | [evil-temple-ambiance-loop](https://opengameart.org/content/evil-temple-ambiance-loop) | HaelDB |
+| lair_8 | [dark-cavern-ambient](https://opengameart.org/content/dark-cavern-ambient) | Paul Wortmann |
+| lair_9 | [menace](https://opengameart.org/content/menace) | yd |
+| lair_10 | [spooky-dungeon](https://opengameart.org/content/spooky-dungeon) | You're Perfect Studio |
+| lair_11 | [the-9th-circle](https://opengameart.org/content/the-9th-circle) | Joth |
+| lair_12 | [horror-atmosphere](https://opengameart.org/content/horror-atmosphere) | SubspaceAudio |
+| lair_13 | [where-was-i](https://opengameart.org/content/where-was-i) | yd |
+| boss_2 | [great-boss](https://opengameart.org/content/great-boss) | Spring Spring |
+| boss_3 | [prepare-your-swords](https://opengameart.org/content/prepare-your-swords) | bojidar-bg |
+| boss_4 | [boss-battle-theme](https://opengameart.org/content/boss-battle-theme) | CleytonKauffman |
+| boss_5 | [boss-battle-music](https://opengameart.org/content/boss-battle-music) | SubspaceAudio |
+| boss_6 | [determined-pursuit-epic-orchestra-loop](https://opengameart.org/content/determined-pursuit-epic-orchestra-loop) | Emma_MA |

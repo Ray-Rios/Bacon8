@@ -4,31 +4,23 @@
 // swings, hits, spells, the dragon, coins, chimes and a quiet UI. Each kind has several takes,
 // picked so the same one never plays twice running, with a little pitch and level variety.
 //
-// Under it all: nature beds (birds and wind by day, crickets by night, a campfire near the
-// camp, the lair's drips and draughts, wind high up) with rare details placed around you,
-// and music by mood (day, night, the lair, the boss, the select screen): several tracks a
-// mood, shuffled, with long rests between them so the music never wears thin.
+// Under it all: background music by mood (day, night, the lair, the boss, the select screen),
+// many tracks a mood in many styles, shuffled, with only a short breath between them. The
+// nature beds and their bird, leaf, gust and drip details were removed on 2026-11-02 (owner:
+// "no more nature noises"); the music carries the world now.
 //
-// Everything plays through one Web Audio graph: effects and nature pan to where they come
+// Everything plays through one Web Audio graph: effects pan to where they come
 // from and get duller with distance, and a gentle compressor on the master keeps a busy
 // fight from getting loud. Browsers only allow sound after the player has clicked or pressed
 // a key, so nothing plays before that.
 //
-// Three volumes (effects, nature, music; sliders in the game menu) and one switch for all
+// Two volumes (effects, music; sliders in the game menu) and one switch for all
 // sound (the player window's Sound button), remembered in this browser.
 
-import { MUSIC, Playlist, gapFor, placeSound, restAfter, sweetenersFor, weighted, type Mood, type Vec3 } from './audio-mix';
+import { MUSIC, Playlist, gapFor, placeSound, restAfter, type Mood, type Vec3 } from './audio-mix';
 import { UNITS_PER_METRE } from './controls-math';
-import { getAmbientAudioUrl } from './ambient-catalog';
 
 const BASE = '/audio/world';
-
-// Ambient procedural sound pools for randomized variety
-const AMBIENT_POOLS: Record<string, string[]> = {
-  water_frog: ['wildlife_17_bullfrog_deep_croak_01', 'wildlife_18_tree_frog_double_ribbit_02'],
-  water_wave_wash: ['water_11_single_ocean_wave_wash_soft', 'water_12_single_ocean_wave_crash_big', 'water_13_shore_wave_pebble_drawback'],
-  water_drip: ['water_18_cave_water_drip_single_01', 'water_19_cave_water_drip_single_02', 'water_20_cave_water_drip_cluster'],
-};
 
 // Kinds with several takes: name -> number of files (<name>_1.mp3 ...).
 const GROUPS: Record<string, number> = {
@@ -78,11 +70,6 @@ const GROUPS: Record<string, number> = {
   ui_learn: 2,
   ui_drag: 3,
   ui_drop: 3,
-  // details placed around you
-  sw_bird: 5,
-  sw_leaves: 8,
-  sw_gust: 5,
-  sw_drip: 3,
 };
 const SINGLES = ['draw', 'bone_break', 'bone_collapse', 'coins', 'loot', 'equip', 'bag_open', 'level_up', 'respawn', 'click'];
 // Loops that follow something (a cast, a fireball, the wind while flying).
@@ -109,18 +96,6 @@ const RANGE_M: Record<string, number> = {
   bone_collapse: 40,
 };
 const DEFAULT_RANGE_M = 33;
-const BEDS = [
-  'amb_day',
-  'amb_birds',
-  'amb_wind',
-  'amb_night',
-  'amb_campfire',
-  'amb_lair',
-  'amb_high',
-  'water_beach',
-  'water_lake',
-  'water_submerged',
-];
 
 const PREF_KEY = 'bacon_world:sound';
 // Before the volume sliders (2026-10-22), music had an on/off switch of its own.
@@ -212,29 +187,13 @@ export class LobbyAudio {
   private buffers = new Map<string, AudioBuffer>();
   private loading = new Map<string, Promise<AudioBuffer | null>>();
   private failed = new Set<string>();
-  private beds = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>();
   private wantMusic = false;
   private wantAmbience = false;
   private unlocked = false;
   private last = new Map<string, number>();
   private lastAt = new Map<string, number>();
   private voices: Array<{ src: AudioBufferSourceNode; gain: number }> = [];
-  private daylight = 1;
-  private campfire = 0;
-  private bonfire = 0;
-  private lair = 0;
-  private high = 0;
-  private lake = 0;
-  private ocean = 0;
-  private forest = 0;
-  private canyon = 0;
-  private rain = 0;
-  private shelter: 'open' | 'tree' | 'tent' | 'cabin' = 'open';
-  private timeOfDay = 0.5;
-  private submerged = 0;
   private underwaterFilter: BiquadFilterNode | null = null;
-  private directAmb: GainNode | null = null;
-  private bedLoading = new Set<string>();
   private volumes: Record<VolumeKind, number> = {
     effects: readVolume('effects'),
     ambience: readVolume('ambience'),
@@ -251,8 +210,6 @@ export class LobbyAudio {
   private track: MusicTrack | null = null;
   private fading: MusicTrack[] = [];
   private musicTimer: number | null = null;
-  // details placed around you
-  private sweetTimer: number | null = null;
   // UI hooks
   private uiRoots: Array<{ el: HTMLElement; off: () => void }> = [];
 
@@ -271,7 +228,6 @@ export class LobbyAudio {
     window.removeEventListener('keydown', this.unlock);
     this.context();
     if (this.enabled && this.wantMusic && this.musicOn) this.startMusic();
-    if (this.enabled && this.wantAmbience) this.startBeds();
   }
 
   /** Music plays (its slider is above zero). */
@@ -291,9 +247,6 @@ export class LobbyAudio {
     writeVolume(kind, value);
     const node = kind === 'effects' ? this.fx : kind === 'ambience' ? this.amb : this.mus;
     if (node && this.ctx) node.gain.setTargetAtTime(level(kind, value), this.ctx.currentTime, 0.03);
-    if (kind === 'ambience' && this.directAmb && this.ctx) {
-      this.directAmb.gain.setTargetAtTime(level(kind, value), this.ctx.currentTime, 0.03);
-    }
     if (kind === 'music') {
       if (value > 0) this.lastMusic = value;
       if (value > 0 && this.wantMusic && this.enabled && this.unlocked && !this.track) this.startMusic();
@@ -340,9 +293,6 @@ export class LobbyAudio {
     this.amb = this.ctx.createGain();
     this.amb.gain.value = level('ambience', this.volumes.ambience);
     this.amb.connect(this.underwaterFilter);
-    this.directAmb = this.ctx.createGain();
-    this.directAmb.gain.value = level('ambience', this.volumes.ambience);
-    this.directAmb.connect(this.master);
     this.mus = this.ctx.createGain();
     this.mus.gain.value = level('music', this.volumes.music);
     this.mus.connect(this.underwaterFilter);
@@ -350,17 +300,15 @@ export class LobbyAudio {
   }
 
   private file(name: string): string | null {
-    const ambient = getAmbientAudioUrl(name);
-    if (ambient) return ambient;
-    if (SINGLES.includes(name) || BEDS.includes(name) || LOOPS.includes(name) || /_\d+$/.test(name)) return `${BASE}/${name}.mp3`;
+    if (SINGLES.includes(name) || LOOPS.includes(name) || /_\d+$/.test(name)) return `${BASE}/${name}.mp3`;
     return null;
   }
 
   private load(name: string): Promise<AudioBuffer | null> {
     const cached = this.buffers.get(name);
     if (cached) return Promise.resolve(cached);
-    // A file that failed once is not asked for again this visit: the beds are re-mixed four times
-    // a second, and a missing file was fetched every time (2026-11-01: thousands of 404s a minute).
+    // A file that failed once is not asked for again this visit (2026-11-01: a missing file was
+    // fetched over and over, thousands of 404s a minute).
     if (this.failed.has(name)) return Promise.resolve(null);
     const pending = this.loading.get(name);
     if (pending) return pending;
@@ -398,14 +346,6 @@ export class LobbyAudio {
   // A take of a kind, not the same one twice in a row.
   private pick(kind: string): string | null {
     const name = ALIASES[kind] ?? kind;
-    const ambPool = AMBIENT_POOLS[name];
-    if (ambPool && ambPool.length > 0) {
-      const prev = this.last.get(name) ?? -1;
-      let k = Math.floor(Math.random() * ambPool.length);
-      if (ambPool.length > 1 && k === prev) k = (k + 1) % ambPool.length;
-      this.last.set(name, k);
-      return ambPool[k];
-    }
     const pool = POOLS[name];
     if (pool) {
       const total = pool.reduce((s, g) => s + (GROUPS[g] || 0), 0);
@@ -421,7 +361,6 @@ export class LobbyAudio {
     }
     const n = GROUPS[name];
     if (!n) {
-      if (getAmbientAudioUrl(name)) return name;
       return SINGLES.includes(name) || LOOPS.includes(name) ? name : null;
     }
     if (n === 1) return `${name}_1`;
@@ -749,236 +688,35 @@ export class LobbyAudio {
 
   // ---------------------------------------------------------------- nature
 
-  /** Nature sounds for the world (off on the select screen). */
+  // The nature beds are gone (2026-11-02). The world still reports where the player is, so
+  // these stay as cheap setters; only the water one does anything: under water everything,
+  // the music too, is muffled.
+
   setAmbience(on: boolean): void {
     this.wantAmbience = on;
-    if (on && this.enabled && this.unlocked) this.startBeds();
-    else this.stopBeds();
   }
 
-  /** 1 = full day (birds, wind), 0 = night (crickets). */
-  setDaylight(d: number): void {
-    this.daylight = Math.max(0, Math.min(1, d));
-    this.mixBeds();
-  }
+  setDaylight(_d: number): void {}
 
-  /** Time of day in the cycle (0..1, where 0.25 is dawn, 0.5 is noon, 0.75 is dusk, 0/1 is midnight). */
-  setTimeOfDay(t: number): void {
-    this.timeOfDay = Math.max(0, Math.min(1, t));
-    this.mixBeds();
-  }
+  setTimeOfDay(_t: number): void {}
 
-  /** How close the campfire is: 1 next to it, 0 out of earshot. */
-  setCampfire(nearness: number): void {
-    this.campfire = Math.max(0, Math.min(1, nearness));
-    this.mixBeds();
-  }
+  setCampfire(_nearness: number): void {}
 
-  /** Proximity to fire sources: campfire (0..1) and roaring bonfire (0..1). */
-  setFire(campfire: number, bonfire = 0): void {
-    this.campfire = Math.max(0, Math.min(1, campfire));
-    this.bonfire = Math.max(0, Math.min(1, bonfire));
-    this.mixBeds();
-  }
+  setFire(_campfire: number, _bonfire = 0): void {}
 
-  /** Biome environment: forest/woodland (0..1) and canyon/rocky gorge (0..1). */
-  setEnvironment(forest: number, canyon = 0): void {
-    this.forest = Math.max(0, Math.min(1, forest));
-    this.canyon = Math.max(0, Math.min(1, canyon));
-    this.mixBeds();
-  }
+  setEnvironment(_forest: number, _canyon = 0): void {}
 
-  /** Dynamic weather: rain intensity (0..1) and immediate shelter type. */
-  setWeather(rain: number, shelter: 'open' | 'tree' | 'tent' | 'cabin' = 'open'): void {
-    this.rain = Math.max(0, Math.min(1, rain));
-    this.shelter = shelter;
-    this.mixBeds();
-  }
+  setWeather(_rain: number, _shelter: 'open' | 'tree' | 'tent' | 'cabin' = 'open'): void {}
 
-  /** How deep into the lair (1 inside its crags) and how high up (1 well above the treetops). */
-  setPlace(lair: number, high: number): void {
-    this.lair = Math.max(0, Math.min(1, lair));
-    this.high = Math.max(0, Math.min(1, high));
-    this.mixBeds();
-  }
+  setPlace(_lair: number, _high: number): void {}
 
-  /** Water proximity and immersion. lake: 0..1, ocean: 0..1, submerged: 0..1. */
-  setWater(lake: number, ocean: number, submerged: number): void {
-    this.lake = Math.max(0, Math.min(1, lake));
-    this.ocean = Math.max(0, Math.min(1, ocean));
-    this.submerged = Math.max(0, Math.min(1, submerged));
+  /** Water: submerged (0..1) muffles everything. */
+  setWater(_lake: number, _ocean: number, submerged: number): void {
+    const sub = Math.max(0, Math.min(1, submerged));
     if (this.ctx && this.underwaterFilter) {
-      const targetCutoff = this.submerged > 0.05 ? Math.max(380, 20000 * Math.pow(0.019, this.submerged)) : 20000;
+      const targetCutoff = sub > 0.05 ? Math.max(380, 20000 * Math.pow(0.019, sub)) : 20000;
       this.underwaterFilter.frequency.setTargetAtTime(targetCutoff, this.ctx.currentTime, 0.25);
     }
-    this.mixBeds();
-  }
-
-  private calculateBedLevels(): Record<string, number> {
-    const d = this.daylight;
-    const t = this.timeOfDay;
-    const sub = this.submerged;
-    const out = (1 - this.lair) * (1 - this.high * 0.8) * (1 - sub);
-    const rain = this.rain;
-    const isRaining = rain > 0.05;
-
-    // Dawn window: peaks around t=0.27
-    const dawnWeight = Math.max(0, 1 - Math.abs(t - 0.27) / 0.06);
-    // Midday window: peaks around t=0.52
-    const middayWeight = Math.max(0, 1 - Math.abs(t - 0.52) / 0.08);
-    // Night window
-    const nightWeight = (1 - d) * (1 - d);
-
-    // Weather shelter gating
-    const underTree = this.shelter === 'tree' ? 1 : 0;
-    const nearTent = this.shelter === 'tent' ? 1 : 0;
-    const inCabin = this.shelter === 'cabin' ? 1 : 0;
-    const openSky = (1 - underTree * 0.7) * (1 - nearTent * 0.8) * (1 - inCabin * 0.9);
-
-    const levels: Record<string, number> = {
-      // General day/wind/night
-      amb_day: 0.35 * d * out * (1 - rain * 0.7),
-      amb_wind: (0.25 + 0.15 * (1 - d)) * (1 - this.lair * 0.6) * (1 - sub),
-      wind_forest: 0.55 * this.forest * out * (1 - rain * 0.5),
-      wind_canyon: 0.65 * this.canyon * out * (1 - rain * 0.5),
-      wind_summit: 0.75 * this.high * (1 - sub),
-
-      // Diurnal wildlife loops
-      wildlife_dawn_birds: 0.65 * dawnWeight * out * (1 - rain * 0.8),
-      wildlife_cicadas_noon: 0.6 * middayWeight * out * (1 - rain * 0.9),
-      wildlife_night_crickets: 0.55 * nightWeight * (1 - this.lake * 0.7) * out * (1 - rain * 0.8),
-      wildlife_night_pond: 0.7 * nightWeight * this.lake * out * (1 - rain * 0.7),
-
-      // Fire loops
-      fire_campfire: 0.8 * this.campfire * (1 - sub),
-      fire_bonfire: 0.9 * this.bonfire * (1 - sub),
-      fire_brushfire: 0.75 * this.lair * (1 - sub),
-      amb_lair: 0.85 * this.lair * (1 - sub),
-
-      // Water loops
-      water_beach: 0.7 * this.ocean * out * (1 - rain * 0.4),
-      water_lake: 0.65 * this.lake * out * (1 - rain * 0.4),
-      water_submerged: 0.85 * sub,
-
-      // Weather rain loops
-      rain_drizzle: rain > 0.05 && rain < 0.45 ? 0.75 * (rain / 0.45) * openSky * (1 - sub) : 0,
-      rain_steady: rain >= 0.35 && rain < 0.8 ? 0.85 * Math.min(1, (rain - 0.35) / 0.3) * openSky * (1 - sub) : 0,
-      rain_thunderstorm: rain >= 0.7 ? 0.95 * Math.min(1, (rain - 0.7) / 0.25) * openSky * (1 - sub) : 0,
-
-      // Shelter rain loops
-      rain_canopy: isRaining && underTree ? 0.8 * rain * underTree * (1 - sub) : 0,
-      rain_tent: isRaining && nearTent ? 0.85 * rain * nearTent * (1 - sub) : 0,
-      rain_cabin: isRaining && inCabin ? 0.9 * rain * inCabin * (1 - sub) : 0,
-    };
-
-    return levels;
-  }
-
-  private ensureBed(name: string): void {
-    if (this.beds.has(name) || this.bedLoading.has(name)) return;
-    this.bedLoading.add(name);
-    void this.load(name).then((buf) => {
-      this.bedLoading.delete(name);
-      if (!buf || !this.ctx || this.beds.has(name) || !this.wantAmbience || !this.enabled) return;
-      const src = this.ctx.createBufferSource();
-      src.buffer = buf;
-      src.loop = true;
-      const gain = this.ctx.createGain();
-      gain.gain.value = 0;
-      const out = (name === 'water_submerged' && this.directAmb) ? this.directAmb : this.amb;
-      if (!out) return;
-      src.connect(gain).connect(out);
-      src.start(0, Math.random() * buf.duration);
-      this.beds.set(name, { src, gain });
-      this.mixBeds();
-    });
-  }
-
-  private mixBeds(): void {
-    if (!this.ctx || !this.wantAmbience || !this.enabled) return;
-    const levels = this.calculateBedLevels();
-    for (const [name, targetGain] of Object.entries(levels)) {
-      if (targetGain > 0.01) {
-        if (!this.beds.has(name)) {
-          this.ensureBed(name);
-          continue;
-        }
-      }
-      const b = this.beds.get(name);
-      if (b) {
-        b.gain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.8);
-      }
-    }
-  }
-
-  private startBeds(): void {
-    const ctx = this.context();
-    if (!ctx || !this.amb) return;
-    const coreBeds = ['amb_day', 'amb_wind', 'wildlife_night_crickets'];
-    for (const name of coreBeds) {
-      this.ensureBed(name);
-    }
-    this.mixBeds();
-    this.scheduleSweetener();
-  }
-
-  // A detail now and then (a bird call, leaves, a gust, a drip in the lair), somewhere
-  // around you, quiet: what keeps the beds from sounding like loops.
-  private scheduleSweetener(): void {
-    if (this.sweetTimer) return;
-    const wait = 5000 + Math.random() * 9000;
-    this.sweetTimer = window.setTimeout(() => {
-      this.sweetTimer = null;
-      if (!this.wantAmbience || !this.enabled || !this.unlocked) return;
-      const kind = weighted(
-        sweetenersFor(
-          this.daylight,
-          this.lair,
-          this.high,
-          this.lake,
-          this.ocean,
-          Math.max(this.campfire, this.bonfire),
-          this.forest,
-          this.rain,
-          this.timeOfDay
-        ),
-        Math.random()
-      );
-      if (kind && this.amb && this.ctx) {
-        const name = this.pick(kind);
-        if (name) {
-          void this.load(name).then((buf) => {
-            if (!buf || !this.ctx || !this.amb) return;
-            const src = this.ctx.createBufferSource();
-            src.buffer = buf;
-            src.playbackRate.value = 0.94 + Math.random() * 0.12;
-            const g = this.ctx.createGain();
-            g.gain.value = 0.55 + Math.random() * 0.35;
-            const p = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
-            if (p) {
-              p.pan.value = (Math.random() * 2 - 1) * 0.8;
-              src.connect(p).connect(g).connect(this.amb);
-            } else src.connect(g).connect(this.amb);
-            src.start();
-          });
-        }
-      }
-      this.scheduleSweetener();
-    }, wait);
-  }
-
-  private stopBeds(): void {
-    for (const b of this.beds.values()) {
-      try {
-        b.src.stop();
-      } catch {
-        // already stopped
-      }
-      b.src.disconnect();
-    }
-    this.beds.clear();
-    if (this.sweetTimer) window.clearTimeout(this.sweetTimer);
-    this.sweetTimer = null;
   }
 
   /** Sound on/off for this browser; returns the new state. */
@@ -987,10 +725,8 @@ export class LobbyAudio {
     writePref(PREF_KEY, this.enabled);
     if (!this.enabled) {
       this.stopMusic();
-      this.stopBeds();
     } else if (this.unlocked) {
       if (this.wantMusic && this.musicOn) this.startMusic();
-      if (this.wantAmbience) this.startBeds();
     }
     return this.enabled;
   }
@@ -1007,7 +743,6 @@ export class LobbyAudio {
     for (const r of this.uiRoots) r.off();
     this.uiRoots = [];
     this.stopMusic();
-    this.stopBeds();
     for (const t of [...this.fading]) this.drop(t);
     this.buffers.clear();
     if (this.ctx) void this.ctx.close().catch(() => {});

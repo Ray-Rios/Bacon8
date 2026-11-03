@@ -1,0 +1,1321 @@
+[
+  {
+    "data": {
+      "aggro": 24.0,
+      "boss": true,
+      "breath": {
+        "dmg": {
+          "$tuple": [
+            18,
+            32
+          ]
+        },
+        "every_ms": {
+          "$range": [
+            13000,
+            18000
+          ]
+        },
+        "half_arc_deg": 32.0,
+        "range": 17.0,
+        "windup_ms": 1050
+      },
+      "coins": {
+        "$range": [
+          300,
+          700
+        ]
+      },
+      "dly_ms": 2900,
+      "dmg": {
+        "$tuple": [
+          12,
+          22
+        ]
+      },
+      "drops": [
+        {
+          "$tuple": [
+            "emberforged_longsword",
+            0.35
+          ]
+        },
+        {
+          "$tuple": [
+            "dragonbone_greataxe",
+            0.25
+          ]
+        },
+        {
+          "$tuple": [
+            "scaleplate_shield",
+            0.25
+          ]
+        }
+      ],
+      "hp": {
+        "$tuple": [
+          1400,
+          50
+        ]
+      },
+      "leash": 55.0,
+      "levels": {
+        "$range": [
+          12,
+          12
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "dragon_scale",
+            1.0,
+            {
+              "$range": [
+                2,
+                5
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "baconator_fang",
+            0.45,
+            {
+              "$range": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      ],
+      "moves": [
+        {
+          "$tuple": [
+            "bite",
+            5
+          ]
+        },
+        {
+          "$tuple": [
+            "claw",
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "tail",
+            2
+          ]
+        }
+      ],
+      "name": "Baconator",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ],
+      "radius": 3.4,
+      "reach": 5.0,
+      "respawn_ms": {
+        "$range": [
+          1200000,
+          1800000
+        ]
+      },
+      "run": 6.8,
+      "scale": 0.8,
+      "walk": 2.4,
+      "weapon_drop": 0.0,
+      "weapons": [
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ]
+    },
+    "id": "baconator",
+    "position": 0
+  },
+  {
+    "data": {
+      "aggro": 8.0,
+      "coins": {
+        "$range": [
+          2,
+          14
+        ]
+      },
+      "dly_ms": 2300,
+      "dmg": {
+        "$tuple": [
+          1,
+          4
+        ]
+      },
+      "hp": {
+        "$tuple": [
+          14,
+          9
+        ]
+      },
+      "levels": {
+        "$range": [
+          1,
+          2
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "bone_chips",
+            0.6,
+            {
+              "$range": [
+                1,
+                3
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "skull_fragment",
+            0.12,
+            {
+              "$range": [
+                1,
+                1
+              ]
+            }
+          ]
+        }
+      ],
+      "name": "a decaying skeleton",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            7
+          ]
+        },
+        {
+          "$tuple": [
+            "dented_buckler",
+            1
+          ]
+        }
+      ],
+      "reach": 1.25,
+      "run": 3.3,
+      "walk": 1.1,
+      "weapon_drop": 0.9,
+      "weapons": [
+        {
+          "$tuple": [
+            "bone_club",
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "rusty_dagger",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "rusty_short_sword",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ]
+    },
+    "id": "decaying_skeleton",
+    "position": 1
+  },
+  {
+    "data": {
+      "aggro": 6.0,
+      "coins": {
+        "$range": [
+          0,
+          4
+        ]
+      },
+      "dly_ms": 1500,
+      "dmg": {
+        "$tuple": [
+          1,
+          3
+        ]
+      },
+      "hp": {
+        "$tuple": [
+          9,
+          6
+        ]
+      },
+      "levels": {
+        "$range": [
+          1,
+          2
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "rat_tail",
+            0.7,
+            {
+              "$range": [
+                1,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "rat_pelt",
+            0.35,
+            {
+              "$range": [
+                1,
+                1
+              ]
+            }
+          ]
+        }
+      ],
+      "moves": [
+        {
+          "$tuple": [
+            "bite",
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "claw",
+            1
+          ]
+        }
+      ],
+      "name": "a giant rat",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ],
+      "radius": 0.3,
+      "reach": 0.7,
+      "respawn_ms": {
+        "$range": [
+          45000,
+          80000
+        ]
+      },
+      "run": 4.4,
+      "walk": 1.0,
+      "weapon_drop": 0.0,
+      "weapons": [
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ]
+    },
+    "id": "giant_rat",
+    "position": 2
+  },
+  {
+    "data": {
+      "aggro": 10.0,
+      "coins": {
+        "$range": [
+          6,
+          26
+        ]
+      },
+      "dly_ms": 1900,
+      "dmg": {
+        "$tuple": [
+          2,
+          6
+        ]
+      },
+      "hp": {
+        "$tuple": [
+          15,
+          9
+        ]
+      },
+      "levels": {
+        "$range": [
+          2,
+          4
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "goblin_ear",
+            0.6,
+            {
+              "$range": [
+                1,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "tarnished_trinket",
+            0.08,
+            {
+              "$range": [
+                1,
+                1
+              ]
+            }
+          ]
+        }
+      ],
+      "name": "a goblin",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            5
+          ]
+        },
+        {
+          "$tuple": [
+            "dented_buckler",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "rusty_dagger",
+            1
+          ]
+        }
+      ],
+      "reach": 1.0,
+      "run": 4.1,
+      "walk": 1.3,
+      "weapon_drop": 0.7,
+      "weapons": [
+        {
+          "$tuple": [
+            "rusty_dagger",
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "bone_club",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "spiked_club",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "rusty_short_sword",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "rusty_hand_axe",
+            1
+          ]
+        }
+      ]
+    },
+    "id": "goblin",
+    "position": 3
+  },
+  {
+    "data": {
+      "aggro": 16.0,
+      "coins": {
+        "$range": [
+          8,
+          30
+        ]
+      },
+      "dly_ms": 2400,
+      "dmg": {
+        "$tuple": [
+          3,
+          7
+        ]
+      },
+      "hp": {
+        "$tuple": [
+          13,
+          8
+        ]
+      },
+      "levels": {
+        "$range": [
+          3,
+          4
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "goblin_ear",
+            0.6,
+            {
+              "$range": [
+                1,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "tarnished_trinket",
+            0.1,
+            {
+              "$range": [
+                1,
+                1
+              ]
+            }
+          ]
+        }
+      ],
+      "name": "a goblin archer",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ],
+      "ranged": true,
+      "reach": 16.0,
+      "run": 4.0,
+      "walk": 1.3,
+      "weapon_drop": 0.35,
+      "weapons": [
+        {
+          "$tuple": [
+            "goblin_shortbow",
+            1
+          ]
+        }
+      ]
+    },
+    "id": "goblin_archer",
+    "position": 4
+  },
+  {
+    "data": {
+      "aggro": 80.0,
+      "aquatic": true,
+      "boss": true,
+      "coins": {
+        "$range": [
+          600,
+          1200
+        ]
+      },
+      "dly_ms": 3100,
+      "dmg": {
+        "$tuple": [
+          16,
+          28
+        ]
+      },
+      "drops": [
+        {
+          "$tuple": [
+            "abyssal_harpoon",
+            0.3
+          ]
+        },
+        {
+          "$tuple": [
+            "krakenfang_cutlass",
+            0.3
+          ]
+        },
+        {
+          "$tuple": [
+            "barnacled_buckler",
+            0.25
+          ]
+        }
+      ],
+      "hp": {
+        "$tuple": [
+          2600,
+          80
+        ]
+      },
+      "leash": 320.0,
+      "levels": {
+        "$range": [
+          16,
+          16
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "kraken_ink_sac",
+            1.0,
+            {
+              "$range": [
+                1,
+                3
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "abyssal_hook",
+            0.9,
+            {
+              "$range": [
+                2,
+                6
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "kraken_beak",
+            0.4,
+            {
+              "$range": [
+                1,
+                1
+              ]
+            }
+          ]
+        }
+      ],
+      "moves": [
+        {
+          "$tuple": [
+            "lash",
+            5
+          ]
+        },
+        {
+          "$tuple": [
+            "slam",
+            3
+          ]
+        }
+      ],
+      "name": "the Kraken",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ],
+      "radius": 9.5,
+      "reach": 16.0,
+      "respawn_ms": {
+        "$range": [
+          1500000,
+          2100000
+        ]
+      },
+      "roam": 300.0,
+      "run": 11.0,
+      "scale": 2.1,
+      "special_every_ms": {
+        "$range": [
+          9000,
+          13000
+        ]
+      },
+      "specials": [
+        {
+          "busy_ms": 1200,
+          "dmg": {
+            "$tuple": [
+              10,
+              16
+            ]
+          },
+          "move": "grab",
+          "range": 33.0,
+          "root_ms": 3500,
+          "shape": {
+            "$atom": "target"
+          },
+          "squeeze": {
+            "$tuple": [
+              3,
+              {
+                "$tuple": [
+                  8,
+                  14
+                ]
+              }
+            ]
+          },
+          "weight": 4,
+          "windup_ms": 700
+        },
+        {
+          "blind_ms": 5000,
+          "busy_ms": 900,
+          "dmg": {
+            "$tuple": [
+              4,
+              8
+            ]
+          },
+          "half_arc_deg": 38.0,
+          "move": "ink",
+          "range": 39.0,
+          "shape": {
+            "$atom": "cone"
+          },
+          "weight": 3,
+          "windup_ms": 650
+        },
+        {
+          "busy_ms": 2600,
+          "dmg": {
+            "$tuple": [
+              20,
+              34
+            ]
+          },
+          "move": "maelstrom",
+          "pull_m": 9.0,
+          "range": 36.0,
+          "shape": {
+            "$atom": "ring"
+          },
+          "weight": 3,
+          "windup_ms": 1900
+        }
+      ],
+      "walk": 4.0,
+      "weapon_drop": 0.0,
+      "weapons": [
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ]
+    },
+    "id": "kraken",
+    "position": 5
+  },
+  {
+    "data": {
+      "aggro": 12.0,
+      "coins": {
+        "$range": [
+          25,
+          80
+        ]
+      },
+      "dly_ms": 2500,
+      "dmg": {
+        "$tuple": [
+          5,
+          12
+        ]
+      },
+      "hp": {
+        "$tuple": [
+          38,
+          15
+        ]
+      },
+      "levels": {
+        "$range": [
+          5,
+          7
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "orc_tusk",
+            0.55,
+            {
+              "$range": [
+                1,
+                2
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "orcish_war_belt",
+            0.1,
+            {
+              "$range": [
+                1,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "tarnished_trinket",
+            0.1,
+            {
+              "$range": [
+                1,
+                1
+              ]
+            }
+          ]
+        }
+      ],
+      "name": "an orc",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "cracked_kite_shield",
+            1
+          ]
+        },
+        {
+          "$tuple": [
+            "dented_buckler",
+            1
+          ]
+        }
+      ],
+      "radius": 0.5,
+      "reach": 1.4,
+      "run": 3.9,
+      "walk": 1.2,
+      "weapon_drop": 0.6,
+      "weapons": [
+        {
+          "$tuple": [
+            "orcish_cleaver",
+            4
+          ]
+        },
+        {
+          "$tuple": [
+            "spiked_club",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "orcish_greataxe",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "notched_battle_axe",
+            1
+          ]
+        },
+        {
+          "$tuple": [
+            "cracked_maul",
+            1
+          ]
+        }
+      ]
+    },
+    "id": "orc",
+    "position": 6
+  },
+  {
+    "data": {
+      "aggro": 14.0,
+      "coins": {
+        "$range": [
+          150,
+          300
+        ]
+      },
+      "dly_ms": 2700,
+      "dmg": {
+        "$tuple": [
+          9,
+          18
+        ]
+      },
+      "drops": [
+        {
+          "$tuple": [
+            "ashwood_longbow",
+            0.2
+          ]
+        }
+      ],
+      "hp": {
+        "$tuple": [
+          210,
+          30
+        ]
+      },
+      "leash": 40.0,
+      "levels": {
+        "$range": [
+          9,
+          10
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "orc_tusk",
+            1.0,
+            {
+              "$range": [
+                2,
+                3
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "orcish_war_belt",
+            0.5,
+            {
+              "$range": [
+                1,
+                1
+              ]
+            }
+          ]
+        }
+      ],
+      "name": "an orc warlord",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ],
+      "radius": 0.55,
+      "reach": 1.6,
+      "respawn_ms": {
+        "$range": [
+          360000,
+          540000
+        ]
+      },
+      "run": 4.0,
+      "scale": 1.08,
+      "walk": 1.2,
+      "weapon_drop": 0.5,
+      "weapons": [
+        {
+          "$tuple": [
+            "orcish_greataxe",
+            1
+          ]
+        }
+      ]
+    },
+    "id": "orc_warlord",
+    "position": 7
+  },
+  {
+    "data": {
+      "aggro": 8.0,
+      "coins": {
+        "$range": [
+          2,
+          8
+        ]
+      },
+      "dly_ms": 1600,
+      "dmg": {
+        "$tuple": [
+          2,
+          5
+        ]
+      },
+      "hp": {
+        "$tuple": [
+          16,
+          8
+        ]
+      },
+      "levels": {
+        "$range": [
+          3,
+          4
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "rat_tail",
+            0.8,
+            {
+              "$range": [
+                1,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "rat_pelt",
+            0.6,
+            {
+              "$range": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      ],
+      "moves": [
+        {
+          "$tuple": [
+            "bite",
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "claw",
+            1
+          ]
+        }
+      ],
+      "name": "a plague rat",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ],
+      "radius": 0.4,
+      "reach": 0.85,
+      "run": 4.8,
+      "scale": 1.4,
+      "walk": 1.1,
+      "weapon_drop": 0.0,
+      "weapons": [
+        {
+          "$tuple": [
+            null,
+            1
+          ]
+        }
+      ]
+    },
+    "id": "plague_rat",
+    "position": 8
+  },
+  {
+    "data": {
+      "aggro": 9.0,
+      "coins": {
+        "$range": [
+          8,
+          30
+        ]
+      },
+      "dly_ms": 2200,
+      "dmg": {
+        "$tuple": [
+          2,
+          6
+        ]
+      },
+      "hp": {
+        "$tuple": [
+          18,
+          11
+        ]
+      },
+      "levels": {
+        "$range": [
+          2,
+          3
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "bone_chips",
+            0.7,
+            {
+              "$range": [
+                1,
+                4
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "skull_fragment",
+            0.2,
+            {
+              "$range": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      ],
+      "name": "a skeleton",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            5
+          ]
+        },
+        {
+          "$tuple": [
+            "dented_buckler",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "rusty_dagger",
+            1
+          ]
+        }
+      ],
+      "reach": 1.3,
+      "run": 3.6,
+      "walk": 1.2,
+      "weapon_drop": 0.85,
+      "weapons": [
+        {
+          "$tuple": [
+            "rusty_scimitar",
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "rusty_cutlass",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "rusty_hand_axe",
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "dented_mace",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "rusty_short_sword",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "splintered_spear",
+            2
+          ]
+        }
+      ]
+    },
+    "id": "skeleton",
+    "position": 9
+  },
+  {
+    "data": {
+      "aggro": 10.0,
+      "coins": {
+        "$range": [
+          25,
+          80
+        ]
+      },
+      "dly_ms": 2500,
+      "dmg": {
+        "$tuple": [
+          3,
+          9
+        ]
+      },
+      "hp": {
+        "$tuple": [
+          24,
+          13
+        ]
+      },
+      "levels": {
+        "$range": [
+          3,
+          5
+        ]
+      },
+      "loot": [
+        {
+          "$tuple": [
+            "bone_chips",
+            0.8,
+            {
+              "$range": [
+                2,
+                5
+              ]
+            }
+          ]
+        },
+        {
+          "$tuple": [
+            "skull_fragment",
+            0.35,
+            {
+              "$range": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      ],
+      "name": "a skeleton warrior",
+      "offhand": [
+        {
+          "$tuple": [
+            null,
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "cracked_kite_shield",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "dented_buckler",
+            1
+          ]
+        }
+      ],
+      "reach": 1.5,
+      "run": 3.8,
+      "walk": 1.2,
+      "weapon_drop": 0.8,
+      "weapons": [
+        {
+          "$tuple": [
+            "rusty_two_handed_sword",
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "notched_battle_axe",
+            3
+          ]
+        },
+        {
+          "$tuple": [
+            "cracked_maul",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "rusty_halberd",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "pitted_longsword",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "cracked_morning_star",
+            2
+          ]
+        },
+        {
+          "$tuple": [
+            "pitted_war_hammer",
+            2
+          ]
+        }
+      ]
+    },
+    "id": "skeleton_warrior",
+    "position": 10
+  }
+]

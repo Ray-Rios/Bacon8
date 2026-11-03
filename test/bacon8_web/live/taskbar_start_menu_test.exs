@@ -50,4 +50,13 @@ defmodule Bacon8Web.TaskbarStartMenuTest do
     for path <- ["/", "/games", "/blog", "/login", "/register"], do: assert(html =~ ~s(href="#{path}"), "no link to #{path}")
     refute html =~ ~s(href="/profile")
   end
+
+  test "the start menu displays the user's gem balance under the avatar" do
+    member = person("member")
+    {:ok, view, _} = live(signed_in(member), "/blog")
+    html = view |> element("[aria-label='Start']") |> render_click()
+
+    assert html =~ ~s(id="start-menu-gems")
+    assert html =~ "b8-gem"
+  end
 end

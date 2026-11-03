@@ -20,7 +20,11 @@
 .sc-inner {
   position: absolute;
   inset: 0;
+  -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
+  -webkit-backface-visibility: hidden;
+  -moz-backface-visibility: hidden;
+  backface-visibility: hidden;
   transition: transform 0.85s cubic-bezier(0.2, 0.75, 0.25, 1);
   border-radius: inherit;
 }
@@ -36,7 +40,10 @@
   overflow: hidden;
   border-radius: inherit;
   -webkit-backface-visibility: hidden;
+  -moz-backface-visibility: hidden;
   backface-visibility: hidden;
+  -webkit-transform-style: preserve-3d;
+  transform-style: preserve-3d;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background:
     radial-gradient(120% 75% at 50% 30%, var(--sc-tint, rgba(59, 130, 246, 0.22)), transparent 62%),
@@ -44,7 +51,24 @@
   box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   transition: box-shadow 0.5s ease;
 }
-.sc-back { transform: rotateY(180deg); }
+.sc-front {
+  -webkit-transform: rotateY(0deg) translateZ(1px);
+  -moz-transform: rotateY(0deg) translateZ(1px);
+  transform: rotateY(0deg) translateZ(1px);
+}
+.sc-back {
+  -webkit-transform: rotateY(180deg) translateZ(1px);
+  -moz-transform: rotateY(180deg) translateZ(1px);
+  transform: rotateY(180deg) translateZ(1px);
+}
+
+@media (hover: hover) {
+  .sc:hover .sc-front { pointer-events: none; }
+}
+.sc.flipped .sc-front,
+.sc:focus-visible .sc-front {
+  pointer-events: none;
+}
 .sc:hover .sc-face,
 .sc.flipped .sc-face,
 .sc:focus-visible .sc-face {

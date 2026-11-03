@@ -56,6 +56,11 @@ export class NpcsView {
     this.group.name = 'NPCs';
   }
 
+  /** Where the NPCs stand (scene units), for the map (world-map.ts). */
+  mapDots(): Array<{ x: number; z: number; kind: 'npc' }> {
+    return [...this.npcs.values()].map((n) => ({ x: n.root.position.x, z: n.root.position.z, kind: 'npc' as const }));
+  }
+
   /** Replaces the zone's people with these. */
   async setAll(list: NpcView[]) {
     for (const id of [...this.npcs.keys()]) if (!list.some((n) => n.id === id)) this.remove(id);

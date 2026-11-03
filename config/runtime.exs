@@ -142,7 +142,10 @@ http_port = String.to_integer(System.get_env("PORT") || "4000")
 
 
 config :bacon8, Bacon8Web.Endpoint,
-  http: [ip: {0, 0, 0, 0}, port: http_port],
+  # compress: the game page is 380 KB of HTML (its item catalogue and human assets ride in
+  # data attributes) and went out uncompressed (2026-11-01). Cowboy gzips dynamic responses;
+  # files Plug.Static sends with sendfile, and the .gz ones it picks, are left as they are.
+  http: [ip: {0, 0, 0, 0}, port: http_port, compress: true],
   secret_key_base: secret_key_base,
   live_view: [signing_salt: live_view_salt],
   url: [

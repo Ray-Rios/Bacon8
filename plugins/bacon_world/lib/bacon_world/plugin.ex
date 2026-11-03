@@ -64,9 +64,8 @@ defmodule BaconWorld.Plugin do
   @impl true
   def admin_nav,
     do: [
-      %{label: "Bacon World", path: "/admin/bacon_world", icon: "🕹️"},
-      %{label: "Bacon World skills", path: "/admin/bacon_world/skills", icon: "🌳"},
-      %{label: "Bacon World tuning", path: "/admin/bacon_world/tuning", icon: "⚖️"}
+      # one entry: the game's other admin pages are buttons on its own page (owner, 2026-11-02)
+      %{label: "Bacon World", path: "/admin/bacon_world", icon: "🕹️"}
     ]
 
   @mount_glow %{"ember_drake" => "#FF6A2A", "verdant_drake" => "#7BD34A", "frost_drake" => "#8FD8FF", "abyssal_kraken" => "#7A6BFF"}

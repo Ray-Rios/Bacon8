@@ -246,6 +246,14 @@ defmodule BaconWorld.BuildingTest do
 
       c = %{settings: %{"zone_slug" => zone, "bind" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0, "zone" => zone}}}
       assert BaconWorld.Combat.respawn_point(c, nil) == %{x: 1.0, y: 2.0, z: 3.0, heading: 0.0}
+      # bound in another zone: the point carries that zone, and the LiveView moves the character there
+      # (2026-11-02, owner: Recall and respawning stayed in the current zone)
+      away = %{settings: %{"zone_slug" => "z7", "bind" => %{"x" => 1.0, "y" => 2.0, "z" => 3.0, "zone" => zone}}}
+      assert BaconWorld.Combat.respawn_point(away, nil) == %{x: 1.0, y: 2.0, z: 3.0, heading: 0.0, zone: zone}
+      assert BaconWorld.Combat.bind_point(%{settings: %{}}) == nil
+      # an old bind without its zone was made in the lobby
+      old = %{settings: %{"bind" => %{"x" => 1, "z" => 3}}}
+      assert BaconWorld.Combat.bind_point(old).zone == "lobby"
     end
   end
 

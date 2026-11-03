@@ -6,10 +6,10 @@ export function setGlassExtras(root: HTMLElement, rgb: number[], opacity: number
   const mix = (c: number[], base: number[], t: number) => c.map((v, i) => Math.round(v * t + base[i] * (1 - t)));
   const css = (c: number[], a = 1) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
 
-  // Menus are always mostly opaque: the tint darkened, at 62-85%. The brighter the tint, the
-  // more it is darkened, or the menus' light text could not be read on it (worst case about
-  // 4:1 at the sheen's brightest corner, 5:1 and up on most themes).
-  const menuAlpha = Math.min(0.85, Math.max(0.62, 0.35 + opacity * 0.6));
+  // Menus take the profile's glass opacity as it is (owner, 2026-11-02: it used to be forced to
+  // 62-85%). The tint is still darkened, the brighter it is the more, so light text stays readable
+  // where the blur leaves the page behind it light.
+  const menuAlpha = Math.min(1, Math.max(0, opacity));
   const luma = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
   const keep = luma <= 90 ? 0.45 : luma <= 180 ? 0.3 : 0.18;
   root.style.setProperty('--glass-menu-bg', css(mix(rgb, [11, 15, 25], keep), menuAlpha));

@@ -53,7 +53,15 @@ defmodule BaconWorld.Appearance do
     {"chin", 0.0, 1.0},
     {"brow", 0.0, 1.0},
     {"lips", 0.0, 1.0},
-    {"nose_width", 0.0, 1.0}
+    {"nose_width", 0.0, 1.0},
+    # eye shapes (2026-11-02, face_eyes.py)
+    {"eye_tilt", -1.0, 1.0},
+    {"eye_open", -1.0, 1.0},
+    {"eye_hooded", 0.0, 1.0},
+    {"eye_monolid", 0.0, 1.0},
+    {"eye_spacing", -1.0, 1.0},
+    {"eye_height", -1.0, 1.0},
+    {"eye_bags", 0.0, 1.0}
   ]
   @height {0.92, 1.08}
   @color ~r/\A#[0-9a-fA-F]{6}\z/

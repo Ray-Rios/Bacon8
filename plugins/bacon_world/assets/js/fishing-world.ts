@@ -191,7 +191,7 @@ export const FishingWorld = {
       else if (me.mesh.position.distanceTo(this.fishing.from) > 1.2 * U) this.stopFishing('You walk off and reel in your line.');
     }
     const landed = this.fishingView.active && this.fishingView.update(dt, this.rodTip());
-    if (landed) this.audio?.play('sw_drip', 0.8);
+    if (landed) this.audio?.play('ui_drop', 0.6);
   },
 
   teardownFishing(this: any) {

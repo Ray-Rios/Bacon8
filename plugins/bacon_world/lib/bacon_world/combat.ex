@@ -50,8 +50,10 @@ defmodule BaconWorld.Combat do
   end
 
   @doc """
-  Full HP/MP and back to where the character is bound (a binding stone, `BaconWorld.Building.bind/4`)
-  when the bind is in this zone, else the zone's spawn point. Returns the point.
+  Full HP/MP and back to where the character is bound (a binding stone, `BaconWorld.Building.bind/4`),
+  else the zone's spawn point. Returns the point; a bind in another zone carries `zone:` (its slug), and
+  the LiveView moves the character there when it respawns (2026-11-02, owner: Recall and respawning
+  stayed in the current zone at the bind's coordinates).
   """
   def respawn_character(character_id) do
     with {:ok, c} <- World.fetch_character(character_id) do
@@ -59,23 +61,33 @@ defmodule BaconWorld.Combat do
       %{x: x, y: y, z: z, heading: h} = spawn = respawn_point(c, zone)
 
       World.merge_stats(World.by_id_query(c.id), %{"hp" => World.stat(c, "max_hp"), "mp" => World.stat(c, "max_mp")})
-      World.merge_settings(World.by_id_query(c.id), %{"position" => %{"x" => x, "y" => y, "z" => z, "heading" => h}})
+      # a bind in another zone: that zone's position is saved by the move (BaconWorldWeb.PlayLive.transfer_to_zone/7)
+      if spawn[:zone] == nil,
+        do: World.merge_settings(World.by_id_query(c.id), %{"position" => %{"x" => x, "y" => y, "z" => z, "heading" => h}})
+
       {:ok, spawn}
     end
   end
 
   @doc false
   def respawn_point(c, zone) do
-    settings = c.settings || %{}
+    case bind_point(c) do
+      nil -> World.spawn_point(zone)
+      %{zone: slug} = b -> if slug == ((c.settings || %{})["zone_slug"] || "lobby"), do: Map.delete(b, :zone), else: b
+    end
+  end
 
-    case settings["bind"] do
+  @doc """
+  Where the character is bound: `%{x, y, z, heading, zone}` (scene units; `zone` the bind's zone slug),
+  or nil when it never bound. Recall (BaconWorldWeb.SkillEvents) and respawning read it.
+  """
+  def bind_point(c) do
+    case (c.settings || %{})["bind"] do
       %{"x" => x, "z" => z} = b when is_number(x) and is_number(z) ->
-        if (b["zone"] || "lobby") == (settings["zone_slug"] || "lobby"),
-          do: %{x: x * 1.0, y: (b["y"] || 0.0) * 1.0, z: z * 1.0, heading: (b["heading"] || 0.0) * 1.0},
-          else: World.spawn_point(zone)
+        %{x: x * 1.0, y: (b["y"] || 0.0) * 1.0, z: z * 1.0, heading: (b["heading"] || 0.0) * 1.0, zone: b["zone"] || "lobby"}
 
       _ ->
-        World.spawn_point(zone)
+        nil
     end
   end
 

@@ -749,7 +749,16 @@ defmodule BaconWorld.Building do
   Returns `%{village: bool, camps: [camp id]}`: what is placements now (the client stops drawing
   those pieces itself; the zone stops spawning those camps' creatures from code).
   """
+  # The village and the camps are the lobby's (Crater Lake's town). Other zones (2026-11-02,
+  # BaconWorld.WorldGen) start empty: nothing to seed, and nothing for the client to draw from code.
   def ensure_seeded(zone) do
+    if generated?(zone), do: seeded(zone), else: seed_code_layout(zone)
+  end
+
+  # generated zones' slugs: "z<number>" (BaconWorld.WorldGen)
+  defp generated?(zone), do: is_binary(zone) and String.match?(zone, ~r/^z\d+$/)
+
+  defp seed_code_layout(zone) do
     world = camps_world()
     keys = [{"village", "village.json", "village"}, {"camps:" <> world, "camps_#{world}.json", nil}]
     for {key, file, origin} <- keys, do: seed_once(zone, key, file, origin)
@@ -762,6 +771,12 @@ defmodule BaconWorld.Building do
 
   @doc "What of a zone's code layout is placements already: `%{village: bool, camps: [camp id]}`."
   def seeded(zone) do
+    if generated?(zone),
+      do: %{village: true, camps: Enum.map(BaconWorld.Mobs.Spawns.camps(), & &1.id), elsewhere: true},
+      else: seeded_code_layout(zone)
+  end
+
+  defp seeded_code_layout(zone) do
     keys = GamesRepo.all(from(s in "bacon_world_seeds", where: s.zone == ^zone, select: s.key))
     world = camps_world()
 

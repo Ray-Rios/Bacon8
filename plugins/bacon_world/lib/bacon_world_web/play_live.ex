@@ -129,6 +129,7 @@ defmodule BaconWorldWeb.PlayLive do
        current_presence_key: nil,
        account_presence_tracked?: false,
        account_presence_ref: nil,
+       last_account_presence_ref: nil,
        zone_online_characters: [],
        last_world_update_ms: nil,
        last_position_persist_ms: nil,
@@ -250,7 +251,7 @@ defmodule BaconWorldWeb.PlayLive do
   def handle_event("three_ui_update_appearance", %{"character_id" => character_id, "appearance" => look}, socket) do
     user_id = socket.assigns.current_user.id
 
-    if active_account_character_id(user_id) == character_id do
+    if character_active_in_world?(socket, character_id) do
       {:reply, %{ok: false, error: "Leave the world with this character before changing its look."}, socket}
     else
       case World.update_appearance(user_id, character_id, look) do
@@ -324,7 +325,7 @@ defmodule BaconWorldWeb.PlayLive do
   def handle_event("delete_character", %{"character_id" => character_id}, socket) do
     user_id = socket.assigns.current_user.id
 
-    if active_account_character_id(user_id) == character_id do
+    if character_active_in_world?(socket, character_id) do
       Logger.warning("bacon_world:delete_character blocked_active user_id=#{user_id} character_id=#{character_id}")
       {:noreply, put_flash(socket, :error, "Log out of this character before deleting it.")}
     else
@@ -563,6 +564,38 @@ defmodule BaconWorldWeb.PlayLive do
     end
   end
 
+  # Walking off the edge of a zone into its neighbour (2026-11-02): the client asks as the player
+  # nears an edge; the server decides (the neighbour must have ground) and moves them across,
+  # the same spot in world terms, a few metres inside the new zone.
+  def handle_event("zone_cross", %{"x" => x, "z" => z} = params, socket) when is_number(x) and is_number(z) do
+    current = socket.assigns.world_mode? && current_character(socket)
+    now = System.monotonic_time(:millisecond)
+    moving = with %{"mx" => mx, "mz" => mz} when is_number(mx) and is_number(mz) <- params, do: {mx, mz}, else: (_ -> nil)
+
+    with %{} <- current || nil,
+         false <- socket.assigns[:is_dead?] || false,
+         # one crossing every 3 s at most: a player just arrived can't be bounced straight back. "Never
+         # crossed" is nil, not a number: monotonic time can be far below zero, so a default of -10 s
+         # read as "just now" and refused every crossing (2026-11-02, the owner's "wait a moment" wall)
+         true <- cross_cooled?(socket.assigns[:last_zone_cross_ms], now),
+         %{} = here <- BaconWorld.World.zone_for((current.zone && current.zone.slug) || "lobby"),
+         {:ok, there, nx, nz} <- BaconWorld.WorldGen.neighbour(here, x, z, BaconWorld.Mobs.Brain.u(), moving) do
+      heading = (current.position && (current.position[:heading] || current.position["heading"])) || 0.0
+      y = (current.position && (current.position[:y] || current.position["y"])) || 0.0
+      socket = assign(socket, last_zone_cross_ms: now)
+      {:reply, %{ok: true, zone: there.number}, transfer_to_zone(socket, there, nx, y, nz, heading, "You enter #{there.name}")}
+    else
+      # why not, for the client to say (a refused crossing was a silent wall, 2026-11-02)
+      {:error, reason} ->
+        Logger.info("zone_cross refused: #{reason}")
+        {:reply, %{ok: false, reason: reason}, socket}
+
+      false -> {:reply, %{ok: false, reason: "wait a moment"}, socket}
+      true -> {:reply, %{ok: false, reason: "you are dead"}, socket}
+      _ -> {:reply, %{ok: false, reason: "not in the world"}, socket}
+    end
+  end
+
   def handle_event("respawn_now", _params, socket) do
     current = current_character(socket)
 
@@ -625,6 +658,12 @@ defmodule BaconWorldWeb.PlayLive do
 
   def handle_info({:zone_weather_update, payload}, socket) do
     {:noreply, push_event(socket, "weather_changed", payload)}
+  end
+
+  # The zone's ground was replaced (BaconWorld.WorldEditor, /admin/bacon_world/world): the client
+  # rebuilds it and resyncs what stands on it.
+  def handle_info({:terrain_replaced, payload}, socket) do
+    {:noreply, socket |> assign(terrain: payload.terrain) |> push_event("terrain_replaced", payload)}
   end
 
   def handle_info({:zone_position_update, payload}, socket) do
@@ -710,11 +749,33 @@ defmodule BaconWorldWeb.PlayLive do
     end)
   end
 
-  defp active_account_character_id(user_id) do
-    case account_topic(user_id) |> Presence.list() |> Map.get(user_id) do
-      %{metas: [meta | _]} -> meta[:character_id]
-      _ -> nil
-    end
+  defp character_active_in_world?(socket, character_id) do
+    character_id = to_string(character_id)
+
+    # 1. Is this LiveView session currently in world mode with this character?
+    in_current_session? =
+      socket.assigns[:world_mode?] == true and
+        to_string(get_in(socket.assigns, [:current_character_payload, :character_id])) == character_id
+
+    # 2. Is this character active in the world from another session?
+    user_id = socket.assigns.current_user.id
+    own_ref = socket.assigns[:account_presence_ref]
+    last_ref = socket.assigns[:last_account_presence_ref]
+
+    in_other_session? =
+      case account_topic(user_id) |> Presence.list() |> Map.get(user_id) do
+        %{metas: metas} when is_list(metas) ->
+          Enum.any?(metas, fn meta ->
+            to_string(meta[:character_id]) == character_id and
+              meta[:phx_ref] != own_ref and
+              meta[:phx_ref] != last_ref
+          end)
+
+        _ ->
+          false
+      end
+
+    in_current_session? or in_other_session?
   end
 
   defp track_account_presence(socket, character_id) do
@@ -725,8 +786,15 @@ defmodule BaconWorldWeb.PlayLive do
              character_id: character_id,
              joined_at: System.system_time(:millisecond)
            }) do
-        {:ok, ref} -> assign(socket, account_presence_tracked?: true, account_presence_ref: ref)
-        _ -> assign(socket, account_presence_tracked?: true)
+        {:ok, ref} ->
+          assign(socket,
+            account_presence_tracked?: true,
+            account_presence_ref: ref,
+            last_account_presence_ref: ref
+          )
+
+        _ ->
+          assign(socket, account_presence_tracked?: true)
       end
     else
       socket
@@ -791,6 +859,58 @@ defmodule BaconWorldWeb.PlayLive do
     |> GameEvents.join(payload)
     |> BaconWorldWeb.GroupEvents.enter(payload)
 
+  end
+
+  # the zone-crossing cooldown ("zone_cross"); nil: never crossed
+  @doc false
+  def cross_cooled?(nil, _now), do: true
+  def cross_cooled?(last, now), do: now - last >= 3_000
+
+  # Moves the character into `zone` at x, y, z (scene units; y is lifted onto the ground if it
+  # would be under it): leaves the old zone's presence, creatures and build channel, joins the new
+  # one's (the client gets its ground, "terrain_replaced", and resyncs), saves where it is.
+  # Same zone: a plain teleport. (2026-11-02: /zone with a zone number, walking across an edge.)
+  @doc false
+  def transfer_to_zone(socket, zone, x, y, z, heading, note) do
+    current = current_character(socket)
+    here = (current.zone && current.zone.slug) || "lobby"
+
+    if zone.slug == here do
+      socket
+      |> teleport_to(x, ground_y(x, y, z), z, heading)
+      |> push_event("system_message", %{sender: "System", message: "#{note} (X: #{Float.round(x * 1.0, 1)}, Z: #{Float.round(z * 1.0, 1)})."})
+    else
+      BaconWorld.Terrain.use_zone(zone.slug)
+      y = ground_y(x, y, z)
+      pos = %{x: x, y: y, z: z, heading: heading}
+      user_id = socket.assigns.current_user.id
+      World.save_position(user_id, current.character_id, zone.slug, pos)
+
+      payload =
+        (socket.assigns.current_character_payload || current)
+        |> Map.put(:zone, %{id: zone.id, name: zone.name, slug: zone.slug})
+        |> Map.put(:position, pos)
+
+      runtime = current |> Map.put(:zone, payload.zone) |> Map.put(:position, pos)
+
+      socket =
+        socket
+        |> leave_zone_presence()
+        |> assign(current_character_payload: payload, current_character_runtime: runtime)
+        |> join_zone_presence(payload)
+
+      socket
+      |> push_event("zone_changed", %{zone: %{number: zone.number, name: zone.name, slug: zone.slug}, x: x, y: y, z: z, heading: heading})
+      |> push_event("character_teleported", %{x: x, y: y, z: z, heading: heading})
+      |> push_event("zone_presence_state", %{online_characters: socket.assigns[:zone_online_characters] || []})
+      |> push_event("system_message", %{sender: "System", message: "#{note}: #{zone.name}, zone #{zone.number}."})
+    end
+  end
+
+  # not under the ground (scene units): the y asked for, or the ground's surface if higher
+  defp ground_y(x, y, z) do
+    u = BaconWorld.Mobs.Brain.u()
+    max(y * 1.0, BaconWorld.Terrain.surface_units(x, z, u) + 0.05 * u)
   end
 
   defp leave_zone_presence(socket) do
@@ -1005,7 +1125,18 @@ defmodule BaconWorldWeb.PlayLive do
       mp: current.max_mp,
       max_mp: current.max_mp
     })
+    |> respawn_in_bind_zone(spawn)
   end
+
+  # bound in another zone (BaconWorld.Combat.respawn_point/2 adds its slug): wake up there
+  defp respawn_in_bind_zone(socket, %{zone: slug} = spawn) when is_binary(slug) do
+    case World.zone_for(slug) do
+      %{slug: ^slug} = zone -> transfer_to_zone(socket, zone, spawn.x, spawn.y, spawn.z, spawn.heading, "You wake at your bind point in")
+      _ -> socket
+    end
+  end
+
+  defp respawn_in_bind_zone(socket, _spawn), do: socket
 
   # A move into another (living) player is refused, but a move that takes you farther from
   # one you already overlap is fine: otherwise two players on the same spot (a respawn, a
@@ -1231,6 +1362,20 @@ defmodule BaconWorldWeb.PlayLive do
         |> String.split(~r/\s+/, trim: true)
 
       case parse_coords(parts) do
+        # /zone x y z <zone#> (2026-11-02): anywhere in any zone that has ground
+        {:ok, x, y, z, number} ->
+          case BaconWorld.WorldEditor.get(number) do
+            %{status: "ready"} = zone ->
+              heading = (current.position && (current.position[:heading] || current.position["heading"])) || 0.0
+              {:noreply, transfer_to_zone(socket, zone, x, y, z, heading, "Warped to #{zone.name}")}
+
+            %{name: name} ->
+              {:noreply, push_event(socket, "system_message", %{sender: "System", message: "#{name} has no ground yet (generate it on /admin/bacon_world/world)."})}
+
+            nil ->
+              {:noreply, push_event(socket, "system_message", %{sender: "System", message: "There is no zone #{number}."})}
+          end
+
         {:ok, x, y, z} ->
           if abs(x) <= 10_000.0 and abs(z) <= 10_000.0 and y >= -500.0 and y <= 2000.0 do
             heading = (current.position && (current.position[:heading] || current.position["heading"])) || 0.0
@@ -1256,9 +1401,18 @@ defmodule BaconWorldWeb.PlayLive do
           {:noreply,
            push_event(socket, "system_message", %{
              sender: "System",
-             message: "Invalid coordinates. Usage: /zone or /zone <x>,<y>,<z> (e.g. /zone 10,5,-20)"
+             message: "Invalid coordinates. Usage: /zone, /zone <x> <y> <z>, or /zone <x> <y> <z> <zone#> (e.g. /zone 10 5 -20 12)"
            })}
       end
+    end
+  end
+
+  defp parse_coords([raw_x, raw_y, raw_z, raw_n]) do
+    with {:ok, x, y, z} <- parse_coords([raw_x, raw_y, raw_z]),
+         {n, ""} when n >= 0 <- Integer.parse(String.trim_leading(raw_n, "#")) do
+      {:ok, x, y, z, n}
+    else
+      _ -> :error
     end
   end
 

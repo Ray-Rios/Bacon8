@@ -35,254 +35,10 @@ defmodule BaconWorld.Mobs.Spawns do
       (`{ticks, dmg}`: more damage each second while it holds you)
   """
 
-  @kinds %{
-    "decaying_skeleton" => %{
-      name: "a decaying skeleton",
-      levels: 1..2,
-      hp: {14, 9},
-      dmg: {1, 4},
-      dly_ms: 2300,
-      walk: 1.1,
-      run: 3.3,
-      aggro: 8.0,
-      reach: 1.25,
-      weapons: [{"bone_club", 3}, {"rusty_dagger", 2}, {"rusty_short_sword", 2}, {nil, 1}],
-      offhand: [{nil, 7}, {"dented_buckler", 1}],
-      loot: [{"bone_chips", 0.6, 1..3}, {"skull_fragment", 0.12, 1..1}],
-      coins: 2..14,
-      weapon_drop: 0.9
-    },
-    "skeleton" => %{
-      name: "a skeleton",
-      levels: 2..3,
-      hp: {18, 11},
-      dmg: {2, 6},
-      dly_ms: 2200,
-      walk: 1.2,
-      run: 3.6,
-      aggro: 9.0,
-      reach: 1.3,
-      weapons: [
-        {"rusty_scimitar", 3},
-        {"rusty_cutlass", 2},
-        {"rusty_hand_axe", 3},
-        {"dented_mace", 2},
-        {"rusty_short_sword", 2},
-        {"splintered_spear", 2}
-      ],
-      offhand: [{nil, 5}, {"dented_buckler", 2}, {"rusty_dagger", 1}],
-      loot: [{"bone_chips", 0.7, 1..4}, {"skull_fragment", 0.2, 1..2}],
-      coins: 8..30,
-      weapon_drop: 0.85
-    },
-    "skeleton_warrior" => %{
-      name: "a skeleton warrior",
-      levels: 3..5,
-      hp: {24, 13},
-      dmg: {3, 9},
-      dly_ms: 2500,
-      walk: 1.2,
-      run: 3.8,
-      aggro: 10.0,
-      reach: 1.5,
-      weapons: [
-        {"rusty_two_handed_sword", 3},
-        {"notched_battle_axe", 3},
-        {"cracked_maul", 2},
-        {"rusty_halberd", 2},
-        {"pitted_longsword", 2},
-        {"cracked_morning_star", 2},
-        {"pitted_war_hammer", 2}
-      ],
-      offhand: [{nil, 3}, {"cracked_kite_shield", 2}, {"dented_buckler", 1}],
-      loot: [{"bone_chips", 0.8, 2..5}, {"skull_fragment", 0.35, 1..2}],
-      coins: 25..80,
-      weapon_drop: 0.8
-    },
-    # Rats (2026-10-28): quick, weak, in packs, a nuisance near town. Their own little rig
-    # (rats-view.ts): no weapons; they bite.
-    "giant_rat" => %{
-      name: "a giant rat",
-      levels: 1..2,
-      hp: {9, 6},
-      dmg: {1, 3},
-      dly_ms: 1500,
-      walk: 1.0,
-      run: 4.4,
-      aggro: 6.0,
-      reach: 0.7,
-      radius: 0.3,
-      moves: [{"bite", 3}, {"claw", 1}],
-      weapons: [{nil, 1}],
-      offhand: [{nil, 1}],
-      loot: [{"rat_tail", 0.7, 1..1}, {"rat_pelt", 0.35, 1..1}],
-      coins: 0..4,
-      weapon_drop: 0.0,
-      respawn_ms: 45_000..80_000
-    },
-    "plague_rat" => %{
-      name: "a plague rat",
-      scale: 1.4,
-      levels: 3..4,
-      hp: {16, 8},
-      dmg: {2, 5},
-      dly_ms: 1600,
-      walk: 1.1,
-      run: 4.8,
-      aggro: 8.0,
-      reach: 0.85,
-      radius: 0.4,
-      moves: [{"bite", 3}, {"claw", 1}],
-      weapons: [{nil, 1}],
-      offhand: [{nil, 1}],
-      loot: [{"rat_tail", 0.8, 1..1}, {"rat_pelt", 0.6, 1..2}],
-      coins: 2..8,
-      weapon_drop: 0.0
-    },
-    # Goblins (2026-10-28): small, green and spiteful, on the male's rig (B8_Goblin.glb plays his
-    # packs). The archers keep their distance and shoot (`ranged`: they stop at their reach).
-    "goblin" => %{
-      name: "a goblin",
-      levels: 2..4,
-      hp: {15, 9},
-      dmg: {2, 6},
-      dly_ms: 1900,
-      walk: 1.3,
-      run: 4.1,
-      aggro: 10.0,
-      reach: 1.0,
-      weapons: [{"rusty_dagger", 3}, {"bone_club", 2}, {"spiked_club", 2}, {"rusty_short_sword", 2}, {"rusty_hand_axe", 1}],
-      offhand: [{nil, 5}, {"dented_buckler", 2}, {"rusty_dagger", 1}],
-      loot: [{"goblin_ear", 0.6, 1..2}, {"tarnished_trinket", 0.08, 1..1}],
-      coins: 6..26,
-      weapon_drop: 0.7
-    },
-    "goblin_archer" => %{
-      name: "a goblin archer",
-      levels: 3..4,
-      hp: {13, 8},
-      dmg: {3, 7},
-      dly_ms: 2400,
-      walk: 1.3,
-      run: 4.0,
-      aggro: 16.0,
-      reach: 16.0,
-      ranged: true,
-      weapons: [{"goblin_shortbow", 1}],
-      offhand: [{nil, 1}],
-      loot: [{"goblin_ear", 0.6, 1..2}, {"tarnished_trinket", 0.1, 1..1}],
-      coins: 8..30,
-      weapon_drop: 0.35
-    },
-    # Orcs (2026-10-28): big, grey-green, tusked, on the male's rig (B8_Orc.glb); harder than
-    # anything outside the lairs. A warlord leads the warband at its hold.
-    "orc" => %{
-      name: "an orc",
-      levels: 5..7,
-      hp: {38, 15},
-      dmg: {5, 12},
-      dly_ms: 2500,
-      walk: 1.2,
-      run: 3.9,
-      aggro: 12.0,
-      reach: 1.4,
-      radius: 0.5,
-      weapons: [{"orcish_cleaver", 4}, {"spiked_club", 2}, {"orcish_greataxe", 2}, {"notched_battle_axe", 1}, {"cracked_maul", 1}],
-      offhand: [{nil, 3}, {"cracked_kite_shield", 1}, {"dented_buckler", 1}],
-      loot: [{"orc_tusk", 0.55, 1..2}, {"orcish_war_belt", 0.1, 1..1}, {"tarnished_trinket", 0.1, 1..1}],
-      coins: 25..80,
-      weapon_drop: 0.6
-    },
-    "orc_warlord" => %{
-      name: "an orc warlord",
-      scale: 1.08,
-      levels: 9..10,
-      hp: {210, 30},
-      dmg: {9, 18},
-      dly_ms: 2700,
-      walk: 1.2,
-      run: 4.0,
-      aggro: 14.0,
-      reach: 1.6,
-      radius: 0.55,
-      leash: 40.0,
-      weapons: [{"orcish_greataxe", 1}],
-      offhand: [{nil, 1}],
-      loot: [{"orc_tusk", 1.0, 2..3}, {"orcish_war_belt", 0.5, 1..1}],
-      drops: [{"ashwood_longbow", 0.2}],
-      coins: 150..300,
-      weapon_drop: 0.5,
-      respawn_ms: 360_000..540_000
-    },
-    # The boss (2026-10-24): a red dragon in its lair (north-east of the village; on Crater Lake,
-    # the plateau north-east of the crater). Big enough
-    # that you hit its flank, not its middle; it bites and claws what is in front, lashes its
-    # tail, and every 13-18 s rears back and breathes fire in a cone (a group spreads out;
-    # anyone can step out of the cone during the roar).
-    "baconator" => %{
-      name: "Baconator",
-      boss: true,
-      scale: 0.8,
-      levels: 12..12,
-      hp: {1400, 50},
-      dmg: {12, 22},
-      dly_ms: 2900,
-      walk: 2.4,
-      run: 6.8,
-      aggro: 24.0,
-      reach: 5.0,
-      radius: 3.4,
-      leash: 55.0,
-      moves: [{"bite", 5}, {"claw", 3}, {"tail", 2}],
-      breath: %{every_ms: 13_000..18_000, windup_ms: 1_050, range: 17.0, half_arc_deg: 32.0, dmg: {18, 32}},
-      weapons: [{nil, 1}],
-      offhand: [{nil, 1}],
-      loot: [{"dragon_scale", 1.0, 2..5}, {"baconator_fang", 0.45, 1..2}],
-      drops: [{"emberforged_longsword", 0.35}, {"dragonbone_greataxe", 0.25}, {"scaleplate_shield", 0.25}],
-      coins: 300..700,
-      weapon_drop: 0.0,
-      respawn_ms: 1_200_000..1_800_000
-    },
-    # The second boss (2026-10-27): the Kraken, in the deep middle of Crater Lake. It doesn't leave
-    # the deep water; swim out to it, or fight it from a boat... or from the shore, if it follows you
-    # there. At 2.1 times the model's size (2026-10-27: half as big again) its mantle towers 23 m over the
-    # water; it roams the deep water on its own; its arms lash and slam whatever is in reach (16 m), and every 9-13 s it does something
-    # worse: snatches its target with a hunting tentacle (held fast and squeezed), sprays ink (a
-    # cone: blind), or churns the lake into a maelstrom (everyone round it is battered and dragged
-    # in - the long windup is the time to swim clear).
-    "kraken" => %{
-      name: "the Kraken",
-      boss: true,
-      scale: 2.1,
-      aquatic: true,
-      levels: 16..16,
-      hp: {2600, 80},
-      dmg: {16, 28},
-      dly_ms: 3100,
-      walk: 4.0,
-      run: 11.0,
-      aggro: 80.0,
-      reach: 16.0,
-      radius: 9.5,
-      leash: 320.0,
-      # it roams the deep water on its own, anywhere within this of where it spawned (m)
-      roam: 300.0,
-      moves: [{"lash", 5}, {"slam", 3}],
-      special_every_ms: 9_000..13_000,
-      specials: [
-        %{move: "grab", weight: 4, shape: :target, range: 33.0, windup_ms: 700, busy_ms: 1_200, dmg: {10, 16}, root_ms: 3_500, squeeze: {3, {8, 14}}},
-        %{move: "ink", weight: 3, shape: :cone, range: 39.0, half_arc_deg: 38.0, windup_ms: 650, busy_ms: 900, dmg: {4, 8}, blind_ms: 5_000},
-        %{move: "maelstrom", weight: 3, shape: :ring, range: 36.0, windup_ms: 1_900, busy_ms: 2_600, dmg: {20, 34}, pull_m: 9.0}
-      ],
-      weapons: [{nil, 1}],
-      offhand: [{nil, 1}],
-      loot: [{"kraken_ink_sac", 1.0, 1..3}, {"abyssal_hook", 0.9, 2..6}, {"kraken_beak", 0.4, 1..1}],
-      drops: [{"abyssal_harpoon", 0.3}, {"krakenfang_cutlass", 0.3}, {"barnacled_buckler", 0.25}],
-      coins: 600..1200,
-      weapon_drop: 0.0,
-      respawn_ms: 1_500_000..2_100_000
-    }
-  }
+  # The creature types (name, levels, hp, damage, speeds, weapons, loot...) are rows of
+  # bacon_world_defs, kind "monster" (BaconWorld.Defs, 2026-11-02: owner "move everything into the
+  # DB"), edited on /admin/bacon_world/database; they were a map here until then
+  # (priv/seed/monsters.json is that map, exported).
 
   # By the village: the three beginners' camps (both worlds).
   @near [
@@ -330,8 +86,8 @@ defmodule BaconWorld.Mobs.Spawns do
   @safe_radius 40.0
   @leash 30.0
 
-  def kinds, do: @kinds
-  def kind(id), do: Map.fetch!(@kinds, id)
+  def kinds, do: BaconWorld.Defs.map("monster")
+  def kind(id), do: Map.fetch!(kinds(), id)
   @doc "The zone's camps: Crater Lake's when its terrain is loaded, else the round island's."
   def camps, do: if(BaconWorld.Terrain.loaded(), do: @crater_lake, else: @island)
   def safe_radius, do: @safe_radius
@@ -352,10 +108,10 @@ defmodule BaconWorld.Mobs.Spawns do
   def leash(kind_id), do: Map.get(kind(kind_id), :leash, @leash)
 
   @doc "True for a creature of the deep water (it never leaves it)."
-  def aquatic?(kind_id), do: Map.has_key?(@kinds, kind_id) and Map.get(kind(kind_id), :aquatic, false) == true
+  def aquatic?(kind_id), do: Map.has_key?(kinds(), kind_id) and Map.get(kind(kind_id), :aquatic, false) == true
 
   @doc "True for a boss (roots last a third as long on one)."
-  def boss?(kind_id), do: Map.has_key?(@kinds, kind_id) and Map.get(kind(kind_id), :boss, false) == true
+  def boss?(kind_id), do: Map.has_key?(kinds(), kind_id) and Map.get(kind(kind_id), :boss, false) == true
 
   @doc """
   Every spawn point: `%{id, camp, kind, x, z}` in metres, spread over the camp on

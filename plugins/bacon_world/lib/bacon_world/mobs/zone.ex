@@ -42,6 +42,9 @@ defmodule BaconWorld.Mobs.Zone do
 
   @impl true
   def handle_info(:setup, state) do
+    # this process's ground is its zone's (BaconWorld.Terrain.use_zone/1)
+    BaconWorld.Terrain.use_zone(state.slug)
+
     case zone_id(state.slug) do
       nil ->
         # No database yet, or the zone isn't seeded: try again shortly.

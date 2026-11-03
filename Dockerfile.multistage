@@ -26,8 +26,9 @@ RUN apk add --no-cache curl && \
      mix local.hex --force)
 RUN mix local.rebar --force
 
-# Copy dependency files
-COPY mix.exs ./
+# Copy dependency files. mix.lock too (2026-11-01): without it every build resolved the
+# newest versions mix.exs allows, and a cached layer could hold older ones than the lock.
+COPY mix.exs mix.lock ./
 
 # Install dependencies (generates mix.lock if missing)
 RUN --mount=type=cache,target=/root/.hex \
@@ -75,11 +76,14 @@ COPY assets/.browserslistrc ./assets/
 
 # NOW copy Phoenix JS SOURCE files into node_modules AFTER all other copies
 # Source files are in deps/PACKAGE/assets/js/PACKAGE_NAME/
+# LiveView: its prebuilt ESM bundle, not its source (2026-11-01). The source in the 1.0.19
+# package still says version 1.0.18, so every page logged "LiveView asset version mismatch";
+# the bundle in priv/static is the one built and stamped for the release the server runs.
 RUN cd assets/node_modules && \
     rm -rf phoenix phoenix_html phoenix_live_view 2>/dev/null || true && \
     mkdir -p phoenix phoenix_live_view && \
     cp -r ../../deps/phoenix/assets/js/phoenix/* phoenix/ && \
-    cp -r ../../deps/phoenix_live_view/assets/js/phoenix_live_view/* phoenix_live_view/ && \
+    cp ../../deps/phoenix_live_view/priv/static/phoenix_live_view.esm.js phoenix_live_view/index.js && \
     cp ../../deps/phoenix_html/priv/static/phoenix_html.js phoenix_html.js && \
     echo '{"name":"phoenix","version":"1.7.18","main":"index.js","type":"module"}' > phoenix/package.json && \
     echo '{"name":"phoenix_live_view","version":"1.0.0","main":"index.js","type":"module"}' > phoenix_live_view/package.json && \

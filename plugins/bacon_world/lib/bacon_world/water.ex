@@ -39,7 +39,8 @@ defmodule BaconWorld.Water do
   def walk_radius, do: @walk_radius
   def bank, do: @bank
   def cast_reach, do: @cast_reach
-  def lakes, do: @lakes
+  # the Millpond is in the lobby's town: other zones (2026-11-02) have only their terrain's water
+  def lakes, do: if(Terrain.lobby?(), do: @lakes, else: [])
   def catches(kind), do: Map.fetch!(@catches, kind)
 
   @doc "What the client draws, in scene units (`u` per metre)."
@@ -52,14 +53,14 @@ defmodule BaconWorld.Water do
       walk_radius: @walk_radius * u,
       bank: @bank * u,
       cast_reach: @cast_reach * u,
-      lakes: Enum.map(@lakes, fn l -> %{id: l.id, name: l.name, x: l.x * u, z: l.z * u, rx: l.rx * u, rz: l.rz * u} end)
+      lakes: Enum.map(lakes(), fn l -> %{id: l.id, name: l.name, x: l.x * u, z: l.z * u, rx: l.rx * u, rz: l.rz * u} end)
     }
   end
 
   @doc "The water at a point (metres): `:lake`, `:ocean`, or nil on land."
   def kind_at(x, z) do
     cond do
-      Enum.any?(@lakes, &(lake_scale(&1, x, z) <= 1.0)) -> :lake
+      Enum.any?(lakes(), &(lake_scale(&1, x, z) <= 1.0)) -> :lake
       t = Terrain.loaded() -> terrain_kind(t, x, z)
       :math.sqrt(x * x + z * z) > @shore -> :ocean
       true -> nil
@@ -68,7 +69,7 @@ defmodule BaconWorld.Water do
 
   @doc "The name of the water at a point (\"the Millpond\", \"Crater Lake\", \"the sea\"), or nil."
   def name_at(x, z) do
-    case Enum.find(@lakes, &(lake_scale(&1, x, z) <= 1.0)) do
+    case Enum.find(lakes(), &(lake_scale(&1, x, z) <= 1.0)) do
       %{name: name} ->
         name
 
@@ -101,7 +102,7 @@ defmodule BaconWorld.Water do
     r = :math.sqrt(x * x + z * z)
 
     cond do
-      Enum.any?(@lakes, &(lake_distance(&1, x, z) <= within)) -> :lake
+      Enum.any?(lakes(), &(lake_distance(&1, x, z) <= within)) -> :lake
       t = Terrain.loaded() -> ring(x, z, within) |> Enum.find_value(fn {px, pz} -> terrain_kind(t, px, pz) end)
       r >= @shore - within -> :ocean
       true -> nil
@@ -133,7 +134,7 @@ defmodule BaconWorld.Water do
   def walkable?(x, z) do
     case Terrain.loaded() do
       nil -> :math.sqrt(x * x + z * z) <= @walk_radius
-      t -> Terrain.inside?(t, x, z) and not Enum.any?(@lakes, &(lake_scale(&1, x, z) < 0.85))
+      t -> Terrain.inside?(t, x, z) and not Enum.any?(lakes(), &(lake_scale(&1, x, z) < 0.85))
     end
   end
 

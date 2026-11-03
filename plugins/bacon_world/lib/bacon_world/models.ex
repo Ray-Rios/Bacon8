@@ -29,7 +29,9 @@ defmodule BaconWorld.Models do
   ]
 
   @doc "Models as `%{label, model_path}`, preferred formats first."
-  def list do
+  def list, do: cached(:list, &scan_list/0)
+
+  defp scan_list do
     models =
       roots()
       |> Enum.flat_map(fn root ->
@@ -95,7 +97,9 @@ defmodule BaconWorld.Models do
   The client can't fetch these itself: `/models` serves only runtime formats
   (invariant 17), not `.json`. Missing or unreadable files are left out.
   """
-  def human_assets do
+  def human_assets, do: cached(:human_assets, &read_human_assets/0)
+
+  defp read_human_assets do
     bodies =
       Enum.reduce([{"Male", "Humans/Male.json"}, {"Female", "Humans/Female.json"}], %{}, fn {key, rel}, acc ->
         case read_json(rel) do
@@ -124,7 +128,9 @@ defmodule BaconWorld.Models do
   updated model is fetched again even though `/models` lets browsers cache files
   for a day; an unchanged one stays cached.
   """
-  def asset_versions do
+  def asset_versions, do: cached(:asset_versions, &scan_versions/0)
+
+  defp scan_versions do
     # The first root that has a file wins, as when the file is served.
     roots()
     |> Enum.reverse()
@@ -162,6 +168,59 @@ defmodule BaconWorld.Models do
 
       {body, %{"hair" => ids.("hair"), "facial" => ids.("facial"), "aliases" => aliases}}
     end
+  end
+
+  # Cached (2026-11-01). Walking the models volume took about a second a time in production
+  # (a host folder mounted into the cluster: every stat crosses to the host), and each page load
+  # did it four times (list/0 and human_assets/0, in the static render and again in the connected
+  # mount): over four seconds before the game's page arrived. A value older than @cache_ms is
+  # still answered while one refresh runs behind it, so only the first call after a restart waits.
+  # Tests that point `roots` at a fixture, or set `cache_ms: 0`, read the folder every time.
+  @cache_ms 60_000
+
+  defp cached(key, fun) do
+    conf = Application.get_env(:bacon8, __MODULE__, [])
+    ttl = Keyword.get(conf, :cache_ms, @cache_ms)
+
+    if conf[:roots] || ttl <= 0 do
+      fun.()
+    else
+      now = System.monotonic_time(:millisecond)
+
+      case :persistent_term.get({__MODULE__, key}, nil) do
+        {at, value} ->
+          if now - at >= ttl do
+            # the timestamp moves on first, so the calls meanwhile take the old value
+            :persistent_term.put({__MODULE__, key}, {now, value})
+            Task.start(fn -> :persistent_term.put({__MODULE__, key}, {System.monotonic_time(:millisecond), fun.()}) end)
+          end
+
+          value
+
+        nil ->
+          value = fun.()
+          :persistent_term.put({__MODULE__, key}, {now, value})
+          value
+      end
+    end
+  end
+
+  @doc """
+  The models folder files are written to (generated zones' terrain, World Creator imports:
+  `BaconWorld.WorldGen`): the first models root that exists. In production that is the models
+  volume, which `sync-models-to-k8s.sh` adds to without deleting, so generated files survive a sync.
+  """
+  def write_root do
+    case roots() do
+      [root | _] -> root
+      [] -> List.first(default_roots())
+    end
+  end
+
+  @doc "Forgets the cached model list, human assets and versions (the next call reads the folder)."
+  def clear_cache do
+    for key <- [:list, :human_assets, :asset_versions], do: :persistent_term.erase({__MODULE__, key})
+    :ok
   end
 
   @max_manifest_bytes 512_000

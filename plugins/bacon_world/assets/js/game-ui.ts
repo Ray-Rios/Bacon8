@@ -64,6 +64,8 @@ export interface GameUICallbacks {
   sound(): void;
   /** A window opened or closed (the scene frees the mouse for it). */
   windows(open: boolean): void;
+  /** Asks for the account's Gem balance (the answer comes back through setGems). Optional. */
+  gemsFetch?(): void;
 }
 
 const CSS = `
@@ -107,6 +109,7 @@ const CSS = `
 .bwg .stats .shd{color:#7cd8ff}
 .bwg .stats .hi{color:#e9cf8f}
 .bwg .stats .coins{color:#f0d77a}
+.bwg .stats .gems{color:#f7a8d0}.bwg .mer .gemsline{color:#f7a8d0}
 .bwg .bags{display:grid;grid-template-columns:repeat(6,44px);gap:4px}
 .bwg .foot{display:flex;justify-content:space-between;gap:6px;padding:0 10px 10px}
 .bwg .loot{left:50%;top:38%;transform:translate(-120%,-50%);display:none;width:262px}
@@ -346,8 +349,10 @@ export class GameUI {
   toggleInventory(open?: boolean) {
     const show = open ?? this.inv.style.display !== 'block';
     this.inv.style.display = show ? 'block' : 'none';
-    if (show) this.renderInventory();
-    else this.setHeld(null);
+    if (show) {
+      this.renderInventory();
+      this.cb.gemsFetch?.();
+    } else this.setHeld(null);
     this.cb.windows(this.anyOpen());
   }
 
@@ -436,7 +441,9 @@ export class GameUI {
       h('div', {}, h('span', {}, 'Spell Bonus'), h('span', {}, `+${sh?.spell_pct ?? 0}%`)),
       h('div', {}, h('span', {}, 'Crit Chance'), h('span', {}, `${sh?.melee_crit_pct ?? 6}% (×${sh?.melee_crit_mult ?? 1.75})`)),
       h('div', {}, h('span', {}, 'Exp'), h('span', {}, p && p.xpNext ? `${p.xp} / ${p.xpNext}` : '-')),
-      h('div', { class: 'coins' }, h('span', {}, 'Coin'), h('span', {}, money(this.inventory.coins))));
+      h('div', { class: 'coins' }, h('span', {}, 'Coin'), h('span', {}, money(this.inventory.coins))),
+      // the account's Gems (Bacon Store wallet), beside the coin (2026-11-01)
+      h('div', { class: 'gems' }, h('span', {}, 'Gems'), h('span', {}, String(this.gemBalance))));
     const destroy = h('button', { class: 'btn', disabled: !this.held, title: 'Destroy the item on your cursor', onclick: () => this.destroyHeld() }, 'Destroy') as HTMLButtonElement;
     this.inv.replaceChildren(
       h('div', { class: 't' }, h('b', {}, 'Inventory & Character Stats'), h('span', { class: 'x', onclick: () => this.toggleInventory(false) }, '✕')),
@@ -550,10 +557,11 @@ export class GameUI {
     this.cb.windows(true);
   }
 
-  /** The Gem balance shown in the jeweller's window (after a purchase). */
+  /** The account's Gem balance, shown in the inventory and in every shop. */
   setGems(n: number) {
     this.gemBalance = n || 0;
     if (this.isMerchantOpen()) this.renderMerchant();
+    if (this.isInventoryOpen()) this.renderInventory();
   }
 
   isMerchantOpen(): boolean {
@@ -589,7 +597,6 @@ export class GameUI {
     const m = this.merchant;
     // Re-rendering replaces the list: keep its scroll position (a click used to jump it to the top).
     const scroll = (this.mer.querySelector('.list') as HTMLElement | null)?.scrollTop || 0;
-    const gemsShop = !!m.gems;
     const priceText = (s: StockItem) => (s.gems ? `${s.gems} Gems` : money(s.price));
     const setName = (s: StockItem) => {
       const nm = item(s.item_id)?.name || s.item_id;
@@ -624,7 +631,7 @@ export class GameUI {
     this.mer.replaceChildren(
       h('div', { class: 't' }, h('b', {}, m.name), h('span', {}, m.title || 'Merchant'), h('span', { class: 'x', onclick: () => this.closeMerchant() }, '✕')),
       list,
-      h('div', { class: 'coins' }, gemsShop ? `Your Gems: ${this.gemBalance}` : `Your money: ${money(this.inventory.coins)}`),
+      h('div', { class: 'coins' }, `Your money: ${money(this.inventory.coins)}`, h('span', { class: 'gemsline' }, ` · Gems: ${this.gemBalance}`)),
       h('div', { class: 'sellbox' }, h('span', { class: 'msg2' }, 'Right-click to buy. To sell, right-click an item in your bags.')),
       h('div', { class: 'foot' }, buy, h('button', { class: 'btn', onclick: () => this.closeMerchant() }, 'Done')));
     list.scrollTop = scroll;

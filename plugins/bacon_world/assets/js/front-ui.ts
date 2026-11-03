@@ -2,7 +2,7 @@
 // HTML layer over the 3D stage (character-stage.ts). Plain DOM with its own scoped CSS,
 // so it doesn't depend on the site's Tailwind build.
 import {
-  Appearance, Body, EYE_COLORS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SKIN_TONES, type ShapeGroup, type ScarStyle,
+  Appearance, Body, EYE_COLORS, FACE_KEYS, FACE_PRESETS, HAIR_COLORS, HEIGHT_RANGE, SHAPES, SKIN_TONES, type ShapeGroup, type ScarStyle,
   defaultAppearance, normalizeAppearance, randomAppearance, shade,
   shapeMin,
 } from './appearance';
@@ -83,6 +83,7 @@ const CSS = `
 .bwf-seg{display:inline-flex;background:rgba(231,241,253,.06);border-radius:10px;padding:3px;gap:2px}
 .bwf-seg button{padding:6px 12px;border-radius:8px;font-size:13px;font-weight:700;color:rgba(231,241,253,.7)}
 .bwf-seg button.on{background:#247DF1;color:#fff}
+.bwf-seg.bwf-presets{display:grid;grid-template-columns:repeat(3,1fr);width:100%;box-sizing:border-box}
 .bwf-tabs{display:flex;gap:4px;padding:0 14px;border-bottom:1px solid rgba(231,241,253,.08)}
 .bwf-tabs button{flex:1;padding:10px 4px 12px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(231,241,253,.5);border-bottom:2px solid transparent!important}
 .bwf-tabs button.on{color:#E7F1FD;border-bottom-color:#247DF1!important}
@@ -510,7 +511,16 @@ export class FrontUI {
     }
     if (this.tab === 'face') {
       return [
-        this.section('Face shape', ...SHAPES.filter((s) => s.tab === 'face')
+        // ready-made faces: one click sets every face and eye slider (2026-11-02, owner)
+        this.section('Face preset',
+          h('div', { class: 'bwf-seg bwf-presets' },
+            ...FACE_PRESETS.map((p) => h('button', {
+              class: FACE_KEYS.every((k) => Math.abs((a.shape[k] || 0) - (p.shape[k] ?? 0)) < 0.005) ? 'on' : '',
+              onclick: () => this.change((x) => { for (const k of FACE_KEYS) x.shape[k] = p.shape[k] ?? 0; }),
+            }, p.label)))),
+        this.section('Face shape', ...SHAPES.filter((s) => s.tab === 'face' && s.group === 'Face')
+          .map((s) => this.slider(s.label, a.shape[s.key], shapeMin(s, a.body), s.max, (v) => this.change((x) => { x.shape[s.key] = v; }, false), undefined, s.ends))),
+        this.section('Eye shape', ...SHAPES.filter((s) => s.tab === 'face' && s.group === 'Eyes')
           .map((s) => this.slider(s.label, a.shape[s.key], shapeMin(s, a.body), s.max, (v) => this.change((x) => { x.shape[s.key] = v; }, false), undefined, s.ends))),
         this.section('Eyes', this.swatches(EYE_COLORS, a.eyes, (c) => this.change((x) => { x.eyes = c; }))),
         this.section(h('span', {}, 'Eyebrows'),

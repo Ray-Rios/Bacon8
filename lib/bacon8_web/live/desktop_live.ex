@@ -43,6 +43,7 @@ defmodule Bacon8Web.DesktopLive do
     |> assign_new(:show_audio_panel, fn -> false end)
     |> assign_new(:show_calendar, fn -> false end)
     |> assign_new(:taskbar_projects, fn -> [] end)
+    |> assign_new(:gem_balance, fn -> get_gem_balance(assigns[:current_user]) end)
     |> assign_new(:calendar_events, fn -> 
        if assigns[:current_user] do
          try do
@@ -175,7 +176,22 @@ defmodule Bacon8Web.DesktopLive do
   end
 
   def handle_event("toggle_start_menu", _params, socket) do
-    {:noreply, assign(socket, show_start_menu: !socket.assigns.show_start_menu, show_notifications: false, show_audio_panel: false, show_calendar: false)}
+    show = !socket.assigns.show_start_menu
+
+    socket =
+      if show && socket.assigns[:current_user] do
+        assign(socket, gem_balance: get_gem_balance(socket.assigns.current_user))
+      else
+        socket
+      end
+
+    {:noreply,
+     assign(socket,
+       show_start_menu: show,
+       show_notifications: false,
+       show_audio_panel: false,
+       show_calendar: false
+     )}
   end
 
   def handle_event("toggle_notifications", _params, socket) do
@@ -1273,6 +1289,7 @@ defmodule Bacon8Web.DesktopLive do
       <div class="pointer-events-auto">
         <Bacon8Web.Components.Taskbar.taskbar 
           current_user={@current_user}
+          gem_balance={@gem_balance}
           open_windows={@windows}
           show_start_menu={@show_start_menu}
           show_notifications={@show_notifications}
@@ -1654,4 +1671,20 @@ defmodule Bacon8Web.DesktopLive do
         "Unknown"
     end
   end
+
+  defp get_gem_balance(%{id: _} = user) do
+    mod = Module.concat([BaconStore, Wallet])
+
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :balance, 1) do
+      try do
+        apply(mod, :balance, [user])
+      rescue
+        _ -> nil
+      end
+    else
+      nil
+    end
+  end
+
+  defp get_gem_balance(_), do: nil
 end

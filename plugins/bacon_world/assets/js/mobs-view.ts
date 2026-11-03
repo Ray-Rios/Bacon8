@@ -104,7 +104,22 @@ export interface MobEntry {
   rise: number; // seconds left of rising out of the ground (0 = done)
   sink: number; // seconds left of sinking away (-1 = not sinking)
   heightU: number;
+  /** The model's scale, and whether it is built (streamed by distance: see `stream`). */
+  scale: number;
+  dressed: 'no' | 'loading' | 'yes';
+  /** Bumped when the model is taken down, so a load still in flight for the old one is dropped. */
+  gen: number;
+  /** Drawn and animated this frame (near enough and on screen). */
+  shown: boolean;
 }
+
+// Creatures are built when the player comes within this many metres of them and taken down past
+// 1.5x that (2026-11-02, owner: thirty-one Krakens round the starter zone's edge made entering the
+// world crawl: every creature in the zone was built, animated and drawn at once, kilometres away
+// included). The big ones are seen from further off.
+const BUILD_M = 300;
+const BUILD_BIG_M = 700;
+const DROP_FACTOR = 1.5;
 
 const PROXY_STANDING = new THREE.CylinderGeometry(0.38, 0.38, 1.85, 8).translate(0, 0.92, 0);
 const PROXY_LYING = new THREE.BoxGeometry(0.8, 0.5, 2.2).translate(0, 0.25, 0);
@@ -131,6 +146,13 @@ export class MobsView {
   onSound: ((kind: string, at: THREE.Vector3, gain?: number) => void) | null = null;
   /** Where a character is (for the Kraken's stare), or null. */
   characterAt: ((id: string) => THREE.Vector3 | null) | null = null;
+  /** Where the player is (scene units): creatures are built near it only. Null: all of them. */
+  viewer: (() => THREE.Vector3 | null) | null = null;
+  /** The camera: creatures off screen aren't animated. */
+  camera: THREE.Camera | null = null;
+  private frustum = new THREE.Frustum();
+  private viewProj = new THREE.Matrix4();
+  private sphere = new THREE.Sphere();
 
   private mobs = new Map<string, MobEntry>();
   private loader: GLTFLoader;
@@ -324,6 +346,7 @@ export class MobsView {
       this.pending = this.pending.filter((p) => p.at > this.time);
       due.forEach((p) => p.fn());
     }
+    this.stream();
     const me = this.me();
     const U = UNITS_PER_METRE;
     for (const [id, e] of [...this.mobs]) {
@@ -372,6 +395,11 @@ export class MobsView {
           this.remove(id);
           continue;
         }
+      }
+      // not on screen (or not built): no animation, no name (the targeted one keeps its name)
+      if (!e.shown) {
+        if (me.targetId !== id) this.nameplates.remove(`mob:${id}`);
+        continue;
       }
       e.animator?.update(dt);
       e.mixer?.update(dt);
@@ -501,12 +529,113 @@ export class MobsView {
       rise: rise ? 1.4 : 0,
       sink: -1,
       heightU: kraken ? (11.5 * scale + 1) * UNITS_PER_METRE : dragon ? (7.6 * scale + 0.6) * UNITS_PER_METRE : rat ? (0.32 * scale + 0.25) * UNITS_PER_METRE : (1.8 * scale + 0.3) * UNITS_PER_METRE,
+      scale,
+      dressed: 'no',
+      gen: 0,
+      shown: false,
     };
     if (rise) root.position.y = -1.9 * UNITS_PER_METRE;
     this.mobs.set(v.id, e);
     this.nameplateIds.add(`mob:${v.id}`);
-    void this.dress(e, scale);
+    // built when the player is near enough (stream), or at once without a viewer
+    if (!this.viewer) this.build(e);
     return e;
+  }
+
+  private build(e: MobEntry) {
+    if (e.dressed !== 'no') return;
+    e.dressed = 'loading';
+    const gen = e.gen;
+    void this.dress(e, e.scale).then(() => {
+      if (e.gen === gen && this.mobs.get(e.view.id) === e) e.dressed = 'yes';
+    });
+  }
+
+  // Takes a creature's model down (it is far away now); the entry, its proxy and its state stay.
+  private undress(e: MobEntry) {
+    e.gen += 1;
+    e.dressed = 'no';
+    e.animator?.dispose();
+    e.dragon?.dispose();
+    e.fire?.dispose();
+    e.kraken?.dispose();
+    e.ink?.dispose();
+    e.whirl?.dispose();
+    e.rat?.dispose();
+    if (e.model && !e.dragon && !e.kraken && !e.rat) e.root.remove(e.model);
+    e.model = null;
+    e.mixer = null;
+    e.animator = null;
+    e.dragon = null;
+    e.fire = null;
+    e.kraken = null;
+    e.ink = null;
+    e.whirl = null;
+    e.rat = null;
+    this.nameplates.remove(`mob:${e.view.id}`);
+  }
+
+  /** The creatures within `radius` (scene units) of x, z, for the map (world-map.ts). */
+  mapDots(x: number, z: number, radius: number): Array<{ x: number; z: number; kind: 'mob' | 'dead' }> {
+    const out: Array<{ x: number; z: number; kind: 'mob' | 'dead' }> = [];
+    for (const e of this.mobs.values()) {
+      const p = e.root.position;
+      if (Math.hypot(p.x - x, p.z - z) <= radius) out.push({ x: p.x, z: p.z, kind: e.view.state === 'dead' ? 'dead' : 'mob' });
+    }
+    return out;
+  }
+
+  private range(e: MobEntry): number {
+    const big = KRAKENS.has(e.view.kind) || DRAGONS.has(e.view.kind);
+    return (big ? BUILD_BIG_M : BUILD_M) * UNITS_PER_METRE;
+  }
+
+  /**
+   * Builds the nearest creature within range that has no model yet (one a frame, so a crowd
+   * doesn't freeze a frame), takes down the ones far past it, and decides which are shown: near
+   * enough and inside the camera's view. Run once a frame before the creatures move.
+   */
+  private stream() {
+    if (this.viewer && !this.viewer()) {
+      // the player isn't in the world yet: build nothing until we know where they stand
+      for (const e of this.mobs.values()) e.shown = e.root.visible = false;
+      return;
+    }
+    const at = this.viewer?.();
+    if (!at) {
+      for (const e of this.mobs.values()) {
+        if (e.dressed === 'no') this.build(e);
+        e.shown = true;
+        e.root.visible = true;
+      }
+      return;
+    }
+    if (this.camera) {
+      this.viewProj.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+      this.frustum.setFromProjectionMatrix(this.viewProj);
+    }
+    let next: MobEntry | null = null;
+    let nextD = Infinity;
+    for (const e of this.mobs.values()) {
+      const d = Math.hypot(e.root.position.x - at.x, e.root.position.z - at.z);
+      const r = this.range(e);
+      if (e.dressed === 'no' && d <= r && d < nextD) {
+        next = e;
+        nextD = d;
+      } else if (e.dressed === 'yes' && d > r * DROP_FACTOR) {
+        this.undress(e);
+      }
+      let shown = e.dressed === 'yes' && d <= r * DROP_FACTOR;
+      if (shown && this.camera) {
+        this.sphere.center.copy(e.root.position);
+        this.sphere.center.y += e.heightU * 0.5;
+        this.sphere.radius = Math.max(e.heightU, 3 * UNITS_PER_METRE) * (e.kraken ? 2.5 : e.dragon ? 1.8 : 1);
+        shown = this.frustum.intersectsSphere(this.sphere);
+      }
+      e.shown = shown;
+      e.root.visible = shown;
+    }
+    if (next) this.build(next);
   }
 
   // Loads the model, then the animations and the weapons, into an entry.

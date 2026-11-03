@@ -1,8 +1,8 @@
-// Unit tests for audio-mix.ts (the music shuffle, rests, placing sounds, ambient details).
+// Unit tests for audio-mix.ts (the music shuffle, rests, placing sounds).
 // Run with __tests__/run.sh (esbuild + node --test).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MUSIC, Playlist, gapFor, placeSound, restAfter, sweetenersFor, weighted } from '../audio-mix.ts';
+import { MUSIC, Playlist, gapFor, placeSound, restAfter, weighted } from '../audio-mix.ts';
 
 function lcg(seed: number) {
   let s = seed >>> 0;
@@ -28,7 +28,10 @@ test("rests between tracks fall inside each mood's range", () => {
       assert.ok(v >= a && v <= b, `${mood} ${v}`);
     }
   }
-  assert.ok(MUSIC.day.gap[0] >= 30, 'the day music rests long enough to never wear thin');
+  // No nature beds since 2026-11-02: the music is the background, so it barely rests,
+  // and there is enough of it to go a long time before a repeat.
+  assert.ok(MUSIC.day.gap[1] <= 15 && MUSIC.night.gap[1] <= 15, 'no long silences');
+  assert.ok(MUSIC.day.tracks >= 20 && MUSIC.night.tracks >= 20 && MUSIC.lair.tracks >= 10);
 });
 
 test('placed sounds pan to their side, fade with distance and dull far away', () => {
@@ -45,13 +48,9 @@ test('placed sounds pan to their side, fade with distance and dull far away', ()
   assert.ok(Math.abs(placeSound(ear, 1, 0, { x: 0.5, y: 0, z: 0 }, 40).pan) < 0.5);
 });
 
-test('bursts of one kind are spaced, ambient details fit the place', () => {
-  assert.ok(gapFor('step_grass') > 0 && gapFor('ui_hover') > 0 && gapFor('sw_bird') > 1000);
+test('bursts of one kind are spaced', () => {
+  assert.ok(gapFor('step_grass') > 0 && gapFor('ui_hover') > 0);
   assert.equal(gapFor('fireball_cast'), 0);
-  const night = sweetenersFor(0, 0, 0).map(([k]) => k);
-  assert.ok(!night.includes('sw_bird'), 'no birdsong at night');
-  const lair = sweetenersFor(1, 1, 0).map(([k]) => k);
-  assert.ok(lair.includes('sw_drip') && !lair.includes('sw_bird'));
   assert.equal(weighted([['a', 1], ['b', 3]], 0.1), 'a');
   assert.equal(weighted([['a', 1], ['b', 3]], 0.9), 'b');
   assert.equal(weighted([], 0.5), null);

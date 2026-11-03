@@ -10,6 +10,7 @@ defmodule Bacon8Web.Components.Taskbar do
   Renders the desktop taskbar with start menu and system tray
   """
   attr :current_user, :map, default: nil
+  attr :gem_balance, :integer, default: nil
   attr :open_windows, :list, default: []
   attr :show_start_menu, :boolean, default: false
   attr :show_notifications, :boolean, default: false
@@ -22,6 +23,15 @@ defmodule Bacon8Web.Components.Taskbar do
   attr :target, :any, default: nil
 
   def taskbar(assigns) do
+    gem_balance =
+      cond do
+        is_integer(assigns[:gem_balance]) -> assigns.gem_balance
+        assigns[:current_user] -> get_gem_balance(assigns.current_user)
+        true -> nil
+      end
+
+    assigns = assign(assigns, :gem_balance, gem_balance)
+
     ~H"""
     <div id="taskbar" class="fixed bottom-0 left-0 w-full h-[35px] auth-glass-panel border-t border-gray-700 z-50 transition-transform duration-300 ease-in-out">
       <div class="flex items-center justify-between h-full px-2">
@@ -41,7 +51,19 @@ defmodule Bacon8Web.Components.Taskbar do
             <div class="p-4 border-b border-gray-600">
               <div class="flex items-center space-x-3">
                 <%= if @current_user do %>
-                  <%= avatar_tag(@current_user, size_class: "w-10 h-10") %>
+                  <div class="flex flex-col items-center shrink-0">
+                    <%= avatar_tag(@current_user, size_class: "w-10 h-10") %>
+                    <%= if is_integer(@gem_balance) do %>
+                      <.link
+                        navigate={~p"/store"}
+                        id="start-menu-gems"
+                        class="mt-1 text-xs font-semibold text-amber-300 hover:text-amber-200 transition-colors"
+                        title={"#{Bacon8Web.Components.Gem.format(@gem_balance)} Gems — Bacon Store"}
+                      >
+                        <Bacon8Web.Components.Gem.gems amount={@gem_balance} size={13} />
+                      </.link>
+                    <% end %>
+                  </div>
                   <div class="flex-1 min-w-0">
                     <div class="text-white font-medium truncate"><%= get_user_display_name(@current_user) %></div>
                     <div class="text-gray-400 text-sm truncate"><%= @current_user.email %></div>
@@ -561,4 +583,20 @@ defmodule Bacon8Web.Components.Taskbar do
       _ -> "bg-gray-500"
     end
   end
+
+  defp get_gem_balance(%{id: _} = user) do
+    mod = Module.concat([BaconStore, Wallet])
+
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :balance, 1) do
+      try do
+        apply(mod, :balance, [user])
+      rescue
+        _ -> nil
+      end
+    else
+      nil
+    end
+  end
+
+  defp get_gem_balance(_), do: nil
 end

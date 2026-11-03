@@ -13,8 +13,31 @@ defmodule BaconWorld.Mobs do
   @doc "The zones that have creatures (a zone process each)."
   def zone_slugs, do: @zones
 
-  @doc "The plugin's processes: a keeper per zone with creatures."
-  def children, do: Enum.map(@zones, &{Keeper, &1})
+  @doc """
+  The plugin's processes: a keeper per zone with creatures, and a supervisor for the keepers of
+  the zones beyond the lobby (started as players enter them, `ensure_zone/1`).
+  """
+  def children, do: [{DynamicSupervisor, name: __MODULE__.Extra, strategy: :one_for_one} | Enum.map(@zones, &{Keeper, &1})]
+
+  @doc """
+  Makes sure zone `slug`'s creatures run (zones beyond the lobby, 2026-11-02: their keeper starts
+  on this node as the first player enters; the keeper keeps one zone process in the cluster).
+  """
+  def ensure_zone(slug) when slug in @zones, do: :ok
+
+  def ensure_zone(slug) when is_binary(slug) do
+    if :global.whereis_name(Zone.name(slug) |> elem(1)) == :undefined do
+      case DynamicSupervisor.start_child(__MODULE__.Extra, Keeper.child_spec(slug)) do
+        {:ok, _} -> :ok
+        {:error, {:already_started, _}} -> :ok
+        _ -> :ok
+      end
+    else
+      :ok
+    end
+  catch
+    :exit, _ -> :ok
+  end
 
   @doc "The PubSub topic a zone's creatures are broadcast on."
   def topic(slug), do: "bacon_world:mobs:#{slug}"

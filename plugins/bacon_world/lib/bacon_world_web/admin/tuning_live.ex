@@ -15,10 +15,12 @@ defmodule BaconWorldWeb.Admin.TuningLive do
   on_mount {Bacon8Web.UserAuth, :require_admin_user}
 
   @groups [
-    {"melee", "⚔️ Melee Combat", "Base weapon rolls, level scaling, critical hits, and heavy swings."},
-    {"spells", "✨ Spell Combat", "Spell critical hit rate and critical damage multiplier."},
-    {"armour", "🛡️ Armour & AC Mitigation", "Hyperbolic Armour Class reduction: AC / (AC + soft_cap), capped at max_mitigation."},
-    {"world", "🌍 World & Progression", "Experience gain, creature health/damage multipliers, and out-of-combat regeneration."}
+    # the ids are BaconWorld.Tuning's spec groups (2026-11-02: they were short ids matching no spec,
+    # so the page showed no settings at all)
+    {"Melee & Ranged", "⚔️ Melee Combat", "Base weapon rolls, level scaling, critical hits, and heavy swings."},
+    {"Spells & Abilities", "✨ Spell Combat", "Spell critical hit rate and critical damage multiplier."},
+    {"Armour & Mitigation", "🛡️ Armour & AC Mitigation", "Hyperbolic Armour Class reduction: AC / (AC + soft_cap), capped at max_mitigation."},
+    {"World & Progression", "🌍 World & Progression", "Experience gain, creature health/damage multipliers, PvP damage, and out-of-combat regeneration."}
   ]
 
   @impl true
@@ -29,7 +31,7 @@ defmodule BaconWorldWeb.Admin.TuningLive do
      assign(socket,
        page_title: "Admin - Bacon World tuning",
        groups: @groups,
-       specs: Tuning.specs(),
+       specs: Enum.map(Tuning.specs(), &Map.put_new(&1, :default, Map.get(Tuning.defaults(), &1.key))),
        values: values,
        preview: sample_preview(values)
      )}
@@ -74,18 +76,17 @@ defmodule BaconWorldWeb.Admin.TuningLive do
     end)
   end
 
+  # The sample uses BaconWorld.Melee's own formula: a roll from max(1, round(dmg × 0.45)) to
+  # dmg + floor(level / melee_level_div), then heavy and critical multipliers.
   defp sample_preview(v) do
-    # Sample: Level 9 warrior with a 10 DMG weapon, +10% Might buff
     lvl = 9
     wpn = 10
-    lvl_bonus = div(lvl, max(1, round(v["melee_level_div"] || 3)))
-    base = wpn + lvl_bonus
-    spread = v["melee_spread"] || 0.25
-    heavy_mult = v["heavy_damage_mult"] || 1.5
+    lvl_bonus = trunc(lvl / max(1.0, v["melee_level_div"] || 3.0))
+    min_normal = max(1, round(wpn * 0.45))
+    max_normal = wpn + lvl_bonus
+    heavy_mult = v["heavy_swing_mult"] || 1.5
     crit_mult = v["melee_crit_mult"] || 1.75
-    min_normal = max(1, round(base * (1.0 - spread)))
-    max_normal = max(1, round(base * (1.0 + spread)))
-    max_heavy_crit = max(1, round(base * (1.0 + spread) * heavy_mult * crit_mult))
+    max_heavy_crit = max(1, round(max_normal * heavy_mult * crit_mult))
 
     soft_cap = max(1.0, (v["ac_soft_cap"] || 50.0) * 1.0)
     max_mit = v["ac_max_mitigation"] || 0.75
@@ -114,7 +115,7 @@ defmodule BaconWorldWeb.Admin.TuningLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <AdminSidebar.admin_layout current_path="/admin/bacon_world/tuning">
+    <AdminSidebar.admin_layout current_path="/admin/bacon_world">
       <div class="max-w-6xl mx-auto space-y-6">
         <div class="dark-glass p-6 rounded-xl flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -156,8 +157,7 @@ defmodule BaconWorldWeb.Admin.TuningLive do
             <div class="bg-gray-900/60 border border-gray-800 rounded-lg p-4 space-y-2">
               <div class="font-semibold text-white">Melee &amp; Weapon Skills</div>
               <p class="text-xs text-gray-400 leading-relaxed">
-                <code>base = weapon_dmg + div(level, melee_level_div)</code><br />
-                <code>roll = base × uniform(1 - spread, 1 + spread)</code><br />
+                <code>roll = uniform(max(1, round(dmg × 0.45)) .. dmg + floor(level / melee_level_div))</code><br />
                 <code>damage = round(roll × heavy_mult × crit_mult × skill_mult × (1 + melee_pct / 100))</code>
               </p>
               <div class="text-xs text-amber-200/90 pt-1">

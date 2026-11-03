@@ -94,3 +94,17 @@ export function watchShaders(renderer: THREE.WebGLRenderer, armAfterMs = 20000):
     clearInterval(timer);
   };
 }
+
+/**
+ * Starts compiling every program `scene` needs, all at once (2026-11-01). Drawn for the first
+ * time, three.js builds a material's program and draws with it at once, so the driver finishes
+ * one compile before it starts the next; asked for together (compileAsync), the driver compiles
+ * them in parallel while the page goes on. Call once a big batch (the village, a character) is in.
+ */
+export function precompile(renderer: THREE.WebGLRenderer, scene: THREE.Object3D, camera: THREE.Camera): void {
+  try {
+    void renderer.compileAsync(scene, camera).catch(() => {});
+  } catch {
+    // an optimisation only
+  }
+}

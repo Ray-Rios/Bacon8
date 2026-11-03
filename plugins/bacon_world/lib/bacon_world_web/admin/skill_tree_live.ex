@@ -46,7 +46,7 @@ defmodule BaconWorldWeb.Admin.SkillTreeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <AdminSidebar.admin_layout current_path="/admin/bacon_world/skills">
+    <AdminSidebar.admin_layout current_path="/admin/bacon_world">
       <div class="max-w-7xl mx-auto space-y-4">
         <div class="dark-glass p-6 rounded-xl flex flex-wrap items-center justify-between gap-4">
           <div class="max-w-3xl">

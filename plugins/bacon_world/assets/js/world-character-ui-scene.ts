@@ -1,6 +1,7 @@
 import * as THREE from '../../../../assets/js/vendor/three';
 import { CharacterModelManager } from './model-manager';
 import CharacterController from './character-controller';
+import { ChatHistory } from './chat-history';
 import { PACE, SENSITIVITY, UNITS_PER_METRE } from './controls-math';
 
 // Mouse settings from the game menu, remembered in this browser.
@@ -49,7 +50,18 @@ import type { NpcsView } from './npcs-view';
 import { STARTER_GEAR, type Gear } from './wardrobe';
 import { setCatalog } from './items';
 import { LightPool } from './light-pool';
-import { warmUp, watchShaders } from './warmup';
+import { precompile, warmUp, watchShaders } from './warmup';
+import { WorldMap, type MapDot } from './world-map';
+
+/** Whether three.js checks each shader for errors (slow: see mounted()). */
+function shaderChecks(): boolean {
+  try {
+    if (localStorage.getItem('bw_shader_check') === '1') return true;
+  } catch {
+    // storage blocked: the host decides
+  }
+  return /^(localhost|127\.0\.0\.1|\[::1\])$|\.(localhost|test)$/.test(location.hostname);
+}
 
 // One stylesheet: the game's DOM isn't selectable text, its inputs are.
 function ensureNoSelectStyle() {
@@ -122,6 +134,7 @@ export const WorldCharacterUIScene = {
   chatPanel: null as HTMLDivElement | null,
   chatInput: null as HTMLInputElement | null,
   chatOutsideClickHandler: null as ((event: MouseEvent) => void) | null,
+  chatHistory: new ChatHistory(),
   // Mouse look (character-controller.ts): the centre dot, and a message shown
   // briefly when the browser refuses pointer lock.
   lookHintEl: null as HTMLDivElement | null,
@@ -214,6 +227,11 @@ export const WorldCharacterUIScene = {
     this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    // three.js reads every new shader program's info log to report errors, and reading it waits for
+    // the compile to finish: entering the world held the main thread 2 to 11 s on 91 programs
+    // (profiled on bacon8.net, 2026-11-01). Without the check the driver compiles them in parallel
+    // (KHR_parallel_shader_compile). On a dev host, or with localStorage bw_shader_check=1, it stays on.
+    this.renderer.debug.checkShaderErrors = shaderChecks();
     const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent || '');
     const maxPixelRatio = isFirefox ? 1.5 : 2;
     this.basePixelRatio = Math.min(window.devicePixelRatio || 1, maxPixelRatio);
@@ -304,6 +322,23 @@ export const WorldCharacterUIScene = {
 
     // Casting (BaconWorldWeb.SkillEvents): how ours went, everyone's for the look, heals.
     this.handleEvent('cast_result', (payload: any) => this.onCastResult(payload));
+    // the zone the player is in, for the map: name, picture, neighbours (BaconWorld.WorldEditor.map_info)
+    this.handleEvent('zone_info', (payload: any) => {
+      this.zoneInfo = payload;
+      this.worldMap?.setZone(payload);
+    });
+    // moved into another zone (/zone with a zone number, or across an edge): its name for a moment
+    this.handleEvent('zone_changed', (payload: any) => {
+      if (payload?.zone?.name) this.flashLookHint?.(payload.zone.name);
+      // not again until the player has walked clear of the edges (maybeCrossZone)
+      this.zoneCrossArmed = false;
+    });
+    // the zone's ground was replaced live (an admin's import, /admin/bacon_world/world): new terrain,
+    // then everything placed on it again (it was re-seated or cleared on the server)
+    this.handleEvent('terrain_replaced', (payload: any) => {
+      void this.replaceTerrain?.(payload?.terrain || null).then(() => this.resyncWorld?.('terrain replaced'));
+      if (payload?.message) this.combatLog?.(payload.message, '#9ED0FF');
+    });
     this.handleEvent('stats_sheet', (payload: any) => this.gameUI?.setStatsSheet(payload));
     this.handleEvent('zone_cast', (payload: any) => this.onZoneCast(payload));
     // fishing (fishing-world.ts): the server says when a fish bites, and when it gets away
@@ -914,6 +949,11 @@ export const WorldCharacterUIScene = {
     }
 
     this.createWorldOverlayUI();
+    // the minimap and the map (N): world-map.ts
+    if (!this.worldMap && this.el) {
+      this.worldMap = new WorldMap(this.el, UNITS_PER_METRE);
+      if (this.zoneInfo) this.worldMap.setZone(this.zoneInfo);
+    }
     // the effect lights, in the scene from the start so the light count never changes (light-pool.ts)
     LightPool.install(this.scene);
     if (!this.nameplates) {
@@ -946,6 +986,8 @@ export const WorldCharacterUIScene = {
       }).then(() => {
         if (!this.dressing) return;
         this.worldColliders = this.dressing.colliders();
+        // the village's programs, compiled together rather than one a frame as it first draws
+        if (this.renderer && this.scene && this.camera) precompile(this.renderer, this.scene, this.camera);
         if (this.worldColliders.length || this.dressing.villageOff || hasTerrain) plain.forEach((o: THREE.Object3D) => (o.visible = false));
       });
     }
@@ -970,6 +1012,8 @@ export const WorldCharacterUIScene = {
     }
 
     const localCharacter = this.characterManager.getAllCharacters().get(currentPlayer.character_id);
+    // the player's own body, hair and clothes: their programs together, before the first frame needs them
+    if (localCharacter && this.renderer && this.camera) precompile(this.renderer, this.scene, this.camera);
     if (localCharacter && !this.controller) {
       this.controller = new CharacterController(localCharacter.mesh, this.camera, {
         canvas: this.renderer.domElement,
@@ -1375,6 +1419,8 @@ export const WorldCharacterUIScene = {
       this.worldColliders = [];
     }
     this.teardownTerrain();
+    this.worldMap?.dispose();
+    this.worldMap = null;
 
     if (this.targetRingMesh) {
       this.scene?.remove(this.targetRingMesh);
@@ -1474,13 +1520,57 @@ export const WorldCharacterUIScene = {
     chatBtn.className = 'rounded bg-cyan-700 hover:bg-cyan-600 px-2 py-1 text-xs text-white';
     chatBtn.textContent = 'Send';
 
+    // Chat history recall (Up/Down) and releasing chat on empty Enter / Escape (EverQuest style)
+    input.addEventListener('keydown', (event: KeyboardEvent) => {
+      if (event.key === 'ArrowUp') {
+        const recalled = this.chatHistory.navigate(-1, input.value);
+        if (recalled !== null) {
+          event.preventDefault();
+          input.value = recalled;
+          input.setSelectionRange(input.value.length, input.value.length);
+        }
+      } else if (event.key === 'ArrowDown') {
+        const recalled = this.chatHistory.navigate(1, input.value);
+        if (recalled !== null) {
+          event.preventDefault();
+          input.value = recalled;
+          input.setSelectionRange(input.value.length, input.value.length);
+        }
+      } else if (event.key === 'Enter') {
+        if (!input.value.trim()) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          input.value = '';
+          this.chatHistory.resetNavigation();
+          input.blur();
+        }
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        input.value = '';
+        this.chatHistory.resetNavigation();
+        input.blur();
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      this.chatHistory.resetNavigation();
+    });
+
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const message = input.value.trim();
-      if (!message) return;
+      if (!message) {
+        input.value = '';
+        this.chatHistory.resetNavigation();
+        input.blur();
+        return;
+      }
+      this.chatHistory.push(message);
       // /invite, /g, /disband ... (group-world.ts)
       if (this.groupCommand(message)) {
         input.value = '';
+        input.blur();
         return;
       }
       // /mount [id], /dismount
@@ -1497,6 +1587,7 @@ export const WorldCharacterUIScene = {
         this.appendChatMessage('You', message);
       }
       input.value = '';
+      input.blur();
     });
 
     form.appendChild(input);
@@ -1554,6 +1645,35 @@ export const WorldCharacterUIScene = {
   },
 
   // A short message for a few seconds (e.g. the browser refused the lock).
+  /** The minimap and the open map, five times a second (world-map.ts). */
+  tickMap(this: any) {
+    const map: WorldMap | null = this.worldMap || null;
+    if (!map) return;
+    const now = performance.now();
+    if (now - (this.lastMapDraw || 0) < 200) return;
+    this.lastMapDraw = now;
+    const me = this.characterManager?.getAllCharacters().get(this.state?.currentPlayer?.character_id)?.mesh?.position || null;
+    const info = this.heightfield?.info;
+    const frame = info ? { x0: info.x0, z0: info.z0, size: info.size } : null;
+    let facing = 0;
+    if (this.camera) {
+      const d = new THREE.Vector3();
+      this.camera.getWorldDirection(d);
+      facing = Math.atan2(d.x, -d.z);
+    }
+    const dots: MapDot[] = [];
+    const range = (map.open ? 5000 : 260) * UNITS_PER_METRE;
+    if (me) {
+      for (const m of this.mobsView?.mapDots?.(me.x, me.z, range) || []) dots.push(m);
+      for (const n of this.npcsView?.mapDots?.() || []) dots.push(n);
+      for (const [id, c] of this.characterManager?.getAllCharacters() || []) {
+        if (id === this.state?.currentPlayer?.character_id || !c?.mesh) continue;
+        dots.push({ x: c.mesh.position.x, z: c.mesh.position.z, kind: 'player' });
+      }
+    }
+    map.draw(frame, me ? { x: me.x, z: me.z } : null, facing, dots);
+  },
+
   flashLookHint(this: any, text: string) {
     if (!this.lookHintEl) return;
     this.lookHintEl.textContent = text;
@@ -1635,7 +1755,7 @@ export const WorldCharacterUIScene = {
     if (sensValue) sensValue.textContent = `${value.toFixed(2)}×`;
     if (invert) invert.checked = readSetting(INVERT_Y_KEY) === 'on';
     if (sound) sound.textContent = this.audio?.enabled ? 'Sound: ON' : 'Sound: OFF';
-    for (const kind of ['effects', 'ambience', 'music'] as const) {
+    for (const kind of ['effects', 'music'] as const) {
       const v = this.audio?.getVolume(kind) ?? 0;
       const slider = menu.querySelector(`[data-menu-volume="${kind}"]`) as HTMLInputElement | null;
       const readout = menu.querySelector(`[data-menu-volume-value="${kind}"]`) as HTMLElement | null;
@@ -1732,9 +1852,8 @@ export const WorldCharacterUIScene = {
     });
     sound.setAttribute('data-menu-sound', 'true');
     panel.appendChild(sound);
-    const volumes: Array<['effects' | 'ambience' | 'music', string]> = [
+    const volumes: Array<['effects' | 'music', string]> = [
       ['effects', 'Effects volume'],
-      ['ambience', 'Nature volume'],
       ['music', 'Music volume'],
     ];
     for (const [kind, label] of volumes) {
@@ -1835,6 +1954,7 @@ export const WorldCharacterUIScene = {
     }
     this.chatPanel = null;
     this.chatInput = null;
+    this.chatHistory?.resetNavigation();
     this.disposeGroups();
     this.gameUI?.dispose();
     this.gameUI = null;
@@ -1998,7 +2118,20 @@ export const WorldCharacterUIScene = {
     // Prevent movement keys from reaching the CharacterController while typing
     if (isTyping) {
       if (event.key === 'Escape') {
+        if (target === this.chatInput && this.chatInput) {
+          this.chatInput.value = '';
+          this.chatHistory?.resetNavigation();
+        }
         (target as HTMLElement).blur();
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      if (target === this.chatInput && event.key === 'Enter' && !this.chatInput.value.trim()) {
+        this.chatInput.value = '';
+        this.chatHistory?.resetNavigation();
+        this.chatInput.blur();
         event.preventDefault();
         event.stopImmediatePropagation();
         return;
@@ -2027,6 +2160,14 @@ export const WorldCharacterUIScene = {
     if (event.key === 'Tab') {
       event.preventDefault();
       this.tabCycleTarget();
+      return;
+    }
+
+    // N: the map
+    if ((event.key === 'n' || event.key === 'N') && !event.ctrlKey && !event.metaKey && !event.altKey && !this.isGameMenuOpen()) {
+      event.preventDefault();
+      this.worldMap?.toggle();
+      if (this.worldMap?.open) this.controller?.releasePointerLock?.();
       return;
     }
 
@@ -2359,6 +2500,68 @@ export const WorldCharacterUIScene = {
     }
   },
 
+  /**
+   * Near a zone's edge (within 6 m of its margin) ask to walk into the neighbouring zone
+   * (2026-11-02): the server answers no when there's none with ground, and otherwise moves us
+   * ("zone_changed", "terrain_replaced") 20 m inside it.
+   *
+   * No ping-pong (owner: players bounced between the two zones forever): we ask only while moving
+   * outward (the server checks it too), and after any crossing or warp not again until the player has
+   * walked 14 m clear of every edge; the server also holds a 3 s cooldown.
+   */
+  maybeCrossZone(this: any, x: number, z: number) {
+    const hf = this.heightfield;
+    if (!hf || this.zoneCrossing) return;
+    const { x0, z0, size, margin } = hf.info;
+    const m = margin || 0;
+    // how far inside every edge (scene units)
+    const clear = Math.min(x - (x0 + m), z - (z0 + m), x0 + size - m - x, z0 + size - m - z);
+    if (!this.zoneCrossArmed) {
+      if (clear > 14 * UNITS_PER_METRE) this.zoneCrossArmed = true;
+      return;
+    }
+    if (clear > 6 * UNITS_PER_METRE) return;
+    // the keys' push, not the last step: at Crater Lake's edge the player stands against its margin
+    // and doesn't move at all (2026-11-02: that read as "not going out" and was a wall)
+    const wish = this.controller?.wishDirection?.() || { x: 0, z: 0 };
+    const mx = wish.x;
+    const mz = wish.z;
+    const near = 6 * UNITS_PER_METRE;
+    const outward =
+      (x - (x0 + m) <= near && mx < -0.2) ||
+      (x0 + size - m - x <= near && mx > 0.2) ||
+      (z - (z0 + m) <= near && mz < -0.2) ||
+      (z0 + size - m - z <= near && mz > 0.2);
+    if (!outward) return;
+    const now = performance.now();
+    if (now - (this.lastZoneCross || 0) < 1500) return;
+    this.lastZoneCross = now;
+    this.zoneCrossing = true;
+    const done = () => {
+      this.zoneCrossing = false;
+    };
+    // a refusal says why, now and then (2026-11-02: a silent refusal was "an invisible wall")
+    const reply = (r: any) => {
+      done();
+      if (r && r.ok === false) {
+        const now2 = performance.now();
+        const why = String(r.reason || 'no way through here');
+        console.info('[zone] crossing refused:', why, { x, z, mx, mz });
+        if (why !== this.lastZoneRefusal || now2 - (this.lastZoneRefusalAt || 0) > 6000) {
+          this.lastZoneRefusal = why;
+          this.lastZoneRefusalAt = now2;
+          this.combatLog?.(`You can't go that way: ${why}.`, '#FFB86B');
+        }
+      }
+    };
+    try {
+      this.pushEvent('zone_cross', { x, z, mx, mz }, reply);
+    } catch {
+      done();
+    }
+    setTimeout(done, 8000);
+  },
+
   resetSelectionCamera(this: any) {
     if (!this.camera) return;
     this.camera.position.set(0, 0.25, 11.5);
@@ -2551,6 +2754,10 @@ export const WorldCharacterUIScene = {
       this.tickGame(deltaSeconds);
       this.tickBuild(deltaSeconds);
       this.tickTerrain();
+      this.tickMap();
+      // walking off a zone's edge (every frame: someone pushing against the edge doesn't move)
+      const meNow = this.characterManager?.getAllCharacters().get(this.state?.currentPlayer?.character_id)?.mesh?.position;
+      if (meNow && !this.isDead) this.maybeCrossZone(meNow.x, meNow.z);
       this.updateNameplates();
       this.tickTargetRing();
       this.tickProjectiles();

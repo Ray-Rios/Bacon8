@@ -3,6 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  FACE_KEYS,
+  FACE_PRESETS,
   SHAPES,
   appearanceKey,
   bodyFromModelPath,
@@ -107,4 +109,30 @@ test('shoulders: the male goes narrower than his look (Shoulders_Narrow); the fe
   assert.equal(morphWeights(m).Shoulders_Broad, 0);
   const f = normalizeAppearance({ body: 'female', shape: { shoulders: -1 } });
   assert.equal(f.shape.shoulders, 0);
+});
+
+test('eye shapes and face presets (2026-11-02)', () => {
+  const eyes = SHAPES.filter((s) => s.group === 'Eyes');
+  assert.ok(eyes.length >= 6 && eyes.every((s) => s.tab === 'face'));
+  // the bipolar eye sliders drive a pair of keys each
+  const w = morphWeights({ ...defaultAppearance('female'), shape: { ...defaultAppearance('female').shape, eye_tilt: -0.5, eye_spacing: 0.4 } });
+  assert.equal(w.Eyes_TiltDown, 0.5);
+  assert.equal(w.Eyes_TiltUp, 0);
+  assert.equal(w.Eyes_Wide, 0.4);
+  // presets: unique ids, only face-tab keys, every value inside its slider's range, and a normal look keeps them
+  assert.ok(FACE_PRESETS.length >= 10);
+  assert.equal(new Set(FACE_PRESETS.map((p) => p.id)).size, FACE_PRESETS.length);
+  for (const p of FACE_PRESETS) {
+    for (const [k, v] of Object.entries(p.shape)) {
+      const s = SHAPES.find((x) => x.key === k)!;
+      assert.ok(s && FACE_KEYS.includes(s.key), `${p.id}: ${k}`);
+      assert.ok(v! >= s.min && v! <= s.max, `${p.id}: ${k} ${v}`);
+    }
+    for (const body of ['male', 'female'] as const) {
+      const a = defaultAppearance(body);
+      for (const k of FACE_KEYS) a.shape[k] = p.shape[k] ?? 0;
+      const n = normalizeAppearance(JSON.parse(JSON.stringify(a)), body);
+      for (const k of FACE_KEYS) assert.equal(n.shape[k], a.shape[k], `${p.id} ${body} ${k}`);
+    }
+  }
 });

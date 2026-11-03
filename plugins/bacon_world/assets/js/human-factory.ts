@@ -776,6 +776,49 @@ export class HumanInstance {
   // keyed this frame still holds our output, and must start again from what we found
   // (or the correction compounds, 7 degrees a frame, until she stands on her head).
   private applied = new Map<THREE.Object3D, { found: THREE.Quaternion; wrote: THREE.Quaternion }>();
+  /**
+   * The skeletons its meshes are bound to, one per distinct bind (2026-11-01). three.js uploads a
+   * skeleton's bone texture every frame it draws, once per Skeleton object: every garment, hair
+   * and part had its own copy of the same bones, so a dressed character uploaded twenty bone
+   * textures a frame (115,000 uploads in the first 25 s in the world, profiled on bacon8.net).
+   * bindShared() binds each mesh to one of these.
+   */
+  private skeletons: THREE.Skeleton[] = [];
+
+  /**
+   * Binds `mesh` to these bones, on a shared skeleton when one has the same bones. Each GLB's
+   * inverse bind matrices include its own mesh's placement (they differ per mesh by one matrix X,
+   * the same for every bone: inverses = shared inverses * X), so X moves into the mesh's bind
+   * matrix and its bind-matrix inverse stays as it was: the skinned positions are unchanged.
+   */
+  private bindShared(mesh: THREE.SkinnedMesh, bones: THREE.Bone[], inverses: THREE.Matrix4[], bindMatrix: THREE.Matrix4) {
+    const X = new THREE.Matrix4();
+    const T = new THREE.Matrix4();
+    for (const s of this.skeletons) {
+      if (s.bones.length !== bones.length || inverses.length !== bones.length) continue;
+      if (!s.bones.every((b, i) => b === bones[i])) continue;
+      X.copy(s.boneInverses[0]).invert().multiply(inverses[0]);
+      let same = true;
+      for (let i = 0; i < bones.length && same; i++) {
+        T.multiplyMatrices(s.boneInverses[i], X);
+        const a = T.elements, b = inverses[i].elements;
+        for (let k = 0; k < 16; k++) {
+          if (Math.abs(a[k] - b[k]) > 1e-3) {
+            same = false;
+            break;
+          }
+        }
+      }
+      if (!same) continue;
+      const keepInverse = bindMatrix.clone().invert();
+      mesh.bind(s, X.clone().multiply(bindMatrix));
+      mesh.bindMatrixInverse.copy(keepInverse);
+      return;
+    }
+    const made = new THREE.Skeleton(bones, inverses);
+    this.skeletons.push(made);
+    mesh.bind(made, bindMatrix);
+  }
 
   constructor(private factory: HumanFactory, private asset: BodyAsset, a: Appearance) {
     this.body = a.body;
@@ -796,6 +839,10 @@ export class HumanInstance {
         o.frustumCulled = false;
         o.material = this.own(o.material);
       }
+    });
+    // the body's own skinned meshes (body, eyes, brows...) share one skeleton too
+    this.model.traverse((o: any) => {
+      if (o.isSkinnedMesh && o.skeleton) this.bindShared(o, o.skeleton.bones, o.skeleton.boneInverses, o.bindMatrix.clone());
     });
     const names = new Set([...GARMENTS, ...Object.keys(asset.manifest?.garments || {})]);
     for (const g of names) {
@@ -1178,7 +1225,7 @@ export class HumanInstance {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.frustumCulled = false;
-      mesh.bind(new THREE.Skeleton(bones, src.skeleton.boneInverses), src.bindMatrix);
+      this.bindShared(mesh, bones, src.skeleton.boneInverses, src.bindMatrix);
       base.set(mesh, src.geometry);
       group.add(mesh);
     });
@@ -1668,7 +1715,7 @@ export class HumanInstance {
       }
       mesh.castShadow = true;
       mesh.frustumCulled = false;
-      mesh.bind(new THREE.Skeleton(bones, src.skeleton.boneInverses), src.bindMatrix);
+      this.bindShared(mesh, bones, src.skeleton.boneInverses, src.bindMatrix);
       group.add(mesh);
     });
     this.armature.add(group);
@@ -1703,5 +1750,8 @@ export class HumanInstance {
     for (const p of this.parts.values()) p.materials.forEach((m) => m.dispose());
     this.parts.clear();
     this.materials.clear();
+    // the bone textures
+    this.skeletons.forEach((sk) => sk.dispose());
+    this.skeletons = [];
   }
 }

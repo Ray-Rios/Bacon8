@@ -245,20 +245,29 @@ defmodule BaconWorldWeb.SkillEvents do
     end
   end
 
-  # 1. Recall
+  # 1. Recall: to the bind point, in its own zone (2026-11-02, owner: it stayed in the current zone at the
+  # bind's coordinates)
   defp effect(socket, c, me, %{effect: %{type: "recall"}} = a, _target, _heading) do
     socket = BaconWorldWeb.MountEvents.dismount(socket)
-    dest = bind_point(c)
+    here = (me[:zone] && me.zone.slug) || "lobby"
+    {dest, there} = bind_point(c, here)
     broadcast(socket, %{character_id: me.character_id, ability: a.id, phase: "land", from: [me.position.x, me.position.y, me.position.z], to: [dest.x, dest.y, dest.z], school: a.school})
-    World.save_position(c.user_id, c.id, (me[:zone] && me.zone.slug) || "lobby", dest)
 
-    socket
-    |> assign(
-      current_character_runtime: Map.put(me, :position, dest),
-      last_world_update_ms: System.monotonic_time(:millisecond)
-    )
-    |> push_event("world_position_corrected", dest)
-    |> result(a, %{})
+    if there do
+      socket
+      |> BaconWorldWeb.PlayLive.transfer_to_zone(there, dest.x, dest.y, dest.z, dest.heading, "You recall to your bind point in")
+      |> result(a, %{})
+    else
+      World.save_position(c.user_id, c.id, here, dest)
+
+      socket
+      |> assign(
+        current_character_runtime: Map.put(me, :position, dest),
+        last_world_update_ms: System.monotonic_time(:millisecond)
+      )
+      |> push_event("world_position_corrected", dest)
+      |> result(a, %{})
+    end
   end
 
   # 2. Direct Heal & Heal-over-Time
@@ -1327,10 +1336,20 @@ defmodule BaconWorldWeb.SkillEvents do
 
   defp ready?(socket, id, now), do: now >= Map.get(socket.assigns[:cooldowns] || %{}, id, now)
 
-  defp bind_point(c) do
-    case (c.settings || %{})["bind"] do
-      %{"x" => x, "z" => z} = b -> %{x: x * 1.0, y: (b["y"] || 0.0) * 1.0, z: z * 1.0, heading: (b["heading"] || 0.0) * 1.0}
-      _ -> World.spawn_point(World.zone_for((c.settings || %{})["zone_slug"]))
+  # {point, nil} in this zone, or {point, %Zone{}} when the bind is in another zone that still exists
+  defp bind_point(c, here) do
+    case BaconWorld.Combat.bind_point(c) do
+      nil ->
+        {World.spawn_point(World.zone_for(here)), nil}
+
+      %{zone: ^here} = b ->
+        {Map.delete(b, :zone), nil}
+
+      %{zone: slug} = b ->
+        case World.zone_for(slug) do
+          %{slug: ^slug} = zone -> {Map.delete(b, :zone), zone}
+          _ -> {World.spawn_point(World.zone_for(here)), nil}
+        end
     end
   end
 
