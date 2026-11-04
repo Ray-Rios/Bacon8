@@ -126,6 +126,21 @@ defmodule ChatChannelsWeb.ChatComponents do
                 </button>
               <% end %>
 
+              <%= if @message.user_id != @current_user.id do %>
+                <%!-- report it to the site's staff (Bacon8.Moderation, 2026-11-03) --%>
+                <a
+                  href={"/report?type=chat_message&id=#{@message.id}"}
+                  target="_blank"
+                  rel="noopener"
+                  class="text-gray-400 hover:text-red-400 text-xs"
+                  title="Report this message"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21V4m0 0h11l-1.5 4L14 12H3"></path>
+                  </svg>
+                </a>
+              <% end %>
+
               <%= if @message.user_id == @current_user.id or @can_moderate do %>
                 <button 
                   type="button"
@@ -412,6 +427,9 @@ defmodule ChatChannelsWeb.ChatComponents do
               <input type="checkbox" phx-click="toggle_invites" checked={@allow_invites} class="rounded" />
               Let people invite me to channels
             </label>
+
+            <%!-- Phone and desktop notifications for mentions and invitations (Bacon8.Push) --%>
+            <.live_component :if={@current_user} module={Bacon8Web.PushOptIn} id="chat-push" current_user={@current_user} compact={true} />
 
             <%!-- Invitations (they used to be in the desktop's notification panel) --%>
             <%= if @pending_invites != [] do %>

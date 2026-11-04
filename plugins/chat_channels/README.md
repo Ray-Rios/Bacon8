@@ -36,6 +36,11 @@ only through plugin hooks. The navigation link says "Chat".
 - **Notifications.** Chat creates ordinary hub notifications (`Notices`): a mention, an
   invitation. Each carries `source_kind: "chat_channel"`, `source_id` (the channel) and a
   `path` in its metadata, which the panel opens. The hub knows nothing else about them.
+- **On phones** (2026-11-03): the hub pushes those notifications to the devices their person turned on
+  (BACON8.md §16); the sidebar offers "Notify me on this device" (`Bacon8Web.PushOptIn`, compact).
+- **Reports** (2026-11-03): others' messages have a Report link (`/report?type=chat_message&id=...`);
+  `ChatChannels.Plugin` answers the hub's `moderation_subject/2` (the message, its author, its files) and
+  `moderation_remove/2` (deletes it) for the moderation queue (BACON8.md §15).
 - **Pending invitations.** They are listed at the top of the Chat page's sidebar, and the
   navigation link shows their count as a badge (`nav_links/1`).
 - **Events chat sends** (`Bacon8.Plugins.notify/1`): `{:channel_updated, new, old}`,

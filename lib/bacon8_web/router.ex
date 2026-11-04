@@ -122,6 +122,12 @@ defmodule Bacon8Web.Router do
     get "/sitemap.xml", SeoController, :sitemap
   end
 
+  # Push notifications' service worker (Bacon8.Push, 2026-11-03). In its own folder, so its scope
+  # is /push/ and it never replaces Bacon World's game worker at /. No session: it's a script.
+  scope "/push", Bacon8Web do
+    get "/sw.js", PushController, :service_worker
+  end
+
   # --------------------
   # Public LiveViews
   # --------------------
@@ -152,7 +158,10 @@ defmodule Bacon8Web.Router do
     live "/blog/:slug", BlogLive, :show
     
     live "/pages/:slug", PageLive, :show
+    # report content, open to everyone (Bacon8.Moderation, 2026-11-03)
+    live "/report", ReportLive, :index
     live "/games", GamesLive, :index
+    get "/shop", PageController, :redirect_to_store
 
     # Profile routes (with auth check in mount)
     live "/profile", ProfileLive, :index
@@ -177,6 +186,8 @@ defmodule Bacon8Web.Router do
     live "/admin/api-toolbox", AdminLive.ApiToolbox, :index
     live "/admin/plugins", AdminLive.Plugins, :index
     live "/admin/audit", AdminLive.Audit, :index
+    live "/admin/moderation", AdminLive.Moderation, :index
+    live "/admin/notifications", AdminLive.Notifications, :index
 
   end
   end

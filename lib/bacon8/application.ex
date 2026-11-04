@@ -32,6 +32,8 @@ defmodule Bacon8.Application do
       {Finch, name: Bacon8.Finch},
       # Task.Supervisor for async email sending
       {Task.Supervisor, name: Bacon8.EmailTaskSupervisor},
+      # ...and for push notifications to phones and browsers (Bacon8.Push)
+      {Task.Supervisor, name: Bacon8.PushTaskSupervisor},
       Bacon8.UserSession,
       Bacon8.PresenceTracker,
       Bacon8.Accounts.RateLimit,

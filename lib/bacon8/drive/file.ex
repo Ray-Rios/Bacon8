@@ -22,6 +22,8 @@ defmodule Bacon8.Drive.File do
     field :share_token, :string, redact: true
     field :legacy_ref, :string
     field :blob_sha256, :string
+    # hidden while a report is reviewed (Bacon8.Moderation): nobody can open it, staff included
+    field :quarantined_at, :utc_datetime_usec
     belongs_to :owner, Bacon8.Accounts.User
     belongs_to :folder, Bacon8.Drive.Folder
     timestamps(type: :utc_datetime_usec)

@@ -38,6 +38,7 @@ import { GlassTheme } from "./glass_theme";
 import { BackgroundUpdater } from "./background_updater";
 import { GlobalHooks } from "./global_hooks";
 import { ProfileSettings } from "./profile_settings";
+import { PushOptIn } from "./push_opt_in";
 import { ColorPicker, OpacitySlider } from "./color_picker";
 import { AudioHook } from "./audio";
 import { GameCard } from "./game_card";
@@ -110,6 +111,8 @@ async function loadHeavyModulesAndConnect() {
       BackgroundUpdater,
       ...GlobalHooks,
       ProfileSettings,
+      // "Notify me on this device" (Bacon8Web.PushOptIn, Bacon8.Push)
+      PushOptIn,
       ColorPicker,
       OpacitySlider,
       AudioHook,
@@ -169,6 +172,8 @@ async function loadHeavyModulesAndConnect() {
       BackgroundUpdater,
       ...GlobalHooks,
       ProfileSettings,
+      // "Notify me on this device" (Bacon8Web.PushOptIn, Bacon8.Push)
+      PushOptIn,
       ColorPicker,
       OpacitySlider,
       AudioHook,

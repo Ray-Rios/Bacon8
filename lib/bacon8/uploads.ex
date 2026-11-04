@@ -156,6 +156,16 @@ defmodule Bacon8.Uploads do
       {:ok, url} = upload_file(nil, temp_path, entry, context: "images", public: true)
   """
   def upload_file(user, temp_path, entry, opts \\ []) do
+    # a file removed as illegal (Bacon8.Moderation) can't come back, anywhere
+    if Bacon8.Moderation.blocked_file?(temp_path) do
+      Logger.warning("Upload refused: a blocked file (#{entry.client_name})")
+      {:error, "This file can't be uploaded."}
+    else
+      do_upload_file(user, temp_path, entry, opts)
+    end
+  end
+
+  defp do_upload_file(user, temp_path, entry, opts) do
     context = Keyword.get(opts, :context, "general")
     public = Keyword.get(opts, :public, false)
     custom_filename = Keyword.get(opts, :filename)

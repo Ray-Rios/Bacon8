@@ -124,6 +124,9 @@ defmodule Bacon8.Notifications do
           {:new_notification, notification}
         )
 
+        # ...and their phones and other browsers, when they turned that on (Bacon8.Push)
+        Bacon8.Push.notify(notification)
+
         {:ok, notification}
 
       error ->

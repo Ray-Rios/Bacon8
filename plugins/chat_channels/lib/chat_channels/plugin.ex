@@ -57,4 +57,51 @@ defmodule ChatChannels.Plugin do
   end
 
   def hub_event(_event), do: :ok
+
+  # Trust & safety (2026-11-03, Bacon8.Moderation): a reported message, and removing one.
+  @impl true
+  def moderation_subject("chat_message", id) do
+    case safe_message(id) do
+      %Message{} = m ->
+        m = Repo.preload(m, [:attachments, :channel])
+
+        {:ok,
+         %{
+           title: "Message in ##{(m.channel && m.channel.name) || "a channel"}",
+           owner_id: m.user_id,
+           text: String.slice(m.content || "", 0, 4_000),
+           files: m.attachments |> Enum.map(& &1.file) |> Enum.filter(&is_binary/1),
+           url: "/chat/#{m.channel_id}",
+           posted_at: m.inserted_at
+         }}
+
+      nil ->
+        :unknown
+    end
+  end
+
+  def moderation_subject(_type, _id), do: :unknown
+
+  @impl true
+  def moderation_remove("chat_message", id) do
+    case safe_message(id) do
+      %Message{} = m ->
+        case ChatChannels.delete_message(m) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  def moderation_remove(_type, _id), do: :unknown
+
+  defp safe_message(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> Repo.get(Message, uuid)
+      :error -> nil
+    end
+  end
 end

@@ -280,8 +280,10 @@ defmodule Bacon8.Drive do
          false <- SafePath.active_content?(name),
          {:ok, %{size: size, type: :regular}} <- Elixir.File.stat(src_path),
          :ok <- if(legacy?, do: :ok, else: within_upload_limit(user, size)),
-         {:ok, _} <- fetch_owned_folder(user, folder_id) do
-      sha = Storage.sha256_file(src_path)
+         {:ok, _} <- fetch_owned_folder(user, folder_id),
+         sha = Storage.sha256_file(src_path),
+         # a file removed as illegal (Bacon8.Moderation) can't come back
+         :ok <- if(Bacon8.Moderation.blocked_hash?(sha), do: {:error, :blocked}, else: :ok) do
       sniffed = Sniff.sniff_file(src_path)
       quota = if legacy?, do: :unlimited, else: quota_bytes(user)
 
@@ -489,6 +491,8 @@ defmodule Bacon8.Drive do
   """
   def can_read?(viewer, %DFile{} = file, via) when via in [:id, :share] do
     cond do
+      # under review for a report (Bacon8.Moderation): nobody, staff included
+      file.quarantined_at != nil -> false
       Policy.staff_reader?(viewer) -> true
       locked?(file.owner_id) -> false
       owner?(viewer, file) -> true
@@ -500,6 +504,38 @@ defmodule Bacon8.Drive do
 
   defp owner?(%User{id: id, status: "active"}, %DFile{owner_id: id}), do: true
   defp owner?(_, _), do: false
+
+  @doc """
+  Hides a file while a report about it is reviewed, or shows it again (`Bacon8.Moderation`,
+  2026-11-03). `:ok` or `{:error, :not_found}`.
+  """
+  def quarantine(file_id, on?) when is_boolean(on?) do
+    with {:ok, uuid} <- Ecto.UUID.cast(file_id),
+         {1, _} <- Repo.update_all(from(f in DFile, where: f.id == ^uuid), set: [quarantined_at: if(on?, do: DateTime.utc_now())]) do
+      :ok
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Deletes a file whoever owns it (staff acting on a report, `Bacon8.Moderation`). Its body stays
+  while a moderation hold names it (`gc_blobs/2`). `:ok` or `{:error, :not_found}`.
+  """
+  def remove_by_staff(file_id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(file_id),
+         %DFile{} = file <- Repo.get(DFile, uuid) do
+      Repo.transaction(fn ->
+        lock_usage!(file.owner_id)
+        Repo.delete!(file)
+        bump_usage!(file.owner_id, -file.size, -1)
+      end)
+
+      :ok
+    else
+      _ -> {:error, :not_found}
+    end
+  end
 
   @doc "Local path of a file's body, for `send_file`."
   def body_path(%DFile{blob_sha256: sha}), do: Storage.local_path(sha)
@@ -609,7 +645,8 @@ defmodule Bacon8.Drive do
     # keep what they still use. If one can't say, delete nothing this round.
     case Bacon8.Plugins.storage_refs() do
       {:ok, plugin_refs} ->
-        gc_unreferenced_blobs(grace_seconds, limit, MapSet.to_list(plugin_refs))
+        # evidence kept for the law (Bacon8.Moderation holds) stays too
+        gc_unreferenced_blobs(grace_seconds, limit, MapSet.to_list(plugin_refs) ++ Bacon8.Moderation.held_shas())
 
       {:error, slug} ->
         Logger.warning("Drive: blob GC skipped; plugin #{slug} could not list the blobs it uses")

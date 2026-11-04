@@ -387,6 +387,30 @@ defmodule Bacon8.Plugins do
     end)
   end
 
+  @doc """
+  The first installed plugin's answer for a reported subject of `type` (`Bacon8.Moderation`):
+  `{:ok, map}` or `:unknown`. A plugin that crashes is skipped.
+  """
+  def moderation_subject(type, id) do
+    Enum.find_value(installed(), :unknown, fn mod ->
+      case call(mod, :moderation_subject, [type, id]) do
+        {:ok, {:ok, %{} = s}} -> {:ok, s}
+        _ -> nil
+      end
+    end)
+  end
+
+  @doc "Asks the installed plugins to delete a reported subject; the first that knows the type does. `:ok`, `{:error, reason}` or `:unknown`."
+  def moderation_remove(type, id) do
+    Enum.find_value(installed(), :unknown, fn mod ->
+      case call(mod, :moderation_remove, [type, id]) do
+        {:ok, :ok} -> :ok
+        {:ok, {:error, _} = err} -> err
+        _ -> nil
+      end
+    end)
+  end
+
   @doc "Path prefixes whose raw request body installed plugins need kept."
   def raw_body_paths, do: collect(installed(), :raw_body_paths, [])
 

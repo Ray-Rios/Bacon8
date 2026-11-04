@@ -62,6 +62,13 @@ defmodule Bacon8Web.ProfileLive do
     end
   end
 
+  # /profile?tab=notifications opens a tab directly (a push notification's test links there)
+  @tabs ~w(profile appearance glass_theme security email privacy notifications)
+
+  @impl true
+  def handle_params(%{"tab" => tab}, _uri, socket) when tab in @tabs, do: {:noreply, assign(socket, active_tab: tab)}
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, active_tab: tab)}
@@ -635,6 +642,10 @@ defmodule Bacon8Web.ProfileLive do
                           class={"px-6 py-4 text-sm font-medium border-b-2 transition-colors #{if @active_tab == "privacy", do: "text-blue-400 border-blue-400 bg-gray-750", else: "text-gray-400 border-transparent hover:text-white"}"}>
                     Privacy
                   </button>
+                  <button phx-click="switch_tab" phx-value-tab="notifications" 
+                          class={"px-6 py-4 text-sm font-medium border-b-2 transition-colors #{if @active_tab == "notifications", do: "text-blue-400 border-blue-400 bg-gray-750", else: "text-gray-400 border-transparent hover:text-white"}"}>
+                    Notifications
+                  </button>
                   <%!-- Pages from active plugins (BACON8.md §9), e.g. the store's orders and library --%>
                   <.link :for={item <- Bacon8.Plugins.profile_tabs(@current_user)} navigate={item.path}
                          class="px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-white transition-colors">
@@ -1102,6 +1113,14 @@ defmodule Bacon8Web.ProfileLive do
                       </div>
                     </div>
                   </div>
+                </div>
+              <% end %>
+
+              <%= if @active_tab == "notifications" do %>
+                <%!-- Phone and desktop notifications (Bacon8.Push, 2026-11-03) --%>
+                <div class="glass-dark rounded-b-lg rounded-tr-lg p-6 border border-gray-700">
+                  <h2 class="text-lg font-semibold text-white mb-6">Notifications on your phone and computer</h2>
+                  <.live_component module={Bacon8Web.PushOptIn} id="profile-push" current_user={@current_user} />
                 </div>
               <% end %>
 

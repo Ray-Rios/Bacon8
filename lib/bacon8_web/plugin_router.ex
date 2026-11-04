@@ -41,8 +41,8 @@ defmodule Bacon8Web.PluginRouter do
   # Top-level paths the core router owns (and the Endpoint's static paths). A
   # plugin's mount can't take one.
   @reserved_mounts ~w(admin api assets audio auth avatar blog css favicon.ico files fonts forum
-                      games health heightmaps images js live login models pages phoenix profile
-                      register reset-password forgot-password robots.txt s sitemap.xml site.webmanifest
+                      games health heightmaps images js live login models pages phoenix profile push
+                      register report reset-password forgot-password robots.txt s sitemap.xml site.webmanifest
                       terrain uploads .well-known)
 
   @mount_format ~r/\A[a-z][a-z0-9_-]*\z/

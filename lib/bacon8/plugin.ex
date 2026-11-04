@@ -180,6 +180,16 @@ defmodule Bacon8.Plugin do
   """
   @callback hub_event(event :: tuple()) :: :ok
 
+  @doc """
+  Trust & safety (2026-11-03, `Bacon8.Moderation`): what this plugin's content of `type` with `id`
+  is, for a report about it (`"chat_message"` for the forum): `{:ok, %{title, owner_id, text,
+  files: [upload paths], url}}`, or `:unknown` for a type it doesn't have.
+  """
+  @callback moderation_subject(type :: String.t(), id :: String.t()) :: {:ok, map()} | :unknown
+
+  @doc "Deletes this plugin's content of `type` with `id` (a moderator's decision). `:ok`, `{:error, reason}` or `:unknown`."
+  @callback moderation_remove(type :: String.t(), id :: String.t()) :: :ok | {:error, term()} | :unknown
+
   @slug_format ~r/\A[a-z][a-z0-9_]*\z/
 
   @doc false
@@ -248,11 +258,16 @@ defmodule Bacon8.Plugin do
       def on_deactivate, do: :ok
       @impl true
       def hub_event(_event), do: :ok
+      @impl true
+      def moderation_subject(_type, _id), do: :unknown
+      @impl true
+      def moderation_remove(_type, _id), do: :unknown
 
       defoverridable game: 0, routes: 0, previous_slugs: 0, mount: 0, requires: 0, children: 0,
                      retains_user_data?: 1, storage_refs: 0, nav_links: 1, profile_tabs: 1,
                      raw_body_paths: 0, admin_tools: 0, admin_dashboard: 0, admin_nav: 0, desktop_apps: 1,
-                     entitlement_kinds: 0, game_stats: 0, on_activate: 0, on_deactivate: 0, hub_event: 1
+                     entitlement_kinds: 0, game_stats: 0, on_activate: 0, on_deactivate: 0, hub_event: 1,
+                     moderation_subject: 2, moderation_remove: 2
     end
   end
 end
