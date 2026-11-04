@@ -57,18 +57,8 @@ defmodule Bacon8Web.Plugs.RateLimitPlug do
 
   # Private functions
 
-  defp get_client_ip(conn) do
-    # Check for forwarded headers first (for load balancers/proxies)
-    case get_req_header(conn, "x-forwarded-for") do
-      [forwarded | _] -> 
-        forwarded |> String.split(",") |> List.first() |> String.trim()
-      [] ->
-        case get_req_header(conn, "x-real-ip") do
-          [real_ip | _] -> real_ip
-          [] -> conn.remote_ip |> :inet.ntoa() |> to_string()
-        end
-    end
-  end
+  # the visitor's address, already worked out by Bacon8Web.ClientIP in the endpoint
+  defp get_client_ip(conn), do: Bacon8Web.ClientIP.format(conn.remote_ip)
 
   defp check_rate_limit(key, max_attempts, window_ms, now) do
     case :ets.lookup(:rate_limit_table, key) do

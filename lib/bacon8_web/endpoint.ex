@@ -31,6 +31,9 @@ defmodule Bacon8Web.Endpoint do
   # Must stay directly before the /uploads Plug.Static: adds nosniff/sandbox headers
   # to every upload and authorises private trees (users/<id>/, <id>/files/) itself
   # so Plug.Static never serves them publicly.
+  # the visitor's real address into conn.remote_ip, before anything reads it (BACON8.md §6.19)
+  plug Bacon8Web.ClientIP
+
   plug Bacon8Web.Plugs.UploadsGuard, root: @uploads_root, session: @session_options
 
   plug Plug.Static,

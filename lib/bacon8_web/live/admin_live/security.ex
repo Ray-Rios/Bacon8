@@ -689,8 +689,10 @@ defmodule Bacon8Web.AdminLive.Security do
               An address like 192.168.65.3 is the server's own gateway (Docker Desktop's virtual machine), not a
               hacker's computer and not a compromised container. Every visitor from the internet is rewritten to it
               before reaching this site, so scanners and members look alike here. It can't be blocked (that would
-              block everyone), and the sign-in limits use the account instead of the address. To see and block real
-              addresses, put a proxy in front that passes them on.
+              block everyone), and the sign-in limits use the account instead of the address. Once the site is
+              reached through the Cloudflare Tunnel (k3s/cloudflared/README.md), new events show the visitor's real
+              address and can be blocked; events from before stay at this one, as does anything that still comes in
+              through the router's port forward.
             </div>
           <% end %>
 

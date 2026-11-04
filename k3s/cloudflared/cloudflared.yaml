@@ -1,0 +1,48 @@
+# Cloudflare Tunnel in front of the site (BACON8.md §18, README.md here). Two connectors in the
+# bacon8 namespace dial out to Cloudflare; no port on the router needs to be open. Each request
+# reaches ingress-nginx from one of these pods, which is what lets nginx believe the visitor's
+# address Cloudflare sends (CF-Connecting-IP) and nothing else does.
+#
+# The token is a secret: kubectl create secret generic cloudflared-token -n bacon8 --from-literal=token=...
+# (README.md, step 2). Never put it in this file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: bacon8
+  labels:
+    app: cloudflared
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2025.4.0
+          args: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflared-token
+                  key: token
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi

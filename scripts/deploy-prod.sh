@@ -357,6 +357,14 @@ kubectl wait --namespace ingress-nginx \
   --timeout=300s
 print_status "Nginx ingress controller is ready"
 
+# Real visitor addresses through a Cloudflare Tunnel (k3s/cloudflared/README.md), once the owner has
+# made the tunnel's token secret. Without it, nothing here changes.
+if kubectl get secret cloudflared-token -n bacon8 >/dev/null 2>&1; then
+  kubectl apply -f k3s/cloudflared/cloudflared.yaml
+  kubectl patch configmap ingress-nginx-controller -n ingress-nginx --type merge --patch-file k3s/cloudflared/ingress-nginx-real-ip.yaml
+  print_status "Cloudflare Tunnel connectors and nginx's real-address settings applied"
+fi
+
 # Now deploy cluster issuers (path fix)
 if [ -f "k3s/ssl/cluster-issuer.yaml" ]; then
     echo "🔐 Applying Let's Encrypt cluster issuers..."

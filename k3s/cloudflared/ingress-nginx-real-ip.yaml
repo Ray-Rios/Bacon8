@@ -1,0 +1,16 @@
+# ingress-nginx: believe the visitor's address in CF-Connecting-IP, but only on requests that come
+# from the cloudflared pods (proxy-real-ip-cidr: the cluster's pod range). nginx then puts that
+# address in X-Real-IP and X-Forwarded-For for the hub (Bacon8Web.ClientIP). A request that comes in
+# any other way (the router's port forward, through Docker Desktop's NAT) keeps the address nginx
+# sees, 192.168.65.3, which the hub never blocks.
+#
+# Applied by scripts/deploy-prod.sh after the controller (or by hand:
+#   kubectl patch configmap ingress-nginx-controller -n ingress-nginx --type merge --patch-file k3s/cloudflared/ingress-nginx-real-ip.yaml)
+# Check the pod range first: kubectl get pods -n bacon8 -l app=cloudflared -o wide
+# (Docker Desktop's kubeadm cluster uses 10.1.0.0/16). NEVER add 192.168.65.0/24 here: everything
+# from the internet arrives from that address, so trusting it would let anyone name any address.
+data:
+  use-forwarded-headers: "true"
+  forwarded-for-header: "CF-Connecting-IP"
+  compute-full-forwarded-for: "false"
+  proxy-real-ip-cidr: "10.1.0.0/16"

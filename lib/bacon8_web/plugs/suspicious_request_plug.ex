@@ -87,17 +87,8 @@ defmodule Bacon8Web.Plugs.SuspiciousRequestPlug do
     end)
   end
 
-  defp get_client_ip(conn) do
-    case Plug.Conn.get_req_header(conn, "x-forwarded-for") do
-      [ip | _] -> ip |> String.split(",") |> List.first() |> String.trim()
-      [] -> 
-        case conn.remote_ip do
-          {a, b, c, d} -> "#{a}.#{b}.#{c}.#{d}"
-          ip when is_binary(ip) -> ip
-          _ -> "unknown"
-        end
-    end
-  end
+  # the visitor's address, already worked out by Bacon8Web.ClientIP in the endpoint
+  defp get_client_ip(conn), do: Bacon8Web.ClientIP.format(conn.remote_ip)
 
   defp get_user_agent(conn) do
     case Plug.Conn.get_req_header(conn, "user-agent") do

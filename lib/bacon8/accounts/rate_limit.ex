@@ -145,15 +145,12 @@ defmodule Bacon8.Accounts.RateLimit do
   end
 
   # Utility function to get client IP from conn
+  # the visitor's address: the endpoint's Bacon8Web.ClientIP has already put it in remote_ip
   def get_client_ip(conn) do
-    case Plug.Conn.get_req_header(conn, "x-forwarded-for") do
-      [ip | _] -> ip |> String.split(",") |> List.first() |> String.trim()
-      [] -> 
-        case conn.remote_ip do
-          {a, b, c, d} -> "#{a}.#{b}.#{c}.#{d}"
-          ip when is_binary(ip) -> ip
-          _ -> "unknown"
-        end
+    case conn.remote_ip do
+      ip when is_tuple(ip) -> ip |> :inet.ntoa() |> to_string()
+      ip when is_binary(ip) -> ip
+      _ -> "unknown"
     end
   end
 
