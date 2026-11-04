@@ -132,7 +132,7 @@ defmodule BaconWorld.Groups do
   level among those who earn any, times `bonus/1`, split by level (a level 20 earns twice a
   level 10's share).
   """
-  def shares(mob_level, levels) do
+  def shares(mob_level, levels, mult \\ 1.0) do
     {earning, grey} = Enum.split_with(levels, fn {_id, l} -> Progression.con(mob_level, l) != :grey end)
     zero = Map.new(grey, fn {id, _} -> {id, 0} end)
 
@@ -142,7 +142,7 @@ defmodule BaconWorld.Groups do
 
       _ ->
         top = earning |> Enum.map(&elem(&1, 1)) |> Enum.max()
-        total = Progression.kill_xp(mob_level, top) * bonus(length(earning))
+        total = Progression.kill_xp(mob_level, top, mult) * bonus(length(earning))
         sum = earning |> Enum.map(&elem(&1, 1)) |> Enum.sum()
         Map.merge(zero, Map.new(earning, fn {id, l} -> {id, round(total * l / sum)} end))
     end

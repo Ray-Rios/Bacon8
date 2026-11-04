@@ -88,6 +88,36 @@ defmodule BaconWorld.Mobs.Spawns do
 
   def kinds, do: BaconWorld.Defs.map("monster")
   def kind(id), do: Map.fetch!(kinds(), id)
+
+  @ranks ~w(normal elite rare boss)
+
+  @doc "The ranks a monster type may have (the Bestiary page)."
+  def ranks, do: @ranks
+
+  @doc """
+  A kind's rank (2026-11-03): its `rank` ("normal", "elite", "rare" or "boss"), else "boss"
+  for a kind with `boss: true`, else "normal".
+  """
+  def rank(kind) when is_map(kind) do
+    case kind[:rank] do
+      r when r in @ranks -> r
+      _ -> if kind[:boss] == true, do: "boss", else: "normal"
+    end
+  end
+
+  def rank(_), do: "normal"
+
+  @doc "Experience a rank is worth against the formula (World tuning `rank_<rank>_xp_mult`; normal: 1)."
+  def rank_xp_mult("normal"), do: 1.0
+
+  def rank_xp_mult(rank) when rank in @ranks do
+    case BaconWorld.Tuning.get("rank_#{rank}_xp_mult") do
+      n when is_number(n) -> n * 1.0
+      _ -> 1.0
+    end
+  end
+
+  def rank_xp_mult(_), do: 1.0
   @doc "The zone's camps: Crater Lake's when its terrain is loaded, else the round island's."
   def camps, do: if(BaconWorld.Terrain.loaded(), do: @crater_lake, else: @island)
   def safe_radius, do: @safe_radius

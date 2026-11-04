@@ -1,0 +1,1175 @@
+{
+ "monsters": [
+  {
+   "id": "goblin_shaman",
+   "data": {
+    "aggro": 10.0,
+    "coins": {
+     "$range": [
+      6,
+      26
+     ]
+    },
+    "dly_ms": 1900,
+    "dmg": {
+     "$tuple": [
+      2,
+      5
+     ]
+    },
+    "hp": {
+     "$tuple": [
+      14,
+      8
+     ]
+    },
+    "levels": {
+     "$range": [
+      3,
+      5
+     ]
+    },
+    "loot": [
+     {
+      "$tuple": [
+       "goblin_ear",
+       0.6,
+       {
+        "$range": [
+         1,
+         2
+        ]
+       }
+      ]
+     },
+     {
+      "$tuple": [
+       "tarnished_trinket",
+       0.08,
+       {
+        "$range": [
+         1,
+         1
+        ]
+       }
+      ]
+     }
+    ],
+    "name": "a goblin shaman",
+    "offhand": [
+     {
+      "$tuple": [
+       null,
+       1
+      ]
+     }
+    ],
+    "reach": 1.0,
+    "run": 4.1,
+    "walk": 1.3,
+    "weapon_drop": 0.7,
+    "weapons": [
+     {
+      "$tuple": [
+       "worn_quarterstaff",
+       3
+      ]
+     },
+     {
+      "$tuple": [
+       "bone_club",
+       1
+      ]
+     }
+    ],
+    "model": "goblin",
+    "rank": "normal",
+    "family": "greenskin",
+    "loot_tables": [
+     "greenskin_pockets"
+    ],
+    "xp_mult": 1.1,
+    "scale": 1.05
+   }
+  },
+  {
+   "id": "grubnak",
+   "data": {
+    "aggro": 10.0,
+    "coins": {
+     "$range": [
+      6,
+      26
+     ]
+    },
+    "dly_ms": 1700,
+    "dmg": {
+     "$tuple": [
+      4,
+      9
+     ]
+    },
+    "hp": {
+     "$tuple": [
+      60,
+      14
+     ]
+    },
+    "levels": {
+     "$range": [
+      6,
+      6
+     ]
+    },
+    "loot": [
+     {
+      "$tuple": [
+       "goblin_ear",
+       0.6,
+       {
+        "$range": [
+         1,
+         2
+        ]
+       }
+      ]
+     },
+     {
+      "$tuple": [
+       "tarnished_trinket",
+       0.08,
+       {
+        "$range": [
+         1,
+         1
+        ]
+       }
+      ]
+     }
+    ],
+    "name": "Grubnak the Cruel",
+    "offhand": [
+     {
+      "$tuple": [
+       "dented_buckler",
+       1
+      ]
+     }
+    ],
+    "reach": 1.0,
+    "run": 4.1,
+    "walk": 1.3,
+    "weapon_drop": 1.0,
+    "weapons": [
+     {
+      "$tuple": [
+       "rusty_scimitar",
+       1
+      ]
+     }
+    ],
+    "model": "goblin",
+    "rank": "rare",
+    "family": "greenskin",
+    "loot_tables": [
+     "greenskin_pockets",
+     "camp_chest_minor"
+    ],
+    "respawn_ms": {
+     "$range": [
+      600000,
+      900000
+     ]
+    },
+    "scale": 1.25
+   }
+  },
+  {
+   "id": "goblin_warchief",
+   "data": {
+    "aggro": 14.0,
+    "coins": {
+     "$range": [
+      150,
+      300
+     ]
+    },
+    "dly_ms": 2700,
+    "dmg": {
+     "$tuple": [
+      9,
+      18
+     ]
+    },
+    "drops": [
+     {
+      "$tuple": [
+       "ashwood_longbow",
+       0.2
+      ]
+     }
+    ],
+    "hp": {
+     "$tuple": [
+      180,
+      20
+     ]
+    },
+    "leash": 40.0,
+    "levels": {
+     "$range": [
+      8,
+      8
+     ]
+    },
+    "loot": [
+     {
+      "$tuple": [
+       "orc_tusk",
+       1.0,
+       {
+        "$range": [
+         2,
+         3
+        ]
+       }
+      ]
+     },
+     {
+      "$tuple": [
+       "orcish_war_belt",
+       0.5,
+       {
+        "$range": [
+         1,
+         1
+        ]
+       }
+      ]
+     }
+    ],
+    "name": "the goblin warchief",
+    "offhand": [
+     {
+      "$tuple": [
+       null,
+       1
+      ]
+     }
+    ],
+    "radius": 0.55,
+    "reach": 1.6,
+    "respawn_ms": {
+     "$range": [
+      360000,
+      540000
+     ]
+    },
+    "run": 4.0,
+    "scale": 1.45,
+    "walk": 1.2,
+    "weapon_drop": 0.5,
+    "weapons": [
+     {
+      "$tuple": [
+       "orcish_greataxe",
+       1
+      ]
+     }
+    ],
+    "model": "goblin",
+    "rank": "boss",
+    "family": "greenskin",
+    "loot_tables": [
+     "camp_chest_major"
+    ],
+    "xp_mult": 1.0
+   }
+  },
+  {
+   "id": "bone_knight",
+   "data": {
+    "aggro": 10.0,
+    "coins": {
+     "$range": [
+      25,
+      80
+     ]
+    },
+    "dly_ms": 2500,
+    "dmg": {
+     "$tuple": [
+      3,
+      9
+     ]
+    },
+    "hp": {
+     "$tuple": [
+      40,
+      13
+     ]
+    },
+    "levels": {
+     "$range": [
+      5,
+      7
+     ]
+    },
+    "loot": [
+     {
+      "$tuple": [
+       "bone_chips",
+       0.8,
+       {
+        "$range": [
+         2,
+         5
+        ]
+       }
+      ]
+     },
+     {
+      "$tuple": [
+       "skull_fragment",
+       0.35,
+       {
+        "$range": [
+         1,
+         2
+        ]
+       }
+      ]
+     }
+    ],
+    "name": "a bone knight",
+    "offhand": [
+     {
+      "$tuple": [
+       null,
+       3
+      ]
+     },
+     {
+      "$tuple": [
+       "cracked_kite_shield",
+       2
+      ]
+     },
+     {
+      "$tuple": [
+       "dented_buckler",
+       1
+      ]
+     }
+    ],
+    "reach": 1.5,
+    "run": 3.8,
+    "walk": 1.2,
+    "weapon_drop": 0.8,
+    "weapons": [
+     {
+      "$tuple": [
+       "rusty_two_handed_sword",
+       3
+      ]
+     },
+     {
+      "$tuple": [
+       "notched_battle_axe",
+       3
+      ]
+     },
+     {
+      "$tuple": [
+       "cracked_maul",
+       2
+      ]
+     },
+     {
+      "$tuple": [
+       "rusty_halberd",
+       2
+      ]
+     },
+     {
+      "$tuple": [
+       "pitted_longsword",
+       2
+      ]
+     },
+     {
+      "$tuple": [
+       "cracked_morning_star",
+       2
+      ]
+     },
+     {
+      "$tuple": [
+       "pitted_war_hammer",
+       2
+      ]
+     }
+    ],
+    "model": "skeleton_warrior",
+    "rank": "elite",
+    "family": "undead",
+    "loot_tables": [
+     "graveyard_common"
+    ],
+    "scale": 1.12
+   }
+  },
+  {
+   "id": "rat_king",
+   "data": {
+    "aggro": 6.0,
+    "coins": {
+     "$range": [
+      0,
+      4
+     ]
+    },
+    "dly_ms": 1500,
+    "dmg": {
+     "$tuple": [
+      1,
+      3
+     ]
+    },
+    "hp": {
+     "$tuple": [
+      70,
+      12
+     ]
+    },
+    "levels": {
+     "$range": [
+      5,
+      5
+     ]
+    },
+    "loot": [
+     {
+      "$tuple": [
+       "rat_tail",
+       0.7,
+       {
+        "$range": [
+         1,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "$tuple": [
+       "rat_pelt",
+       0.35,
+       {
+        "$range": [
+         1,
+         1
+        ]
+       }
+      ]
+     }
+    ],
+    "moves": [
+     {
+      "$tuple": [
+       "bite",
+       3
+      ]
+     },
+     {
+      "$tuple": [
+       "claw",
+       1
+      ]
+     }
+    ],
+    "name": "the Rat King",
+    "offhand": [
+     {
+      "$tuple": [
+       null,
+       1
+      ]
+     }
+    ],
+    "radius": 0.3,
+    "reach": 0.7,
+    "respawn_ms": {
+     "$range": [
+      900000,
+      1200000
+     ]
+    },
+    "run": 4.4,
+    "walk": 1.0,
+    "weapon_drop": 0.0,
+    "weapons": [
+     {
+      "$tuple": [
+       null,
+       1
+      ]
+     }
+    ],
+    "model": "giant_rat",
+    "rank": "rare",
+    "family": "vermin",
+    "loot_tables": [
+     "rat_nest",
+     "camp_chest_minor"
+    ],
+    "scale": 1.9
+   }
+  },
+  {
+   "id": "orc_berserker",
+   "data": {
+    "aggro": 12.0,
+    "coins": {
+     "$range": [
+      25,
+      80
+     ]
+    },
+    "dly_ms": 1500,
+    "dmg": {
+     "$tuple": [
+      5,
+      12
+     ]
+    },
+    "hp": {
+     "$tuple": [
+      55,
+      14
+     ]
+    },
+    "levels": {
+     "$range": [
+      7,
+      8
+     ]
+    },
+    "loot": [
+     {
+      "$tuple": [
+       "orc_tusk",
+       0.55,
+       {
+        "$range": [
+         1,
+         2
+        ]
+       }
+      ]
+     },
+     {
+      "$tuple": [
+       "orcish_war_belt",
+       0.1,
+       {
+        "$range": [
+         1,
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "$tuple": [
+       "tarnished_trinket",
+       0.1,
+       {
+        "$range": [
+         1,
+         1
+        ]
+       }
+      ]
+     }
+    ],
+    "name": "an orc berserker",
+    "offhand": [
+     {
+      "$tuple": [
+       null,
+       3
+      ]
+     },
+     {
+      "$tuple": [
+       "cracked_kite_shield",
+       1
+      ]
+     },
+     {
+      "$tuple": [
+       "dented_buckler",
+       1
+      ]
+     }
+    ],
+    "radius": 0.5,
+    "reach": 1.4,
+    "run": 3.9,
+    "walk": 1.2,
+    "weapon_drop": 0.6,
+    "weapons": [
+     {
+      "$tuple": [
+       "orcish_cleaver",
+       4
+      ]
+     },
+     {
+      "$tuple": [
+       "spiked_club",
+       2
+      ]
+     },
+     {
+      "$tuple": [
+       "orcish_greataxe",
+       2
+      ]
+     },
+     {
+      "$tuple": [
+       "notched_battle_axe",
+       1
+      ]
+     },
+     {
+      "$tuple": [
+       "cracked_maul",
+       1
+      ]
+     }
+    ],
+    "model": "orc",
+    "rank": "elite",
+    "family": "greenskin",
+    "loot_tables": [
+     "orc_spoils"
+    ],
+    "scale": 1.08
+   }
+  }
+ ],
+ "loot_tables": [
+  {
+   "id": "graveyard_common",
+   "data": {
+    "name": "Graveyard common",
+    "rolls": 1,
+    "empty": 45,
+    "coins": 0,
+    "pool": [
+     {
+      "item": "bone_chips",
+      "weight": 30,
+      "qty": {
+       "$range": [
+        1,
+        3
+       ]
+      }
+     },
+     {
+      "item": "skull_fragment",
+      "weight": 18,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "tarnished_trinket",
+      "weight": 5,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "worn_dagger",
+      "weight": 3,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "worn_club",
+      "weight": 3,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "rusty_short_sword",
+      "weight": 2,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      },
+      "min_level": 2,
+      "max_level": 50
+     }
+    ],
+    "always": [],
+    "tables": []
+   },
+   "position": 1
+  },
+  {
+   "id": "greenskin_pockets",
+   "data": {
+    "name": "Greenskin pockets",
+    "rolls": 1,
+    "empty": 35,
+    "coins": 0,
+    "pool": [
+     {
+      "item": "goblin_ear",
+      "weight": 30,
+      "qty": {
+       "$range": [
+        1,
+        2
+       ]
+      }
+     },
+     {
+      "item": "tarnished_trinket",
+      "weight": 10,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "rusty_dagger",
+      "weight": 4,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "rusty_hand_axe",
+      "weight": 3,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "splintered_spear",
+      "weight": 2,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "dented_buckler",
+      "weight": 2,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     }
+    ],
+    "always": [],
+    "tables": []
+   },
+   "position": 2
+  },
+  {
+   "id": "orc_spoils",
+   "data": {
+    "name": "Orc spoils",
+    "rolls": {
+     "$range": [
+      1,
+      2
+     ]
+    },
+    "empty": 30,
+    "coins": 0,
+    "pool": [
+     {
+      "item": "orc_tusk",
+      "weight": 30,
+      "qty": {
+       "$range": [
+        1,
+        2
+       ]
+      }
+     },
+     {
+      "item": "orcish_war_belt",
+      "weight": 8,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "notched_battle_axe",
+      "weight": 3,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      },
+      "min_level": 5,
+      "max_level": 50
+     },
+     {
+      "item": "orcish_cleaver",
+      "weight": 2,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      },
+      "min_level": 5,
+      "max_level": 50
+     },
+     {
+      "item": "cracked_kite_shield",
+      "weight": 3,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      },
+      "min_level": 5,
+      "max_level": 50
+     }
+    ],
+    "always": [
+     {
+      "item": "tarnished_trinket",
+      "chance": 0.15,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     }
+    ],
+    "tables": []
+   },
+   "position": 3
+  },
+  {
+   "id": "rat_nest",
+   "data": {
+    "name": "Rat nest",
+    "rolls": 1,
+    "empty": 40,
+    "coins": 0,
+    "pool": [
+     {
+      "item": "rat_tail",
+      "weight": 30,
+      "qty": {
+       "$range": [
+        1,
+        2
+       ]
+      }
+     },
+     {
+      "item": "rat_pelt",
+      "weight": 20,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "old_boot",
+      "weight": 4,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "tarnished_trinket",
+      "weight": 2,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     }
+    ],
+    "always": [],
+    "tables": []
+   },
+   "position": 4
+  },
+  {
+   "id": "camp_chest_minor",
+   "data": {
+    "name": "Camp chest (minor)",
+    "rolls": {
+     "$range": [
+      2,
+      3
+     ]
+    },
+    "empty": 10,
+    "coins": {
+     "$range": [
+      4,
+      10
+     ]
+    },
+    "pool": [
+     {
+      "item": "tarnished_trinket",
+      "weight": 20,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "rusty_short_sword",
+      "weight": 6,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "rusty_hand_axe",
+      "weight": 6,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "rusty_cutlass",
+      "weight": 5,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "worn_round_shield",
+      "weight": 5,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "dented_buckler",
+      "weight": 5,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "worn_quarterstaff",
+      "weight": 4,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "hunting_bow",
+      "weight": 2,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      },
+      "min_level": 3,
+      "max_level": 50
+     }
+    ],
+    "always": [],
+    "tables": []
+   },
+   "position": 5
+  },
+  {
+   "id": "camp_chest_major",
+   "data": {
+    "name": "Camp chest (major)",
+    "rolls": {
+     "$range": [
+      3,
+      4
+     ]
+    },
+    "empty": 0,
+    "coins": {
+     "$range": [
+      12,
+      30
+     ]
+    },
+    "pool": [
+     {
+      "item": "tarnished_trinket",
+      "weight": 20,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "pitted_longsword",
+      "weight": 6,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "pitted_war_hammer",
+      "weight": 6,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "cracked_kite_shield",
+      "weight": 6,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "notched_battle_axe",
+      "weight": 6,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "cracked_morning_star",
+      "weight": 5,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      }
+     },
+     {
+      "item": "orcish_greataxe",
+      "weight": 3,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      },
+      "min_level": 6,
+      "max_level": 50
+     },
+     {
+      "item": "ashwood_longbow",
+      "weight": 3,
+      "qty": {
+       "$range": [
+        1,
+        1
+       ]
+      },
+      "min_level": 6,
+      "max_level": 50
+     }
+    ],
+    "always": [],
+    "tables": [
+     {
+      "table": "camp_chest_minor",
+      "chance": 0.5
+     }
+    ]
+   },
+   "position": 6
+  }
+ ]
+}

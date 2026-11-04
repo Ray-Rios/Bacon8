@@ -18,7 +18,7 @@ Related documents:
   deployment.
 - Facts dated. The owner's decisions are recorded, not re-argued.
 
-Last update: **2026-11-01**.
+Last update: **2026-11-04**.
 
 ---
 
@@ -537,6 +537,39 @@ service worker's cache.
   Gentle, Fierce, Sleepy, Bright, Elfin, Almond, Rugged, Youthful. One click sets every face and eye slider (unnamed ones
   to 0); the matching preset is lit; fine-tune from there.
 
+### Creatures, camps and loot (2026-11-03; not yet deployed)
+
+The owner: "Advanced monster creation system, including camp size/features, spawn rotation, exp & loot
+management." Built in the cloud and tested with the hub's suite (Windows Docker, 2026-11-03: 946 tests, 0
+failures); not yet committed. Everything is data in `bacon_world_defs` (no new tables) and is edited on
+**`/admin/bacon_world/bestiary`** (the "🐉 Bestiary & camps" button on the game's admin page), tabs:
+
+- **Monsters**: every creature kind as a form (name, model, level band, HP, damage, speed, aggro and assist
+  radius, rank, loot tables, the rest as JSON), with a preview at a chosen level and player level (con
+  colour, XP), a loot simulation (1,000 kills) and "used by" (which camps spawn it). A new kind borrows a
+  model's rig (`mobs-view.ts` `lookOf`: the view's `model` field), so it needs no new art. Examples to import
+  (`priv/seed/bestiary_examples.json`): goblin shaman, Grubnak, goblin warchief, bone knight, rat king, orc berserker.
+- **Camps** (`BaconWorld.Mobs.Camps`): a camp has a place, a **size** (small/medium/large/huge, or a radius),
+  a theme and **features** (campfire, tents, palisade, banners, braziers, graves, forge, cauldron, treasure,
+  throne, ruins...) laid out as ordinary placements tagged with the camp (`CampLayout`, deterministic per
+  camp), and **slots**: how many, a weighted table of kinds, and a **rotation** (`Mobs.Rotation`: random,
+  cycle, or placeholder with a **rare** at a chance and a cooldown; day or night windows on the wall-clock
+  hour). Elites (a chance per spawn: a level up, more HP and damage, twice the loot), a respawn time that
+  shortens while players are near (dynamic respawn, down to half), social **assist** within a radius, and a
+  **clear reward** (a loot table into the last corpse, an XP multiplier, an announcement in zone chat) with
+  an optional boss after a number of clears. "Respawn now" and "Despawn" act on the running zone. The code
+  camps convert to managed ones (`from_legacy`, keeping their placements to revert).
+- **Loot** (`BaconWorld.Loot`): tables with rolls, an empty weight, a weighted pool (quantity, level band),
+  always-drops with a chance, nested tables, coins; simulated on the page.
+- **XP**: the curve multiplier and per-rank multipliers (Tuning, group "Creatures, Loot & Experience":
+  `xp_curve_mult`, `rank_elite/rare/boss_xp_mult`, `elite_hp_mult`, `elite_dmg_mult`, `elite_xp_mult`,
+  `loot_chance_mult`, `coin_mult`) and the XP table they make. **Owner's call:** boss XP is left at 1.0.
+- **Events** (`BaconWorld.LiveEvents`): timed XP, loot and coin multipliers (UTC start and end, an
+  announcement), multiplied together and capped at 10x.
+
+Every change is audited (`Bacon8.Audit`, area `bacon_world`). Tests: `test/bacon_world/bestiary_test.exs`,
+`live_events_test.exs`, `admin_pages_test.exs`.
+
 ### Tests
 
 The plugin's Elixir tests run with the hub's suite; the JavaScript tests run with
@@ -896,6 +929,15 @@ deleting them needs the owner's OK.
 - Tuning the male's posture: all of it is in `mhm_build.py`'s `POSTURE`; the harness's `?tilt=`, `?spine=a,b,c`,
   `?clav=fwd,down`, `?arm=free:u,l;torch:u,l`, `?fh=x,y,z` and `?relax=index:a,b,c,s;...` override the manifest on
   either body. Render side views (`view=side&yaw=18`, `focus=spine_02&dist=2.9&az=250&el=0`).
+- **The female stands upright (2026-11-04,** owner: "her idle pose to stand more upright like the male model already
+  does. She's slightly bent forward"). Her manifest `posture.spine_deg` went from `[-24, -9, 9]` to `[-18, -6, 6]`
+  (pelvis tilt unchanged at 24°): the lumbar and mid-spine bent her forward 33° against the pelvis's 24° tuck, so she
+  leaned. Measured in the harness on `Idle_Loop` at t=0.5 (pelvis-to-neck lean, neck ahead of the feet): before
+  8.3° and 9.5 cm, the male 4.1° and 6.5 cm, now 2.8° and 5.2 cm, with the small of the back still curving (4°
+  back; his is 8°). Changed in `priv/static/models/Humans/Female.json` on the models volume (old copy:
+  `tmp/b8work/backup_models/2026-11-04/Female.json`), the pipeline's `out/mh_v3/female/B8_Female.json` and
+  `mhf_v3.py` (so a rebuild keeps it). Production gets it with the next `sync-models-to-k8s.sh`, on the owner's
+  word. Not yet seen in the game itself (only the harness).
 - The female (the owner wants her stunning): some hairstyles (ponytail, long) still read as painted at the temple;
   some hair shells are low-poly (long01) and LongWavy is 15.5k vertices (an LOD); the Mindfront lashes cost about
   19.8k vertices per character (swap for cards at a distance); face polish (slightly larger eyes, eye-scale ~0.12 in

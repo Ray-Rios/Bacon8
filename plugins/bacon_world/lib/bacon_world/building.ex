@@ -159,6 +159,16 @@ defmodule BaconWorld.Building do
   @doc "A catalogue entry by id, or nil."
   def asset(id), do: Map.get(catalogue_map(), id)
 
+  @doc """
+  Forgets the cached catalogue on every node, so a monster type or NPC template saved since
+  (`/admin/bacon_world/bestiary`, the Database page) can be placed in build mode (2026-11-03).
+  """
+  def forget_catalogue do
+    :persistent_term.erase({__MODULE__, :catalogue})
+    for n <- Node.list(), do: :erpc.cast(n, :persistent_term, :erase, [{__MODULE__, :catalogue}])
+    :ok
+  end
+
   defp catalogue_map do
     case :persistent_term.get({__MODULE__, :catalogue}, nil) do
       nil ->
@@ -405,6 +415,92 @@ defmodule BaconWorld.Building do
       other -> other
     end
   end
+
+  @doc """
+  Puts pieces a system made (a managed camp's decor, `BaconWorld.Mobs.CampLayout`, 2026-11-03) in
+  `zone`, each tagged `data["origin"] = origin` (what `delete_origin/2` removes). `attrs_list` are
+  like `place/4`'s (metres, radians); each stands on the ground (`"y"`, if given, is added to the
+  ground's height). Unknown assets and anything outside the world are skipped. Players in the zone
+  see them appear. Returns how many were placed.
+  """
+  def place_system(zone, attrs_list, origin) when is_binary(zone) and is_list(attrs_list) and is_binary(origin) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    rows =
+      BaconWorld.Terrain.with_zone(zone, fn ->
+        for a <- attrs_list, %{} = asset <- [asset(a["asset"])], {:ok, f} <- [fields(asset, Map.delete(a, "data"), %{})] do
+          y = (num_or(a["y"], 0.0)) + BaconWorld.Terrain.height(f.x, f.z)
+
+          %{id: Ecto.UUID.generate(), zone: zone, asset: a["asset"], x: f.x, y: y, z: f.z, rot: f.rot, scale: f.scale,
+            data: Map.put(f.data || %{}, "origin", origin), inserted_at: now, updated_at: now}
+        end
+      end)
+
+    rows |> Enum.chunk_every(500) |> Enum.each(&GamesRepo.insert_all(Placement, &1))
+    ensure_cache_tables()
+    h_map = hps()
+
+    for row <- rows do
+      p = struct(Placement, row)
+      :ets.insert(:bacon_world_placements_cache, {{zone, p.id}, p})
+      Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_placed, view(p, h_map)})
+    end
+
+    length(rows)
+  end
+
+  @doc "Removes every placement in `zone` tagged with `origin` (see `place_system/3`). Returns how many."
+  def delete_origin(zone, origin) when is_binary(zone) and is_binary(origin) do
+    rows = GamesRepo.all(from(p in Placement, where: p.zone == ^zone and fragment("?->>'origin' = ?", p.data, ^origin)))
+    ids = Enum.map(rows, & &1.id)
+    if ids != [], do: GamesRepo.delete_all(from(p in Placement, where: p.id in ^ids))
+    ensure_cache_tables()
+
+    for p <- rows do
+      :ets.delete(:bacon_world_placements_cache, {zone, p.id})
+      :ets.delete(:bacon_world_placement_hp, {zone, p.id})
+      if String.starts_with?(p.asset, "mob:"), do: Mobs.put_points(zone, p.id, [])
+      Phoenix.PubSub.broadcast(Bacon8.PubSub, topic(zone), {:build_removed, p.id, p.asset})
+    end
+
+    length(rows)
+  end
+
+  @doc "The placements in `zone` tagged with `origin` (structs)."
+  def by_origin(zone, origin) when is_binary(zone) and is_binary(origin) do
+    GamesRepo.all(from(p in Placement, where: p.zone == ^zone and fragment("?->>'origin' = ?", p.data, ^origin), order_by: p.inserted_at))
+  rescue
+    _ -> []
+  end
+
+  @doc """
+  Puts back creature spawns (`mob:` placements) a managed camp replaced
+  (`BaconWorld.Mobs.Camps.from_legacy/3` keeps them): the rows as they were, origin and all.
+  Returns how many.
+  """
+  def restore_spawns(zone, rows) when is_binary(zone) and is_list(rows) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    structs =
+      for r <- rows, is_binary(r["asset"]), asset(r["asset"]) != nil do
+        %{id: Ecto.UUID.generate(), zone: zone, asset: r["asset"], x: num_or(r["x"], 0.0), y: num_or(r["y"], 0.0), z: num_or(r["z"], 0.0),
+          rot: num_or(r["rot"], 0.0), scale: num_or(r["scale"], 1.0), data: r["data"] || %{}, inserted_at: now, updated_at: now}
+      end
+
+    if structs != [], do: GamesRepo.insert_all(Placement, structs)
+    ensure_cache_tables()
+
+    for row <- structs do
+      p = struct(Placement, row)
+      :ets.insert(:bacon_world_placements_cache, {{zone, p.id}, p})
+      after_change(p)
+    end
+
+    length(structs)
+  end
+
+  defp num_or(v, _d) when is_number(v), do: v * 1.0
+  defp num_or(_, d), do: d
 
   @doc """
   The zone's placements as `%Placement{}` structs, from the in-memory cache (loaded from the

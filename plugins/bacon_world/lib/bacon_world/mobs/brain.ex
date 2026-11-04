@@ -30,8 +30,11 @@ defmodule BaconWorld.Mobs.Brain do
     * `{:corpse_gone, id}`
   """
 
-  alias BaconWorld.{Items, Melee, Progression, Tuning}
-  alias BaconWorld.Mobs.Spawns
+  # spawn/3 (a point, a time, the rotation's memory) is ours, not Kernel's process spawn
+  import Kernel, except: [spawn: 3]
+
+  alias BaconWorld.{Items, Loot, Melee, Progression, Tuning}
+  alias BaconWorld.Mobs.{Rotation, Spawns}
 
   @u 2.2 / 1.8
   # Players this high (metres, on a flying mount) are out of reach of the creatures.
@@ -42,6 +45,10 @@ defmodule BaconWorld.Mobs.Brain do
   @swing_slack 0.6
   @loot_distance 4.5
   @looter_timeout 90_000
+  # a point outside its time of day (BaconWorld.Mobs.Rotation) looks again this often
+  @window_retry_ms 30_000
+  # dynamic respawn (a managed camp's): players this close (metres) speed it up
+  @busy_radius_m 60.0
 
   def u, do: @u
 
@@ -49,12 +56,20 @@ defmodule BaconWorld.Mobs.Brain do
   # Spawning
   # ---------------------------------------------------------------------------
 
-  @doc "A new creature at a spawn point (`BaconWorld.Mobs.Spawns.points/0`)."
-  def spawn(point, now) do
-    kind = Spawns.kind(point.kind)
-    level = Enum.random(kind.levels)
+  @doc """
+  A new creature at a spawn point (`BaconWorld.Mobs.Spawns.points/0`). A managed camp's point
+  (`BaconWorld.Mobs.Camps.points/2`) also picks its kind (`BaconWorld.Mobs.Rotation`, with `rot` the
+  point's memory from its last creature), may set a level band (`levels`) and may make it an elite
+  (`elite_chance`: a level higher, `elite_hp_mult`/`elite_dmg_mult` from World tuning, bigger, and
+  an extra roll of its loot tables).
+  """
+  def spawn(point, now, rot \\ nil) do
+    {kind_id, rot} = Rotation.pick(point, rot, now)
+    kind = Spawns.kind(kind_id)
+    elite = elite?(point)
+    level = Enum.random(band(point[:levels]) || kind.levels) + if(elite, do: 1, else: 0)
     {base, per} = kind.hp
-    hp_mult = Tuning.get("mob_hp_mult")
+    hp_mult = Tuning.get("mob_hp_mult") * if(elite, do: tuning("elite_hp_mult", 1.8), else: 1.0)
     max_hp = max(1, round((base + per * level) * hp_mult))
     weapon = Spawns.weighted(kind.weapons)
     offhand = if Items.two_handed?(Items.get(weapon)), do: nil, else: Spawns.weighted(kind.offhand)
@@ -64,9 +79,14 @@ defmodule BaconWorld.Mobs.Brain do
     %{
       id: point.id,
       camp: point.camp,
-      kind: point.kind,
-      name: kind.name,
+      kind: kind_id,
+      name: if(elite, do: elite_name(kind.name), else: kind.name),
       level: level,
+      elite: elite,
+      dmg_mult: if(elite, do: tuning("elite_dmg_mult", 1.35), else: 1.0),
+      # a camp slot's loot tables (on top of the kind's own), and the rotation's memory
+      loot_tables: point[:loot_tables] || [],
+      rot: rot,
       hp: max_hp,
       max_hp: max_hp,
       x: x,
@@ -109,6 +129,71 @@ defmodule BaconWorld.Mobs.Brain do
 
   def alive?(%{state: s}), do: s not in [:dead, :gone]
 
+  defp elite?(%{elite_chance: c}) when is_number(c) and c > 0, do: :rand.uniform() < c
+  defp elite?(_point), do: false
+
+  defp band(%Range{first: a, last: b} = r) when a >= 1 and b >= a, do: r
+  defp band(_), do: nil
+
+  # "a goblin" -> "an elite goblin"; "Grubnak" -> "Elite Grubnak"
+  defp elite_name("a " <> rest), do: "an elite " <> rest
+  defp elite_name("an " <> rest), do: "an elite " <> rest
+  defp elite_name("the " <> rest), do: "the elite " <> rest
+  defp elite_name(name), do: "Elite " <> name
+
+  defp tuning(key, default) do
+    case Tuning.get(key) do
+      n when is_number(n) -> n * 1.0
+      _ -> default
+    end
+  end
+
+  @doc """
+  How much killing this creature is worth against `BaconWorld.Progression.kill_xp/2`: its kind's
+  `xp_mult`, its rank's (`BaconWorld.Mobs.Spawns.rank/1`, World tuning) and an elite's.
+  """
+  def xp_mult(mob) do
+    kind = Map.get(Spawns.kinds(), mob.kind, %{})
+
+    k =
+      case Map.get(kind, :xp_mult) do
+        n when is_number(n) and n >= 0 -> n * 1.0
+        _ -> 1.0
+      end
+
+    e = if Map.get(mob, :elite, false), do: tuning("elite_xp_mult", 2.0), else: 1.0
+    k * Spawns.rank_xp_mult(Spawns.rank(kind)) * e
+  end
+
+  @doc """
+  A campmate joins a fight (`BaconWorld.Mobs.Camps.assist/4`): a creature standing about (idle or
+  wandering) comes for `character_id`. `{mob, events}`.
+  """
+  def assist(mob, character_id, _now) do
+    if alive?(mob) and mob.state in [:idle, :wander] do
+      {%{chase_from_here(mob) | state: :chase, target: character_id, goal: nil}, [{:aggro, mob.id, character_id}]}
+    else
+      {mob, []}
+    end
+  end
+
+  @doc """
+  Out of its time of day (a camp slot's `window`): a creature that isn't fighting fades away and
+  rises again in its window. `{mob, events}`.
+  """
+  def depop(mob, now) do
+    if alive?(mob) and mob.state in [:idle, :wander, :return] do
+      {%{mob | state: :gone, target: nil, goal: nil, vx: 0.0, vz: 0.0, corpse: nil, respawn_at: now + @window_retry_ms}, [{:corpse_gone, mob.id}]}
+    else
+      {mob, []}
+    end
+  end
+
+  @doc "A point whose time of day hasn't come: an empty place that looks again shortly."
+  def dormant(point, now, rot \\ nil) do
+    %{spawn(point, now, rot) | state: :gone, respawn_at: now + @window_retry_ms}
+  end
+
   # ---------------------------------------------------------------------------
   # Thinking and moving
   # ---------------------------------------------------------------------------
@@ -120,17 +205,25 @@ defmodule BaconWorld.Mobs.Brain do
   def tick(mob, players, now, dt, point)
 
   def tick(%{state: :gone} = m, _players, now, _dt, point) do
-    if now >= m.respawn_at do
-      fresh = spawn(point, now)
-      {fresh, [{:spawn, view(fresh)}]}
-    else
-      {m, []}
+    cond do
+      now < m.respawn_at ->
+        {m, []}
+
+      # a camp slot that only holds creatures by day or by night (BaconWorld.Mobs.Rotation)
+      not Rotation.open?(point || %{}, Rotation.wall_ms()) ->
+        {%{m | respawn_at: now + @window_retry_ms}, []}
+
+      true ->
+        fresh = spawn(point, now, Map.get(m, :rot))
+        {fresh, [{:spawn, view(fresh)}]}
     end
   end
 
-  def tick(%{state: :dead} = m, _players, now, _dt, _point) do
+  def tick(%{state: :dead} = m, players, now, _dt, point) do
     if now >= m.corpse.despawn_at do
-      {%{m | state: :gone, corpse: nil, respawn_at: now + Enum.random(Spawns.respawn_ms(m.kind))}, [{:corpse_gone, m.id}]}
+      # (the admin's "Respawn now" on a managed camp: at once)
+      delay = if Map.get(m, :respawn_now), do: 0, else: respawn_delay(m, point, players)
+      {%{m | state: :gone, corpse: nil, respawn_at: now + delay}, [{:corpse_gone, m.id}]}
     else
       {m, []}
     end
@@ -161,6 +254,20 @@ defmodule BaconWorld.Mobs.Brain do
       # rooted: it turns and swings, but stays where it is
       m2 = if now < Map.get(m, :rooted_until, now) or stunned?, do: %{m2 | x: m.x, z: m.z, vx: 0.0, vz: 0.0}, else: m2
       {m2, dot_evs ++ e1 ++ e2 ++ e0 ++ e3}
+    end
+  end
+
+  # How long it lies gone before it rises: the camp slot's time, or the kind's; a managed camp
+  # with `dynamic_respawn` comes back faster the more players are near (10% each past the
+  # first, down to half).
+  defp respawn_delay(m, point, players) do
+    base = Enum.random((point && point[:respawn_ms]) || Spawns.respawn_ms(m.kind))
+
+    if point && point[:dynamic_respawn] do
+      near = Enum.count(players, fn {_id, p} -> not p.dead and dist({p.x, p.z}, {m.x, m.z}) <= @busy_radius_m * @u end)
+      round(base * max(0.5, 1.0 - 0.1 * max(near - 1, 0)))
+    else
+      base
     end
   end
 
@@ -321,7 +428,7 @@ defmodule BaconWorld.Mobs.Brain do
   defp swing(m, t, p, kind, now) do
     hit = :rand.uniform() < Melee.hit_chance(m.level, p.level || 1)
     {lo, hi} = kind.dmg
-    dmg_mult = Tuning.get("mob_damage_mult")
+    dmg_mult = Tuning.get("mob_damage_mult") * Map.get(m, :dmg_mult, 1.0)
     raw = if hit, do: Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1))), else: 0
     damage = if hit, do: max(1, round(raw * dmg_mult)), else: 0
     slow_mult = if now < Map.get(m, :slowed_until, now), do: 1.3, else: 1.0
@@ -343,7 +450,7 @@ defmodule BaconWorld.Mobs.Brain do
     b = kind.breath
     range = b.range * @u
     {lo, hi} = b.dmg
-    dmg_mult = Tuning.get("mob_damage_mult")
+    dmg_mult = Tuning.get("mob_damage_mult") * Map.get(m, :dmg_mult, 1.0)
 
     events =
       for {id, p} <- players,
@@ -375,7 +482,7 @@ defmodule BaconWorld.Mobs.Brain do
     s = Enum.find(kind.specials, &(&1.move == sp.move))
     range = s.range * @u
     {lo, hi} = s.dmg
-    dmg_mult = Tuning.get("mob_damage_mult")
+    dmg_mult = Tuning.get("mob_damage_mult") * Map.get(m, :dmg_mult, 1.0)
 
     events =
       for {id, p} <- players,
@@ -419,7 +526,7 @@ defmodule BaconWorld.Mobs.Brain do
       {%{m | squeeze: nil}, []}
     else
       {lo, hi} = q.dmg
-      dmg_mult = Tuning.get("mob_damage_mult")
+      dmg_mult = Tuning.get("mob_damage_mult") * Map.get(m, :dmg_mult, 1.0)
       raw = Enum.random((lo + m.level - 1)..(hi + 2 * (m.level - 1)))
       damage = max(1, round(raw * dmg_mult))
       {%{m | squeeze: %{q | next: now + 1_000, left: q.left - 1}}, [{:attack, m.id, q.target, true, damage, "squeeze"}]}
@@ -518,7 +625,7 @@ defmodule BaconWorld.Mobs.Brain do
         damage = if mult == 1.0, do: damage, else: max(1, round(damage * mult))
         {mob2, evs} = take_damage(mob, attack.id, damage, crit, now)
         {mob3, cc_evs} = apply_cc(mob2, attack, damage, now)
-        hit = %{id: mob.id, hit: true, damage: damage, crit: crit, killed: not alive?(mob3), level: mob.level, hp: max(mob3.hp, 0), max_hp: mob.max_hp}
+        hit = %{id: mob.id, hit: true, damage: damage, crit: crit, killed: not alive?(mob3), level: mob.level, hp: max(mob3.hp, 0), max_hp: mob.max_hp, xp_mult: xp_mult(mob)}
         {Map.put(acc, mob.id, mob3), hits ++ [hit], events ++ evs ++ cc_evs}
       else
         # A miss still makes it angry.
@@ -542,7 +649,7 @@ defmodule BaconWorld.Mobs.Brain do
       dmg = max(0, attack.damage || 0)
       {mob2, evs} = if dmg > 0, do: take_damage(mob, attack.id, dmg, attack[:crit] || false, now), else: provoke(mob, attack.id)
       {mob3, cc_evs} = apply_cc(mob2, attack, dmg, now)
-      hit = %{id: mob.id, hit: true, damage: dmg, crit: attack[:crit] || false, killed: not alive?(mob3), level: mob.level, hp: max(mob3.hp, 0), max_hp: mob.max_hp}
+      hit = %{id: mob.id, hit: true, damage: dmg, crit: attack[:crit] || false, killed: not alive?(mob3), level: mob.level, hp: max(mob3.hp, 0), max_hp: mob.max_hp, xp_mult: xp_mult(mob)}
       {Map.put(mobs, mob.id, mob3), hit, evs ++ cc_evs}
     else
       err -> {mobs, err, []}
@@ -569,7 +676,7 @@ defmodule BaconWorld.Mobs.Brain do
         Enum.reduce(victims, {mobs, [], []}, fn mob, {acc, hits, events} ->
           {mob2, evs} = if dmg > 0, do: take_damage(mob, attack.id, dmg, crit, now), else: provoke(mob, attack.id)
           {mob3, cc_evs} = apply_cc(mob2, attack, dmg, now)
-          hit = %{id: mob.id, hit: true, damage: dmg, crit: crit, killed: not alive?(mob3), level: mob.level, hp: max(mob3.hp, 0), max_hp: mob.max_hp}
+          hit = %{id: mob.id, hit: true, damage: dmg, crit: crit, killed: not alive?(mob3), level: mob.level, hp: max(mob3.hp, 0), max_hp: mob.max_hp, xp_mult: xp_mult(mob)}
           {Map.put(acc, mob.id, mob3), hits ++ [hit], events ++ evs ++ cc_evs}
         end)
     end
@@ -786,9 +893,12 @@ defmodule BaconWorld.Mobs.Brain do
     kind = Spawns.kind(mob.kind)
     killer = mob.damage_by |> Enum.max_by(&elem(&1, 1), fn -> {nil, 0} end) |> elem(0)
 
+    {items, table_coins} = roll_loot_and_coins(mob, kind)
+    coin_mult = Loot.coin_mult() * if(Map.get(mob, :elite, false), do: 2, else: 1)
+
     corpse = %{
-      items: roll_loot(mob, kind),
-      coins: Enum.random(kind.coins) * mob.level,
+      items: items,
+      coins: round(Enum.random(kind.coins) * mob.level * coin_mult) + table_coins,
       owner: killer,
       free_at: now + Spawns.loot_lock_ms(),
       despawn_at: now + Spawns.corpse_ms(),
@@ -801,18 +911,39 @@ defmodule BaconWorld.Mobs.Brain do
   end
 
   @doc false
-  def roll_loot(mob, kind) do
-    weapon = if mob.weapon && :rand.uniform() < kind.weapon_drop, do: [%{item_id: mob.weapon, quantity: 1}], else: []
-    off = if mob.offhand && :rand.uniform() < 0.6, do: [%{item_id: mob.offhand, quantity: 1}], else: []
+  def roll_loot(mob, kind), do: mob |> roll_loot_and_coins(kind) |> elem(0)
+
+  @doc """
+  A corpse's items and the extra coins its loot tables gave: the weapon in its hand, its kind's
+  `loot` and `drops` (each chance times `BaconWorld.Loot.chance_mult/0`), then its kind's and its
+  camp slot's `loot_tables` (`BaconWorld.Loot`; an elite rolls them twice).
+  """
+  def roll_loot_and_coins(mob, kind) do
+    mult = Loot.chance_mult()
+    weapon = if mob.weapon && :rand.uniform() < kind.weapon_drop * mult, do: [%{item_id: mob.weapon, quantity: 1}], else: []
+    off = if mob.offhand && :rand.uniform() < 0.6 * mult, do: [%{item_id: mob.offhand, quantity: 1}], else: []
 
     junk =
-      for {item_id, chance, qty} <- kind.loot, :rand.uniform() < chance do
+      for {item_id, chance, qty} <- kind.loot, :rand.uniform() < chance * mult do
         %{item_id: item_id, quantity: Enum.random(qty)}
       end
 
-    drops = for {item_id, chance} <- Map.get(kind, :drops, []), :rand.uniform() < chance, do: %{item_id: item_id, quantity: 1}
+    drops = for {item_id, chance} <- Map.get(kind, :drops, []), :rand.uniform() < chance * mult, do: %{item_id: item_id, quantity: 1}
 
-    weapon ++ off ++ junk ++ drops
+    tables = Enum.uniq(List.wrap(Map.get(kind, :loot_tables, [])) ++ List.wrap(Map.get(mob, :loot_tables, [])))
+    times = if Map.get(mob, :elite, false), do: 2, else: 1
+
+    extra =
+      if tables == [] do
+        %{items: [], coins: 0}
+      else
+        Enum.reduce(1..times, %{items: [], coins: 0}, fn _, acc ->
+          r = Loot.roll_many(tables, mob.level)
+          %{items: acc.items ++ r.items, coins: acc.coins + r.coins}
+        end)
+      end
+
+    {weapon ++ off ++ junk ++ drops ++ extra.items, extra.coins}
   end
 
   # ---------------------------------------------------------------------------
@@ -888,7 +1019,12 @@ defmodule BaconWorld.Mobs.Brain do
       target: m.target,
       corpse: m.corpse && %{owner: m.corpse.owner, empty: m.corpse.items == [] and m.corpse.coins == 0},
       boss: Map.get(Spawns.kind(m.kind), :boss, false),
-      scale: Map.get(Spawns.kind(m.kind), :scale, 1.0)
+      # an elite stands a little taller (the client multiplies its own size for the kind by this)
+      scale: Map.get(Spawns.kind(m.kind), :scale, 1.0) * if(Map.get(m, :elite, false), do: 1.12, else: 1.0),
+      # the rig to draw: a monster type made on the Bestiary page borrows one ("goblin", "orc"...;
+      # nil: the kind's own, mobs-view.ts)
+      model: Map.get(Spawns.kind(m.kind), :model),
+      elite: Map.get(m, :elite, false)
     }
   end
 

@@ -68,7 +68,17 @@ defmodule BaconWorld.Tuning do
     "xp_mult" => 1.0,
     "regen_interval_ms" => 4000.0,
     "regen_pool_div" => 12.0,
-    "pvp_damage_mult" => 1.0
+    "pvp_damage_mult" => 1.0,
+    # 2026-11-03, the Bestiary (BaconWorld.Mobs.Camps, BaconWorld.Loot, BaconWorld.LiveEvents)
+    "xp_curve_mult" => 1.0,
+    "rank_elite_xp_mult" => 1.5,
+    "rank_rare_xp_mult" => 2.0,
+    "rank_boss_xp_mult" => 1.0,
+    "elite_hp_mult" => 1.8,
+    "elite_dmg_mult" => 1.35,
+    "elite_xp_mult" => 2.0,
+    "loot_chance_mult" => 1.0,
+    "coin_mult" => 1.0
   }
 
   @specs [
@@ -86,7 +96,16 @@ defmodule BaconWorld.Tuning do
     %{key: "xp_mult", label: "Experience multiplier", group: "World & Progression", min: 0.25, max: 5.0, step: 0.1, unit: "×", desc: "Scales experience awarded for slaying creatures."},
     %{key: "regen_interval_ms", label: "Regeneration tick interval", group: "World & Progression", min: 1000.0, max: 15000.0, step: 500.0, unit: "ms", desc: "Milliseconds between natural HP/MP regeneration ticks."},
     %{key: "regen_pool_div", label: "Regeneration pool divisor", group: "World & Progression", min: 4.0, max: 40.0, step: 1.0, unit: "div", desc: "Each tick restores 1/N of max HP and max MP."},
-    %{key: "pvp_damage_mult", label: "PvP damage multiplier", group: "World & Progression", min: 0.25, max: 2.0, step: 0.05, unit: "×", desc: "Scales damage dealt between PvP-flagged players."}
+    %{key: "pvp_damage_mult", label: "PvP damage multiplier", group: "World & Progression", min: 0.25, max: 2.0, step: 0.05, unit: "×", desc: "Scales damage dealt between PvP-flagged players."},
+    %{key: "xp_curve_mult", label: "Experience to level", group: "Creatures, Loot & Experience", min: 0.25, max: 4.0, step: 0.05, unit: "×", desc: "Scales the experience every level needs (below 1 levels come faster)."},
+    %{key: "rank_elite_xp_mult", label: "Elite-rank monster experience", group: "Creatures, Loot & Experience", min: 0.5, max: 10.0, step: 0.1, unit: "×", desc: "Experience for monster types ranked Elite on the Bestiary page."},
+    %{key: "rank_rare_xp_mult", label: "Rare-rank monster experience", group: "Creatures, Loot & Experience", min: 0.5, max: 10.0, step: 0.1, unit: "×", desc: "Experience for monster types ranked Rare (named spawns)."},
+    %{key: "rank_boss_xp_mult", label: "Boss experience", group: "Creatures, Loot & Experience", min: 0.5, max: 20.0, step: 0.1, unit: "×", desc: "Experience for bosses. At 1 a boss is worth what any creature of its level is."},
+    %{key: "elite_hp_mult", label: "Camp elite health", group: "Creatures, Loot & Experience", min: 1.0, max: 5.0, step: 0.05, unit: "×", desc: "Hit points of an elite rolled by a camp's elite chance."},
+    %{key: "elite_dmg_mult", label: "Camp elite damage", group: "Creatures, Loot & Experience", min: 1.0, max: 3.0, step: 0.05, unit: "×", desc: "Damage of a camp elite's attacks."},
+    %{key: "elite_xp_mult", label: "Camp elite experience", group: "Creatures, Loot & Experience", min: 1.0, max: 10.0, step: 0.1, unit: "×", desc: "Experience for killing a camp elite (on top of its rank)."},
+    %{key: "loot_chance_mult", label: "Loot chance multiplier", group: "Creatures, Loot & Experience", min: 0.1, max: 5.0, step: 0.05, unit: "×", desc: "Scales every drop chance (capped at 100%) and thins out the loot tables' empty rolls."},
+    %{key: "coin_mult", label: "Coin multiplier", group: "Creatures, Loot & Experience", min: 0.1, max: 10.0, step: 0.05, unit: "×", desc: "Scales the coins creatures and cleared camps carry."}
   ]
 
   def defaults, do: @defaults

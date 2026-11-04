@@ -10,15 +10,22 @@ defmodule BaconWorld.Progression do
   nothing (grey), one at your level the full amount, tougher ones a little more.
   """
 
-  alias BaconWorld.{Tuning, World}
+  alias BaconWorld.{LiveEvents, Tuning, World}
 
   @max_level 50
 
   def max_level, do: @max_level
 
-  @doc "Experience needed to go from `level` to the next."
+  @doc "Experience needed to go from `level` to the next (times World tuning's `xp_curve_mult`)."
   def xp_to_next(level) when level >= @max_level, do: 0
-  def xp_to_next(level) when level >= 1, do: round(60 * :math.pow(level, 1.6)) + 40
+  def xp_to_next(level) when level >= 1, do: max(1, round((round(60 * :math.pow(level, 1.6)) + 40) * curve_mult()))
+
+  defp curve_mult do
+    case Tuning.get("xp_curve_mult") do
+      n when is_number(n) and n > 0 -> n * 1.0
+      _ -> 1.0
+    end
+  end
 
   @doc "Hit points at a level (before gear)."
   def max_hp(level), do: 40 + (level - 1) * 14
@@ -49,8 +56,12 @@ defmodule BaconWorld.Progression do
     end
   end
 
-  @doc "Experience for killing a creature of `mob_level` at `player_level`."
-  def kill_xp(mob_level, player_level) do
+  @doc """
+  Experience for killing a creature of `mob_level` at `player_level`: World tuning's `xp_mult`
+  and any XP event running (`BaconWorld.LiveEvents`) included; `mult` is the creature's own
+  (`BaconWorld.Mobs.Brain.xp_mult/1`: its type, rank, elite, a camp's clear).
+  """
+  def kill_xp(mob_level, player_level, mult \\ 1.0) do
     base = 18 + mob_level * mob_level * 6
 
     scale =
@@ -64,7 +75,7 @@ defmodule BaconWorld.Progression do
         :red -> 1.3
       end
 
-    round(base * scale * Tuning.get("xp_mult"))
+    round(base * scale * Tuning.get("xp_mult") * LiveEvents.mult(:xp) * mult)
   end
 
   @doc """

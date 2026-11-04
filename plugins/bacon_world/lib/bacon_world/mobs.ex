@@ -67,6 +67,21 @@ defmodule BaconWorld.Mobs do
   """
   def put_points(slug, placement_id, points), do: cast(slug, {:put_points, placement_id, points})
 
+  @doc """
+  A managed camp (`BaconWorld.Mobs.Camps`) was saved (or deleted: `camp` nil): its creatures in
+  zone `slug` start over. Moving a camp to another zone: call it for the old zone with nil.
+  """
+  def put_camp(slug, camp_id, camp), do: cast(slug, {:put_camp, camp_id, camp})
+
+  @doc "A managed camp's creatures and clears, for the admin: `{:ok, status}` or `{:error, reason}`."
+  def camp_status(slug, camp_id), do: call(slug, {:camp_status, camp_id}, {:error, :mobs_unavailable})
+
+  @doc "Brings back at once a managed camp's dead and gone creatures."
+  def respawn_camp(slug, camp_id), do: cast(slug, {:camp_respawn, camp_id})
+
+  @doc "Clears a managed camp out: its creatures vanish and come back on their timers."
+  def despawn_camp(slug, camp_id), do: cast(slug, {:camp_despawn, camp_id})
+
   def loot_open(slug, mob_id, character_id, pos), do: call(slug, {:loot_open, mob_id, character_id, pos}, {:error, :mobs_unavailable})
   def loot_take(slug, mob_id, character_id, index), do: call(slug, {:loot_take, mob_id, character_id, index}, {:error, :mobs_unavailable})
   def loot_return(slug, mob_id, item), do: cast(slug, {:loot_return, mob_id, item})

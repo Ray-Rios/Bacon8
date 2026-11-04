@@ -813,7 +813,8 @@ defmodule BaconWorldWeb.GameEvents do
 
       xp =
         Enum.reduce(kills, 0, fn k, acc ->
-          shares = BaconWorld.Groups.shares(k.level, [{me.character_id, level} | near])
+          # the creature's own worth (its type, rank, elite, a camp's clear: Brain.xp_mult/1, Zone)
+          shares = BaconWorld.Groups.shares(k.level, [{me.character_id, level} | near], Map.get(k, :xp_mult, 1.0))
           BaconWorld.Groups.award(me.character_id, shares, k.level)
           acc + Map.get(shares, me.character_id, 0)
         end)

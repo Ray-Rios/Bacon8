@@ -48,6 +48,12 @@ defmodule BaconWorldWeb.Admin.HomeLive do
             >
               🗄️ Database
             </.link>
+            <.link
+              navigate="/admin/bacon_world/bestiary"
+              class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+            >
+              🐉 Bestiary &amp; camps
+            </.link>
             <a href="/games/bacon_world" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md text-sm font-medium">
               ▶ Play
             </a>

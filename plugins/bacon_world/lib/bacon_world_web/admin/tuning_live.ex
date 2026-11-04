@@ -20,7 +20,9 @@ defmodule BaconWorldWeb.Admin.TuningLive do
     {"Melee & Ranged", "⚔️ Melee Combat", "Base weapon rolls, level scaling, critical hits, and heavy swings."},
     {"Spells & Abilities", "✨ Spell Combat", "Spell critical hit rate and critical damage multiplier."},
     {"Armour & Mitigation", "🛡️ Armour & AC Mitigation", "Hyperbolic Armour Class reduction: AC / (AC + soft_cap), capped at max_mitigation."},
-    {"World & Progression", "🌍 World & Progression", "Experience gain, creature health/damage multipliers, PvP damage, and out-of-combat regeneration."}
+    {"World & Progression", "🌍 World & Progression", "Experience gain, creature health/damage multipliers, PvP damage, and out-of-combat regeneration."},
+    # 2026-11-03: the Bestiary's numbers (its Experience tab edits the same ones)
+    {"Creatures, Loot & Experience", "🐉 Creatures, Loot & Experience", "Level pacing, monster ranks, camp elites, drop chances and coins (also on the Bestiary page)."}
   ]
 
   @impl true

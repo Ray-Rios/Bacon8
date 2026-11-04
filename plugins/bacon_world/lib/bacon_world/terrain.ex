@@ -79,6 +79,18 @@ defmodule BaconWorld.Terrain do
     :ok
   end
 
+  @doc "Runs `fun` with this process working in zone `slug`, then puts back the zone it had (2026-11-03)."
+  def with_zone(slug, fun) when is_function(fun, 0) do
+    prev = Process.get(@here)
+    use_zone(slug)
+
+    try do
+      fun.()
+    after
+      if prev, do: Process.put(@here, prev), else: Process.delete(@here)
+    end
+  end
+
   @doc "In the lobby (no other zone set for this process)."
   def lobby?, do: Process.get(@here) == nil
 
