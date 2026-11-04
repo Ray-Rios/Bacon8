@@ -277,7 +277,7 @@ defmodule BaconStoreWeb.StoreLive do
   def render(assigns) do
     ~H"""
     <.store_styles />
-    <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto bg-black" data-store-scroll>
+    <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto" data-store-scroll>
       <div class="mx-auto max-w-6xl px-6 py-12">
         <div class="mb-8 flex flex-wrap items-end justify-between gap-6">
           <div>

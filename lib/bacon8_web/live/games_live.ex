@@ -46,7 +46,7 @@ defmodule Bacon8Web.GamesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto bg-black">
+    <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto">
       <div class="max-w-5xl mx-auto px-6 py-16">
         <h1 class="games-title text-3xl sm:text-4xl font-extrabold mb-2" data-text="Games">
           Games<i class="gt-glint" style="--x:12%;--y:18%;--d:.55s"></i><i class="gt-glint" style="--x:58%;--y:8%;--d:.85s"></i><i class="gt-glint" style="--x:92%;--y:62%;--d:1.1s"></i>

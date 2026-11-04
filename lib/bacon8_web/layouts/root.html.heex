@@ -38,15 +38,8 @@
   <body class="bg-black antialiased" phx-hook="GlobalHooks" id="global-glass-theme">
     <!-- Global background canvas (outside LiveView-managed @inner_content to avoid being patched) -->
     <%!-- Determine user's background preference and render either a Three.js scene hook or a CSS overlay for gradient/solid --%>
-    <%!-- The games list and plugin pages (games) get a plain black background. --%>
-    <% desktop_hub? = assigns[:live_module] == Bacon8Web.GamesLive or assigns[:bacon8_plugin] != nil %>
-    <% bg_pref = if desktop_hub?, do: "solid", else: (assigns[:current_user] && assigns[:current_user].background_preference) || "galaxy" %>
-    <% custom =
-      if desktop_hub? do
-        %{"solid_color" => "#000000"}
-      else
-        (assigns[:current_user] && assigns[:current_user].background_custom_data) || %{}
-      end %>
+    <% bg_pref = (assigns[:current_user] && assigns[:current_user].background_preference) || "galaxy" %>
+    <% custom = (assigns[:current_user] && assigns[:current_user].background_custom_data) || %{} %>
 
     <!-- Initialize glass theme globally -->
     <script>

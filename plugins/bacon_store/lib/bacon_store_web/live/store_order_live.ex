@@ -141,7 +141,7 @@ defmodule BaconStoreWeb.StoreOrderLive do
   def render(assigns) do
     ~H"""
     <.store_styles />
-    <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto bg-black">
+    <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto">
       <div class="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <.link navigate={~p"/store"} class="text-sm text-gray-400 hover:text-white">← Store</.link>
 

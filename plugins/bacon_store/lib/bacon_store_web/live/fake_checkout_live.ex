@@ -53,7 +53,7 @@ defmodule BaconStoreWeb.FakeCheckoutLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto bg-black">
+    <div class="fixed top-[30px] inset-x-0 bottom-0 z-40 overflow-y-auto">
       <div class="max-w-md mx-auto px-6 py-16">
         <div class="glass-dark rounded-lg p-6 border border-yellow-600">
           <div class="text-xs uppercase tracking-wide text-yellow-400 mb-2">Test checkout - no real money</div>

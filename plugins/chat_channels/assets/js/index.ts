@@ -215,7 +215,79 @@ const MessageList = {
   }
 };
 
-// ChatInput Hook - Handle Enter key to submit, Shift+Enter for newline
+function extractFiles(clipboardData: DataTransfer | null): File[] {
+  if (!clipboardData) return [];
+  const files: File[] = [];
+
+  // 1. Files from clipboard (e.g. copied from file explorer or browser)
+  if (clipboardData.files && clipboardData.files.length > 0) {
+    for (let i = 0; i < clipboardData.files.length; i++) {
+      const f = clipboardData.files[i];
+      if (f && f.size > 0) files.push(f);
+    }
+  }
+
+  // 2. Items/blobs from clipboard (e.g. screenshots)
+  if (files.length === 0 && clipboardData.items && clipboardData.items.length > 0) {
+    for (let i = 0; i < clipboardData.items.length; i++) {
+      const item = clipboardData.items[i];
+      if (item.kind === 'file') {
+        const f = item.getAsFile();
+        if (f && f.size > 0) files.push(f);
+      }
+    }
+  }
+
+  return files;
+}
+
+function mimeToExt(mimeType: string): string {
+  if (!mimeType) return 'png';
+  const match = mimeType.match(/^[a-zA-Z0-9\-_]+\/([a-zA-Z0-9\-_]+)$/);
+  if (match) {
+    const sub = match[1].toLowerCase();
+    if (sub === 'jpeg') return 'jpg';
+    if (sub === 'plain') return 'txt';
+    return sub;
+  }
+  return 'png';
+}
+
+function normalizeFile(file: File, index: number): File {
+  let name = file.name || '';
+  const isGeneric = !name || name === 'image.png' || name === 'blob' || !name.includes('.');
+  if (isGeneric) {
+    const ext = mimeToExt(file.type);
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timestamp = '' + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + '_' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+    name = 'paste_' + timestamp + (index > 0 ? '_' + index : '') + '.' + ext;
+  }
+  try {
+    return new File([file], name, { type: file.type || 'image/png', lastModified: file.lastModified || Date.now() });
+  } catch (_e) {
+    return file;
+  }
+}
+
+function uploadPastedFiles(files: File[], fileInput: HTMLInputElement): boolean {
+  if (!fileInput || files.length === 0) return false;
+  try {
+    const dt = new DataTransfer();
+    for (let i = 0; i < files.length; i++) {
+      dt.items.add(normalizeFile(files[i], i));
+    }
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  } catch (err) {
+    console.error('Failed to attach pasted files to file input:', err);
+    return false;
+  }
+}
+
+// ChatInput Hook - Handle Enter key to submit, Shift+Enter for newline, and paste (Ctrl+V) file uploads
 const ChatInput = {
   mounted(this: any) {
     // Handle Enter key
@@ -252,9 +324,67 @@ const ChatInput = {
         this.el.dispatchEvent(new Event('input', { bubbles: true }));
       }
     });
+
+    // Handle file upload via paste (Ctrl+V) directly on this input
+    this.onPaste = (e: ClipboardEvent) => {
+      const files = extractFiles(e.clipboardData);
+      if (files.length === 0) return; // Allow normal text paste
+
+      e.preventDefault();
+      const form = this.el.closest('form');
+      const fileInput = form?.querySelector('input[type="file"]') as HTMLInputElement | null;
+      if (fileInput) {
+        uploadPastedFiles(files, fileInput);
+      }
+    };
+    this.el.addEventListener('paste', this.onPaste);
+
+    // Global paste listener on window (mounted only once from the main chat composer)
+    if (this.el.id === 'chat-input-textarea') {
+      this.onWindowPaste = (e: ClipboardEvent) => {
+        // Skip if active element is an input, textarea, or contenteditable
+        const active = document.activeElement as HTMLElement | null;
+        const isOtherInput = active && (
+          active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.isContentEditable
+        );
+        if (isOtherInput) return;
+
+        const files = extractFiles(e.clipboardData);
+        if (files.length === 0) return;
+
+        e.preventDefault();
+
+        // Determine target form: reply modal if open, edit modal if open, else main composer
+        let targetTextarea: HTMLTextAreaElement = this.el;
+        const reply = document.getElementById('reply-message-textarea') as HTMLTextAreaElement | null;
+        const edit = document.getElementById('edit-message-textarea') as HTMLTextAreaElement | null;
+        if (reply && reply.offsetParent !== null) {
+          targetTextarea = reply;
+        } else if (edit && edit.offsetParent !== null) {
+          targetTextarea = edit;
+        }
+
+        const form = targetTextarea.closest('form');
+        const fileInput = form?.querySelector('input[type="file"]') as HTMLInputElement | null;
+        if (fileInput) {
+          uploadPastedFiles(files, fileInput);
+          targetTextarea.focus();
+        }
+      };
+      window.addEventListener('paste', this.onWindowPaste);
+    }
   },
   updated(this: any) {},
-  destroyed(this: any) {}
+  destroyed(this: any) {
+    if (this.onPaste) {
+      this.el.removeEventListener('paste', this.onPaste);
+    }
+    if (this.onWindowPaste) {
+      window.removeEventListener('paste', this.onWindowPaste);
+    }
+  }
 };
 
 // Sidebar Resizer Hook

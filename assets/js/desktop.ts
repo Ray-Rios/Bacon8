@@ -74,11 +74,11 @@ const DesktopWindow: any = {
         try {
           // Use pushEventTo to target the LiveComponent directly
           if ((this as any).pushEventTo && this.windowId && this.desktopTarget) {
-            (this as any).pushEventTo(this.desktopTarget, 'update_window_position', {
+            ((this as any).pushEventTo(this.desktopTarget, 'update_window_position', {
               window_id: this.windowId,
               x: left,
               y: top
-            });
+            }) as any)?.catch?.(() => {});
           }
         } catch (e) {
           console.error('Failed to push window position update', e);
@@ -116,10 +116,10 @@ const DesktopWindow: any = {
     (this as any).handleEvent("prompt_folder_name", ({window_id}: {window_id: string}) => {
       const name = prompt("Enter folder name:");
       if (name && name.trim()) {
-        (this as any).pushEvent("fm_create_folder", {
+        ((this as any).pushEvent("fm_create_folder", {
           window_id: window_id,
           name: name.trim()
-        });
+        }) as any)?.catch?.(() => {});
       }
     });
   },
@@ -206,13 +206,13 @@ const ResizeHandle: any = {
         try {
           // Use pushEventTo to target the LiveComponent directly
           if ((this as any).pushEventTo && this.windowId && this.desktopTarget) {
-            (this as any).pushEventTo(this.desktopTarget, 'update_window_layout', {
+            ((this as any).pushEventTo(this.desktopTarget, 'update_window_layout', {
               window_id: this.windowId,
               width,
               height,
               x: left,
               y: top
-            });
+            }) as any)?.catch?.(() => {});
           }
         } catch (e) {
           console.error('Failed to push window layout update', e);

@@ -5,4 +5,8 @@ defmodule Bacon8Web.PageController do
   def index(conn, _params) do
     render(conn, :index)
   end
+
+  def redirect_to_store(conn, _params) do
+    redirect(conn, to: "/store")
+  end
 end

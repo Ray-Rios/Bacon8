@@ -173,3 +173,40 @@ convert.sh, loop.sh, shrink.sh).
 | boss_4 | [boss-battle-theme](https://opengameart.org/content/boss-battle-theme) | CleytonKauffman |
 | boss_5 | [boss-battle-music](https://opengameart.org/content/boss-battle-music) | SubspaceAudio |
 | boss_6 | [determined-pursuit-epic-orchestra-loop](https://opengameart.org/content/determined-pursuit-epic-orchestra-loop) | Emma_MA |
+
+## 2026-11-03: 30 new ambient music tracks
+
+Added 30 tracks to broaden exploration, night, lair, and boss encounters. The tracks are loaded lazy on demand (`preload="metadata"`) and streamed progressively without browser cache bloat.
+
+| File | Original Title | Category |
+|---|---|---|
+| day_28 | Silverleaf Sanctuary Harp | Day |
+| day_29 | Candlelight at Oakhaven Lute | Day |
+| day_30 | Vespers of the Old Abbey | Day |
+| day_31 | Minstrel's Evening Ballad | Day |
+| day_32 | Reflection on Mirror Lake | Day |
+| day_33 | Cobblestone Morning Prelude | Day |
+| day_34 | Slumber of the Elder Trees | Day |
+| day_35 | Warm Mead and Hearthstone | Day |
+| day_36 | Woodland Brook and Celtic Harp | Day |
+| day_37 | Mossy Stream Wandering Lute | Day |
+| night_24 | Warm Rain on Ancient Stones | Night |
+| night_25 | Pine Valley Breeze and Lyre | Night |
+| night_26 | Crackling Campfire Night Lute | Night |
+| night_27 | Cascade Pool Sanctuary Harp | Night |
+| night_28 | Coastal Cliffs Ocean Surf Lute | Night |
+| night_29 | Distant Thunder Over the Moor | Night |
+| lair_14 | High Road to Valgarda | Lair |
+| lair_15 | Sails of the Western Isles | Lair |
+| lair_16 | Banners of the Free March | Lair |
+| lair_17 | Catacombs of the First Kings | Lair |
+| lair_18 | Spice Caravan of the Dunes | Lair |
+| lair_19 | Ridge of the Sky Watch | Lair |
+| lair_20 | Tournament at Highgarden | Lair |
+| boss_7 | Clash of Broadswords Skirmish | Boss |
+| boss_8 | Wolves of the Black Briar | Boss |
+| boss_9 | Battering Rams at the Gate | Boss |
+| boss_10 | Whirlwind of Steel Duel | Boss |
+| boss_11 | Maw of the Cinder Drake | Boss |
+| boss_12 | Oathbreaker Titan (5/4 Boss) | Boss |
+| boss_13 | Twilight of the Immortals | Boss |
