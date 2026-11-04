@@ -79,6 +79,19 @@ defmodule BaconStoreWeb.Admin.ProductsLive do
     end
   end
 
+  # Sell a plugin (2026-11-03, BaconStore.Store.Releases): a draft download product for an
+  # installed plugin, whose files are releases cut from its git release branches.
+  def handle_event("sell_plugin", %{"plugin" => slug, "price" => price}, socket) do
+    with mod when not is_nil(mod) <- Enum.find(Bacon8.Plugins.installed(), &(&1.slug() == slug)),
+         {dollars, _} <- Float.parse(String.trim(price)),
+         {:ok, product} <- BaconStore.Store.Releases.ensure_plugin_product(slug, mod.name(), round(dollars * 100)) do
+      {:noreply, push_navigate(socket, to: ~p"/admin/bacon_store/products/#{product.id}")}
+    else
+      {:error, cs} -> {:noreply, put_flash(socket, :error, "Couldn't make it: #{first_error(cs)}.")}
+      _ -> {:noreply, put_flash(socket, :error, "Pick a plugin and a price.")}
+    end
+  end
+
   def handle_event("move_category", %{"id" => id, "dir" => dir}, socket) do
     cats = socket.assigns.categories
     i = Enum.find_index(cats, &(&1.id == id))
@@ -137,6 +150,21 @@ defmodule BaconStoreWeb.Admin.ProductsLive do
               <p class="mt-1 text-xs leading-snug text-gray-400">{hint}</p>
             </.link>
           </div>
+
+          <form phx-submit="sell_plugin" class="mb-8 flex flex-wrap items-end gap-3 rounded-xl border border-gray-700 bg-gray-900/60 p-4 text-sm">
+            <div class="w-full text-gray-300">
+              <span class="font-semibold text-white">Sell a plugin</span>: a draft download for another hub's owner, updated from the plugin's release branches.
+            </div>
+            <label class="text-gray-400">Plugin
+              <select name="plugin" class="block rounded-lg border-gray-600 bg-gray-800 text-white">
+                <option :for={m <- Bacon8.Plugins.installed()} value={m.slug()}>{m.name()}</option>
+              </select>
+            </label>
+            <label class="text-gray-400">Card price ($)
+              <input name="price" value="25" class="block w-28 rounded-lg border-gray-600 bg-gray-800 text-white" />
+            </label>
+            <button class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-500">Make the product</button>
+          </form>
 
           <div class="mb-4 flex flex-wrap gap-2">
             <.link patch={~p"/admin/bacon_store/products"} class={chip(@kind == nil)}>All</.link>

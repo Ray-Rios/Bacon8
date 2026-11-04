@@ -16,7 +16,7 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-10-29**.
+Last substantive update: **2026-11-04**.
 
 **Where things stand.** The dated change notes that used to open this file (2026-10-20 to 2026-10-29) were
 removed on 2026-10-29: `git log` has them, and what is still true of each change lives in the section it
@@ -34,6 +34,24 @@ belongs to (the decisions log in §2, the subsystem sections, the invariants). T
 - **Plugins.** `bacon_store`, `bacon_world`, `chat_channels` (the forum, at `/chat`) and `feedback` (Suggestions &
   Bugs, with a queue that hands work to Claude; its README has the loop) ship with the hub. `rays_space_sim` is a
   private plugin with the Unreal project nested inside it (§4, §9).
+
+**2026-11-03/04** (one long cloud session; uncommitted until Claude Code verifies it, see `handoff/`):
+
+- **Trust and safety** (§15): a public report form at `/report` (including TAKE IT DOWN and DMCA requests), the
+  admin queue at `/admin/moderation`, child-abuse and intimate-image reports hidden at once, evidence kept for a
+  year, removed files' hashes refused on every upload path.
+- **Phone notifications** (§16): Web Push. Everything that rings the bell also reaches the phones and browsers
+  people turned on (Android; iPhone from the Home Screen). `/admin/notifications` sends announcements.
+- **Plugins for sale** (§8 "Plugins for sale"): a store product per plugin, its downloads cut from git release
+  branches `release/<plugin>/<version>` by `scripts/release/package_plugin.py`.
+- **Bacon World's creatures** are data: camps, spawn rotation, rares, loot tables, live XP and loot events, on
+  `/admin/bacon_world/bestiary` (`BACON_WORLD.md`, "Creatures, camps and loot").
+- **Two new games**, private plugins with the engine project inside (§9 "Artillery and City Planner"):
+  `artillery` (Godot 4.6) and `city_planner` (Unity 6.3, scans hand-drawn floor plans into buildings, VR).
+- **Rotating secrets** (§17): what each secret costs to change, how often, and
+  `scripts/security/rotate-secrets.sh`.
+- **Real visitor addresses** (§18): `Bacon8Web.ClientIP` reads the visitor's address once, from the ingress only;
+  a Cloudflare Tunnel (`k3s/cloudflared/`) is what brings the real address past Docker Desktop.
 
 **Next session, start here:**
 
@@ -63,6 +81,10 @@ belongs to (the decisions log in §2, the subsystem sections, the invariants). T
 12. [Roadmap](#12-roadmap)
 13. [Known debt](#13-known-debt)
 14. [Development workflow](#14-development-workflow)
+15. [Trust and safety](#15-trust-and-safety)
+16. [Phone and desktop notifications](#16-phone-and-desktop-notifications)
+17. [Rotating secrets](#17-rotating-secrets)
+18. [Real visitor addresses](#18-real-visitor-addresses)
 
 ---
 
@@ -173,7 +195,14 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-29 | **The Unreal project lives inside its plugin**, at `plugins/rays_space_sim/unreal/` (its own nested git; it was `/RaysSpaceSim/` beside `plugins/`). One game, one folder, one name. Scripts find it through the plugin's own location, not the hub root. | Owner's request: two folders with the same name was confusing. |
 | 2026-10-29 | **The store sells several items in one purchase** (a cart; one receipt with one order number). Each item stays its own order underneath. | Owner's request: the front page shows a multi-item order, and the store only sold one item at a time. |
 | 2026-10-28 | **Site backgrounds are SVG and CSS, never WebGL.** Six cosmic kinds (`Cosmos.kinds/0`) built from drifting SVG star tiles, gradients and CSS 3D transforms; only transform and opacity animate. | Owner's request: the three.js scenes made phones lag on every page. A game page that wants 3D draws its own. |
-| 2026-10-27 | **Behind Docker Desktop every visitor's address is the node's own, `192.168.65.3`** (the Kubernetes node's InternalIP; Docker's port forwarding replaces the client address before nginx sees it, and the ingress adds no real-IP header). It names no one, so `Bacon8.Security.blockable_ip?/1` refuses to block private, loopback and link-local addresses (the Block buttons, the honeypot, the suspicious-request plug, and the blocker plug all check it), and sign-ins are throttled by the account (`Security.throttle_key/2`) when the address names no one. Other per-address limits (registration 5 per address, the API's 200 a minute, `auth_login` 5 per 5 minutes in the router) are still shared by all visitors until real addresses are passed on. | Found from the security page, which showed internet scanners (`/blog/.env`, `wp-config.php`) as one internal address: it is not a compromised container. A shared address meant one scanner's probes, or five wrong passwords, could block or lock out every member. Real addresses need a proxy in front that passes them on (the owner's call). |
+| 2026-10-27 | **Behind Docker Desktop every visitor's address is the node's own, `192.168.65.3`** (the Kubernetes node's InternalIP; Docker's port forwarding replaces the client address before nginx sees it, and the ingress adds no real-IP header). It names no one, so `Bacon8.Security.blockable_ip?/1` refuses to block private, loopback and link-local addresses (the Block buttons, the honeypot, the suspicious-request plug, and the blocker plug all check it), and sign-ins are throttled by the account (`Security.throttle_key/2`) when the address names no one. Other per-address limits (registration 5 per address, the API's 200 a minute, `auth_login` 5 per 5 minutes in the router) are still shared by all visitors ~~until real addresses are passed on~~ (2026-11-04: until the Cloudflare Tunnel is set up, §18). | Found from the security page, which showed internet scanners (`/blog/.env`, `wp-config.php`) as one internal address: it is not a compromised container. A shared address meant one scanner's probes, or five wrong passwords, could block or lock out every member. Real addresses need a proxy in front that passes them on (the owner's call). |
+| 2026-11-03 | **Illegal content: hide first, keep evidence, report, then ban.** Reports of child sexual abuse material, child exploitation or intimate images shared without consent hide the thing at once, from everyone including staff; staff keep the evidence (a year, outside the drive's garbage collector) before removing, report child abuse to NCMEC themselves (the hub records the report number), and only then ban. Removed files' SHA-256s are refused on every upload path. The admin queue never shows a child-abuse report's content. Matching altered copies is left to PhotoDNA or Cloudflare's CSAM Scanning Tool (owner's sign-up). | US law (18 U.S.C. §2258A as amended by the REPORT Act; the TAKE IT DOWN Act's 48-hour removal from 2026-05-19) and the owner's question "how will we handle illegal content". §15. |
+| 2026-11-03 | **Phone notifications are Web Push first, not an app.** The installable site plus Web Push reaches Android browsers and iPhones (iOS 16.4+, from the Home Screen) with no store accounts, review or Firebase; a native wrapper only if store presence is wanted. The push worker is `/push/sw.js` with the scope `/push/`, never `/`, where Bacon World's game worker is. Only push services' own hosts are ever called. | Owner: "/chat may need an android/iphone app for notifications". §16. |
+| 2026-11-03 | **Plugins are sold from git release branches.** `release/<plugin>/<version>`, never moved; `scripts/release/package_plugin.py` archives the plugin as committed on that branch (never the working tree), refuses secret-looking files and adds `RELEASE.json`; the store recognises such a zip and records the release (branch, commit). One plugin per product; a release can be withdrawn without deleting buyers' past downloads. | Owner: "associate downloadable plugins to release branches". §8. |
+| 2026-11-03 | **New game plugins are private by default, with the engine project inside** (`plugins/artillery/godot`, `plugins/city_planner/unity`), as RaysSpaceSim's Unreal project is. The hub's `.gitignore` hides them until the owner decides: their own repository, or listed to ship with the hub. | Same rule as 2026-10-29 (one game, one folder); keeps sellable games out of the public repo until decided. |
+| 2026-11-04 | **Real visitor addresses come through a Cloudflare Tunnel, and the hub reads them in one place.** `Bacon8Web.ClientIP` (first plug in the endpoint) sets `conn.remote_ip` from `X-Real-IP`, else the rightmost untrusted `X-Forwarded-For` hop, only when the connection comes from a private address (the ingress); everything else reads `conn.remote_ip`. Before, five plugs each took the *first* `X-Forwarded-For` entry, which any visitor can write. ingress-nginx believes `CF-Connecting-IP` only from the tunnel pods' range (`k3s/cloudflared/`). | Owner: "/admin/security ... shows all attacks coming through as a docker desktop address". Docker Desktop's port forward drops the address and no cluster setting restores it; a tunnel dials out, so the address arrives in a header from Cloudflare. Also hides the home address and closes the router's ports. §18. |
+| 2026-11-04 | **Secrets are rotated by one script, on a schedule and after any exposure.** `scripts/security/rotate-secrets.sh` (backup, generate, apply, restart; DB password changed in Postgres first); providers' keys (Stripe, SMTP) are typed in, never on the command line. | Owner asked for a rotation strategy after a cloud copy of the secrets files (deleted unread, 2026-11-04). §17. |
+| 2026-11-04 | **City Planner scans drawings in the game, not on the hub.** The scanner is plain C# inside the Unity project (tested with .NET outside Unity); the hub only stores the photos (as drive files, under moderation) and the plans. | Works offline and on a headset; no image-processing service to run and secure on the hub. |
 
 ---
 
@@ -406,6 +435,13 @@ Each of these has already cost a build, an outage, or a security hole.
     them an hour (`cache_control_for_etags`). Before 2026-10-26 it was a year, and Bacon World's
     players had to hard-refresh after every deploy.
 
+19. **The visitor's address is `conn.remote_ip`, set once by `Bacon8Web.ClientIP`.** Never read
+    `x-forwarded-for` or `x-real-ip` yourself: the first `X-Forwarded-For` entry is whatever the
+    visitor typed. `ClientIP` believes those headers only from a trusted (private) peer, i.e.
+    the ingress; LiveViews use `Bacon8Web.ClientIP.from_socket/1` (connect info `:peer_data` and
+    `:x_headers`). Keep the plug first in the endpoint, before anything logs or limits by address,
+    and never add Docker Desktop's `192.168.65.0/24` to ingress-nginx's `proxy-real-ip-cidr` (§18).
+
 ---
 
 ## 7. User storage and the file explorer
@@ -547,6 +583,29 @@ removed rather than kept as a `fixed` route.
 Download size is capped by `config :bacon8, BaconStore.Store, max_download_bytes:` (default 2 GiB). Uploads go through the LiveView socket in 1 MB chunks and are staged in the pod's temp directory first, so the pod needs that much free temp space.
 
 Next: card subscriptions for storage tiers and VIP channels (Stripe Billing), then PayPal.
+
+### Plugins for sale (2026-11-03)
+
+A plugin is sold as a `download` product whose files are its releases (`BaconStore.Store.Releases`,
+table `store_product_releases`). Built and tested in the cloud 2026-11-03; no release cut yet.
+
+1. **Cut a release branch** from committed, tested work: `release/<plugin>/<version>` (never moved; a fix is a
+   new version). The plugin's `use Bacon8.Plugin, version:` must say the same version on that branch.
+2. **Package it on the development PC** (production has no git):
+   `python3 scripts/release/package_plugin.py <plugin> <version> [--cut <ref>] [--notes "..."]` archives the
+   plugin's folder as committed on that branch (`git archive`; uncommitted work, gitignored files and nested
+   repositories stay out), from the hub's repository or, for a private plugin, its own (`plugins/<slug>/.git`).
+   It refuses secret-looking files (`*secrets.yaml`, `.env*`, keys, certificates), adds `RELEASE.json`
+   (plugin, version, branch, commit, built_at, notes) and writes `tmp/releases/<plugin>-<version>.zip`.
+3. **Sell it**: `/admin/bacon_store/products` → "Sell a plugin" makes the product (`plugin-<slug>`, inactive, the
+   owner's price); upload the zip under "Download files". The store reads `RELEASE.json` and records the release
+   (refusing a second plugin on one product or a version already released); the releases list on the product
+   page can withdraw ("yank") one, which hides its file from new buyers without deleting it.
+
+Owner's decisions before the first sale: which plugins and at what price; their licence (the hub is public
+and MIT; Bacon World ships in it, so selling it sells convenience and support rather than exclusive code);
+and that models and audio are not in git (the asset rule, §2 2026-10-23), so a release zip carries code only
+until assets have a licensed way into it.
 
 ### Target model (milestone 4)
 
@@ -958,6 +1017,20 @@ matters at the hub level:
   Model URLs carry a version (`?vsn=`, from size and mtime), and `/models` serves
   `.glb.gz` copies when present (`gzip: true`).
 
+### Artillery and City Planner (2026-11-03/04)
+
+Two games started for the owner ("Godot game for a tank game"; "Unity for a City Builder sim that can take scan
+in hand-drawn architectural diagrams and create the buildings in 3d and vr space"). Both are download games on
+the games API (`/api/auth/login`, a bearer token, their own `/api/games/<slug>/...`), with the engine project
+inside the plugin, private by default (decisions log, 2026-11-03). Each plugin's README is its notebook.
+
+| | `artillery` | `city_planner` |
+|---|---|---|
+| Engine | Godot 4.6.2, GDScript, Compatibility renderer, everything built in code | Unity 6.3 LTS, C#, built-in modules only; VR through `UnityEngine.XR` (OpenXR) |
+| The game | survive waves of light, medium and heavy tanks; keyboard, mouse or gamepad | a city of 10 m tiles that grows; hand-drawn floor plans scanned into buildings to place and walk through |
+| Hub side | matches scored by the hub from what happened (`Artillery.Rules`), a leaderboard, admin removal | drawings (photos from a phone, stored as drive files), scanned plans, saved cities |
+| Tested | 39 headless Godot checks (rules shared with the hub's tests, simulated matches) + 5 hub tests | 128 .NET checks of the scanner, mesher and city (12 synthetic hand drawings) + 4 hub tests; **the Unity scripts are not yet compiled** |
+
 ## 10. Desktop shell and start menu
 
 `DesktopLive` is a global `live_component` rendered on every authenticated page:
@@ -1043,6 +1116,10 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 | 9 | **Bacon Store** (phase 3) | Core compiles and its suite passes without `plugins/bacon_store`; with it, everything in §8 behaves as before. *Done 2026-10-21.* |
 | 10 | **Games platform as a plugin** (phase 4) | The core runs with one database; Bacon World and RaysSpaceSim require `bacon_games`. |
 | 11 | **Site kit** (phase 5) | A new stand-alone site from the core is a configuration change and a deploy. |
+| 12 | **Trust and safety live** (§15) | The owner's steps in §15 are done: NCMEC registration, DMCA agent, policy pages and a footer link to `/report`, a hash-matching service, a minimum age. |
+| 13 | **Notifications on phones** (§16) | VAPID keys set; tried on an Android phone and an iPhone from the Home Screen. A native app only if store presence is wanted. |
+| 14 | **Plugins for sale** (§8) | The first release branches cut and packaged; products priced and published. |
+| 15 | **Artillery and City Planner played** (§9) | A Windows build of each that a person has played, card pictures, download pages; City Planner compiled and tried in Unity and on a headset. |
 
 ---
 
@@ -1052,11 +1129,14 @@ Ordered roughly by how much it hurts.
 
 - **Much of the core still has no tests.** Found 2026-10-25 by module name (indirect cover may
   exist): `Security`, `RateLimiter`, `Uploads` (apart from its path functions), `UserFileUpload`,
-  `UserSession`, `Moderation`, `Email`, `Mailer`, `Calendar`, `Desktop`,
+  `UserSession`, ~~`Moderation`~~ (tested since 2026-11-03), `Email`, `Mailer`, `Calendar`, `Desktop`,
   `Avatar`, `Storage` and the media code. There are no LiveView tests for the profile, the admin
   dashboard, user management or the SQL console. Covered so far: the forum (now the plugin), pages
   and blog (the context, the public pages, both admin pages, the inline media), `SafePath`,
   notifications. Security-sensitive areas (§14) deserve tests before they are touched.
+- **Unverified since 2026-11-04** (built in the cloud, tested only there): the Unity scripts of `city_planner`
+  (never compiled: no Unity in the cloud), Web Push on real phones, Artillery played by a person. And no
+  hash matching beyond exact SHA-256 yet (§15).
 - `ChatLive` (the `chat_channels` plugin) is ~2,050 lines of handlers; splitting them by feature is optional.
   The store's own channel-pass tests need chat installed.
 - **RaysSpaceSim's settings still live in the hub's prod configmap** (`HOLOSIM_*`,
@@ -1149,3 +1229,155 @@ Ordered roughly by how much it hurts.
   docker run --rm -v "$PWD:/work" -w /work python:3.12-slim \
     sh -c "pip install -q pillow && python scripts/brand/build_brand_assets.py"
   ```
+
+---
+
+## 15. Trust and safety
+
+Built 2026-11-03 (owner's question: "how will we handle illegal content being uploaded and used on our
+system?"). The plain-language answer for the owners is a shared document; this is the engineering side.
+Not legal advice: the owner's lawyer has the last word on what the law asks of this site.
+
+**What the law asks of a US site like this one (as of 2026-11):** child sexual abuse material found on it
+must be reported to NCMEC's CyberTipline and preserved for a year (18 U.S.C. §2258A, as amended by the
+REPORT Act); intimate images published without consent must come down within 48 hours of a valid request
+(the TAKE IT DOWN Act, enforced by the FTC from 2026-05-19); copyright claims need a registered DMCA agent
+(renewed every three years) to keep the safe harbour. Section 230 shields none of the federal crimes.
+
+**How the hub handles it** (`Bacon8.Moderation`, `lib/bacon8/moderation*`):
+
+- **Anyone can report** at `/report` (`ReportLive`): a report, a TAKE IT DOWN request (name, email, a
+  signature and the sworn statement) or a DMCA notice. The thing is named by its link (`/s/<token>`,
+  `/files/<id>`, an upload path) or by a plugin (`moderation_subject/2`; chat messages have a Report link).
+  A honeypot field stops bots; 8 reports an hour per account or real address, 60 an hour for everyone
+  signed out behind a proxy that hides addresses (§2, 2026-10-27).
+- **The worst are hidden at once.** Child sexual abuse, child exploitation and intimate-image reports
+  quarantine the file (`drive_files.quarantined_at`): nobody can open it, staff included. Admins get a
+  notification (and a push, §16). TAKE IT DOWN requests are due in 48 hours.
+- **The queue** at `/admin/moderation`, admins only: open, actioned, dismissed, blocked hashes, holds. A
+  child-abuse report's content is never shown, only its facts (who, when, its hash) and the steps.
+- **Actions** (each recorded with who and when): *keep evidence & remove* (a hold of the file's bytes and
+  the account's details for 365 days, kept out of the drive's garbage collector; then the file is removed
+  and its hash blocked), *remove*, *block its files*, *restore*, *record the NCMEC report number*, *ban the
+  poster* (refused for a child-abuse report until the evidence is kept), *dismiss*, *resolve*, *note*.
+- **Removed means gone everywhere**: a blocked SHA-256 is refused by the drive (`Drive.add_file/5`) and by
+  every other upload (`Uploads.upload_file/4`), whoever tries it.
+
+**The owner's steps** (none can be done in code): register with NCMEC as an electronic service provider
+(reports are made in their system; the hub records the number); register a DMCA agent with the US
+Copyright Office; publish terms, a privacy page and a "Report" link in the footer; decide the minimum age;
+sign up for a hash-matching service (Cloudflare's CSAM Scanning Tool, free with Cloudflare in front of the
+site, or Microsoft PhotoDNA) so altered copies are caught too, which exact hashes can't do; and decide
+what to tell the people a report is about, beyond the law's minimum.
+
+## 16. Phone and desktop notifications
+
+Built 2026-11-03 (owner: "our /chat features may need an android/iphone app to help with notifications and
+updates"). `Bacon8.Push`, `Bacon8.Push.WebPush`, `Bacon8Web.PushOptIn`, `assets/js/push_opt_in.ts`.
+
+- **What gets pushed:** every notification (`Notifications.create_notification/1`): chat mentions and
+  invitations, replies, reports for the admins, announcements. Each person turns it on per device, on
+  `/profile?tab=notifications` or from the chat sidebar, and can switch off "Show message text" so a lock
+  screen says only that something is new.
+- **Where it works:** Chrome, Edge, Firefox and Samsung Internet on Android and computers; iPhone and iPad
+  from iOS 16.4 once the site is added to the Home Screen and opened from there (the page says how).
+- **How:** the browser subscribes with the site's VAPID public key; the server encrypts each message for
+  that device (RFC 8291, tested against the RFC's own example) and signs the request (RFC 8292). The push
+  service (Google's, Apple's, Mozilla's, Microsoft's) carries it but can't read it. The server only ever
+  calls those services' hosts (a subscription is a URL a browser gives us). Gone devices (404/410) are
+  forgotten; five failures in a row drop one; 20 devices a person at most.
+- **The worker** is `/push/sw.js` (`PushController`), scope `/push/`: it shows each message (Safari takes
+  the permission back from a site whose push shows nothing) and opens the page a notification names, only
+  ever a page on this site. Never at `/`, where Bacon World's game worker is.
+- **Setting it up:** `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (`mailto:`) in the
+  deployment's secrets. `/admin/notifications` makes a pair (shown once, kept nowhere) or run
+  `mix bacon8.gen.vapid` in a container (writes the gitignored `.env.push`). Without them nothing is
+  offered or sent. Keep the pair: a new one stops every device until its person turns it on again.
+- **`/admin/notifications`:** whether it's on, how many devices and people, a test to your own devices,
+  and **announcements** (a title, a line, a page to open; to everyone or only the admins), audited.
+- **A native app** (an App Store / Play Store listing) is not needed for notifications. If the owner wants
+  one: a Capacitor shell around the site, with its own push through Firebase Cloud Messaging and APNs (a
+  server-side sender beside Web Push), an Apple Developer account and a Google Play developer account.
+
+---
+
+## 17. Rotating secrets
+
+Written 2026-11-04 (owner: "I need a good pw and key rotation strategy including commands to run"),
+after a cloud working copy of the secrets files was made by mistake and deleted unread. No secret's
+value appears in this file or in the repo; the secrets files are gitignored (§6).
+
+**When:** right away after any exposure (a file copied somewhere it shouldn't be, a laptop lost, a
+helper or contractor leaving, a key pasted into a chat or log); otherwise on the schedule below.
+Rotate one group at a time and check the site between groups, so a broken step has one cause.
+
+**How:** `scripts/security/rotate-secrets.sh`, from the repo root in Git Bash with kubectl on the
+production cluster. It backs the secrets files up to `tmp/secrets-backup/<time>/` (gitignored), makes
+new values with `openssl rand`, writes them into the files without printing them, applies them and
+restarts `bacon8-web`. Values from a provider are typed in (hidden, twice), never on the command line.
+Always `--dry-run` first.
+
+| Secret | What changing it costs | How often | How |
+|---|---|---|---|
+| Stripe secret key, webhook signing secret | nothing for buyers if done in order | after exposure; yearly | Stripe dashboard: Developers → API keys → **Roll key** (choose an expiry of an hour or so for the old one), and Webhooks → the endpoint → **Roll secret**; then `rotate-secrets.sh stripe`. The owner updates `.env.stripe` by hand. |
+| `GAMES_SERVER_API_KEY` | RaysSpaceSim world servers fail until restarted with the new key | after exposure; every 6 months | `rotate-secrets.sh games-key` (hub and RaysSpaceSim secret together), then restart the world servers. |
+| `DB_PASSWORD` | a few seconds of failed queries while the pods restart | after exposure; yearly | `rotate-secrets.sh db`: `ALTER ROLE` in Postgres through `kubectl exec`, then the secret. Postgres's own data volume keeps working. |
+| `GUARDIAN_SECRET_KEY` | game clients and launchers sign in again | after exposure; yearly | `rotate-secrets.sh tokens` |
+| `SECRET_KEY_BASE`, `LIVE_VIEW_SIGNING_SALT` | everyone is signed out; password-reset and confirmation links already sent stop working | after exposure only (or yearly, at a quiet hour) | `rotate-secrets.sh app` |
+| `SMTP_PASS` | mail fails between the two steps | after exposure; when the provider asks | change it at the mail provider, then `rotate-secrets.sh smtp` |
+| Mailhog page login | — | after exposure; yearly | `rotate-secrets.sh mailhog` (uses `htpasswd`, or a throwaway `httpd` container if it isn't installed) |
+| `VAPID_*` (Web Push) | every phone and browser has to turn notifications on again | **only if the private key leaked** | `mix bacon8.gen.vapid` (§16) and paste both halves into the secret; then tell people to re-enable notifications. |
+| Cloudflare tunnel token (§18) | the tunnel drops until the new token is in | after exposure | Zero Trust → the tunnel → Refresh token; `kubectl delete secret cloudflared-token -n bacon8`, re-create it (k3s/cloudflared/README.md step 2), `kubectl rollout restart deployment/cloudflared -n bacon8`. |
+| Feedback runner token, any other API tokens | the runner stops until updated | after exposure | make a new one where it was issued, revoke the old one, update where it's used. |
+| Admin accounts' passwords | — | after exposure; whenever someone leaves | `/forgot-password` or the profile page; long and unique, from a password manager. |
+| GitHub, Cloudflare, registrar, Stripe and email *accounts* | — | check yearly | unique passwords in a password manager, two-factor on (an app or a security key, not SMS), recovery codes kept offline. These protect everything above. |
+
+A suggested order after an exposure: Stripe, games key, database, tokens, app secrets, SMTP, Mailhog.
+Each line is one command group:
+
+```sh
+scripts/security/rotate-secrets.sh --dry-run all stripe smtp mailhog   # read what it will do
+scripts/security/rotate-secrets.sh stripe        # after rolling both in the Stripe dashboard
+scripts/security/rotate-secrets.sh games-key     # then restart RaysSpaceSim's world servers
+scripts/security/rotate-secrets.sh db
+scripts/security/rotate-secrets.sh tokens
+scripts/security/rotate-secrets.sh app           # signs everyone out
+scripts/security/rotate-secrets.sh smtp mailhog  # after changing the mail password at the provider
+kubectl get pods -n bacon8                       # all Running; then sign in, buy nothing, send a test mail
+```
+
+When the site works: delete `tmp/secrets-backup/` (it holds the old values), and in Stripe make sure
+the old key has expired. If a step goes wrong, copy the file back from the backup, `kubectl apply` it,
+and restart (`kubectl rollout restart deployment/bacon8-web -n bacon8`); for `db`, the old password must
+also go back into Postgres (`ALTER ROLE`), since the script changed it there first.
+
+---
+
+## 18. Real visitor addresses
+
+Found 2026-10-27, fixed in the hub 2026-11-04 (owner: "/admin/security ... shows all attacks coming through
+as a docker desktop address completely stripping out the original IPs").
+
+**Why the address was lost.** Docker Desktop forwards ports from Windows into its VM by proxying each
+connection, so every visitor reaches ingress-nginx from `192.168.65.3`. No nginx or Kubernetes setting
+can recover an address that never arrives. The 2026-10-27 work stopped that one address from being
+blocked or locking everyone out, but the security page still saw one visitor.
+
+**The fix has two halves.**
+
+1. **In the hub** (done, 2026-11-04): `Bacon8Web.ClientIP` is the endpoint's first plug and the only code
+   that reads forwarding headers (§6 invariant 19). It believes `X-Real-IP` (else the rightmost untrusted
+   `X-Forwarded-For` hop) only when the connection itself comes from a private address, which in the
+   cluster means ingress-nginx. Before this, five plugs and the sign-in pages each took the *first*
+   `X-Forwarded-For` entry, which anyone can write. Tests: `test/bacon8_web/client_ip_test.exs`.
+2. **In front of the cluster** (the owner's steps, `k3s/cloudflared/README.md`): a Cloudflare Tunnel.
+   Two `cloudflared` pods dial out to Cloudflare; visitors reach Cloudflare, which sends their address
+   in `CF-Connecting-IP`; ingress-nginx believes it only from the pods' range (`proxy-real-ip-cidr`) and
+   passes it on as `X-Real-IP`. `scripts/deploy-prod.sh` applies both once the tunnel's token secret
+   exists. It also hides the home address, lets the router's 80/443 forwards be closed, and puts
+   Cloudflare's DDoS protection and CSAM Scanning Tool in front (§15).
+
+Until the tunnel is up nothing changes on the page; afterwards new events show real addresses, which
+the Block buttons and the automatic blocks accept. Older events keep `192.168.65.3`, as does anything
+that still arrives through an open port forward (it can't be blocked, by design). Per-address limits
+(registration, the API, `auth_login`) become per-visitor again at the same moment.

@@ -48,6 +48,17 @@ Read at runtime from the environment (the hub's `runtime.exs` doesn't know them)
 `BaconStore.Payments` overrides them (development turns the fake provider on; tests also
 set `read_env: false`).
 
+## Plugins for sale (2026-11-03)
+
+A plugin is a `download` product whose files are its releases (`BaconStore.Store.Releases`, table
+`store_product_releases`: plugin, version, branch, commit, notes, built_at, yanked_at). The whole flow is in
+BACON8.md §8 "Plugins for sale": cut `release/<plugin>/<version>`, package it with
+`scripts/release/package_plugin.py` (it adds `RELEASE.json`), make the product with "Sell a plugin" on the
+products page, upload the zip under "Download files". A zip with a valid `RELEASE.json` is recorded as a
+release (the branch must be `release/<plugin>/<version>` and the commit 40 hex); any other file stays an
+ordinary download. One plugin per product, each version once; "Withdraw" (yank) hides a release's file from
+new buyers without deleting it. Tests: `test/bacon_store/releases_test.exs`.
+
 ## Turning it on
 
 Production activates it through `BACON8_ACTIVE_PLUGINS` (`bacon_world,bacon_store,...`);

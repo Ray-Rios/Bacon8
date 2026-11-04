@@ -244,6 +244,17 @@ defmodule BaconStoreWeb.Admin.ProductEditorLive do
     {:noreply, reload_files(socket)}
   end
 
+  def handle_event("yank_release", %{"id" => id}, socket) do
+    case BaconStore.Store.Releases.get(id) do
+      %BaconStore.Store.Release{product_id: pid} = r when pid == socket.assigns.product.id ->
+        {:ok, _} = BaconStore.Store.Releases.yank(r)
+        {:noreply, socket |> reload_files() |> put_flash(:info, "Release #{r.version} withdrawn: buyers no longer see its file.")}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_event("add_keys", %{"codes" => text}, socket) do
     {:ok, %{added: added, skipped: skipped, too_long: too_long}} = Catalog.add_license_keys(socket.assigns.product, text)
 
@@ -283,11 +294,19 @@ defmodule BaconStoreWeb.Admin.ProductEditorLive do
 
       result =
         consume_uploaded_entry(socket, entry, fn %{path: path} ->
-          {:ok, Catalog.add_file(socket.assigns.product, role, path, entry.client_name)}
+          # a plugin release zip (RELEASE.json inside, scripts/release/package_plugin.py) is
+          # recorded as a release of its branch and commit (BaconStore.Store.Releases, 2026-11-03)
+          case role == "download" && BaconStore.Store.Releases.read_manifest(path) do
+            {:ok, manifest} -> {:ok, BaconStore.Store.Releases.add_release(socket.assigns.product, path, entry.client_name, manifest)}
+            {:error, msg} -> {:ok, {:error, msg}}
+            _ -> {:ok, Catalog.add_file(socket.assigns.product, role, path, entry.client_name)}
+          end
         end)
 
       socket =
         case result do
+          {:ok, %BaconStore.Store.Release{version: v}} -> socket |> reload_files() |> put_flash(:info, "Release #{v} added.")
+          {:error, msg} when is_binary(msg) -> put_flash(socket, :error, msg)
           {:ok, _file} -> reload_files(socket)
           {:error, :not_an_image} -> put_flash(socket, :error, "#{entry.client_name} isn't a PNG, JPEG, GIF or WebP image.")
           {:error, reason} -> put_flash(socket, :error, "Couldn't store #{entry.client_name}: #{inspect(reason)}")
@@ -591,6 +610,23 @@ defmodule BaconStoreWeb.Admin.ProductEditorLive do
               </div>
             </div>
             <p :if={Catalog.downloads(@product) == []} class="mt-4 text-sm text-yellow-300">No files yet. Buyers would get nothing.</p>
+
+            <div :if={@product.id} class="mt-6">
+              <h3 class="text-sm font-semibold text-gray-200">Releases</h3>
+              <p class="text-xs text-gray-500 mb-2">
+                For a plugin: a zip made by <code class="text-gray-300">scripts/release/package_plugin.py</code> from its release branch is recognised when you upload it here.
+              </p>
+              <div :if={BaconStore.Store.Releases.list(@product) != []} class="divide-y divide-gray-800 rounded-xl border border-gray-700">
+                <div :for={r <- BaconStore.Store.Releases.list(@product)} class="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
+                  <span class="font-semibold text-white">v{r.version}</span>
+                  <span class="text-gray-400">{r.branch}</span>
+                  <code class="text-xs text-gray-500">{String.slice(r.commit, 0, 12)}</code>
+                  <span class="text-xs text-gray-500">{Calendar.strftime(r.inserted_at, "%b %-d, %Y")}</span>
+                  <span :if={r.yanked_at} class="text-xs text-red-300">withdrawn</span>
+                  <button :if={!r.yanked_at} type="button" phx-click="yank_release" phx-value-id={r.id} data-confirm={"Withdraw #{r.version}? Its file leaves the product; the record stays."} class="ml-auto text-xs text-red-400 hover:underline">Withdraw</button>
+                </div>
+              </div>
+            </div>
           </.panel>
 
           <.panel :if={@product.kind == "license_key"} title="License keys" subtitle="Paste codes, one per line. Each sale takes the oldest unused one.">
