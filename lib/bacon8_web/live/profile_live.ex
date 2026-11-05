@@ -1181,17 +1181,6 @@ defmodule Bacon8Web.ProfileLive do
                         </div>
                       </div>
                     </div>
-
-                    <!-- Info about audio controls -->
-                    <div class="p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-                      <div class="flex items-start gap-3">
-                        <span class="text-2xl">🔊</span>
-                        <div>
-                          <h4 class="text-blue-300 font-medium mb-1">Audio Settings</h4>
-                          <p class="text-sm text-gray-400">Volume and notification sound controls are available in the taskbar speaker icon (🔊) at the bottom right of your screen.</p>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               <% end %>

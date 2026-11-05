@@ -40,7 +40,6 @@ defmodule Bacon8Web.DesktopLive do
     |> assign_new(:next_z_index, fn -> 1 end)
     |> assign_new(:show_start_menu, fn -> false end)
     |> assign_new(:show_notifications, fn -> false end)
-    |> assign_new(:show_audio_panel, fn -> false end)
     |> assign_new(:show_calendar, fn -> false end)
     |> assign_new(:taskbar_projects, fn -> [] end)
     |> assign_new(:gem_balance, fn -> get_gem_balance(assigns[:current_user]) end)
@@ -189,7 +188,6 @@ defmodule Bacon8Web.DesktopLive do
      assign(socket,
        show_start_menu: show,
        show_notifications: false,
-       show_audio_panel: false,
        show_calendar: false
      )}
   end
@@ -207,13 +205,8 @@ defmodule Bacon8Web.DesktopLive do
      assign(socket,
        show_notifications: show_notifications,
        mention_notifications: mention_notifications,
-       show_audio_panel: false,
        show_calendar: false
      )}
-  end
-
-  def handle_event("toggle_audio_panel", _params, socket) do
-    {:noreply, assign(socket, show_audio_panel: !socket.assigns.show_audio_panel, show_notifications: false, show_start_menu: false, show_calendar: false)}
   end
 
   def handle_event("toggle_calendar", _params, socket) do
@@ -225,9 +218,9 @@ defmodule Bacon8Web.DesktopLive do
       rescue
         _ -> []
       end
-      assign(socket, show_calendar: show, show_notifications: false, show_start_menu: false, show_audio_panel: false, selected_date: nil, taskbar_projects: projects, calendar_events: events)
+      assign(socket, show_calendar: show, show_notifications: false, show_start_menu: false, selected_date: nil, taskbar_projects: projects, calendar_events: events)
     else
-      assign(socket, show_calendar: show, show_notifications: false, show_start_menu: false, show_audio_panel: false, selected_date: nil)
+      assign(socket, show_calendar: show, show_notifications: false, show_start_menu: false, selected_date: nil)
     end
 
     {:noreply, socket}
@@ -1293,7 +1286,6 @@ defmodule Bacon8Web.DesktopLive do
           open_windows={@windows}
           show_start_menu={@show_start_menu}
           show_notifications={@show_notifications}
-          show_audio_panel={@show_audio_panel}
           show_calendar={@show_calendar}
           unread_notification_count={@unread_notification_count}
           taskbar_projects={@taskbar_projects}

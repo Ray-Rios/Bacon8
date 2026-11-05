@@ -14,7 +14,6 @@ defmodule Bacon8Web.Components.Taskbar do
   attr :open_windows, :list, default: []
   attr :show_start_menu, :boolean, default: false
   attr :show_notifications, :boolean, default: false
-  attr :show_audio_panel, :boolean, default: false
   attr :show_calendar, :boolean, default: false
   attr :unread_notification_count, :integer, default: 0
   attr :taskbar_projects, :list, default: []
@@ -169,82 +168,6 @@ defmodule Bacon8Web.Components.Taskbar do
                 </span>
               <% end %>
             </button>
-          </div>
-          
-          <!-- Volume -->
-          <div class="relative">
-            <button 
-              phx-click="toggle_audio_panel"
-              phx-target={@target}
-              class="p-2 rounded hover:glass-dark hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
-            >
-              <span class="text-lg">🔊</span>
-            </button>
-            
-            <!-- Audio Control Panel -->
-            <%= if @show_audio_panel do %>
-              <div class="absolute bottom-full right-0 mb-2 w-80 glass-menu rounded-lg shadow-2xl overflow-hidden animate-slide-up">
-                <div class="p-4 border-b border-gray-600">
-                  <h3 class="text-white font-semibold">Audio & Notifications</h3>
-                </div>
-                
-                <div class="p-4 space-y-4">
-                  <!-- Notification Sounds Toggle -->
-                  <div class="flex items-center justify-between">
-                    <div class="flex-1">
-                      <div class="text-white font-medium">Notification sounds</div>
-                      <div class="text-gray-400 text-xs">Play sound for invites and alerts</div>
-                    </div>
-                    <button
-                      phx-click="toggle_notification_sound"
-                      phx-target={@target}
-                      class={[
-                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                        if(@current_user && @current_user.notification_sound_enabled, do: "bg-blue-600", else: "bg-gray-600")
-                      ]}
-                    >
-                      <span class={[
-                        "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                        if(@current_user && @current_user.notification_sound_enabled, do: "translate-x-6", else: "translate-x-1")
-                      ]}></span>
-                    </button>
-                  </div>
-                  
-                  <!-- Master Volume -->
-                  <div>
-                    <div class="flex items-center justify-between mb-2">
-                      <div class="text-white font-medium">Master Volume</div>
-                      <div class="text-gray-400 text-sm"><%= trunc((@current_user && @current_user.master_volume || 0.5) * 100) %>%</div>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={trunc((@current_user && @current_user.master_volume || 0.5) * 100)}
-                      phx-change="update_volume"
-                      phx-target={@target}
-                      name="volume"
-                      class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
-                    <div class="flex justify-between text-xs text-gray-500 mt-1">
-                      <span>0%</span>
-                      <span>50%</span>
-                      <span>100%</span>
-                    </div>
-                  </div>
-                  
-                  <!-- Test Sound Button -->
-                  <button
-                    phx-click="test_sound"
-                    phx-target={@target}
-                    class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded transition-colors flex items-center justify-center gap-2"
-                  >
-                    <span>🔊</span>
-                    <span>Test Sound</span>
-                  </button>
-                </div>
-              </div>
-            <% end %>
           </div>
           
           <!-- Clock -->
