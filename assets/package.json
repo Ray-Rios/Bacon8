@@ -3,6 +3,7 @@
   "description": " ",
   "license": "MIT",
   "dependencies": {
+    "meshoptimizer": "0.18.1",
     "morphdom": "^2.7.0",
     "quill": "^2.0.3",
     "quill-cursors": "^4.0.3",

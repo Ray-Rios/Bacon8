@@ -7,5 +7,7 @@ export * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 // GLBs packed with gltf-transform's meshopt step (the Bacon8 humans, hair, items)
 // need the decoder: loader.setMeshoptDecoder(MeshoptDecoder).
 export { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+// Simplifies a mesh to fewer triangles over the same vertices (Bacon World's far bodies).
+export { MeshoptSimplifier } from "meshoptimizer/meshopt_simplifier.module.js";
 // A neutral studio light for PBR materials (metal looks black without an environment).
 export { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
