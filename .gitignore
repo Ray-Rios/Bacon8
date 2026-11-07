@@ -4,7 +4,6 @@ k3s/overlays/prod/mailhog-auth-secret.yaml
 k3s/overlays/prod/secrets.yaml
 k3s/overlays/dev/secrets.yaml
 backups/
-OpenWorldEngine/
 # Database files
 *.db
 *.sql
@@ -32,7 +31,6 @@ pids
 *.pid.lock
 
 # Editor directories and files
-.kiro
 .vs
 .vscode/
 .claude/
