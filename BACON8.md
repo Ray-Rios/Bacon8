@@ -16,7 +16,7 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-11-04**.
+Last substantive update: **2026-11-07**.
 
 **Where things stand.** The dated change notes that used to open this file (2026-10-20 to 2026-10-29) were
 removed on 2026-10-29: `git log` has them, and what is still true of each change lives in the section it
@@ -47,7 +47,7 @@ belongs to (the decisions log in §2, the subsystem sections, the invariants). T
 - **Bacon World's creatures** are data: camps, spawn rotation, rares, loot tables, live XP and loot events, on
   `/admin/bacon_world/bestiary` (`BACON_WORLD.md`, "Creatures, camps and loot").
 - **Two new games**, private plugins with the engine project inside (§9 "Artillery and City Planner"):
-  `artillery` (Godot 4.6) and `city_planner` (Unity 6.3, scans hand-drawn floor plans into buildings, VR).
+  `artillery` (Godot 4.6; renamed Tears of Babylon and restarted 2026-11-07) and `city_planner` (Unity 6.3, scans hand-drawn floor plans into buildings, VR).
 - **Rotating secrets** (§17): what each secret costs to change, how often, and
   `scripts/security/rotate-secrets.sh`.
 - **Real visitor addresses** (§18): `Bacon8Web.ClientIP` reads the visitor's address once, from the ingress only;
@@ -203,6 +203,8 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-11-03 | **New game plugins are private by default, with the engine project inside** (`plugins/artillery/godot`, `plugins/city_planner/unity`), as RaysSpaceSim's Unreal project is. The hub's `.gitignore` hides them until the owner decides: their own repository, or listed to ship with the hub. | Same rule as 2026-10-29 (one game, one folder); keeps sellable games out of the public repo until decided. |
 | 2026-11-04 | **Real visitor addresses come through a Cloudflare Tunnel, and the hub reads them in one place.** `Bacon8Web.ClientIP` (first plug in the endpoint) sets `conn.remote_ip` from `X-Real-IP`, else the rightmost untrusted `X-Forwarded-For` hop, only when the connection comes from a private address (the ingress); everything else reads `conn.remote_ip`. Before, five plugs each took the *first* `X-Forwarded-For` entry, which any visitor can write. ingress-nginx believes `CF-Connecting-IP` only from the tunnel pods' range (`k3s/cloudflared/`). | Owner: "/admin/security ... shows all attacks coming through as a docker desktop address". Docker Desktop's port forward drops the address and no cluster setting restores it; a tunnel dials out, so the address arrives in a header from Cloudflare. Also hides the home address and closes the router's ports. §18. |
 | 2026-11-04 | **Secrets are rotated by one script, on a schedule and after any exposure.** `scripts/security/rotate-secrets.sh` (backup, generate, apply, restart; DB password changed in Postgres first); providers' keys (Stripe, SMTP) are typed in, never on the command line. | Owner asked for a rotation strategy after a cloud copy of the secrets files (deleted unread, 2026-11-04). §17. |
+| 2026-11-07 | **Artillery starts over in Godot only** (owner: "barely functional garbage"). Gemini's uncommitted work was deleted: a Three.js browser client borrowing Bacon World's characters, chat-channel lobbies, a Kubernetes launcher and ~30 scripts building everything in code. The new game: a third-person soldier who climbs into vehicles, a co-op campaign and player-hosted PvP arenas, Godot 4.7.2 Forward+ and GDScript, scenes and Blender/CC0 art instead of shapes made in code, sign-in through a launcher. `plugins/artillery/ARTILLERY.md` is its notebook. | A browser client and a Godot client had grown into two different games, and the Compatibility renderer with code-built models can't look realistic. |
+| 2026-11-07 | **Artillery is renamed Tears of Babylon** (`tears_of_babylon`), stored names included: its matches table and indexes, the game row, the `plugin_states` row and a saved game card, by the plugin's own migrations (`20261107120000`, `20261107120100`); `/games/artillery/...` and `/admin/artillery/...` answer 301 (`previous_slugs/0`). The owner's direction the same night: futuristic, 80s-punk soldiers against every kind of creature; a tank and a helicopter first, with separate driver and gunner seats (in PvP, one of each per team per round); characters share Bacon World's appearance data; player-hosted games reached over WebRTC; Terrain3D for World Creator maps; PvP for fun, unranked; a launcher of its own. `plugins/tears_of_babylon/TEARS_OF_BABYLON.md`. | Owner: "Artillery isn't what I was thinking it would be." |
 | 2026-11-04 | **City Planner scans drawings in the game, not on the hub.** The scanner is plain C# inside the Unity project (tested with .NET outside Unity); the hub only stores the photos (as drive files, under moderation) and the plans. | Works offline and on a headset; no image-processing service to run and secure on the hub. |
 
 ---
@@ -1018,18 +1020,18 @@ matters at the hub level:
   Model URLs carry a version (`?vsn=`, from size and mtime), and `/models` serves
   `.glb.gz` copies when present (`gzip: true`).
 
-### Artillery and City Planner (2026-11-03/04)
+### Tears of Babylon (was Artillery) and City Planner (2026-11-03/04)
 
 Two games started for the owner ("Godot game for a tank game"; "Unity for a City Builder sim that can take scan
 in hand-drawn architectural diagrams and create the buildings in 3d and vr space"). Both are download games on
 the games API (`/api/auth/login`, a bearer token, their own `/api/games/<slug>/...`), with the engine project
 inside the plugin, private by default (decisions log, 2026-11-03). Each plugin's README is its notebook.
 
-| | `artillery` | `city_planner` |
+| | `tears_of_babylon` (was `artillery`) | `city_planner` |
 |---|---|---|
-| Engine | Godot 4.6.2, GDScript, Compatibility renderer, everything built in code | Unity 6.3 LTS, C#, built-in modules only; VR through `UnityEngine.XR` (OpenXR) |
-| The game | survive waves of light, medium and heavy tanks; keyboard, mouse or gamepad | a city of 10 m tiles that grows; hand-drawn floor plans scanned into buildings to place and walk through |
-| Hub side | matches scored by the hub from what happened (`Artillery.Rules`), a leaderboard, admin removal | drawings (photos from a phone, stored as drive files), scanned plans, saved cities |
+| Engine | ~~Godot 4.6.2, GDScript, Compatibility renderer, everything built in code~~ Being rebuilt (2026-11-07): Godot 4.7.2, Forward+, GDScript, scenes and Blender/CC0 art (`TEARS_OF_BABYLON.md`) | Unity 6.3 LTS, C#, built-in modules only; VR through `UnityEngine.XR` (OpenXR) |
+| The game | ~~survive waves of light, medium and heavy tanks~~ (2026-11-07) futuristic punk soldiers against every kind of creature, in third person, on foot and in tanks and helicopters; a co-op campaign and player-hosted PvP arenas | a city of 10 m tiles that grows; hand-drawn floor plans scanned into buildings to place and walk through |
+| Hub side | matches scored by the hub from what happened (`TearsOfBabylon.Rules`), a leaderboard, admin removal (to be redone for the new game) | drawings (photos from a phone, stored as drive files), scanned plans, saved cities |
 | Tested | 39 headless Godot checks (rules shared with the hub's tests, simulated matches) + 5 hub tests | 128 .NET checks of the scanner, mesher and city (12 synthetic hand drawings) + 4 hub tests; **the Unity scripts are not yet compiled** |
 
 ## 10. Desktop shell and start menu
@@ -1120,7 +1122,7 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 | 12 | **Trust and safety live** (§15) | The owner's steps in §15 are done: NCMEC registration, DMCA agent, policy pages and a footer link to `/report`, a hash-matching service, a minimum age. |
 | 13 | **Notifications on phones** (§16) | VAPID keys set; tried on an Android phone and an iPhone from the Home Screen. A native app only if store presence is wanted. |
 | 14 | **Plugins for sale** (§8) | The first release branches cut and packaged; products priced and published. |
-| 15 | **Artillery and City Planner played** (§9) | A Windows build of each that a person has played, card pictures, download pages; City Planner compiled and tried in Unity and on a headset. |
+| 15 | **Tears of Babylon and City Planner played** (§9) | A Windows build of each that a person has played, card pictures, download pages; City Planner compiled and tried in Unity and on a headset. |
 
 ---
 
@@ -1136,7 +1138,7 @@ Ordered roughly by how much it hurts.
   and blog (the context, the public pages, both admin pages, the inline media), `SafePath`,
   notifications. Security-sensitive areas (§14) deserve tests before they are touched.
 - **Unverified since 2026-11-04** (built in the cloud, tested only there): the Unity scripts of `city_planner`
-  (never compiled: no Unity in the cloud), Web Push on real phones, Artillery played by a person. And no
+  (never compiled: no Unity in the cloud), Web Push on real phones, Tears of Babylon played by a person. And no
   hash matching beyond exact SHA-256 yet (§15).
 - `ChatLive` (the `chat_channels` plugin) is ~2,050 lines of handlers; splitting them by feature is optional.
   The store's own channel-pass tests need chat installed.
