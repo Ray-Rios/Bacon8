@@ -1,6 +1,7 @@
 // Rich Editor Hook for WordPress-style content editing with full-screen support
 
 import { RichEditorHook, TextSelection } from './types/rich-editor';
+import { b8Prompt } from './b8_dialog';
 
 export const RichEditor: RichEditorHook = {
   mounted() {
@@ -275,7 +276,23 @@ export const RichEditor: RichEditorHook = {
       .replace(/\n/g, '<br>');
   },
 
-  executeCommand(command: string, textarea: HTMLTextAreaElement): void {
+  executeCommand(command: string, textarea: HTMLTextAreaElement, answer?: string): void {
+    // Link and image ask for a URL in the site's dialog first (b8_dialog.ts), then come back here.
+    if ((command === 'link' || command === 'image') && answer === undefined) {
+      const selStart = textarea.selectionStart;
+      const selEnd = textarea.selectionEnd;
+      b8Prompt(command === 'link' ? 'Enter the link address:' : 'Enter the image address:', {
+        title: command === 'link' ? 'Insert link' : 'Insert image',
+        placeholder: 'https://',
+        okLabel: 'Insert',
+      }).then((url) => {
+        if (!url) return;
+        textarea.focus();
+        textarea.setSelectionRange(selStart, selEnd);
+        (this as any).executeCommand(command, textarea, url);
+      });
+      return;
+    }
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const selectedText = textarea.value.substring(start, end);
@@ -327,7 +344,7 @@ export const RichEditor: RichEditorHook = {
         break;
       
       case 'link': {
-        const url = prompt('Enter URL:');
+        const url = answer;
         if (url) {
           replacement = `[${selectedText || 'link text'}](${url})`;
           cursorOffset = selectedText ? 0 : -3 - url.length;
@@ -338,7 +355,7 @@ export const RichEditor: RichEditorHook = {
       }
       
       case 'image': {
-        const imageUrl = prompt('Enter image URL:');
+        const imageUrl = answer;
         if (imageUrl) {
           const altText = selectedText || 'image';
           replacement = `![${altText}](${imageUrl})`;

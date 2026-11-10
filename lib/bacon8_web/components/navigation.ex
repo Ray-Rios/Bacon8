@@ -100,11 +100,11 @@ defmodule Bacon8Web.Components.Navigation do
               </.live_component>
             <% else %>
               <!-- Login/Register buttons -->
-              <.link navigate={~p"/login"} class="text-white hover:text-blue-400 transition-colors duration-300">
-                Login
-              </.link>
               <.link navigate={~p"/register"} class="bg-blue-600 hover:bg-blue-700 text-white rounded-sm px-2 transition-colors duration-300">
                 Register
+              </.link>
+              <.link navigate={~p"/login"} class="text-white hover:text-blue-400 transition-colors duration-300">
+                Login
               </.link>
             <% end %>
           </div>

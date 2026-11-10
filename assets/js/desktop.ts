@@ -7,6 +7,8 @@ console.log('🖥️ Desktop hooks loading...');
 
 type HookContext = { el: HTMLElement } & Record<string, any>;
 
+import { b8Prompt } from './b8_dialog';
+
 const DesktopWindow: any = {
   mounted(this: HookContext) {
     console.log('🪟 DesktopWindow mounted, setting up dragging...');
@@ -113,8 +115,8 @@ const DesktopWindow: any = {
     (this as any)._desktop_listeners = { onMouseDown, onMouseMove, onMouseUp, onWindowClick, header };
     
     // Handle folder name prompt event
-    (this as any).handleEvent("prompt_folder_name", ({window_id}: {window_id: string}) => {
-      const name = prompt("Enter folder name:");
+    (this as any).handleEvent("prompt_folder_name", async ({window_id}: {window_id: string}) => {
+      const name = await b8Prompt("Name the new folder:", { title: "New folder", okLabel: "Create", placeholder: "Folder name" });
       if (name && name.trim()) {
         ((this as any).pushEvent("fm_create_folder", {
           window_id: window_id,

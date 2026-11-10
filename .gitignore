@@ -94,3 +94,6 @@ uploads/
 # Shared source-asset library (Substance .sbsar and the like): licensed files we may use
 # but never redistribute. Lives here for every game; only baked outputs ship. See library/README.md.
 /library/
+# The shared art home (2026-11-09): sources, working files and builds stay out of the hub repo;
+# art/pipeline is its own repository (Ray-Rios/B8_Asset_Pipeline). library is a link to art/source.
+/art/

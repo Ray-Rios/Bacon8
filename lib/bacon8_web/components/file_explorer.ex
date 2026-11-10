@@ -643,7 +643,8 @@ defmodule Bacon8Web.Components.FileExplorer do
                   phx-value-path={item.path}
                   phx-value-item_id={item.id}
                   phx-target={@target}
-                  onclick="event.stopPropagation(); return confirm('Delete this item?');"
+                  onclick="event.stopPropagation();"
+                  data-confirm="Delete this item?"
                   class="p-1 hover:bg-red-600/50 rounded text-red-400"
                   title="Delete"
                 >

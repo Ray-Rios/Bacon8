@@ -11,8 +11,10 @@
     - uploads\        files people uploaded
     - priv\static\models\   the game's built models
     - k3s secrets, .env files, priv\cert   (never in Git, by design)
-    - library\        the art pipeline: its sources (its scripts are also on GitHub, Secret_Bacon) (textures and makehuman only
-                      with -IncludeDownloads: they are several GB and can be downloaded again)
+    - art\            the shared art home: source\ (licensed and downloaded sources; textures and makehuman
+                      only with -IncludeDownloads: several GB, downloadable again), pipeline\ (its scripts are
+                      also on GitHub, B8_Asset_Pipeline; its out\ and blends\ are only here), work\ (working files)
+                      and build\. (library\ is a link to art\source\, skipped: /XJ)
     - plugins\rays_space_sim\unreal\   the Unreal project: its own repository plus its Content (minus Unreal's caches)
     - handoff\, docs\, brand\ and every other file in the folder
 
@@ -77,11 +79,11 @@ if (-not $SkipDatabase) {
 $skipDirs = @(
   "$Source\_build", "$Source\deps", "$Source\assets\node_modules", "$Source\priv\static\assets", "$Source\tmp",
   "$Source\plugins\rays_space_sim\unreal\Binaries", "$Source\plugins\rays_space_sim\unreal\Intermediate", "$Source\plugins\rays_space_sim\unreal\Saved",
-  "$Source\plugins\rays_space_sim\unreal\DerivedDataCache", ".elixir_ls", "node_modules",
+  "$Source\plugins\rays_space_sim\unreal\DerivedDataCache", ".elixir_ls", "node_modules", ".godot",
   # editor caches, locked while the editor is open (Visual Studio's search index)
   ".vs", "__pycache__"
 )
-if (-not $IncludeDownloads) { $skipDirs += @("$Source\library\textures", "$Source\library\makehuman") }
+if (-not $IncludeDownloads) { $skipDirs += @("$Source\art\source\textures", "$Source\art\source\makehuman") }
 
 $common = @("/E", "/R:2", "/W:2", "/MT:16", "/XJ", "/FFT", "/NP", "/NDL", "/XD") + $skipDirs
 Say "Copying (only new and changed files)..."
@@ -99,7 +101,7 @@ if ($left -and [int]$left.Groups[2].Value -gt 0) {
 }
 
 # what GitHub doesn't have yet, in each repository here
-foreach ($repo in @($Source, "$Source\plugins\rays_space_sim", "$Source\plugins\rays_space_sim\unreal", "$Source\library\pipeline\scripts")) {
+foreach ($repo in @($Source, "$Source\plugins\rays_space_sim", "$Source\plugins\rays_space_sim\unreal", "$Source\art\pipeline")) {
   if (-not (Test-Path "$repo\.git")) { continue }
   Push-Location $repo
   try {

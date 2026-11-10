@@ -1,4 +1,5 @@
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
+import "./b8_dialog"; // the site's glass confirm/alert/prompt; before phoenix_html so it answers data-confirm first
 import "phoenix_html";
 
 // Suppress Phoenix channel timeout rejections during normal disconnect/reconnect cycles.

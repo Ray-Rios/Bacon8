@@ -1,0 +1,220 @@
+/* The site's confirm / alert / prompt (assets/js/b8_dialog.ts, 2026-11-09). Centred in the upper
+   third of the window, it eases in with a small lift and settle. The body is .glass-menu, so it
+   takes the profile's glass colour, opacity and blur like the menus do. */
+
+.b8-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000; /* above the desktop, taskbar and Bacon World's windows */
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 0 1rem;
+  background: rgba(4, 6, 12, 0);
+  -webkit-backdrop-filter: blur(0);
+  backdrop-filter: blur(0);
+  transition: background-color 0.24s ease, backdrop-filter 0.24s ease, -webkit-backdrop-filter 0.24s ease;
+}
+
+.b8-dialog-overlay.is-open {
+  background: rgba(4, 6, 12, 0.32);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.b8-dialog-overlay.is-closing {
+  background: rgba(4, 6, 12, 0);
+  transition-duration: 0.18s;
+}
+
+.b8-dialog {
+  position: relative;
+  /* Centre of the box sits in the upper third: a third of the window down, less half the box. */
+  margin-top: clamp(4.5rem, 16vh, 14rem);
+  width: min(26rem, 100%);
+  padding: 1.25rem 1.35rem 1.1rem;
+  border-radius: 1.1rem;
+  color: #f3f5fa;
+  opacity: 0;
+  transform: translateY(-14px) scale(0.94);
+  transition:
+    opacity 0.22s ease,
+    transform 0.34s cubic-bezier(0.2, 0.9, 0.25, 1.15);
+  /* .glass-menu supplies the tinted body, blur, sheen, edge and grain. */
+}
+
+.b8-dialog-overlay.is-open .b8-dialog {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.b8-dialog-overlay.is-closing .b8-dialog {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  transition: opacity 0.16s ease, transform 0.18s ease-in;
+}
+
+/* A click outside a confirm doesn't dismiss it; the box gives a little shake instead. */
+.b8-dialog.is-nudged {
+  animation: b8-dialog-nudge 0.32s ease;
+}
+
+@keyframes b8-dialog-nudge {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  50% { transform: translateX(5px); }
+  75% { transform: translateX(-3px); }
+}
+
+.b8-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.5rem;
+}
+
+.b8-dialog-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #fff;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 55%),
+    rgba(var(--glass-rgb, 59, 130, 246), 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 -4px 8px rgba(0, 0, 0, 0.25), 0 3px 10px rgba(var(--glass-rgb, 59, 130, 246), 0.35);
+}
+
+.b8-dialog-overlay[data-tone="danger"] .b8-dialog-icon {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 55%),
+    rgba(220, 53, 69, 0.85);
+  box-shadow: inset 0 -4px 8px rgba(0, 0, 0, 0.25), 0 3px 10px rgba(220, 53, 69, 0.4);
+}
+
+.b8-dialog-overlay[data-tone="warning"] .b8-dialog-icon {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 55%),
+    rgba(234, 160, 20, 0.85);
+}
+
+.b8-dialog-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.b8-dialog-message {
+  margin: 0 0 1.1rem;
+  padding-left: 2.55rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: rgba(240, 243, 250, 0.9);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.b8-dialog-input {
+  display: block;
+  width: 100%;
+  margin: -0.35rem 0 1.1rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.65rem;
+  color: #fff;
+  font-size: 0.95rem;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--glass-menu-border, rgba(255, 255, 255, 0.25));
+  outline: none;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.b8-dialog-input:focus {
+  border-color: rgba(var(--glass-rgb, 59, 130, 246), 0.9);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 3px rgba(var(--glass-rgb, 59, 130, 246), 0.3);
+}
+
+.b8-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.b8-dialog-btn {
+  min-width: 5.5rem;
+  padding: 0.5rem 1.05rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  transition: background-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.b8-dialog-btn:hover { transform: translateY(-1px); }
+.b8-dialog-btn:active { transform: translateY(0); }
+
+.b8-dialog-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35);
+}
+
+.b8-dialog-cancel {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.b8-dialog-cancel:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.b8-dialog-ok {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 60%),
+    rgba(var(--glass-rgb, 59, 130, 246), 0.8);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 14px rgba(var(--glass-rgb, 59, 130, 246), 0.35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.b8-dialog-ok:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 60%),
+    rgba(var(--glass-rgb, 59, 130, 246), 0.95);
+}
+
+.b8-dialog-ok.is-danger {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 60%),
+    rgba(220, 53, 69, 0.88);
+  box-shadow: 0 4px 14px rgba(220, 53, 69, 0.35);
+}
+
+.b8-dialog-ok.is-danger:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 60%),
+    rgba(232, 62, 78, 1);
+}
+
+@media (max-width: 480px) {
+  .b8-dialog { margin-top: 12vh; }
+  .b8-dialog-message { padding-left: 0; }
+  .b8-dialog-actions { flex-direction: column-reverse; }
+  .b8-dialog-btn { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .b8-dialog,
+  .b8-dialog-overlay { transition: none; }
+  .b8-dialog { transform: none; }
+  .b8-dialog.is-nudged { animation: none; }
+}

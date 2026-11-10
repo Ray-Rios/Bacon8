@@ -2,6 +2,7 @@
 
 import { LiveViewHook } from './types/liveview';
 import { FileData } from './types/file-upload';
+import { b8Alert } from './b8_dialog';
 
 type FileDragDropHook = LiveViewHook;
 type FileUploadHook = LiveViewHook;
@@ -88,7 +89,7 @@ export const FileDragDrop: FileDragDropHook = {
       const validFiles = fileArray.filter((file: File) => {
         // Check file size (50MB limit)
         if (file.size > 50 * 1024 * 1024) {
-          alert(`File "${file.name}" is too large. Maximum size is 50MB.`);
+          void b8Alert(`File "${file.name}" is too large. Maximum size is 50MB.`);
           return false;
         }
         
@@ -104,7 +105,7 @@ export const FileDragDrop: FileDragDropHook = {
         ];
         
         if (!allowedTypes.includes(file.type)) {
-          alert(`File type "${file.type}" is not supported for file "${file.name}".`);
+          void b8Alert(`File type "${file.type}" is not supported for file "${file.name}".`);
           return false;
         }
         
@@ -135,7 +136,7 @@ export const FileDragDrop: FileDragDropHook = {
         
         reader.onerror = (e: ProgressEvent<FileReader>): void => {
           console.error('Error reading file:', file.name, e);
-          alert(`Error reading file "${file.name}". Please try again.`);
+          void b8Alert(`Error reading file "${file.name}". Please try again.`);
         };
         
         reader.readAsDataURL(file);
@@ -193,7 +194,7 @@ export const FileUpload: FileUploadHook = {
         
         reader.onerror = (event: ProgressEvent<FileReader>): void => {
           console.error('Error reading file:', file.name, event);
-          alert(`Error reading file "${file.name}". Please try again.`);
+          void b8Alert(`Error reading file "${file.name}". Please try again.`);
         };
         
         reader.readAsDataURL(file);

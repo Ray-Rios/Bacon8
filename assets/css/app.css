@@ -9,6 +9,7 @@
 @import "./page_builder.css";
 @import "./games_hat.css";
 @import "./mobile.css";
+@import "./b8_dialog.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

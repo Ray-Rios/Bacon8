@@ -3,7 +3,7 @@ defmodule Bacon8Web.HomeLive do
   The front door, for visitors (members go straight to /games). Rewritten 2026-10-28 to set
   the site's tone: the bacon sizzles into view in a puff of steam, and a big grill fork flies in and
   pins it to the page (rendered in Blender: library/pipeline/scripts/hero_forks.py, hero_steam.py);
-  "Bringing home the bacon." types itself in, and hovering or tapping it says the old secret; Sign Up and Log In are there from the first moment.
+  "Bringing home the bacon." types itself in, and hovering or tapping it says the old secret; Register and Log In are there from the first moment.
   Scrolling down tells what the open-source repository is (a WordPress replacement and a game
   hosting platform) and what each part does, the page editor first.
 
@@ -61,11 +61,10 @@ defmodule Bacon8Web.HomeLive do
           <span class="intro-type" style={"--n:#{String.length(@tagline)}"}>{@tagline}</span><b class="intro-caret">_</b>
         </p>
         <p class="intro-sub">
-          An open-source replacement for WordPress that hosts your games too. Pages, blog, store,
-          files, chat and games, in one repository you own.
+          A modern open-sourced web platform. Host interactive games. Sell your goods and services. Edit your pages and blogs with a mobile-first UI. Chat and share files in real-time. Manage your content, users and site with a full suite of admin controls.
         </p>
         <div class="intro-actions">
-          <.link navigate={~p"/register"} class="intro-btn intro-btn-main">Sign Up</.link>
+          <.link navigate={~p"/register"} class="intro-btn intro-btn-main">Register</.link>
           <.link navigate={~p"/login"} class="intro-btn intro-btn-ghost">Log In</.link>
         </div>
         <a href="#intro-what" class="intro-cue">
@@ -76,17 +75,18 @@ defmodule Bacon8Web.HomeLive do
 
       <%!-- ============================================================ what it is --%>
       <section id="intro-what" class="intro-sec" data-reveal>
-        <p class="intro-kicker">One repository</p>
-        <h2 class="intro-h2">Everything WordPress does. <em>Then it hosts your games.</em></h2>
+        <p class="intro-kicker">Kubernetes unleashed</p>
+        <h2 class="intro-h2">Say goodbye to WordPress. <em>Say goodbye to PHP.</em></h2>
         <div class="intro-two stag">
           <div class="intro-card" style="--i:0">
-            <h3><.icon_svg name="site" /> Your website</h3>
+            <h3><.icon_svg name="site" /> Customize your website</h3>
             <ul>
-              <li>Pages and a blog, built in a visual editor</li>
+              <li>Quickly edit your pages and a blogs on mobile devices</li>
               <li>Members, roles and profiles</li>
-              <li>A store, file storage and chat built in</li>
-              <li>Plugins you drop into a folder</li>
-              <li>An admin dashboard with an audit log</li>
+              <li>Easily sell your goods & services via Stripe integration</li>
+              <li>Real-time chat channels with built in user storage</li>
+              <li>Extend functionality with Plugins</li>
+              <li>An admin dashboard with full system controls</li>
             </ul>
           </div>
           <div class="intro-card" style="--i:1">
@@ -94,9 +94,9 @@ defmodule Bacon8Web.HomeLive do
             <ul>
               <li>A games hub with a card for every game</li>
               <li>An API for game clients and servers: sign-in, items, passes</li>
-              <li>Zones and holo-sim instances, with chat where the players are</li>
-              <li>Sell the game, and what's in it, in the same store</li>
-              <li>Every game is a plugin, so it stays yours</li>
+              <li>Custom game instances, powered by Kubernetes</li>
+              <li>Sell your games, currency and assets</li>
+              <li>Plugin and play your own private repositories</li>
             </ul>
           </div>
         </div>
@@ -245,7 +245,7 @@ defmodule Bacon8Web.HomeLive do
         <h2 class="intro-h2">Fork it. Run it. <em>Make it yours.</em></h2>
         <p class="intro-sub">Bacon8 is open source under the MIT license.</p>
         <div class="intro-actions">
-          <.link navigate={~p"/register"} class="intro-btn intro-btn-main">Sign Up</.link>
+          <.link navigate={~p"/register"} class="intro-btn intro-btn-main">Register</.link>
           <.link navigate={~p"/login"} class="intro-btn intro-btn-ghost">Log In</.link>
           <a href={@repo} target="_blank" rel="noopener noreferrer" class="intro-btn intro-btn-ghost">
             <.icon_svg name="github" /> Source on GitHub
