@@ -61,7 +61,7 @@ defmodule Bacon8Web.HomeLive do
           <span class="intro-type" style={"--n:#{String.length(@tagline)}"}>{@tagline}</span><b class="intro-caret">_</b>
         </p>
         <p class="intro-sub">
-          A modern open-sourced web platform. Host interactive games. Sell your goods and services. Edit your pages and blogs with a mobile-first UI. Chat and share files in real-time. Manage your content, users and site with a full suite of admin controls.
+          A modern open-sourced web platform. Play some games while you're here and see what bacon can do for you.
         </p>
         <div class="intro-actions">
           <.link navigate={~p"/register"} class="intro-btn intro-btn-main">Register</.link>
