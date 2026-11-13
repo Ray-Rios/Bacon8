@@ -74,3 +74,17 @@ plugins/*/unreal
 
 # Shared licensed source-asset library (gitignored; never committed or deployed)
 /library
+
+# The art pipeline, its work files and the scratch folder (2026-11-12: these had grown into the build
+# context, "#8 transferring context" for a minute and more on every deploy). The image takes only the
+# folders Dockerfile.multistage COPYs; the models reach the cluster through scripts/sync-models-to-k8s.sh.
+/art
+/tmp
+/handoff
+/docs
+/priv/static/models
+# a plugin's game project (Godot) and its offline tools are never part of the hub image
+plugins/*/godot
+plugins/*/tools
+plugins/*/docs
+plugins/*/*.png
