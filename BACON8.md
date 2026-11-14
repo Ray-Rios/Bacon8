@@ -1036,6 +1036,20 @@ inside the plugin, private by default (decisions log, 2026-11-03). Each plugin's
 | Hub side | matches scored by the hub from what happened (`TearsOfBabylon.Rules`), a leaderboard, admin removal (to be redone for the new game) | drawings (photos from a phone, stored as drive files), scanned plans, saved cities |
 | Tested | 39 headless Godot checks (rules shared with the hub's tests, simulated matches) + 5 hub tests | 128 .NET checks of the scanner, mesher and city (12 synthetic hand drawings) + 4 hub tests; **the Unity scripts are not yet compiled** |
 
+### Shared physics: box3d in every game (plan, 2026-11-14)
+One engine: box3d (Erin Catto, MIT). Its one source is the copy pinned in RaysSpaceSim
+(`Plugins/Box3DPhysics/Source/Box3D`, v0.1.0); the others build from it. The owner's choices (2026-11-13):
+- **RaysSpaceSim:** box3d already runs there, beside Chaos (bodies, kinematic pushers, mirrored level
+  statics, Mass crowds). Unreal can't drop Chaos (character movement and traces are built on it), so it stays.
+- **Bacon World:** physics in each browser: box3d built to WebAssembly (`native/box3d`,
+  `assets/js/physics/box3d.ts`; BACON_WORLD.md). In order: explosion forces, then smashed builds' debris as
+  bodies, then ragdolls; loose props later.
+- **Tears of Babylon:** replace Jolt: a GDExtension registering a box3d `PhysicsServer3D`, so Godot's own
+  nodes (CharacterBody3D, RigidBody3D, Area3D, ray and shape queries) run on box3d with the scenes
+  unchanged. What the game uses: rigid, static and character bodies (move_and_slide needs the server's test
+  motion), areas, concave, capsule, sphere, box and cylinder shapes (a cylinder as a hull), ray and shape
+  queries, impulses.
+
 ## 10. Desktop shell and start menu
 
 `DesktopLive` is a global `live_component` rendered on every authenticated page:
