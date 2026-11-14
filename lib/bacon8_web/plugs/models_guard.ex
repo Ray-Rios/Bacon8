@@ -18,7 +18,9 @@ defmodule Bacon8Web.Plugs.ModelsGuard do
   """
   import Plug.Conn
 
-  @runtime ~w(.gltf .glb .bin .fbx .obj .mtl .png .jpg .jpeg .webp .ktx2 .tga)
+  # .json: the pipeline's own data beside the models (the soft-tissue springs, Humans/b8_jiggle.json,
+  # 2026-11-14: refused here, Bacon World had no springs)
+  @runtime ~w(.gltf .glb .bin .fbx .obj .mtl .png .jpg .jpeg .webp .ktx2 .tga .json)
 
   def init(opts), do: Keyword.get(opts, :root)
 

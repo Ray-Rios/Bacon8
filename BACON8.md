@@ -1044,11 +1044,9 @@ One engine: box3d (Erin Catto, MIT). Its one source is the copy pinned in RaysSp
 - **Bacon World:** physics in each browser: box3d built to WebAssembly (`native/box3d`,
   `assets/js/physics/box3d.ts`; BACON_WORLD.md). In order: explosion forces, then smashed builds' debris as
   bodies, then ragdolls; loose props later.
-- **Tears of Babylon:** replace Jolt: a GDExtension registering a box3d `PhysicsServer3D`, so Godot's own
-  nodes (CharacterBody3D, RigidBody3D, Area3D, ray and shape queries) run on box3d with the scenes
-  unchanged. What the game uses: rigid, static and character bodies (move_and_slide needs the server's test
-  motion), areas, concave, capsule, sphere, box and cylinder shapes (a cylinder as a hull), ray and shape
-  queries, impulses.
+- **Tears of Babylon:** box3d beside Jolt, as in RaysSpaceSim (owner, 2026-11-13, changed from replacing
+  it): a GDExtension running a box3d world for explosion forces, debris and ragdolls, with the level's
+  static collision mirrored into it; Jolt keeps character movement, triggers and queries.
 
 ## 10. Desktop shell and start menu
 

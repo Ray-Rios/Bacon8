@@ -13,7 +13,8 @@ defmodule Bacon8Web.Plugs.PluginStatic do
   @behaviour Plug
   import Plug.Conn
 
-  @exts ~w(.webp .png .jpg .jpeg .gif .avif .mp4 .webm .woff2 .json)
+  # .wasm: Bacon World's physics (box3d.wasm, 2026-11-14)
+  @exts ~w(.webp .png .jpg .jpeg .gif .avif .mp4 .webm .woff2 .json .wasm)
 
   @impl true
   def init(opts), do: opts

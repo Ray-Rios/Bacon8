@@ -20,6 +20,7 @@ defmodule Bacon8Web.Plugs.ModelsGuardTest do
     assert run("/models/Humans/Male.blend", root).status == 404
     assert run("/models/Humans/Male.glb.gz", root).status == 404
     refute run("/models/Humans/Male.glb", root).halted
+    refute run("/models/Humans/b8_jiggle.json", root).halted
   end
 
   test "a .gz older than its file isn't used", %{root: root} do
