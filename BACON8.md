@@ -1050,6 +1050,33 @@ One engine: box3d (Erin Catto, MIT). Its one source is the copy pinned in RaysSp
   static collision mirrored into it; Jolt keeps character movement, triggers and queries.
   Not started: it needs a Windows build of the extension.
 
+Ragdolls (2026-11-14, the owner: "Dead characters should ragdoll, unless the character has been
+killed by something that has damaged them, in a single hit, for more than their total hp... that is
+the shatter event"): Bacon World on box3d (`physics/ragdoll.ts`), Tears of Babylon on Jolt
+(`scripts/fx/ragdoll.gd`) until box3d is beside it, RaysSpaceSim on its box3d plugin (to do).
+
+### Shared building: one hub service (2026-11-14)
+The owner: RaysSpaceSim's own build system goes, and it and Tears of Babylon get Bacon World's ("`"
+button and all), on one hub service with Bacon World's catalogue.
+- **`Bacon8.Building`** (`lib/bacon8/building.ex`): placements by game slug, zone and `frame` (a
+  RaysSpaceSim planet, so a base rides its orbit; old RaysSpaceSim pieces are dropped), who may place
+  what (Bacon World's roles), hit points and smashing, PubSub per zone and a zone revision for
+  polling. **The catalogue** is `Bacon8.Building.Catalogue` (Bacon World's 254 props and kit pieces,
+  moved here); Bacon World adds its creature spawns and NPCs. One set of asset rules for every game.
+- **Tables** (games_repo, `20261115000000_create_game_building`): `game_placements` and
+  `game_asset_rules` are Bacon World's two tables renamed (`game_slug` added, default
+  `bacon_world`, and `frame`); `bacon_world_placements` and `bacon_world_asset_rules` stay as views of
+  them, so Bacon World's code is unchanged. A later Bacon World migration must alter the
+  `game_` tables, not the views.
+- **API** (`Bacon8Web.Api.BuildingController`): `/api/games/:slug/build/catalogue`, `zones/:zone`
+  (GET `?frame=&rev=`, POST), `zones/:zone/:id` (PUT, DELETE `?smash=true`), `zones/:zone/:id/damage`,
+  `rules/:asset`. As the player (token) or a game server with `user_id`. Bacon World's zones aren't
+  written through it (it builds in game).
+- Tests: `test/bacon8/building_test.exs`, `test/bacon8_web/controllers/building_api_test.exs`;
+  `tmp\build_test.cmd` runs them with Bacon World's building tests in Docker.
+- **Tears of Babylon**: `scripts/world/build_mode.gd`. **RaysSpaceSim**: `Source/RSS/B8/B8Build*` (RAYSSPACESIM.md
+  7c; built 2026-11-15, the old Cosmos build system removed). Both need the hub deployed with this service.
+
 The hub's part (2026-11-14): `PluginStatic` serves `.wasm` (Bacon World's module) and `ModelsGuard` lets
 `.json` under `/models` through (the shared springs' `Humans/b8_jiggle.json`); a test for the second.
 

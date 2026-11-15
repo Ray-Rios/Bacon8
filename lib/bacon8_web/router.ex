@@ -311,6 +311,15 @@ defmodule Bacon8Web.Router do
     get "/:game_slug/entitlements", Api.GamesController, :list_entitlements
     get "/:game_slug/entitlements/check", Api.GamesController, :check_entitlement
 
+    # Build mode for the games that build through the hub (2026-11-14: Bacon8.Building)
+    get "/:game_slug/build/catalogue", Api.BuildingController, :catalogue
+    put "/:game_slug/build/rules/:asset", Api.BuildingController, :set_rule
+    get "/:game_slug/build/zones/:zone", Api.BuildingController, :list
+    post "/:game_slug/build/zones/:zone", Api.BuildingController, :place
+    post "/:game_slug/build/zones/:zone/:id/damage", Api.BuildingController, :damage
+    put "/:game_slug/build/zones/:zone/:id", Api.BuildingController, :move
+    delete "/:game_slug/build/zones/:zone/:id", Api.BuildingController, :delete
+
     get "/:game_slug/characters", Api.GamesController, :list_characters
     post "/:game_slug/characters", Api.GamesController, :create_character
 
