@@ -1043,10 +1043,15 @@ One engine: box3d (Erin Catto, MIT). Its one source is the copy pinned in RaysSp
   statics, Mass crowds). Unreal can't drop Chaos (character movement and traces are built on it), so it stays.
 - **Bacon World:** physics in each browser: box3d built to WebAssembly (`native/box3d`,
   `assets/js/physics/box3d.ts`; BACON_WORLD.md). In order: explosion forces, then smashed builds' debris as
-  bodies, then ragdolls; loose props later.
+  bodies, then ragdolls; loose props later. Explosion forces and debris are in (2026-11-14,
+  `physics/physics-world.ts`; needs the deploy); ragdolls are next.
 - **Tears of Babylon:** box3d beside Jolt, as in RaysSpaceSim (owner, 2026-11-13, changed from replacing
   it): a GDExtension running a box3d world for explosion forces, debris and ragdolls, with the level's
   static collision mirrored into it; Jolt keeps character movement, triggers and queries.
+  Not started: it needs a Windows build of the extension.
+
+The hub's part (2026-11-14): `PluginStatic` serves `.wasm` (Bacon World's module) and `ModelsGuard` lets
+`.json` under `/models` through (the shared springs' `Humans/b8_jiggle.json`); a test for the second.
 
 ## 10. Desktop shell and start menu
 
