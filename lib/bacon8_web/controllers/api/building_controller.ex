@@ -4,6 +4,7 @@ defmodule Bacon8Web.Api.BuildingController do
   RaysSpaceSim and Tears of Babylon. `/api/games/:game_slug/build/...`
 
     * `GET  catalogue` - what may be placed, with each asset's rule, HP and whether this player may
+      (and `role`, the player's own: an admin's window offers each asset's rule)
     * `GET  zones/:zone` - the zone's placements (`?frame=` one frame's; `?rev=n`: `{unchanged: true}`
       while the zone's revision is still `n`), with the revision
     * `POST zones/:zone` - place (`asset`, `frame`, `x`, `y`, `z`, `rot`, `scale`, `data`, `character_id`)
@@ -24,7 +25,7 @@ defmodule Bacon8Web.Api.BuildingController do
 
   def catalogue(conn, %{"game_slug" => slug} = params) do
     with {:ok, _} <- fetch_game(slug), {:ok, user} <- resolve_user(conn, params, false) do
-      json(conn, %{success: true, roles: Building.roles(), catalogue: Building.catalogue_for(slug, user)})
+      json(conn, %{success: true, roles: Building.roles(), role: Building.role_of(user), catalogue: Building.catalogue_for(slug, user)})
     else
       {:error, status, message} -> error_response(conn, status, message)
     end

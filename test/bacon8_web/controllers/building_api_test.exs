@@ -22,7 +22,7 @@ defmodule Bacon8Web.BuildingApiTest do
   end
 
   test "a player lists the catalogue, places, moves, damages and removes", %{conn: conn} do
-    assert %{"catalogue" => cat} = json_response(get(conn, "/api/games/tears_of_babylon/build/catalogue"), 200)
+    assert %{"catalogue" => cat, "role" => "member"} = json_response(get(conn, "/api/games/tears_of_babylon/build/catalogue"), 200)
     assert Enum.find(cat, &(&1["id"] == "P_Barrel"))["allowed"]
 
     assert %{"placement" => %{"id" => id}, "revision" => rev} =
