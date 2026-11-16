@@ -24,6 +24,9 @@ defmodule Bacon8.Security.BlockedIdentifier do
                     :expires_at, :auto_blocked, :blocked_by_user_id])
     |> validate_required([:identifier, :identifier_type, :blocked_at])
     |> validate_inclusion(:identifier_type, ["ip", "fingerprint"])
-    |> unique_constraint([:identifier, :identifier_type])
+    # the unique index's name differs between installs (the squashed baseline calls it _key): both
+    # are named, so blocking what is already blocked is an error on the changeset, not a crash
+    |> unique_constraint([:identifier, :identifier_type], name: :blocked_identifiers_identifier_identifier_type_index, message: "is already blocked")
+    |> unique_constraint([:identifier, :identifier_type], name: :blocked_identifiers_identifier_identifier_type_key, message: "is already blocked")
   end
 end

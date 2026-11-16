@@ -326,7 +326,7 @@ defmodule Bacon8Web.AuthLive do
          |> assign(loading: false)
          |> put_flash(:info, "Welcome back, #{user.email}!")
          |> assign(current_user: user)
-         |> redirect(external: "/auth/login_success?user_id=#{user.id}&token=#{jwt_token}")}
+         |> redirect(external: "/auth/login_success?user_id=#{user.id}&token=#{jwt_token}&handoff=#{URI.encode_www_form(Bacon8Web.AuthController.handoff_token(user.id))}")}
 
       {:ok, {:error, :invalid_credentials}} ->
         # Failed login tracking is handled by authenticate_user_secure

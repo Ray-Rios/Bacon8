@@ -21,6 +21,7 @@ defmodule Bacon8.Security.AllowedIdentifier do
     |> cast(attrs, [:identifier, :identifier_type, :reason, :added_at, :added_by_user_id])
     |> validate_required([:identifier, :identifier_type, :added_at])
     |> validate_inclusion(:identifier_type, ["ip", "fingerprint"])
-    |> unique_constraint([:identifier, :identifier_type])
+    |> unique_constraint([:identifier, :identifier_type], name: :allowed_identifiers_identifier_identifier_type_index, message: "is already allowed")
+    |> unique_constraint([:identifier, :identifier_type], name: :allowed_identifiers_identifier_identifier_type_key, message: "is already allowed")
   end
 end

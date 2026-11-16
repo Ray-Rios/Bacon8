@@ -64,14 +64,21 @@ defmodule Bacon8.Accounts.User do
   end
 
   # Registration (new user) - Enhanced security validation
-  def registration_changeset(user, attrs) do
+  # `role` and `is_admin` are never cast from `attrs` (which may come from a
+  # form or an API body): the caller decides the role and passes it as an
+  # option. Anything else gets "member".
+  def registration_changeset(user, attrs, opts \\ []) do
+    role = Keyword.get(opts, :role, "member")
+    role = if role in ["admin", "gm", "editor", "moderator", "member", "guest", "banned"], do: role, else: "member"
+
     user
-    |> cast(attrs, [:email, :name, :password, :registration_ip, :role, :is_admin])
+    |> cast(attrs, [:email, :name, :password, :registration_ip])
+    |> put_change(:role, role)
+    |> put_change(:is_admin, role == "admin")
     |> validate_required([:email, :password])
     |> validate_email()
     |> validate_password()
     |> validate_name()
-    |> validate_inclusion(:role, ["admin", "gm", "editor", "moderator", "member", "guest", "banned"])
     |> unique_constraint(:email, message: "An account with this email already exists")
     |> put_email_verification_token()
     |> put_password_hash()

@@ -16,7 +16,7 @@ what you read before changing it.
 - Code that games built on Bacon8 need does not belong here. Each game keeps its own
   notes in its own repo.
 
-Last substantive update: **2026-11-10**.
+Last substantive update: **2026-11-15**.
 
 **Where things stand.** The dated change notes that used to open this file (2026-10-20 to 2026-10-29) were
 removed on 2026-10-29: `git log` has them, and what is still true of each change lives in the section it
@@ -52,6 +52,26 @@ belongs to (the decisions log in §2, the subsystem sections, the invariants). T
   `scripts/security/rotate-secrets.sh`.
 - **Real visitor addresses** (§18): `Bacon8Web.ClientIP` reads the visitor's address once, from the ingress only;
   a Cloudflare Tunnel (`k3s/cloudflared/`) is what brings the real address past Docker Desktop.
+
+**2026-11-15** (one cloud session, run and tested in Docker on the development PC through the editor's MCP;
+uncommitted until the owner reads it, see `handoff/`):
+
+- **An open door at sign-in, closed.** `GET /auth/login_success?user_id=<id>` signed the browser in as that
+  account with nothing else asked: anyone who knew an account's id was that account. It now needs the sign-in
+  page's own hand-off token for that user, a minute old at most (§6 invariant 20; decisions log).
+- **Security debt paid** (§13): a new account's role can't come from the form; the scheduler's webhook secret
+  travels in a header, not the URL; the tracked dev secrets were already only the `.example` files.
+- **Tests for the security core** (§13): `Security`, `RateLimiter`, `Accounts.RateLimit`, `RateLimitPlug`,
+  `Uploads`, sign-in and the session hand-off. Writing them found two more faults, both fixed: asking the
+  limiter about a blocked identifier crashed it (and its restart forgot every count and block), and blocking
+  or allowing what already was raised instead of answering.
+- **Every game's definitions on the hub** (§9 "Shared content"): `Bacon8.GameContent`: zones, camps, creature
+  types, loot tables, items, per game; an API, a loot roller, a history that undoes, and `/admin/content`.
+  Bacon World's definitions are the same table now (`game_defs`); Tears of Babylon's zones and camps are on it
+  and its game reads them.
+- **Physics** (§9 "Shared physics"): Bacon World's ragdolls have hinged knees and elbows (box3d's revolute
+  joint: `box3d.wasm` rebuilt) and placed pieces stand in its physics world; Tears of Babylon's guns, grenades
+  and barrels wear placed pieces down through the hub.
 
 **Next session, start here:**
 
@@ -172,7 +192,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-10-20 | **Brand:** ~~the logo is the "B8" monogram~~ (the icon became bacon, 2026-10-26, below; the wordmark "Bacon8" in the navbar is unchanged). The colours are blue `#247DF1`, cream `#E7F1FD` and near-black `#14100F`. The one-line description is "The kitchen sink." | Owner's decision. |
 | 2026-10-26 | **The site icon is two strips of bacon at 45 degrees**, rendered in 3D: the favicon and app icons, the desktop's Start button and the navbar's Games link. On pages it sizzles and reacts to hovering like the Gem (`<b8-bacon>`). Supersedes the B8 monogram as the icon. | Owner's request. |
 | 2026-10-20 | **All flagged third-party material is removed** and replaced with our own or CC0 work: synthesized sound effects and music (`scripts/audio/`), an original default avatar, no third-party fonts, and new character models (next row). The removed files wait in a gitignored holding folder until the owner deletes them. | Owner's decision; it was placeholder content. |
-| 2026-10-20 | **Characters use our own skeleton, "B8 skeleton v1".** It has Unreal-style names, which Unreal's IK Retargeter, Unity's Humanoid and Godot's BoneMap all map. It has 3 spine bones, twist bones, breast and glute jiggle bones on every body, and `weapon_l`/`weapon_r` grip bones. Male and female share it. The bodies are Blender Studio's CC0 base meshes; the animations are Quaternius' CC0 Universal Animation Library, baked onto the skeleton. Built by the asset pipeline (`library/pipeline/Characters/B8Human`, originally in the game repository). | Owner's decision. Epic's skeleton and animations may only be used in Unreal, and the web, Unity and Godot versions must look the same as the Unreal game. |
+| 2026-10-20 | **Characters use our own skeleton, "B8 skeleton v1".** It has Unreal-style names, which Unreal's IK Retargeter, Unity's Humanoid and Godot's BoneMap all map. It has 3 spine bones, twist bones, breast and glute jiggle bones on every body, and `weapon_l`/`weapon_r` grip bones. Male and female share it. The bodies are Blender Studio's CC0 base meshes; the animations are Quaternius' CC0 Universal Animation Library, baked onto the skeleton. Built by the asset pipeline (`art/pipeline/Characters/B8Human`, originally in the game repository). | Owner's decision. Epic's skeleton and animations may only be used in Unreal, and the web, Unity and Godot versions must look the same as the Unreal game. |
 | 2026-10-20 | **Legal pages are CMS pages:** `/pages/terms`, `privacy`, `refunds`, `copyright`, `contact`, `credits` and `gems`. They are seeded unpublished as placeholders to be reviewed with a lawyer, and the store's small print links to them. | Owner's decision. They can be edited in `/admin/pages` without a deploy. |
 | 2026-10-20 | **Direction: a reusable core, with games and commerce as plugins** (ADR 0001, removed from the tree on 2026-10-24 and still in git: `git show 95aba50^:docs/adr/0001-core-and-plugins.md`). Web Lobby becomes **Bacon World** (`bacon_world`). The store, Gems and payments become **Bacon Store** (`bacon_store`). The games platform becomes a plugin later. The core becomes the starting point for other stand-alone sites. | Owner's decision. A site that sells nothing or runs no games shouldn't carry the code for them. |
 | 2026-10-21 | **Web Lobby is renamed Bacon World** (`web_lobby` -> `bacon_world`), stored names included: the three `bacon_world_*` tables with their keys and indexes, the game row and the `plugin_states` row, by the plugin's own migrations. Plugins gain `previous_slugs/0`; old `/games/web_lobby/...` and `/admin/web_lobby/...` links answer 301. Ledger rows keep the slug they were written with. | ADR 0001, phase 1. A first-party game's name should say what it is; the redirect keeps old links and bookmarks working. |
@@ -180,7 +200,7 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-11-02 | **Menus follow the profile's glass opacity** (owner: "the opacity is still cranked up on the start menu and user's menu"). `--glass-menu-bg` takes the profile's opacity as it is (`glass_theme.ts` `setGlassExtras`, the inline script in `layouts/root.html.heex`); the tint is still darkened for readable text. Earlier the same day the bars stopped being backdrop roots so the menus' blur works (`#main-navbar`/`#taskbar` `::before`). | Owner's request. |
 | 2026-10-25 | **The forum is a plugin, `chat_channels`**, mounted at `/chat` (nav link "Chat"). Games that build per channel `require` it (RaysSpaceSim does); the store treats it as optional. A notification says what it came from (`source_kind`, `source_id`) and where it goes (`metadata.path`), so the hub knows nothing about channels; pending invitations are listed on the Chat page and counted by a badge on the nav link. Supersedes ADR 0001's "the core keeps the forum and chat channels". | Owner's decision (and answers to the plan's open questions). The core should be accounts, content and the plugin framework; anything a site might not want is a plugin. |
 | 2026-10-25 | **Pages and blog stay in the core**, are rebuilt to production grade (tests first), are written by admins, GMs and editors only, and keep the rows, columns and blocks model. | Owner's decision. |
-| 2026-10-23 | **The asset pipeline moved to `library/pipeline`** (out of the RaysSpaceSim repository; not a git repository), shared by every game; the v1 humans were deleted, their sources and the copies imported into Unreal. | Owner's decision. |
+| 2026-10-23 | **The asset pipeline moved out of the RaysSpaceSim repository** (first to `library/pipeline`; at `art/pipeline`, its own repository B8_Asset_Pipeline, since 2026-11-09), shared by every game; the v1 humans were deleted, their sources and the copies imported into Unreal. | Owner's decision. |
 | 2026-10-23 | **Asset rule (all games): ours, CC0, or licensed for commercial use, credited, with the source files never redistributed.** Licensed source files live in the gitignored shared library `library/` (one licence table per kind, e.g. `library/substance/LICENSES.md`); only baked outputs ship, credited on `/pages/credits`. | Owner's decision. Widens "ours or CC0" on purpose so curated libraries (Substance materials) can be used, without ever publishing files we may only use. |
 | 2026-10-21 | **Web pods wait for migrations.** An init container in `bacon8-web` runs `Bacon8.Release.await_migrations/0` and starts the app only when no migration is pending. | A deploy starts `db-init` and the web pods together, so new code could serve the old schema for a few seconds, or write rows a stored-name migration then has to merge (found during ADR 0001 phase 1). |
 | 2026-10-21 | **The store is a plugin, `bacon_store`**, mounted at `/store`, with the plugin framework it needs (site, site_api and fixed routes, `requires/0`, hooks). Its tables and migrations keep their names and versions; its admin moves to `/admin/bacon_store`; Stripe's webhook gets `/api/store/webhooks/stripe`, with the old URL kept as a `fixed` route until the dashboard is switched. Phases 2 and 3 shipped in one deploy. | ADR 0001. Core stops knowing about money; the owner chose one deploy for both phases. |
@@ -207,6 +227,9 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-11-07 | **Artillery is renamed Tears of Babylon** (`tears_of_babylon`), stored names included: its matches table and indexes, the game row, the `plugin_states` row and a saved game card, by the plugin's own migrations (`20261107120000`, `20261107120100`); `/games/artillery/...` and `/admin/artillery/...` answer 301 (`previous_slugs/0`). The owner's direction the same night: futuristic, 80s-punk soldiers against every kind of creature; a tank and a helicopter first, with separate driver and gunner seats (in PvP, one of each per team per round); characters share Bacon World's appearance data; player-hosted games reached over WebRTC; Terrain3D for World Creator maps; PvP for fun, unranked; a launcher of its own. `plugins/tears_of_babylon/TEARS_OF_BABYLON.md`. | Owner: "Artillery isn't what I was thinking it would be." |
 | 2026-11-10 | **Every game's character creator works the same.** The camera: left-drag turns around the character and tilts the view, right- or middle-drag pans, the wheel zooms, and the framing buttons or tabs put it back (Bacon World `character-stage.ts`, Tears of Babylon `character_stage.gd`, RaysSpaceSim `B8Creator.cpp`). Every select screen can edit a saved character's look and save it. No face presets. The look's data (`appearance.ts` / `.ex` / `.gd`, RaysSpaceSim's `FB8Look`) is shared. | Owner: "I need the character creator on all systems to be nearly identical, functionally all the same"; presets removed at the owner's request. |
 | 2026-11-04 | **City Planner scans drawings in the game, not on the hub.** The scanner is plain C# inside the Unity project (tested with .NET outside Unity); the hub only stores the photos (as drive files, under moderation) and the plans. | Works offline and on a headset; no image-processing service to run and secure on the hub. |
+| 2026-11-15 | **The browser's session is set only by the sign-in page's hand-off** (§6 invariant 20): `/auth/login_success` needs a token `AuthLive` signs for that user, 60 seconds long, and gives the session a new id. | It believed the `user_id` in its URL: anyone could sign in as any account whose id they knew. Found reading the sign-in code to write its tests. |
+| 2026-11-15 | **A scheduler webhook's secret goes in a header** (`X-Webhook-Secret`), never the URL; the old URL answers 410. | Request lines are logged by the app and the ingress; parameter filtering doesn't reach a path. |
+| 2026-11-15 | **Every game's definitions are one hub service, `Bacon8.GameContent`** (§9 "Shared content"): Bacon World's `bacon_world_defs` becomes `game_defs` with a game slug; Tears of Babylon's zones and camps live there. Bacon World's Studio keeps editing its own rows; the hub's editor is plain JSON for every other game. | Owner: "Move camps, loot and item definitions to the hub, as you did with building." The Studio's pages and Bacon World's item table stay where they are for now: they are tied to that game's models, and moving them is its own piece of work. |
 | 2026-11-09 | **No browser pop-ups: the site has its own confirm, alert and prompt** (`assets/js/b8_dialog.ts`, `assets/css/b8_dialog.css`). One glass dialog that eases in, centred in the upper third of the window, with the profile's glass colour, opacity and blur (`.glass-menu`, `--glass-rgb`). Every `data-confirm` goes through it with no template change (a capture-phase click listener, imported before `phoenix_html` in `app.ts`, holds the click and replays it with the attribute lifted); optional `data-confirm-title`, `-ok`, `-cancel`, `-tone`. Script calls `await b8Confirm(...)` / `b8Prompt(...)` / `b8Alert(...)` (plugins import it like the vendor shims, or use `window.B8Dialog`); `window.alert` is redirected to it. Destructive wording turns OK red and focus starts on Cancel; Esc cancels; while it is open it takes the keyboard and releases pointer lock, so Bacon World doesn't react underneath. Never call `window.confirm`/`prompt` again: they can't be restyled. | Owner: the browser's "bacon8.net says" box showed up across the site and in Bacon World when deleting items. |
 
 ---
@@ -248,8 +271,13 @@ context functions, which always scope by the authenticated user id.
 
 ### Authentication
 
-- **Browser:** session cookie holding a session token (`Accounts.get_user_by_session_token`),
-  loaded by `Bacon8Web.Auth` (plug) and `Bacon8Web.UserAuth` (LiveView `on_mount`).
+- **Browser:** the signed session cookie holds the user's id (`user_id`), read by `Bacon8Web.Auth`
+  (plug) and `Bacon8Web.UserAuth` (LiveView `on_mount`, which also turns away banned and inactive
+  accounts on every mount). It is set in one place: `AuthController.login_success`, which the
+  sign-in page (`AuthLive`, a LiveView, which can't write a cookie) sends the browser to with a
+  hand-off token it signed for that user (invariant 20). (This file said "a session token" until
+  2026-11-15. `Accounts.generate_user_session_token/1`, `get_user_by_session_token/1` and
+  `delete_user_session_token/1` are stubs that keep nothing: §13.)
 - **API / game clients:** Guardian JWT bearer tokens (`Bacon8.Auth.Guardian`).
 - **Dedicated game servers:** `X-API-Key` matching `GAMES_SERVER_API_KEY`, always
   together with an explicit `user_id`. This key can act as any user, so it is read only
@@ -282,9 +310,11 @@ priv/repo/migrations       site DB
 priv/games_repo/migrations games DB
 assets/                    esbuild + tailwind; SVG/CSS cosmos backgrounds (cosmos.css); vendor/ shims for plugins
 plugins/                   installed plugins, one folder each (§9); bacon_world/ (a game) and bacon_store/ (a site plugin) are the examples
-library/                   gitignored: licensed source assets shared by every game (Substance .sbsar...), each kind with its LICENSES.md; never committed or deployed
-  pipeline/                the Bacon8 asset pipeline (Blender scripts, B8 skeleton and human blends, animation sources), moved out of the RaysSpaceSim project 2026-10-23 (`scripts/`, `Characters/`, `Animations/`, `out/`); not in git
-  makehuman/               CC0 MakeHuman sources for the humans
+art/                       gitignored: everything art is made from and with
+  pipeline/                the Bacon8 asset pipeline (Blender scripts, B8 skeleton and human blends, animation sources; `scripts/`, `Characters/`, `Animations/`, `gltf/`, `out/`): its own repository (B8_Asset_Pipeline). It left the RaysSpaceSim project on 2026-10-23 for `library/pipeline` and has been here since 2026-11-09
+  source/                  sources never redistributed: MakeHuman's CC0 data, licensed textures and Substance files, World Creator maps, each kind with its LICENSES.md
+  work/, build/            jobs, backups of replaced models, and what the pipeline builds for each engine
+library                    a link on the development PC to the licensed source library (older notes say `library/...` for what is now under `art/`)
 k3s/                       kustomize base + overlays (dev, prod)
 config/runtime.exs         all deploy-time configuration via env vars
 ```
@@ -447,6 +477,15 @@ Each of these has already cost a build, an outage, or a security hole.
     `:x_headers`). Keep the plug first in the endpoint, before anything logs or limits by address,
     and never add Docker Desktop's `192.168.65.0/24` to ingress-nginx's `proxy-real-ip-cidr` (§18).
 
+20. **Only the sign-in page's hand-off sets the browser's session.** `GET /auth/login_success` signs the
+    browser in as `user_id` only with `handoff`, a `Phoenix.Token` that `AuthLive` signs for that user
+    after `Accounts.authenticate_user_secure/3` has passed (`AuthController.handoff_token/1`, salt
+    "login handoff", good for 60 seconds), and gives the session a new id. Until 2026-11-15 it
+    believed the `user_id` in the URL by itself: any account, admins included, for the price of
+    knowing its id, which pages and API answers show. Any other code that wants to sign a browser in
+    goes through the same hand-off; never `put_session(:user_id, ...)` from a value a request
+    supplied. Tests: `test/bacon8_web/controllers/auth_controller_test.exs`.
+
 ---
 
 ## 7. User storage and the file explorer
@@ -575,14 +614,14 @@ removed rather than kept as a `fixed` route.
 | Delivery | `BaconStore.Store.Fulfilment`: entitlements with `source_type` "store_order" (`store_download`, a plugin's item kind, `channel_access`, `channel_slots`), keys from the pool, Gems to the wallet. An open bank dispute takes it all away at once (Gems too, even into a negative balance); a won dispute gives it back, a lost one makes it permanent. Plugins get `{:entitlement_granted, e}` / `{:entitlement_revoked, e}` hub events |
 | Gems | `Store.buy_with_gems/2`: spend and deliver in one transaction |
 | Baskets (2026-10-29) | **Several items in one purchase.** The cart is `store_cart_items` (`BaconStore.Store.Cart`: one of each product, 20 at most, it follows the buyer between devices); "Add to cart" on an item's sheet, the Cart button opens `?cart=1`. Paying is `Store.start_basket_checkout/3` (one provider checkout: Stripe gets a line per item, `client_reference_id` the basket) or `Store.buy_basket_with_gems/2` (one transaction: all paid and delivered, or none). **Each item is still its own order**, so delivery, license keys, disputes and "Retry delivery" work per item as before; the orders of one purchase share `basket_id`, `number` (from `store_order_number_seq`, starting at 8001) and, by card, `provider_ref` (no longer unique). A completed checkout must pay the basket's total; a dispute is on the whole payment, so it holds every item. `start_checkout/3` and `buy_with_gems/2` are baskets of one. Bought items leave the cart. **Receipts:** `Store.receipt/1`, `list_user_receipts/2`, `list_receipts/1`; `StoreComponents.receipt/1` is the front page's card (number, items, total, a stamp: Paid, Pending, Void, Disputed, Charged back) on `/store/orders`, `/store/orders/:id`, the library's "Recent orders" and `/admin/bacon_store/orders` (with the buyer; the detail shows each item's order). Migration `20261029100000` makes every existing order a basket of one with a number |
-| The Gem (2026-10-25) | The currency has its own 3D gem, rendered in Blender (`library/pipeline/scripts/fire_gem.py`, Cycles turntable, 48 frames; `gem_sheets.py` adds the star glints and makes the sprite sheets `priv/static/images/gem/gem-64/160/288.webp` and the still `gem.webp`). On pages it is `<b8-gem>` (`assets/js/fire_gem.ts`): it turns and floats, and hovering makes it react a different way each time (whirl, hop, flare of embers, sparkles, wobble). Templates use `Bacon8Web.Components.Gem`: `<.gem size={20} />`, `<.gems amount={1500} />`, and `<.icon icon={item.icon} />` where `"gem"` is the gem (the Store's navbar link, Products in the admin sidebar). Amounts on the store pages, the Gem packs (bigger pack, bigger gem) and gem-pack products all use it; `Store.format_gems/1` stays for plain text |
+| The Gem (2026-10-25) | The currency has its own 3D gem, rendered in Blender (`art/pipeline/scripts/fire_gem.py`, Cycles turntable, 48 frames; `gem_sheets.py` adds the star glints and makes the sprite sheets `priv/static/images/gem/gem-64/160/288.webp` and the still `gem.webp`). On pages it is `<b8-gem>` (`assets/js/fire_gem.ts`): it turns and floats, and hovering makes it react a different way each time (whirl, hop, flare of embers, sparkles, wobble). Templates use `Bacon8Web.Components.Gem`: `<.gem size={20} />`, `<.gems amount={1500} />`, and `<.icon icon={item.icon} />` where `"gem"` is the gem (the Store's navbar link, Products in the admin sidebar). Amounts on the store pages, the Gem packs (bigger pack, bigger gem) and gem-pack products all use it; `Store.format_gems/1` stays for plain text |
 | Card | `Store.start_checkout/3` reserves a license key until the order is paid, fails or is cancelled. Paid but undeliverable (keys ran out) stays "paid" with a reason; `/admin/bacon_store/orders` has "Retry delivery" |
 | Expiry | `BaconStore.Store.Sweeper` (every 5 min, advisory lock): ends timed items and passes (a pass's channel membership goes with it), settles card checkouts whose 31 minutes are up (`Store.settle_stale_checkouts/1`, 2026-10-29c), and as a last resort cancels card orders still unpaid after 48 h |
 | Unfinished checkouts (2026-10-29c) | **One open card checkout per buyer, 31 minutes long.** A Stripe session is created with `expires_at` (Stripe allows 30 min to 24 h) and the buyer's email; the basket keeps its `checkout_url` and `checkout_expires_at`. Optional provider callbacks `expire_checkout/1` (Stripe: `POST /v1/checkout/sessions/:id/expire`) and `checkout_status/1` (`GET /v1/checkout/sessions/:id`). `start_basket_checkout/3` calls `settle_open_checkouts/1` first: each waiting basket is closed at the provider and cancelled ("replaced by a newer checkout"), or, if the provider says it was paid, delivered (and the new basket's check then sees what was bought). `cancel_checkout/2`: the buyer's Cancel and the provider's cancel link (`/store/orders/:id?checkout=cancelled`). `reconcile/1` asks the provider and applies what it says as an event (`reconcile:<ref>` in `payment_events`, so the real webhook later changes nothing): run when the buyer comes back (`?checkout=done`), opens a waiting order, the store or Purchases. A provider that can't be reached leaves the checkout open and refuses a new one (`:checkout_open`). **Purchases and the library's "Recent orders" list only orders with `paid_at`**; `Store.open_checkouts/1` is the unfinished one, shown on `/store` (a banner) and Purchases with "Continue to payment" and "Cancel"; the stamp says "Unpaid". Admin `/admin/bacon_store/orders` views: Purchases (default), Checkouts open, Abandoned checkouts, Everything, and each status. **Pay with other things in the cart** adds the item to the cart and opens it (`StoreLive.with_cart/2`). **Paid for something already owned**: the order stays "paid" with `Store.duplicate_note/0`, nothing is delivered twice, and the admin's order says to refund that payment in Stripe. The fake provider follows the same rules (a closed checkout can't be paid; its Cancel goes through the cancel link). Store migration `20261029120000` |
 | Pages | `/store` (category tabs, glass cards, Gem packs, the item sheet; 2026-10-28), `/store/p/:slug` (redirects to the sheet since 2026-10-28), `/store/library` (downloads, keys, items and passes), `GET /store/media/:id` (images), `GET /store/download/:id` (buyers only, attachment) |
 | Admin | `/admin/bacon_store/products` (all products, new-product buttons per kind, categories), `/admin/bacon_store/products/new?kind=…` and `/admin/bacon_store/products/:id` (`BaconStoreWeb.Admin.ProductEditor`: text, prices, delivery, images, files, keys) |
 | Accounts | `Accounts.delete_user/1` anonymizes a user with orders, ledger entries or keys instead of deleting the row |
-| Glass cards (2026-10-28) | **The storefront is glass cards** like the games' (`StoreComponents.store_card/1`, styles `priv/store_cards.css` inlined into the page, hooks in `plugins/bacon_store/assets/js/`): every product and Gem pack on sale. The front shows the item turning in 3D in the middle with its kind, name and price; hovering (a tap on touch screens) turns it over to the item blurred behind frosted glass with its summary, description and what you get. **Clicking a card slides a sheet up from the bottom** (`?item=<slug>` on `/store`, so links open it and Back closes it; Esc, ✕ or the backdrop slide it away): the item large, its pictures, the description, and the pay buttons (card and/or Gems, with the Gem confirm). There is no separate product page: `/store/p/:slug` redirects to the sheet (the stable's Buy links and the admin's view links keep working). **The 3D item** (`Catalog.art/1`): the Gem for packs; the game's own model when the game plugin draws it (an optional `store_art(grant_kind, grant_key)` on its plugin module, returning `%{src, glow}`: Bacon World's four mounts); else an admin-uploaded picture; else the kind's 3D icon (a crate for downloads, a key for license keys, a ticket for passes, a chest for game items). The turntables are `<b8-spin>` (`store_spin.ts`): 48-frame Blender renders (`library/pipeline/scripts/store_turntables.py`, Cycles, then `store_sheets.py` for the 128/224/320 px sheets and a still), turning slowly and floating, reacting when their card is hovered (a whirl and a hop, or a turn back, and a glow in the item's colour). Sheets: `plugins/bacon_store/priv/static/spin/`, `plugins/bacon_world/priv/static/store/` |
+| Glass cards (2026-10-28) | **The storefront is glass cards** like the games' (`StoreComponents.store_card/1`, styles `priv/store_cards.css` inlined into the page, hooks in `plugins/bacon_store/assets/js/`): every product and Gem pack on sale. The front shows the item turning in 3D in the middle with its kind, name and price; hovering (a tap on touch screens) turns it over to the item blurred behind frosted glass with its summary, description and what you get. **Clicking a card slides a sheet up from the bottom** (`?item=<slug>` on `/store`, so links open it and Back closes it; Esc, ✕ or the backdrop slide it away): the item large, its pictures, the description, and the pay buttons (card and/or Gems, with the Gem confirm). There is no separate product page: `/store/p/:slug` redirects to the sheet (the stable's Buy links and the admin's view links keep working). **The 3D item** (`Catalog.art/1`): the Gem for packs; the game's own model when the game plugin draws it (an optional `store_art(grant_kind, grant_key)` on its plugin module, returning `%{src, glow}`: Bacon World's four mounts); else an admin-uploaded picture; else the kind's 3D icon (a crate for downloads, a key for license keys, a ticket for passes, a chest for game items). The turntables are `<b8-spin>` (`store_spin.ts`): 48-frame Blender renders (`art/pipeline/scripts/store_turntables.py`, Cycles, then `store_sheets.py` for the 128/224/320 px sheets and a still), turning slowly and floating, reacting when their card is hovered (a whirl and a hop, or a turn back, and a glow in the item's colour). Sheets: `plugins/bacon_store/priv/static/spin/`, `plugins/bacon_world/priv/static/store/` |
 | Game items (2026-10-24) | Bacon World's dragon mounts are the first plugin item kind: `BaconWorld.Plugin.entitlement_kinds/0` returns `["bacon_world_mount"]`, the key is the mount's id (`"*"` grants every mount). `BaconWorld.Mounts.ensure_store_products/0` creates their `item` products (`mount-<id>`, inactive) for the owner to publish. Admins ride all mounts without buying |
 
 Download size is capped by `config :bacon8, BaconStore.Store, max_download_bytes:` (default 2 GiB). Uploads go through the LiveView socket in 1 MB chunks and are staged in the pod's temp directory first, so the pod needs that much free temp space.
@@ -1016,7 +1055,7 @@ matters at the hub level:
   manifests, and `Humans/Wardrobe/` design textures and item icons), animation packs, hair, weapons, the skeleton creature and the village kit.
 
   They live on the models volume, not in git, and are built in the game repository
-  (`library/pipeline/scripts`). The humans' manifests are `.json`, which `/models` refuses
+  (`art/pipeline/scripts`). The humans' manifests are `.json`, which `/models` refuses
   (invariant 17), so the LiveView passes them in `data-human-assets`.
 
   Model URLs carry a version (`?vsn=`, from size and mtime), and `/models` serves
@@ -1076,6 +1115,54 @@ button and all), on one hub service with Bacon World's catalogue.
   `tmp\build_test.cmd` runs them with Bacon World's building tests in Docker.
 - **Tears of Babylon**: `scripts/world/build_mode.gd`. **RaysSpaceSim**: `Source/RSS/B8/B8Build*` (RAYSSPACESIM.md
   7c; built 2026-11-15, the old Cosmos build system removed). Both need the hub deployed with this service.
+
+**2026-11-15:** Bacon World's knees and elbows are hinges (`bw_joint_hinge`: box3d's revolute joint, added to
+`native/box3d/bw_box3d.c`; `box3d.wasm` rebuilt in the wasi-sdk image, `tmp/cc_wasm.cmd`), and its placed
+pieces are static boxes in the physics world, so debris and bodies stop at walls and lie on floors
+(BACON_WORLD.md). Tears of Babylon's weapons damage placed pieces through `Bacon8.Building`
+(`BuildMode.hit`). Next there: loose props; box3d beside Jolt in Godot is still not started.
+
+### Shared content: one hub service (2026-11-15)
+The owner: "Move camps, loot and item definitions to the hub, as you did with building. Tears of Babylon's
+stated next step (zones in the database and /admin) and the loot step after it are the same problem Bacon
+World's Studio already solved."
+- **`Bacon8.GameContent`** (`lib/bacon8/game_content.ex`): a game's definitions, a row each: a game slug, a
+  `kind` (`"zone"`, `"camp"`, `"camp_template"`, `"monster"`, `"loot_table"`, `"item"`, `"merchant"`, `"event"`,
+  or any other), an `id` and its `data` (JSON the game gives meaning to). Read from a cache per game and kind
+  (`:persistent_term`, cleared on every node by a change) with a `revision/2` that changes whenever the kind
+  does. Changed by staff (`staff?/1`: admins and GMs) with `put/5` and `delete/4`; every change is kept
+  (`history/2`) and undone with `undo/3`, a deletion too, and is in the audit log. A plugin fills its kinds
+  from a seed with `seed/4` (only a kind that is still empty, unless `missing: true`).
+- **`Bacon8.GameContent.Loot`**: Bacon World's loot roller for every game, over the tables as stored (rolls,
+  an empty weight, a weighted pool with quantities and level bands, always-drops with a chance, nested tables
+  four deep, coins times the level; chance and coin multipliers; `simulate/5`).
+- **Tables** (games_repo, `20261115100000_create_game_content`): `game_defs` is Bacon World's
+  `bacon_world_defs` renamed, with `game_slug` (default `bacon_world`) now part of its key;
+  `bacon_world_defs` stays as a view of that game's rows for a pod of the old code still serving during the
+  deploy. `game_content_history` is new. A later Bacon World migration must alter `game_defs`, not the view.
+- **Bacon World** reads and writes the same rows through `BaconWorld.Defs` as before (now scoped by
+  `game_slug`; it tells the hub's cache when it writes), and its Studio is still where they are edited: the
+  hub serves them read-only (`GameContent.read_only?/1`). **Not moved yet:** its items
+  (`bacon_world_item_defs`, icons), the Studio's own history, and the Studio's pages (items, loot, monsters,
+  camps: about 2,200 lines of LiveView tied to Bacon World's models and skills). They move when a second game
+  needs forms and previews rather than JSON; the data layer they would move onto is this one.
+- **API** (`Bacon8Web.Api.ContentController`): `/api/games/:slug/content` (the kinds), `/content/:kind`
+  (`?rev=n` answers `unchanged`; any other parameter filters on the data's top level, e.g. `?zone=`),
+  `/content/:kind/:id` (GET; PUT and DELETE for staff), `/content/loot_table/:id/roll` (a game server with
+  the server key, or staff trying a table; never a player's own client), `/content/history` and
+  `/content/history/:change/undo` (staff). As the player (token) or a game server (`X-API-Key`, with
+  `user_id` to act for a staff member).
+- **`/admin/content`** (`AdminLive.GameContent`; "Game content" in the admin sidebar): pick a game, a kind and
+  a definition; its data as JSON; Save, Delete, New, and History with Undo. Plain on purpose, the same for
+  every game.
+- **Tears of Babylon** (its step 5): `TearsOfBabylon.Content` seeds its five zones, 45 camps, two creature
+  types and three loot tables from `priv/seed/content.json` (`tools/export_content.py` writes it from the
+  level scenes) when the plugin starts; `/admin/tears_of_babylon` links each kind; the game asks for a zone's
+  camps as it loads (`scripts/world/zone_content.gd`) and changes, adds or retires camps to match
+  (TEARS_OF_BABYLON.md). **RaysSpaceSim** has the same service at `/api/games/rays-space-sim/content` and
+  uses none of it yet.
+- Tests: `test/bacon8/game_content_test.exs`, `test/bacon8_web/controllers/content_api_test.exs`,
+  `plugins/tears_of_babylon/test/tears_of_babylon/content_test.exs`.
 
 The hub's part (2026-11-14): `PluginStatic` serves `.wasm` (Bacon World's module) and `ModelsGuard` lets
 `.json` under `/models` through (the shared springs' `Humans/b8_jiggle.json`); a test for the second.
@@ -1176,9 +1263,23 @@ Implementation: a nullable `required_entitlement` column on `channels` (e.g.
 
 Ordered roughly by how much it hurts.
 
+- **Browser sessions can't be taken back** (found 2026-11-15 while testing them). The cookie holds the
+  user's id and nothing the server could revoke: `Accounts.generate_user_session_token/1`,
+  `get_user_by_session_token/1` and `delete_user_session_token/1` are stubs (`Accounts.UserToken` and its
+  table exist, unused), and `Bacon8.UserSession` is an agent nothing reads. So "sign out everywhere", ending
+  sessions on a password change, and ending a stolen cookie before it expires aren't possible; a ban works only
+  because `UserAuth` re-reads the account on every mount. Making the stubs real (a token row per session,
+  checked on each request) signs everyone out once: the owner's call on when.
+- **Wrong passwords never lock an account** (found 2026-11-15). `authenticate_user_secure/3` refuses an
+  account whose `locked_until` is in the future, but nothing sets it: failures are counted per address (or
+  per account behind the gateway address) by the rate limiters only. Decide: lock after N failures, or drop
+  the field.
+- **Two routes lead nowhere**: `POST /auth/2fa/verify` and `/auth/2fa/setup` name `AuthController` actions
+  that don't exist (a 500 for whoever posts there). Remove them or build 2FA.
 - **Much of the core still has no tests.** Found 2026-10-25 by module name (indirect cover may
-  exist): `Security`, `RateLimiter`, `Uploads` (apart from its path functions), `UserFileUpload`,
-  `UserSession`, ~~`Moderation`~~ (tested since 2026-11-03), `Email`, `Mailer`, `Calendar`, `Desktop`,
+  exist): ~~`Security`, `RateLimiter`, `Uploads`~~ (tested since 2026-11-15, with `Accounts.RateLimit`, the
+  API's rate-limit plug, sign-in and the session hand-off), `UserFileUpload`,
+  `UserSession` (unused, above), ~~`Moderation`~~ (tested since 2026-11-03), `Email`, `Mailer`, `Calendar`, `Desktop`,
   `Avatar`, `Storage` and the media code. There are no LiveView tests for the profile, the admin
   dashboard, user management or the SQL console. Covered so far: the forum (now the plugin), pages
   and blog (the context, the public pages, both admin pages, the inline media), `SafePath`,
@@ -1208,19 +1309,21 @@ Ordered roughly by how much it hurts.
   invariant 4). An allowlist of types safe to show inline (pictures, video, audio, PDF), with
   everything else sent as a sandboxed download the way the drive's `Sniff` works, would not need
   updating when browsers or the MIME library learn a new type. Found in the 2026-10-25 review.
-- `User.registration_changeset/2` casts `:role` and `:is_admin`. `register_user/2`
-  overwrites both, so it isn't exploitable today, but `Accounts.create_user/1` passes attrs
-  straight through (its one caller left is the plugin's `mix rss.dev_users`). Drop the two
-  fields from the cast and set them explicitly.
-- `POST /api/webhooks/scheduler/:secret` carries its secret in the URL, so the request
-  line in the app and ingress logs still shows it (parameter filtering only covers the
-  parameters). Move it to a header.
+- ~~`User.registration_changeset/2` casts `:role` and `:is_admin`.~~ Done 2026-11-15: neither is cast;
+  the caller passes `role:` as an option (`registration_changeset/3`), `is_admin` follows it, and anything
+  else is a member. `register_user/2` passes the first-user and default roles that way.
+- ~~`POST /api/webhooks/scheduler/:secret` carries its secret in the URL.~~ Done 2026-11-15:
+  `POST /api/webhooks/scheduler` with the secret in `X-Webhook-Secret` (or `Authorization: Bearer`); the
+  old URL answers 410 and runs nothing. **Anything outside that calls a scheduler webhook must move its
+  secret to the header**, and a secret that was ever in a URL is in old logs: make the event a new one.
 - Bacon World's own follow-ups (creature collisions, server-side walls, remote crouch, the
   skill tree, `.glb.gz` upkeep, TypeScript errors) are tracked in `BACON_WORLD.md` §7.
 - `desktop_live.ex` is ~2,000 lines; the explorer, uploads, calendar and audio
   should become separate app components (milestone 5).
-- Tracked dev secrets in `k3s/overlays/dev/secrets.yaml` should all be obvious
-  placeholders.
+- ~~Tracked dev secrets in `k3s/overlays/dev/secrets.yaml` should all be obvious placeholders.~~ Checked
+  2026-11-15: that file is gitignored and not in this repository's history (it began fresh on 2026-10-17);
+  what is tracked is `secrets.example.yaml`, all placeholders. Values that were in the old repository's
+  history are still worth rotating (§17).
 
 ---
 
@@ -1270,7 +1373,7 @@ Ordered roughly by how much it hurts.
 
   The web game is where characters and assets are developed first (fast to change and
   check); the same B8 skeleton and assets then go to Unreal, Unity or Godot (decisions log,
-  2026-10-20). `library/pipeline` builds both the web GLBs and the engine exports.
+  2026-10-20). `art/pipeline` builds both the web GLBs and the engine exports.
 - **Brand assets**: replace a master in `brand/` (see its README), then regenerate every
   icon, favicon, manifest and splash in a throwaway container:
 

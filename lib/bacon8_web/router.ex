@@ -188,6 +188,9 @@ defmodule Bacon8Web.Router do
     live "/admin/audit", AdminLive.Audit, :index
     live "/admin/moderation", AdminLive.Moderation, :index
     live "/admin/notifications", AdminLive.Notifications, :index
+    live "/admin/content", AdminLive.GameContent, :index
+    live "/admin/content/:game", AdminLive.GameContent, :game
+    live "/admin/content/:game/:kind", AdminLive.GameContent, :kind
 
   end
   end
@@ -269,12 +272,15 @@ defmodule Bacon8Web.Router do
   plugin_site_api_routes()
 
   # --------------------
-  # Scheduler Webhook (Public with secret)
+  # Scheduler Webhook (public; the secret travels in the X-Webhook-Secret
+  # header, never in the URL, so request lines in logs don't carry it)
   # --------------------
   scope "/api/webhooks", Bacon8Web do
     pipe_through :api
-    
-    post "/scheduler/:secret", Api.SchedulerController, :trigger_webhook
+
+    post "/scheduler", Api.SchedulerController, :trigger_webhook
+    # The old form, secret in the path: answers 410 and runs nothing.
+    post "/scheduler/:secret", Api.SchedulerController, :trigger_webhook_gone
   end
 
   # Plugin APIs: /api/games/<game slug>/... MUST stay above the core
@@ -319,6 +325,17 @@ defmodule Bacon8Web.Router do
     post "/:game_slug/build/zones/:zone/:id/damage", Api.BuildingController, :damage
     put "/:game_slug/build/zones/:zone/:id", Api.BuildingController, :move
     delete "/:game_slug/build/zones/:zone/:id", Api.BuildingController, :delete
+
+    # A game's definitions through the hub (2026-11-15: Bacon8.GameContent): zones, camps,
+    # creature types, loot tables, items. /history and /loot_table/:id/roll stay above /:kind.
+    get "/:game_slug/content", Api.ContentController, :index
+    get "/:game_slug/content/history", Api.ContentController, :history
+    post "/:game_slug/content/history/:change/undo", Api.ContentController, :undo
+    post "/:game_slug/content/loot_table/:id/roll", Api.ContentController, :roll
+    get "/:game_slug/content/:kind", Api.ContentController, :list
+    get "/:game_slug/content/:kind/:id", Api.ContentController, :show
+    put "/:game_slug/content/:kind/:id", Api.ContentController, :put
+    delete "/:game_slug/content/:kind/:id", Api.ContentController, :delete
 
     get "/:game_slug/characters", Api.GamesController, :list_characters
     post "/:game_slug/characters", Api.GamesController, :create_character

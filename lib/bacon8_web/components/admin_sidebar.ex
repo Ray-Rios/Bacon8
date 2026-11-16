@@ -154,6 +154,12 @@ defmodule Bacon8Web.Components.AdminSidebar do
             active={String.starts_with?(@current_path, "/admin/notifications")}
           />
           <.sidebar_link
+            href="/admin/content"
+            icon="🗺️"
+            label="Game content"
+            active={String.starts_with?(@current_path, "/admin/content")}
+          />
+          <.sidebar_link
             href="/admin/emails"
             icon="📧"
             label="Email Logs"

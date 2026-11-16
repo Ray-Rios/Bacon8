@@ -92,25 +92,13 @@ defmodule Bacon8.Accounts do
       is_first_user = user_count == 0
       
       # Determine role: first user is always admin, others use the default role setting
-      attrs_with_role = if is_first_user do
-        attrs_with_ip
-        |> Map.put("role", "admin")
-        |> Map.put("is_admin", true)
-      else
-        # Get the default role from settings (defaults to "member" if not set)
-        default_role = Bacon8.Settings.get_default_user_role()
-        
-        # Map role to is_admin flag
-        is_admin = default_role == "admin"
-        
-        attrs_with_ip
-        |> Map.put("role", default_role)
-        |> Map.put("is_admin", is_admin)
-      end
+      # (defaults to "member" if not set). The role is passed as an option, never
+      # through attrs: registration_changeset/3 does not cast it.
+      role = if is_first_user, do: "admin", else: Bacon8.Settings.get_default_user_role()
       
       # Create the user
       case %User{}
-           |> User.registration_changeset(attrs_with_role)
+           |> User.registration_changeset(attrs_with_ip, role: role)
            |> Repo.insert() do
         {:ok, user} ->
           user

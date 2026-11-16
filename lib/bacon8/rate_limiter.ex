@@ -128,7 +128,14 @@ defmodule Bacon8.RateLimiter do
       failed_attempts: get_attempt_count(state.attempts, identifier),
       last_attempt: get_last_attempt(state.attempts, identifier),
       blocked: Map.has_key?(state.blocked, identifier),
-      block_reason: get_in(state.blocked, [identifier, :reason])
+      # (a block is {reason, blocked_at}. Until 2026-11-15 this read it with get_in/2, which
+      # raised on the tuple: asking for a blocked identifier's stats crashed the limiter, and
+      # its restart forgot every count and block.)
+      block_reason:
+        case Map.get(state.blocked, identifier) do
+          {reason, _blocked_at} -> reason
+          _ -> nil
+        end
     }
 
     {:reply, stats, state}

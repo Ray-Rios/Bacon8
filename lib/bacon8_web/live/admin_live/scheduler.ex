@@ -354,7 +354,11 @@ defmodule Bacon8Web.AdminLive.Scheduler do
                   <div class="text-sm">
                     <div class="text-gray-400 mb-1">Trigger URL:</div>
                     <code class="text-blue-400 bg-gray-900 px-3 py-2 rounded block break-all">
-                      POST /api/webhooks/scheduler/<%= @selected_event.webhook_secret %>
+                      POST /api/webhooks/scheduler
+                    </code>
+                    <div class="text-gray-400 mt-3 mb-1">with the header (keep it out of URLs and logs):</div>
+                    <code class="text-blue-400 bg-gray-900 px-3 py-2 rounded block break-all">
+                      X-Webhook-Secret: <%= @selected_event.webhook_secret %>
                     </code>
                   </div>
                 </div>

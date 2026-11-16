@@ -502,18 +502,20 @@ defmodule Bacon8.Scheduler do
 
   # ==================== WEBHOOK TRIGGERS ====================
 
-  def trigger_webhook(webhook_secret) do
+  def trigger_webhook(webhook_secret) when is_binary(webhook_secret) and webhook_secret != "" do
     case get_scheduled_event_by_webhook_secret(webhook_secret) do
       nil -> {:error, :not_found}
       event -> execute_scheduled_event(event)
     end
   end
 
+  def trigger_webhook(_), do: {:error, :not_found}
+
   def generate_webhook_url(event_id) do
     event = get_scheduled_event!(event_id)
     if event.webhook_secret do
-      # This would be constructed based on your app's domain
-      "/api/webhooks/scheduler/#{event.webhook_secret}"
+      # The secret goes in the X-Webhook-Secret header, not the URL.
+      "/api/webhooks/scheduler"
     else
       nil
     end

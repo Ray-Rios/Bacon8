@@ -3,7 +3,7 @@ defmodule Bacon8Web.Api.SchedulerController do
   API Controller for Scheduler webhooks and automation endpoints.
   
   Endpoints:
-  - POST /api/webhooks/scheduler/:secret - Trigger webhook event
+  - POST /api/webhooks/scheduler (header X-Webhook-Secret) - Trigger webhook event
   - GET /api/scheduler/events - List scheduled events (authenticated)
   - POST /api/scheduler/events - Create scheduled event (authenticated)
   - POST /api/scheduler/events/:id/run - Run event now (authenticated)
@@ -16,9 +16,51 @@ defmodule Bacon8Web.Api.SchedulerController do
 
   @doc """
   Trigger a webhook-type scheduled event.
-  The webhook secret acts as authentication.
+  The webhook secret acts as authentication. It is read from the
+  `X-Webhook-Secret` header (or `Authorization: Bearer <secret>`), never from
+  the URL: a path is written to the app's and the ingress's request logs.
   """
-  def trigger_webhook(conn, %{"secret" => secret}) do
+  def trigger_webhook(conn, _params) do
+    case webhook_secret(conn) do
+      nil ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{error: "Send the webhook's secret in the X-Webhook-Secret header"})
+
+      secret ->
+        run_webhook(conn, secret)
+    end
+  end
+
+  @doc """
+  The pre-2026-11-15 form, `POST /api/webhooks/scheduler/:secret`. Runs nothing:
+  a caller still using it is told to move the secret to the header.
+  """
+  def trigger_webhook_gone(conn, _params) do
+    conn
+    |> put_status(:gone)
+    |> json(%{error: "POST /api/webhooks/scheduler with the secret in the X-Webhook-Secret header"})
+  end
+
+  defp webhook_secret(conn) do
+    header =
+      case get_req_header(conn, "x-webhook-secret") do
+        [value | _] -> value
+        [] ->
+          case get_req_header(conn, "authorization") do
+            ["Bearer " <> value | _] -> value
+            _ -> nil
+          end
+      end
+
+    case header && String.trim(header) do
+      nil -> nil
+      "" -> nil
+      secret -> secret
+    end
+  end
+
+  defp run_webhook(conn, secret) do
     case Scheduler.trigger_webhook(secret) do
       {:ok, result} ->
         Logger.info("Scheduler webhook triggered successfully")
@@ -295,7 +337,8 @@ defmodule Bacon8Web.Api.SchedulerController do
       trigger_project_id: event.trigger_project_id,
       trigger_on: event.trigger_on,
       target_project_id: event.target_project_id,
-      webhook_url: if(event.webhook_secret, do: "/api/webhooks/scheduler/#{event.webhook_secret}", else: nil),
+      webhook_url: if(event.webhook_secret, do: "/api/webhooks/scheduler", else: nil),
+      webhook_header: if(event.webhook_secret, do: "X-Webhook-Secret", else: nil),
       created_at: event.inserted_at,
       updated_at: event.updated_at
     }
