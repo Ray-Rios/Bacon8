@@ -92,3 +92,10 @@ plugins/*/*.png
 plugins/*/unity
 # the cleanup holding pen (tmp\cleanup.cmd empties it)
 /_to_delete
+# Plugins (2026-11-19): an allowlist. The image builds only from a plugin's lib/ (Elixir, mix.exs elixirc_paths),
+# priv/ (migrations, static files; copied into the release) and assets/ (its JS and CSS, bundled by esbuild).
+# Anything else a plugin holds (an engine project, art, tools, docs, notebooks) stays out without being listed.
+plugins/*/*
+!plugins/*/lib
+!plugins/*/priv
+!plugins/*/assets

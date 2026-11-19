@@ -23,6 +23,9 @@
   makes it work: Explorer gives up on node_modules' very long paths and hundreds of thousands
   of small files ("an unexpected error"). Robocopy handles long paths and retries.
 
+  After the copy, backups\ keeps only the newest 14 db_backup_* and 14 games_backup_* dumps (a dump leaves the tree
+  only once the backup holds the same file); the destination keeps every one.
+
   It only adds and updates files in the backup, never deletes, so a damaged source can't wipe
   a good backup. A second pass then checks that nothing was left behind.
 
@@ -112,6 +115,25 @@ foreach ($repo in @($Source, "$Source\plugins\rays_space_sim", "$Source\plugins\
   } catch {} finally { Pop-Location }
 }
 git -C $Source rev-parse HEAD 2>$null | Out-File -Encoding ascii (Join-Path $target "BACKUP_GIT_HEAD.txt")
+
+# ---------------------------------------------------------------- 4. rotate the dumps in the tree
+# backups\ keeps the newest 14 db_backup_* and 14 games_backup_* dumps (deploy-prod.sh only needs the newest).
+# The destination keeps them all: this runs after the copy, and a dump is removed from the tree only if the same
+# file (same size) is already in the backup. Names and sizes only: the dumps are never opened.
+if ($code -lt 8) {
+  foreach ($prefix in @("db_backup_", "games_backup_")) {
+    $dumps = @(Get-ChildItem (Join-Path $Source "backups") -Filter "${prefix}*.sql" -File -ErrorAction SilentlyContinue | Sort-Object Name -Descending)
+    foreach ($old in ($dumps | Select-Object -Skip 14)) {
+      $copy = Join-Path $target "backups\$($old.Name)"
+      if ((Test-Path $copy) -and ((Get-Item $copy).Length -eq $old.Length)) {
+        Remove-Item $old.FullName -Force
+        Say "Rotated out of backups\ (kept in the backup): $($old.Name)"
+      } else {
+        $problems += "Not rotated, no matching copy in the backup yet: $($old.Name)"
+      }
+    }
+  }
+}
 
 $size = (Get-ChildItem $target -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
 Say ("Backup now holds {0:N1} GB in {1}" -f ($size / 1GB), $target)
