@@ -97,3 +97,7 @@ uploads/
 # The shared art home (2026-11-09): sources, working files and builds stay out of the hub repo;
 # art/pipeline is its own repository (Ray-Rios/B8_Asset_Pipeline). library is a link to art/source.
 /art/
+# the cleanup holding pen (tmp\cleanup.cmd empties it; 2026-11-19)
+/_to_delete/
+# the library link (BACON8.md section 4) is a junction: git sees a file, which /library/ does not match (2026-11-19)
+/library

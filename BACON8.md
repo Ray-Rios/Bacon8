@@ -231,6 +231,9 @@ fork can delete the ones it doesn't want; `README.md` lists what removing each c
 | 2026-11-15 | **A scheduler webhook's secret goes in a header** (`X-Webhook-Secret`), never the URL; the old URL answers 410. | Request lines are logged by the app and the ingress; parameter filtering doesn't reach a path. |
 | 2026-11-15 | **Every game's definitions are one hub service, `Bacon8.GameContent`** (§9 "Shared content"): Bacon World's `bacon_world_defs` becomes `game_defs` with a game slug; Tears of Babylon's zones and camps live there. Bacon World's Studio keeps editing its own rows; the hub's editor is plain JSON for every other game. | Owner: "Move camps, loot and item definitions to the hub, as you did with building." The Studio's pages and Bacon World's item table stay where they are for now: they are tied to that game's models, and moving them is its own piece of work. |
 | 2026-11-09 | **No browser pop-ups: the site has its own confirm, alert and prompt** (`assets/js/b8_dialog.ts`, `assets/css/b8_dialog.css`). One glass dialog that eases in, centred in the upper third of the window, with the profile's glass colour, opacity and blur (`.glass-menu`, `--glass-rgb`). Every `data-confirm` goes through it with no template change (a capture-phase click listener, imported before `phoenix_html` in `app.ts`, holds the click and replays it with the attribute lifted); optional `data-confirm-title`, `-ok`, `-cancel`, `-tone`. Script calls `await b8Confirm(...)` / `b8Prompt(...)` / `b8Alert(...)` (plugins import it like the vendor shims, or use `window.B8Dialog`); `window.alert` is redirected to it. Destructive wording turns OK red and focus starts on Cancel; Esc cancels; while it is open it takes the keyboard and releases pointer lock, so Bacon World doesn't react underneath. Never call `window.confirm`/`prompt` again: they can't be restyled. | Owner: the browser's "bacon8.net says" box showed up across the site and in Bacon World when deleting items. |
+| 2026-11-18 | **The creators' Face tab has a Mouth section in every game**, Black Desert's: Smile, Corners, Width, Height, Forward, Fullness, Upper lip, Lower lip, Overbite, Cupid's bow (look keys `mouth_*`, `lip_*`; 17 morphs made on every body by the art pipeline's `gltf/face_mouth.mjs`). The v2 female's face keys were rebuilt at the v1's strength. | Owner: "there isn't even a way to make the character smile"; "none of the facial morphs seem to be effecting the v2 Female". |
+| 2026-11-18 | **City Planner is a stand-alone game: no Bacon8 sign-in**, with the shared character creator; its characters are kept on the player's computer. Its hub side (drawings, plans, cities) is no longer used by the game; whether it goes is the owner's call. | Owner: "it will not need Bacon8.net login, it can be a stand-alone game. It will still need the character creator though." |
+| 2026-11-18 | **Faces as free as Black Desert's**: every face and eye slider goes both ways, more of them (the eyes 7 to 15, a Brow group; cheeks, jaw, chin, nose and ears next), clearer names; made by the art pipeline's process (README, "How a face key is made"). (The owner: "give the players as much customizable freedom as possible!!") |
 
 ---
 
@@ -324,6 +327,21 @@ private plugin is its own repository). RaysSpaceSim's deploy and build scripts, 
 code map, mix task and admin pages are in its private plugin (2026-10-16), and so is the Unreal
 project itself: `plugins/rays_space_sim/unreal/` is a second, nested git repository (2026-10-29).
 The plugin's `.gitignore` and the root `.dockerignore` (`plugins/*/unreal`) keep it out of both.
+
+**What on disk is kept and what is disposable (2026-11-19 cleanup; the owner asked for one).** Kept: the repositories
+(hub, `art/pipeline`, each plugin, `plugins/rays_space_sim/unreal`), `art/source`, `backups/` (the nightly database
+dumps: production data, never read by an assistant), `uploads/`. Regenerable: `art/build` (build.mjs), the games' copies
+of the models, `art/pipeline/out`. Disposable: `tmp/` except its launchers (`*.cmd`, `*.sh`, `*_task.xml`, the
+`*_args.txt` files the scheduled tasks read) and the hair sources it still holds (`tmp/hairgen`, `tmp/loose`: the grown
+styles' only copies besides the games'). Model snapshots (`art/work/backup_models/<date>_<topic>`): the web models are
+not in any repository, so these are their only history; keep the last few days' and anything the notebooks still point
+at. Anything to be thrown away is moved to `_to_delete/<date>/<its old path>` (a `MANIFEST.txt` lists it), never
+deleted by an assistant; `tmp\cleanup.cmd` empties `_to_delete` when the owner runs it. Both `.gitignore` and
+`.dockerignore` leave `_to_delete` out, and `.dockerignore` now also leaves out `plugins/*/unity` (City Planner's Unity
+project would otherwise go into the web image with `COPY plugins`). The 2026-11-19 sweep moved ~11 GB (old shots,
+superseded garment and hair experiments, the rejected hair pass 5, model snapshots from 11-01 to 11-15).
+`handoff/CLAUDE_CODE_PROMPT_2026-11-19_cleanup_and_update.md` has the review of the layout and what is left to do;
+`docs/UPDATING.md` is how to bring the hub and every game up to date.
 
 ---
 

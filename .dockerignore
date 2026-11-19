@@ -88,3 +88,7 @@ plugins/*/godot
 plugins/*/tools
 plugins/*/docs
 plugins/*/*.png
+# City Planner (Unity, 2026-11-18): its project (Library, StreamingAssets: GBs) must not go into the web image (COPY plugins); 2026-11-19
+plugins/*/unity
+# the cleanup holding pen (tmp\cleanup.cmd empties it)
+/_to_delete
