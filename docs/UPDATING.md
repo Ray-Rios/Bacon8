@@ -33,7 +33,7 @@ build.cmd
 The build repairs the web clips and adds the shared eyes and the face keys where they are missing. It then converts
 the web models three ways: for Godot (`art\build\godot`), for Unreal (`art\build\unreal`, PNG textures) and for Unity
 (`art\build\unity`, without vertex colours or region ids). Changed files are copied into Tears of Babylon
-(`godot\art\characters\bacon_world\...`), RaysSpaceSim (`unreal\SourceAssets\Bacon8`) and City Builder
+(`godot\art\characters\shared\...`), RaysSpaceSim (`unreal\SourceAssets\Bacon8`) and City Builder
 (`unity\Assets\StreamingAssets\B8`). It ends with a list of problems, and an empty list is what you want. If
 `gltf\node_modules` is missing, run `npm ci` in `gltf` first. New hair styles are installed before the build
 (art pipeline README, "Hair, where things stand").
