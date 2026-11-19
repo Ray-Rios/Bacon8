@@ -317,7 +317,7 @@ plugins/                   installed plugins, one folder each (§9); bacon_world
 art/                       gitignored: everything art is made from and with
   pipeline/                the Bacon8 asset pipeline (Blender scripts, B8 skeleton and human blends, animation sources; `scripts/`, `Characters/`, `Animations/`, `gltf/`, `out/`): its own repository (B8_Asset_Pipeline). It left the RaysSpaceSim project on 2026-10-23 for `library/pipeline` and has been here since 2026-11-09
   source/                  sources never redistributed: MakeHuman's CC0 data, licensed textures and Substance files, World Creator maps, each kind with its LICENSES.md (2026-11-19: also music and lace photos)
-  models/                  our masters, what builds start from and what we edit (2026-11-19): the v2's blends and finished GLB, the grown hair, the garment fabrics; `art/README.md` has the rules
+  models/                  THE MASTERS, the only models anyone edits (2026-11-19): plain .glb files for every body, animation pack, garment, hair style (`Hair/<Body>/`), mob, world piece and weapon, plus the v2's blends and the fabrics; `build.cmd` writes the web pack (`priv/static/models`), the engine sets and every game's copy from them. No Git LFS history: backed up locally (`art/README.md` has the rules)
   build/                   what build.mjs makes for each engine (remade by the next build)
   snapshots/               copies of masters taken before a risky change, `<date>_<topic>` (was work/backup_models)
   work/                    scratch: anything here may be deleted
@@ -334,9 +334,9 @@ The plugin's `.gitignore` and the root `.dockerignore` (`plugins/*/unreal`) keep
 
 **What on disk is kept and what is disposable (2026-11-19 cleanup; the owner asked for one).** Kept: the repositories
 (hub, `art/pipeline`, each plugin, `plugins/rays_space_sim/unreal`), `art/source`, `backups/` (the nightly database
-dumps: production data, never read by an assistant; `scripts/backup.ps1` keeps the newest 14 of each here, after copying every one to `D:\Backups`), `uploads/`. Regenerable: `art/build` (build.mjs), the games' copies
-of the models, `art/pipeline/out`. Tracked tools: `tools/win/` (the launchers the scheduled tasks run, `paths.cmd`, `README.md`; moved out of `tmp/` 2026-11-19). Disposable: `tmp/` (logs, status files, the per-run `*_args.txt`, renders); the grown hair, which used to live there, moved to `art/models/Hair` the same day. Model snapshots (`art/snapshots/<date>_<topic>`): the web models are
-not in any repository, so these are their only history; keep the last few days' and anything the notebooks still point
+dumps: production data, never read by an assistant; `scripts/backup.ps1` keeps the newest 14 of each here, after copying every one to `D:\Backups`), `uploads/`. Regenerable: `art/build` (build.mjs), the web models (`priv/static/models`, packed from `art/models`), the games' copies
+of the models, `art/pipeline/out`. Tracked tools: `tools/win/` (the launchers the scheduled tasks run, `paths.cmd`, `README.md`; moved out of `tmp/` 2026-11-19). Disposable: `tmp/` (logs, status files, the per-run `*_args.txt`, renders); the grown hair, which used to live there, is in `art/work/hair` (trials) and `art/models/Hair` (installed). Model snapshots (`art/snapshots/<date>_<topic>`): the masters (`art/models`) are
+not in any repository (no LFS, by the owner's choice), so these and the nightly `D:\Backups` copy are their only history; keep the last few days' and anything the notebooks still point
 at. Anything to be thrown away is moved to `_to_delete/<date>/<its old path>` (a `MANIFEST.txt` lists it), never
 deleted by an assistant; `tools\win\cleanup.cmd` empties `_to_delete` when the owner runs it. Both `.gitignore` and
 `.dockerignore` leave `_to_delete` out, and `.dockerignore` now also leaves out `plugins/*/unity` (City Builder's Unity
