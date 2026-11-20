@@ -5,7 +5,7 @@ set ST=C:\Bacon8\tmp\JOB_STATUS.txt
 echo Cleanup: RUNNING %time% > %ST%
 echo start %date% %time% > %LOG%
 set U=C:\Bacon8\plugins\rays_space_sim\unreal
-for %%d in ("%U%\Saved\StagedBuilds" "%U%\Saved\ClientBuild" "%U%\Saved\ServerBuild" "%U%\Intermediate\Build\Linux" "C:\Bacon8\tmp\tob_test" "C:\Bacon8\tmp\wh\override_off" "C:\Bacon8\_to_delete") do (
+for %%d in ("%U%\Saved\StagedBuilds" "%U%\Saved\ClientBuild" "%U%\Saved\ServerBuild" "%U%\Intermediate\Build\Linux" "C:\Bacon8\tmp\tob_test" "C:\Bacon8\plugins\bacon_world\tools\harness\override_off" "C:\Bacon8\_to_delete") do (
   echo removing %%d >> %LOG%
   rmdir /s /q %%d >> %LOG% 2>&1
 )

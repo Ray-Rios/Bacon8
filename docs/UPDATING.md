@@ -42,7 +42,7 @@ the web models three ways: for Godot (`art\build\godot`), for Unreal (`art\build
 
 - Tests, in throwaway Docker containers (nothing is installed on the PC): `C:\Bacon8\tools\win\hubtests.cmd`. Both
   `tmp\build_test.log` and `tmp\ex_test.log` must end with `EXIT 0`. The full suite is in BACON8.md §14.
-- Bacon World's browser checks: `C:\Bacon8\tools\win\checks.cmd`. This runs the three.js harness in `tmp\wh` and then Tears
+- Bacon World's browser checks: `C:\Bacon8\tools\win\checks.cmd`. This runs the three.js harness in `plugins\bacon_world\tools\harness` and then Tears
   of Babylon's tests. Output: `tmp\js_test.log`.
 - Bacon World's TypeScript unit tests are in `plugins\bacon_world\assets\js\__tests__`. Run them with Node's type
   stripping (`node --experimental-strip-types --test ...`).

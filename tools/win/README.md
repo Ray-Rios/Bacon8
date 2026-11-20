@@ -15,8 +15,8 @@ No secrets here (the test database's `POSTGRES_PASSWORD=postgres` is a throwaway
 | `hubtests.cmd` | `build_test.cmd` then `ex_test.cmd` | `build_test.log`, `ex_test.log` (both end `EXIT 0`); `hubtests.done` |
 | `build_test.cmd` | Hub `mix test` (build/other suites) in Docker with Postgres | `build_test.log` |
 | `ex_test.cmd` | Bacon World's Elixir tests in Docker with Postgres | `ex_test.log` |
-| `checks.cmd` | three.js harness (`tmp\wh`), then `tob_check.cmd` | `js_test.log`, `JOB_STATUS.txt` |
-| `wh_build.cmd` | bundles the harness (`tmp\wh\build.mjs`) | `wh_build.log` |
+| `checks.cmd` | three.js harness (`plugins\bacon_world\tools\harness`), then `tob_check.cmd` | `js_test.log`, `JOB_STATUS.txt` |
+| `wh_build.cmd` | bundles the harness (`plugins\bacon_world\tools\harness\build.mjs`) | `wh_build.log` |
 | `cc_js.cmd [prefix]` | Bacon World's TypeScript tests (esbuild + `node --test`) in Docker | `cc_js.log` |
 | `cc_mix.cmd` | Mix compile + tests in Docker | `cc_mix.log` |
 | `cc_wasm.cmd` (+ `wasm_build.sh`) | builds `box3d.wasm` in the wasi-sdk image | `cc_wasm.log`, `wasm_out\` |
