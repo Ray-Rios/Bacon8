@@ -312,7 +312,7 @@ in hand-drawn architectural diagrams and create the buildings in 3d and vr space
 the games API (`/api/auth/login`, a bearer token, their own `/api/games/<slug>/...`), with the engine project
 inside the plugin, private by default (decisions log, 2026-11-03). Each plugin's README is its notebook.
 
-| | `tears_of_babylon` (was `artillery`) | `city_planner` |
+| | `tears_of_babylon` (was `artillery`) | `city_builder` (was `city_planner`, 2026-11-21) |
 |---|---|---|
 | Engine | ~~Godot 4.6.2, GDScript, Compatibility renderer, everything built in code~~ Being rebuilt (2026-11-07): Godot 4.7.2, Forward+, GDScript, scenes and Blender/CC0 art (`TEARS_OF_BABYLON.md`) | Unity 6.3 LTS, C#, built-in modules only; VR through `UnityEngine.XR` (OpenXR) |
 | The game | ~~survive waves of light, medium and heavy tanks~~ (2026-11-07) futuristic punk soldiers against every kind of creature, in third person, on foot and in tanks and helicopters; a co-op campaign and player-hosted PvP arenas | a city of 10 m tiles that grows; hand-drawn floor plans scanned into buildings to place and walk through |

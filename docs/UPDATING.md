@@ -17,7 +17,7 @@ There are seven repositories. Run `git status` in each one before a build change
 | Tears of Babylon | `C:\Bacon8\plugins\tears_of_babylon` (Git LFS) |
 | RaysSpaceSim (scripts, k8s) | `C:\Bacon8\plugins\rays_space_sim` |
 | RaysSpaceSim (Unreal project) | `C:\Bacon8\plugins\rays_space_sim\unreal` (Git LFS) |
-| City Builder (the plugin `city_planner`) | `C:\Bacon8\plugins\city_planner` |
+| City Builder (the plugin `city_builder`) | `C:\Bacon8\plugins\city_builder` |
 
 The owner commits. The art pipeline is the one that matters most: it has no commit since 2026-11-14, and `hair\`
 and `gltf\face_*.mjs` have never been committed.
@@ -77,7 +77,7 @@ the web models three ways: for Godot (`art\build\godot`), for Unreal (`art\build
 
 ## 5. City Builder (Unity 6.6)
 
-- In Unity Hub, open `plugins\city_planner\unity` with 6000.6.9f1 (`ProjectSettings\ProjectVersion.txt`). It should
+- In Unity Hub, open `plugins\city_builder\unity` with 6000.6.9f1 (`ProjectSettings\ProjectVersion.txt`). It should
   open without Safe Mode and with an empty Console.
 - Press Play and open the character creator. Check all three bodies, with hair and sliders, and make sure nothing is
   torn apart. If anything is wrong, put a screenshot and the Console text in `CITY_BUILDER.md`.

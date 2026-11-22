@@ -19,7 +19,7 @@
                       here) and work\ (the hair trials not yet installed). (library\ is a link to art\source\,
                       skipped: /XJ)
     - plugins\rays_space_sim\unreal\   the Unreal project: its own repository plus its Content (minus Unreal's caches)
-    - plugins\city_planner\unity\   City Builder's Unity project, minus what Unity and the art build make again
+    - plugins\city_builder\unity\   City Builder's Unity project, minus what Unity and the art build make again
     - tools\, handoff\, docs\, brand\, every game's journal\ and every other file in the folder
 
   It leaves out what can be rebuilt: _build, deps, node_modules, priv\static\assets, tmp, _to_delete,
@@ -91,9 +91,9 @@ $skipDirs = @(
   "$Source\plugins\rays_space_sim\unreal\DerivedDataCache", ".elixir_ls", "node_modules", ".godot",
   # 2026-11-19: what the art build makes again, the cleanup pen, and Unity's caches (City Builder)
   "$Source\art\build", "$Source\_to_delete",
-  "$Source\plugins\city_planner\unity\Library", "$Source\plugins\city_planner\unity\Temp",
-  "$Source\plugins\city_planner\unity\Logs", "$Source\plugins\city_planner\unity\obj",
-  "$Source\plugins\city_planner\unity\Assets\StreamingAssets\B8",
+  "$Source\plugins\city_builder\unity\Library", "$Source\plugins\city_builder\unity\Temp",
+  "$Source\plugins\city_builder\unity\Logs", "$Source\plugins\city_builder\unity\obj",
+  "$Source\plugins\city_builder\unity\Assets\StreamingAssets\B8",
   # editor caches, locked while the editor is open (Visual Studio's search index)
   ".vs", "__pycache__"
 )
@@ -117,7 +117,7 @@ if ($left -and [int]$left.Groups[2].Value -gt 0) {
 # what GitHub doesn't have yet, in each repository here
 # (every repository on this PC, 2026-11-19: the hub, the art pipeline and each game's own)
 foreach ($repo in @($Source, "$Source\art\pipeline", "$Source\plugins\bacon_world", "$Source\plugins\tears_of_babylon",
-                    "$Source\plugins\city_planner", "$Source\plugins\rays_space_sim", "$Source\plugins\rays_space_sim\unreal")) {
+                    "$Source\plugins\city_builder", "$Source\plugins\rays_space_sim", "$Source\plugins\rays_space_sim\unreal")) {
   if (-not (Test-Path "$repo\.git")) { continue }
   Push-Location $repo
   try {
