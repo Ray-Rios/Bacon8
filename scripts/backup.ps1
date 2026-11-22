@@ -9,17 +9,23 @@
       deploy-prod.sh restores a fresh install from the newest dump in backups\)
     - backups\        every database dump and certificate backup so far
     - uploads\        files people uploaded
-    - priv\static\models\   the game's built models
+    - priv\static\models\   the web's models as deployed (built from art\models since 2026-11-19; kept so a
+                            redeploy doesn't need a build)
     - k3s secrets, .env files, priv\cert   (never in Git, by design)
-    - art\            the shared art home: source\ (licensed and downloaded sources; textures and makehuman
-                      only with -IncludeDownloads: several GB, downloadable again), pipeline\ (its scripts are
-                      also on GitHub, B8_Asset_Pipeline; its out\ and blends\ are only here), work\ (working files)
-                      and build\. (library\ is a link to art\source\, skipped: /XJ)
+    - art\            the shared art home (art\README.md): models\ (THE MASTERS: no Git history, so this backup and
+                      snapshots\ are their only other copies), snapshots\, source\ (licensed and downloaded sources;
+                      textures and makehuman only with -IncludeDownloads: several GB, downloadable again), pipeline\
+                      (its scripts are also on GitHub, B8_Asset_Pipeline; its out\, blends\ and vendor\ are only
+                      here) and work\ (the hair trials not yet installed). (library\ is a link to art\source\,
+                      skipped: /XJ)
     - plugins\rays_space_sim\unreal\   the Unreal project: its own repository plus its Content (minus Unreal's caches)
-    - handoff\, docs\, brand\ and every other file in the folder
+    - plugins\city_planner\unity\   City Builder's Unity project, minus what Unity and the art build make again
+    - tools\, handoff\, docs\, brand\, every game's journal\ and every other file in the folder
 
-  It leaves out what can be rebuilt: _build, deps, node_modules, priv\static\assets, tmp,
-  editor caches (.vs) and Unreal's Binaries, Intermediate, Saved and DerivedDataCache. Leaving those out is also what
+  It leaves out what can be rebuilt: _build, deps, node_modules, priv\static\assets, tmp, _to_delete,
+  art\build (pipeline\build.cmd makes it), editor caches (.vs, .godot), Unreal's Binaries, Intermediate, Saved and
+  DerivedDataCache, and Unity's Library, Temp, Logs and obj plus City Builder's StreamingAssets\B8 (build.cmd copies
+  it in). Leaving those out is also what
   makes it work: Explorer gives up on node_modules' very long paths and hundreds of thousands
   of small files ("an unexpected error"). Robocopy handles long paths and retries.
 
@@ -83,6 +89,11 @@ $skipDirs = @(
   "$Source\_build", "$Source\deps", "$Source\assets\node_modules", "$Source\priv\static\assets", "$Source\tmp",
   "$Source\plugins\rays_space_sim\unreal\Binaries", "$Source\plugins\rays_space_sim\unreal\Intermediate", "$Source\plugins\rays_space_sim\unreal\Saved",
   "$Source\plugins\rays_space_sim\unreal\DerivedDataCache", ".elixir_ls", "node_modules", ".godot",
+  # 2026-11-19: what the art build makes again, the cleanup pen, and Unity's caches (City Builder)
+  "$Source\art\build", "$Source\_to_delete",
+  "$Source\plugins\city_planner\unity\Library", "$Source\plugins\city_planner\unity\Temp",
+  "$Source\plugins\city_planner\unity\Logs", "$Source\plugins\city_planner\unity\obj",
+  "$Source\plugins\city_planner\unity\Assets\StreamingAssets\B8",
   # editor caches, locked while the editor is open (Visual Studio's search index)
   ".vs", "__pycache__"
 )
@@ -104,7 +115,9 @@ if ($left -and [int]$left.Groups[2].Value -gt 0) {
 }
 
 # what GitHub doesn't have yet, in each repository here
-foreach ($repo in @($Source, "$Source\plugins\rays_space_sim", "$Source\plugins\rays_space_sim\unreal", "$Source\art\pipeline")) {
+# (every repository on this PC, 2026-11-19: the hub, the art pipeline and each game's own)
+foreach ($repo in @($Source, "$Source\art\pipeline", "$Source\plugins\bacon_world", "$Source\plugins\tears_of_babylon",
+                    "$Source\plugins\city_planner", "$Source\plugins\rays_space_sim", "$Source\plugins\rays_space_sim\unreal")) {
   if (-not (Test-Path "$repo\.git")) { continue }
   Push-Location $repo
   try {

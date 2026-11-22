@@ -18,7 +18,7 @@ Always `--dry-run` first.
 
 | Secret | What changing it costs | How often | How |
 |---|---|---|---|
-| Stripe secret key, webhook signing secret | nothing for buyers if done in order | after exposure; yearly | Stripe dashboard: Developers → API keys → **Roll key** (choose an expiry of an hour or so for the old one), and Webhooks → the endpoint → **Roll secret**; then `rotate-secrets.sh stripe`. The owner updates `.env.stripe` by hand. |
+| Stripe secret key, webhook signing secret | nothing for buyers if done in order | after exposure; yearly | Stripe dashboard: Developers → API keys → **Roll key** (choose an expiry of an hour or so for the old one), and Webhooks → the endpoint → **Roll secret**; then `rotate-secrets.sh stripe`. |
 | `GAMES_SERVER_API_KEY` | RaysSpaceSim world servers fail until restarted with the new key | after exposure; every 6 months | `rotate-secrets.sh games-key` (hub and RaysSpaceSim secret together), then restart the world servers. |
 | `DB_PASSWORD` | a few seconds of failed queries while the pods restart | after exposure; yearly | `rotate-secrets.sh db`: `ALTER ROLE` in Postgres through `kubectl exec`, then the secret. Postgres's own data volume keeps working. |
 | `GUARDIAN_SECRET_KEY` | game clients and launchers sign in again | after exposure; yearly | `rotate-secrets.sh tokens` |

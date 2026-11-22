@@ -20,7 +20,7 @@
 # gitignored secrets files (k3s/overlays/prod/secrets.yaml,
 # plugins/rays_space_sim/k3s/raysspacesim-secrets.yaml, k3s/overlays/prod/mailhog-auth-secret.yaml),
 # after a copy of each goes to tmp/secrets-backup/<time>/ (gitignored; delete it once the site
-# works). Then it applies them and restarts the web pods. It does not touch .env.stripe.
+# works). Then it applies them and restarts the web pods.
 set -euo pipefail
 
 DRY=0
@@ -121,7 +121,6 @@ for w in "${WHAT[@]}"; do
       say "Stripe: roll the secret key and the webhook signing secret in the dashboard first"
       ask "New STRIPE_SECRET_KEY"; set_key "$HUB" STRIPE_SECRET_KEY "$NEWVAL"
       ask "New STRIPE_WEBHOOK_SECRET"; set_key "$HUB" STRIPE_WEBHOOK_SECRET "$NEWVAL"; unset NEWVAL
-      say "update .env.stripe on this PC yourself (nothing here opens it)"
       RESTART_WEB=1 ;;
     smtp)
       ask "New SMTP_PASS (already changed at the mail provider)"; set_key "$HUB" SMTP_PASS "$NEWVAL"; unset NEWVAL
