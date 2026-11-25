@@ -5,7 +5,9 @@ set ST=C:\Bacon8\tmp\JOB_STATUS.txt
 echo Cleanup: RUNNING %time% > %ST%
 echo start %date% %time% > %LOG%
 set U=C:\Bacon8\plugins\rays_space_sim\unreal
-for %%d in ("%U%\Saved\StagedBuilds" "%U%\Saved\ClientBuild" "%U%\Saved\ServerBuild" "%U%\Intermediate\Build\Linux" "C:\Bacon8\tmp\tob_test" "C:\Bacon8\plugins\bacon_world\tools\harness\override_off" "C:\Bacon8\_to_delete") do (
+rem (2026-11-22, the owner) not Intermediate\Build\Linux any more: it holds the dedicated server's compiled engine, and
+rem removing it made the next deploy-game.sh recompile the server from scratch, about two hours
+for %%d in ("%U%\Saved\StagedBuilds" "%U%\Saved\ClientBuild" "%U%\Saved\ServerBuild" "C:\Bacon8\tmp\tob_test" "C:\Bacon8\plugins\bacon_world\tools\harness\override_off" "C:\Bacon8\_to_delete") do (
   echo removing %%d >> %LOG%
   rmdir /s /q %%d >> %LOG% 2>&1
 )

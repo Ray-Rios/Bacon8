@@ -28,12 +28,13 @@ No secrets here (the test database's `POSTGRES_PASSWORD=postgres` is a throwaway
 | `godot_jiggle.cmd` | Godot jiggle renders | `godot_jiggle\`, `godot_jiggle.log` |
 | `hairprev.cmd` | Blender hair previews (`art\pipeline\hair\preview.py`, `tmp\hairprev\jobs.json`) | `hairprev\preview.log` |
 | `stance_shots.cmd` (+ `.py`) | Blender stance renders | `stance_shots.log`, `JOB_STATUS.txt` |
+| `arsenal.cmd` | Blender: rebuilds Bacon World's arsenal (`build_arsenal.py`) into `art\models\Weapons`; then `build.cmd` | `arsenal.log`, `art\pipeline\scripts\out\arsenal\` |
 | `rss_full_build.cmd` | RaysSpaceSim `RSSEditor` build; waits for the editor to close; ends `EXIT 0` | `rss_full_build.log`, `RSS_BUILD_STATUS.txt` |
 | `rss_compile.cmd`, `rss_build_compile.cmd` | per-file C++ compile checks (`-SingleFile`, editor can stay open) | `rss_compile.log`, `rss_build_compile.log` |
 | `rss_rebuild.bat` | rebuilds after the editor closes, then reopens it (stashes source on failure) | `rss_build.log` |
 | `unreal_names.cmd` | renames Unreal morph names in the Unreal copies | `unreal_names.log` |
-| `cleanup.cmd` | empties `_to_delete`, RaysSpaceSim staged builds, prunes ALL unused Docker images | `cleanup.log` |
-| `cleanup_space.cmd`, `disk_scan.cmd` (+ `.py`) | disk space cleanup / report | `cleanup_space.log`, `disk_scan.log` |
+| `cleanup.cmd` | empties `_to_delete`, RaysSpaceSim staged builds, prunes ALL unused Docker images (not while `deploy-game.sh` runs: its new server image is unused until rolled out); keeps `Intermediate\Build\Linux` since 2026-11-22 (the server's compiled engine: two hours to rebuild) | `cleanup.log` |
+| `cleanup_space.cmd`, `disk_scan.cmd` (+ `.py`) | disk space cleanup / report (the report also covers the engine, Docker's and Claude's virtual disks, Zen; 2026-11-22) | `cleanup_space.log`; `tmp\disk.txt` and a dated copy `tmp\disk_<date>_<time>.txt` to compare runs |
 | `admin_space.cmd` | run as administrator: shrinks Docker's disk, sets the page file | console |
 | `gtest.cmd` | **stale**: the 11-12 garment test; its output folder in `art\work\daz_female` is gone | `gtest.log` |
 

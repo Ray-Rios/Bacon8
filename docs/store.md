@@ -169,6 +169,13 @@ Games spend Gems through the hub, never locally: `POST /api/wallet/spend` with t
 server key, user id, amount, item and an idempotency key. The hub debits and grants the
 entitlement in one transaction.
 
+The jeweller's Gem-only sets for the games that keep their own bags (Tears of Babylon,
+RaysSpaceSim; 2026-11-24): `Bacon8.GemShop`, `GET /api/games/:slug/gems/jeweller` and
+`POST /api/games/:slug/gems/jeweller/buy` (`item_id`, `character_id`, `body`, `nonce`), as the
+player or the game server for them. One `spend` under the game's slug, keyed by the click's
+nonce (a retry charges nothing and returns the same pieces); the game adds the pieces to the
+character. Bacon World's own jeweller (`BaconWorld.Jeweller`) still puts them in its bags itself.
+
 **Entitlements** are how anything purchased becomes access:
 
 ```

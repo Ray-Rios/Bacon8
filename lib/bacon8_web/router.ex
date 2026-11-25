@@ -337,6 +337,10 @@ defmodule Bacon8Web.Router do
     put "/:game_slug/content/:kind/:id", Api.ContentController, :put
     delete "/:game_slug/content/:kind/:id", Api.ContentController, :delete
 
+    # The jeweller's Gem-only sets for the games that keep their own bags (2026-11-24: Bacon8.GemShop)
+    get "/:game_slug/gems/jeweller", Api.GemsController, :jeweller
+    post "/:game_slug/gems/jeweller/buy", Api.GemsController, :buy
+
     get "/:game_slug/characters", Api.GamesController, :list_characters
     post "/:game_slug/characters", Api.GamesController, :create_character
 

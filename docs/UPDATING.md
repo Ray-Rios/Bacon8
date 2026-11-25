@@ -14,7 +14,7 @@ There are seven repositories. Run `git status` in each one before a build change
 | hub | `C:\Bacon8` |
 | art pipeline | `C:\Bacon8\art\pipeline` |
 | Bacon World | `C:\Bacon8\plugins\bacon_world` |
-| Tears of Babylon | `C:\Bacon8\plugins\tears_of_babylon` (Git LFS) |
+| Tears of Babylon | `C:\Bacon8\plugins\tears_of_babylon` (no Git LFS since 2026-11-22: the built art is not stored, `build.cmd` makes it) |
 | RaysSpaceSim (scripts, k8s) | `C:\Bacon8\plugins\rays_space_sim` |
 | RaysSpaceSim (Unreal project) | `C:\Bacon8\plugins\rays_space_sim\unreal` (Git LFS) |
 | City Builder (the plugin `city_builder`) | `C:\Bacon8\plugins\city_builder` |
