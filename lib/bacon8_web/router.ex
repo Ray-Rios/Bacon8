@@ -341,6 +341,10 @@ defmodule Bacon8Web.Router do
     get "/:game_slug/gems/jeweller", Api.GemsController, :jeweller
     post "/:game_slug/gems/jeweller/buy", Api.GemsController, :buy
 
+    # An account's bank for the games that keep their own bags (2026-11-24: Bacon8.GameBank)
+    get "/:game_slug/bank", Api.BankController, :show
+    put "/:game_slug/bank", Api.BankController, :update
+
     get "/:game_slug/characters", Api.GamesController, :list_characters
     post "/:game_slug/characters", Api.GamesController, :create_character
 
