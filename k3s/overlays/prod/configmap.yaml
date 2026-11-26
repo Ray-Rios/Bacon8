@@ -41,7 +41,7 @@ data:
   # Empty is a supported state: the launcher reports itself unavailable and
   # /launch falls back to recording intent and waiting for a hand-started
   # server. That is the development loop, not a broken deployment.
-  HOLOSIM_IMAGE: "raysspacesim-server:3ea1f68"
+  HOLOSIM_IMAGE: "raysspacesim-server:7dbb2cf-dirty-202611261858"
 
   # The address a GAME CLIENT connects to. This is NOT proxied by the nginx
   # ingress - instances speak UDP directly on their assigned port via hostPort,
@@ -67,3 +67,15 @@ data:
   # HOLOSIM_PUBLIC_HOST above.
   WORLD_PUBLIC_HOST: "bacon8.net"
   WORLD_PORT: "7777"
+  # --- Tears of Babylon zone servers (TearsOfBabylon.ZoneServers, 2026-11-25) -----
+  #
+  # One headless Godot server per zone, started from /admin/tears_of_babylon. TOB_ZONE_IMAGE is written by
+  # plugins/tears_of_babylon/deploy-game.sh, for the same reasons HOLOSIM_IMAGE is (above). Empty: the admin page says
+  # the cluster can't run them, and a server started by hand still heartbeats in.
+  #
+  # TOB_ZONE_PUBLIC_HOST is what each server tells the hub players should reach it at (the 127.0.0.1 default would
+  # send every player to their own machine, as WORLD_PUBLIC_HOST explains). Zone n listens on UDP
+  # TOB_ZONE_PORT_BASE + n - 1: 7810-7814 to forward at the router.
+  TOB_ZONE_IMAGE: ""
+  TOB_ZONE_PUBLIC_HOST: "bacon8.net"
+  TOB_ZONE_PORT_BASE: "7810"

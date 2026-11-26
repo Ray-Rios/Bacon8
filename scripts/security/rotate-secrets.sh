@@ -9,7 +9,8 @@
 # What each one rotates:
 #   app        SECRET_KEY_BASE, LIVE_VIEW_SIGNING_SALT   everyone is signed out; reset links die
 #   tokens     GUARDIAN_SECRET_KEY                       game clients and launchers sign in again
-#   games-key  GAMES_SERVER_API_KEY                      hub and RaysSpaceSim; restart world servers
+#   games-key  GAMES_SERVER_API_KEY                      hub, RaysSpaceSim and Tears of Babylon; restart
+#                                                        their world and zone servers
 #   db         DB_PASSWORD                               the Postgres role first, then the secret
 #   stripe     STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET  roll them in the Stripe dashboard first
 #   smtp       SMTP_PASS                                 change it at the mail provider first
@@ -18,7 +19,9 @@
 #
 # It never prints a secret. New values are made with openssl and written straight into the
 # gitignored secrets files (k3s/overlays/prod/secrets.yaml,
-# plugins/rays_space_sim/k3s/raysspacesim-secrets.yaml, k3s/overlays/prod/mailhog-auth-secret.yaml),
+# plugins/rays_space_sim/k3s/raysspacesim-secrets.yaml,
+# plugins/tears_of_babylon/k3s/tearsofbabylon-secrets.yaml (made from secrets.example.yaml beside it
+# the first time), k3s/overlays/prod/mailhog-auth-secret.yaml),
 # after a copy of each goes to tmp/secrets-backup/<time>/ (gitignored; delete it once the site
 # works). Then it applies them and restarts the web pods.
 set -euo pipefail
@@ -30,15 +33,18 @@ for a in "$@"; do
     --dry-run) DRY=1 ;;
     all) WHAT+=(app tokens games-key db) ;;
     app|tokens|games-key|db|stripe|smtp|mailhog) WHAT+=("$a") ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
     *) echo "Unknown: $a (see --help)" >&2; exit 2 ;;
   esac
 done
-[ ${#WHAT[@]} -gt 0 ] || { sed -n '2,27p' "$0"; exit 2; }
+[ ${#WHAT[@]} -gt 0 ] || { sed -n '2,26p' "$0"; exit 2; }
 
 NS=bacon8
 HUB=k3s/overlays/prod/secrets.yaml
 RSS=plugins/rays_space_sim/k3s/raysspacesim-secrets.yaml
+TOB=plugins/tears_of_babylon/k3s/tearsofbabylon-secrets.yaml
+TOB_EXAMPLE=plugins/tears_of_babylon/k3s/secrets.example.yaml
+TOB_NS=tearsofbabylon
 MAILHOG=k3s/overlays/prod/mailhog-auth-secret.yaml
 [ -f "$HUB" ] || { echo "No $HUB here: run this from the repo root." >&2; exit 1; }
 command -v openssl >/dev/null || { echo "openssl is needed (Git Bash has it)." >&2; exit 1; }
@@ -53,7 +59,7 @@ backup() {
   [ -f "$1" ] || return 0
   if [ $DRY = 0 ]; then mkdir -p "$BACKUP/$(dirname "$1")"; cp "$1" "$BACKUP/$1"; chmod 600 "$BACKUP/$1" 2>/dev/null || true; fi
 }
-for f in "$HUB" "$RSS" "$MAILHOG"; do backup "$f"; done
+for f in "$HUB" "$RSS" "$TOB" "$MAILHOG"; do backup "$f"; done
 [ $DRY = 1 ] || say "backups in $BACKUP (delete when the site works again)"
 
 # set_key FILE KEY VALUE: a shell function, so VALUE is on no process's command line; awk gets it
@@ -81,7 +87,7 @@ ask() { # ask PROMPT: reads without echo into NEWVAL
   case "$NEWVAL" in *\"*|*\\*) echo "Quotes and backslashes aren't supported in these values." >&2; exit 1 ;; esac
 }
 
-RESTART_WEB=0; APPLY_RSS=0; APPLY_MAILHOG=0
+RESTART_WEB=0; APPLY_RSS=0; APPLY_TOB=0; APPLY_MAILHOG=0
 for w in "${WHAT[@]}"; do
   case "$w" in
     app)
@@ -94,10 +100,21 @@ for w in "${WHAT[@]}"; do
       set_key "$HUB" GUARDIAN_SECRET_KEY "$(hex 48)"
       RESTART_WEB=1 ;;
     games-key)
-      say "GAMES_SERVER_API_KEY (the hub's and RaysSpaceSim's, the same value)"
+      say "GAMES_SERVER_API_KEY (the hub's, RaysSpaceSim's and Tears of Babylon's, the same value)"
       NEWVAL=$(hex 32)
       set_key "$HUB" GAMES_SERVER_API_KEY "$NEWVAL"
       if [ -f "$RSS" ]; then set_key "$RSS" GAMES_SERVER_API_KEY "$NEWVAL"; APPLY_RSS=1; else say "no $RSS: put the same key wherever your game servers read it"; fi
+      # Tears of Babylon's zone servers run in their own namespace and need their own copy of the key;
+      # the first run makes the file from the example beside it
+      if [ ! -f "$TOB" ]; then
+        if [ -f "$TOB_EXAMPLE" ]; then
+          say "no $TOB yet: making it from $TOB_EXAMPLE"
+          if [ $DRY = 0 ]; then cp "$TOB_EXAMPLE" "$TOB"; chmod 600 "$TOB" 2>/dev/null || true; fi
+        else
+          say "no $TOB or $TOB_EXAMPLE: Tears of Babylon's zone servers need the same key in secret tearsofbabylon-secrets"
+        fi
+      fi
+      if [ -f "$TOB" ] || [ $DRY = 1 -a -f "$TOB_EXAMPLE" ]; then set_key "$TOB" GAMES_SERVER_API_KEY "$NEWVAL"; APPLY_TOB=1; fi
       unset NEWVAL
       RESTART_WEB=1 ;;
     db)
@@ -143,6 +160,14 @@ done
 say "applying the secrets"
 run kubectl apply -n "$NS" -f "$HUB"
 [ $APPLY_RSS = 1 ] && run kubectl apply -f "$RSS"
+if [ $APPLY_TOB = 1 ]; then
+  if kubectl get namespace "$TOB_NS" >/dev/null 2>&1; then
+    run kubectl apply -f "$TOB"
+  else
+    say "no $TOB_NS namespace yet: $TOB is written; it goes in with 'kubectl apply -k plugins/tears_of_babylon/k3s' then 'kubectl apply -f $TOB' (deploy-prod.sh does both)"
+    APPLY_TOB=0
+  fi
+fi
 [ $APPLY_MAILHOG = 1 ] && run kubectl apply -n "$NS" -f "$MAILHOG"
 if [ $RESTART_WEB = 1 ]; then
   say "restarting the web pods with the new values"
@@ -151,4 +176,5 @@ if [ $RESTART_WEB = 1 ]; then
 fi
 say "done. Check the site, sign in, then delete $BACKUP."
 [ $APPLY_RSS = 1 ] && say "RaysSpaceSim world servers and Holo-sims read the key when they start: restart the running ones."
+[ $APPLY_TOB = 1 ] && say "Tears of Babylon zone servers read the key when they start: restart the running ones (kubectl get deploy -n $TOB_NS; kubectl rollout restart deployment/<name> -n $TOB_NS)."
 exit 0

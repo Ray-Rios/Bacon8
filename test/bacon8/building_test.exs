@@ -19,7 +19,10 @@ defmodule Bacon8.BuildingTest do
   test "the catalogue is Bacon World's props and building kit, the same for every game" do
     ids = MapSet.new(Building.catalogue("rays_space_sim"), & &1.id)
     assert MapSet.member?(ids, "P_Barrel") and MapSet.member?(ids, "K_Wall_Stone") and MapSet.member?(ids, "X_Plinth")
-    assert Enum.count(Building.catalogue("tears_of_babylon")) == 254
+    assert Enum.count(Building.catalogue("tears_of_babylon")) == 255
+    # its own explosive barrel (2026-11-25), only in its catalogue
+    assert Building.asset("tears_of_babylon", "X_ExplosiveBarrel").model == "Barrel"
+    assert Building.asset("rays_space_sim", "X_ExplosiveBarrel") == nil
     refute Enum.any?(Building.catalogue("rays_space_sim"), &String.starts_with?(&1.id, "mob:")), "creatures are Bacon World's own"
     assert Building.asset("rays_space_sim", "P_TreeOak").category == "Trees & plants"
   end

@@ -62,7 +62,11 @@ defmodule Bacon8.Building do
   # The catalogue and its rules
   # ---------------------------------------------------------------------------
 
-  @doc "What `game_slug` may place (the shared models)."
+  @doc """
+  What `game_slug` may place: the shared models, and a game's own kinds (Tears of Babylon's explosive barrel,
+  2026-11-25: the barrels that were baked into its zones are placed in build mode now).
+  """
+  def catalogue("tears_of_babylon"), do: Catalogue.models() ++ Catalogue.tears_of_babylon()
   def catalogue(_game_slug), do: Catalogue.models()
 
   @doc "A catalogue entry of `game_slug` by id, or nil."

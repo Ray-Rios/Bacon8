@@ -56,6 +56,14 @@ defmodule Bacon8.Building.Catalogue do
   # the waystone will be the binding stone (BACON_WORLD.md): admins only, like the bosses
   @admin_props ~w(Waystone)
 
+  @doc """
+  Tears of Babylon's own pieces (2026-11-25, the owner: the exploding barrels "will need to be rolled into the rest of
+  the buildable objects"): the explosive barrel, drawn with the props' barrel and made to blow up by the game.
+  """
+  def tears_of_babylon do
+    [%{id: "X_ExplosiveBarrel", name: "Explosive barrel", category: "Props", kind: "model", default_role: "member", model: "Barrel", file: "props"}]
+  end
+
   @doc "The shared models, props then building pieces."
   def models do
     props =

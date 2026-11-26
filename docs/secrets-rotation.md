@@ -19,7 +19,7 @@ Always `--dry-run` first.
 | Secret | What changing it costs | How often | How |
 |---|---|---|---|
 | Stripe secret key, webhook signing secret | nothing for buyers if done in order | after exposure; yearly | Stripe dashboard: Developers → API keys → **Roll key** (choose an expiry of an hour or so for the old one), and Webhooks → the endpoint → **Roll secret**; then `rotate-secrets.sh stripe`. |
-| `GAMES_SERVER_API_KEY` | RaysSpaceSim world servers fail until restarted with the new key | after exposure; every 6 months | `rotate-secrets.sh games-key` (hub and RaysSpaceSim secret together), then restart the world servers. |
+| `GAMES_SERVER_API_KEY` | RaysSpaceSim world servers and Tears of Babylon zone servers fail until restarted with the new key | after exposure; every 6 months | `rotate-secrets.sh games-key` (the hub's, RaysSpaceSim's and Tears of Babylon's secrets together, one value), then restart the world servers and zone servers. |
 | `DB_PASSWORD` | a few seconds of failed queries while the pods restart | after exposure; yearly | `rotate-secrets.sh db`: `ALTER ROLE` in Postgres through `kubectl exec`, then the secret. Postgres's own data volume keeps working. |
 | `GUARDIAN_SECRET_KEY` | game clients and launchers sign in again | after exposure; yearly | `rotate-secrets.sh tokens` |
 | `SECRET_KEY_BASE`, `LIVE_VIEW_SIGNING_SALT` | everyone is signed out; password-reset and confirmation links already sent stop working | after exposure only (or yearly, at a quiet hour) | `rotate-secrets.sh app` |
@@ -37,12 +37,26 @@ Each line is one command group:
 ```sh
 scripts/security/rotate-secrets.sh --dry-run all stripe smtp mailhog   # read what it will do
 scripts/security/rotate-secrets.sh stripe        # after rolling both in the Stripe dashboard
-scripts/security/rotate-secrets.sh games-key     # then restart RaysSpaceSim's world servers
+scripts/security/rotate-secrets.sh games-key     # then restart RaysSpaceSim's world servers and ToB's zone servers
 scripts/security/rotate-secrets.sh db
 scripts/security/rotate-secrets.sh tokens
 scripts/security/rotate-secrets.sh app           # signs everyone out
 scripts/security/rotate-secrets.sh smtp mailhog  # after changing the mail password at the provider
 kubectl get pods -n bacon8                       # all Running; then sign in, buy nothing, send a test mail
+```
+
+**Tears of Babylon's copy of the games key** (added 2026-11-26). The zone servers have no key of their
+own: they use the hub's `GAMES_SERVER_API_KEY`, and it must be the same value, or every join is refused.
+A Secret can't be read from another namespace, so the `tearsofbabylon` namespace keeps its own copy in
+Secret `tearsofbabylon-secrets`, from the gitignored file
+`plugins/tears_of_babylon/k3s/tearsofbabylon-secrets.yaml`. If that file is missing, `games-key` makes it
+from `secrets.example.yaml` beside it. If the `tearsofbabylon` namespace doesn't exist yet, the script
+writes the file but doesn't apply it; `deploy-prod.sh` applies it later. Zone servers read the key only
+when they start:
+
+```sh
+kubectl get deploy -n tearsofbabylon                                  # tob-zone-outskirts-01 ... 05
+kubectl rollout restart deployment/tob-zone-outskirts-01 -n tearsofbabylon   # each one that's running
 ```
 
 When the site works: delete `tmp/secrets-backup/` (it holds the old values), and in Stripe make sure
