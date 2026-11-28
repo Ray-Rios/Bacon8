@@ -41,7 +41,7 @@ data:
   # Empty is a supported state: the launcher reports itself unavailable and
   # /launch falls back to recording intent and waiting for a hand-started
   # server. That is the development loop, not a broken deployment.
-  HOLOSIM_IMAGE: "raysspacesim-server:7dbb2cf-dirty-202611261858"
+  HOLOSIM_IMAGE: "raysspacesim-server:03df0b7-dirty-202611280140"
 
   # The address a GAME CLIENT connects to. This is NOT proxied by the nginx
   # ingress - instances speak UDP directly on their assigned port via hostPort,
@@ -75,7 +75,15 @@ data:
   #
   # TOB_ZONE_PUBLIC_HOST is what each server tells the hub players should reach it at (the 127.0.0.1 default would
   # send every player to their own machine, as WORLD_PUBLIC_HOST explains). Zone n listens on UDP
-  # TOB_ZONE_PORT_BASE + n - 1: 7810-7814 to forward at the router.
-  TOB_ZONE_IMAGE: ""
+  # TOB_ZONE_PORT_BASE + n - 1: 7900-7904 to forward at the router.
+  #
+  # THE GAME SERVERS' UDP PORTS (2026-11-27, the owner: "make sure there is no port overlap between RSS and ToB"):
+  #   7777        RaysSpaceSim's world server (WORLD_PORT)
+  #   7800-7899   RaysSpaceSim's Holo-sims, the lowest free port first (HOLOSIM_PORT_MIN/MAX)
+  #   7900-7999   Tears of Babylon's (the owner's reservation, 2026-11-27): its zones from TOB_ZONE_PORT_BASE, five today
+  # ToB was on 7810-7814 until then, inside the Holo-sims' range: the eleventh Holo-sim running at once would have
+  # taken The RoT's port. TearsOfBabylon.ZoneServers refuses to start a zone whose port falls in RaysSpaceSim's, and
+  # a hub test reads this file and fails if any two of these meet.
+  TOB_ZONE_IMAGE: "tob-zone-server:dfa66ce"
   TOB_ZONE_PUBLIC_HOST: "bacon8.net"
-  TOB_ZONE_PORT_BASE: "7810"
+  TOB_ZONE_PORT_BASE: "7900"
